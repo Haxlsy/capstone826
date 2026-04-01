@@ -1,5 +1,5 @@
-import Sidebar from "@/components/dashboard/SalesDashboard/Sidebar"
-import TopBar from "@/components/dashboard/SalesDashboard/TopBar"
+import DynamicSidebar from "@/components/dashboard/DynamicSidebar"
+import DynamicTopBar from "@/components/dashboard/DynamicTopBar"
 
 export default function DashboardLayout({
   children,
@@ -8,9 +8,9 @@ export default function DashboardLayout({
 }) {
   return (
     <div className="flex h-screen bg-gray-50 overflow-hidden">
-      <Sidebar />
+      <DynamicSidebar />
       <div className="flex flex-col flex-1 overflow-hidden">
-        <TopBar />
+        <DynamicTopBar />
         <main className="flex-1 overflow-hidden">{children}</main>
       </div>
     </div>
