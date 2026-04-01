@@ -1,15 +1,17 @@
 "use client"
 
 import { useState } from "react"
+import { useRouter } from "next/navigation"
 import { Wrench, User, Lock, Eye, EyeOff, ShieldCheck, LogIn } from "lucide-react"
 
 export default function LoginPage() {
+  const router = useRouter()
   const [username, setUsername] = useState("")
   const [password, setPassword] = useState("")
   const [showPassword, setShowPassword] = useState(false)
-  const [rememberDevice, setRememberDevice] = useState(false)
   const [errors, setErrors] = useState<{ username?: string; password?: string }>({})
-  const [submitted, setSubmitted] = useState(false)
+  const [serverError, setServerError] = useState<string | null>(null)
+  const [isLoading, setIsLoading] = useState(false)
 
   function validate() {
     const newErrors: { username?: string; password?: string } = {}
@@ -26,7 +28,7 @@ export default function LoginPage() {
     return newErrors
   }
 
-  function handleSubmit(e: React.FormEvent) {
+  async function handleSubmit(e: React.SyntheticEvent<HTMLFormElement>) {
     e.preventDefault()
     const validationErrors = validate()
     if (Object.keys(validationErrors).length > 0) {
@@ -34,7 +36,29 @@ export default function LoginPage() {
       return
     }
     setErrors({})
-    setSubmitted(true)
+    setServerError(null)
+    setIsLoading(true)
+
+    try {
+      const res = await fetch("/api/auth/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ username: username.trim(), password }),
+      })
+
+      const data = await res.json()
+
+      if (!res.ok) {
+        setServerError(data.error ?? "Something went wrong.")
+        return
+      }
+
+      router.push("/")
+    } catch {
+      setServerError("Network error. Please try again.")
+    } finally {
+      setIsLoading(false)
+    }
   }
 
   return (
@@ -54,13 +78,6 @@ export default function LoginPage() {
       {/* Card */}
       <div className="w-full max-w-md bg-white rounded-2xl shadow-xl px-10 py-10">
 
-        {submitted ? (
-          <div className="text-center py-8">
-            <ShieldCheck className="w-12 h-12 text-green-500 mx-auto mb-4" />
-            <h2 className="text-xl font-semibold text-slate-800">Access Granted</h2>
-            <p className="text-slate-500 text-sm mt-2">Welcome back, {username}.</p>
-          </div>
-        ) : (
           <>
             <h2 className="text-2xl font-bold text-slate-800 mb-1">Welcome Back</h2>
             <p className="text-sm text-slate-500 mb-8">
@@ -135,13 +152,18 @@ export default function LoginPage() {
                 )}
               </div>
 
+              {serverError && (
+                <p className="text-xs text-red-500 text-center">{serverError}</p>
+              )}
+
               {/* Submit */}
               <button
                 type="submit"
-                className="w-full flex items-center justify-center gap-2 py-3 rounded-xl bg-gradient-to-r from-blue-500 to-blue-700 text-white font-semibold text-sm tracking-wide shadow-md hover:from-blue-600 hover:to-blue-800 active:scale-[0.98] transition-all"
+                disabled={isLoading}
+                className="w-full flex items-center justify-center gap-2 py-3 rounded-xl bg-gradient-to-r from-blue-500 to-blue-700 text-white font-semibold text-sm tracking-wide shadow-md hover:from-blue-600 hover:to-blue-800 active:scale-[0.98] transition-all disabled:opacity-60 disabled:cursor-not-allowed"
               >
-                Access Operations
-                <LogIn className="w-4 h-4" />
+                {isLoading ? "Signing in…" : "Access Operations"}
+                {!isLoading && <LogIn className="w-4 h-4" />}
               </button>
             </form>
 
@@ -159,7 +181,6 @@ export default function LoginPage() {
               </div>
             </div>
           </>
-        )}
       </div>
 
       {/* Footer */}
