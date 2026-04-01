@@ -10,6 +10,7 @@ export default function Home() {
         </Link>
         <Link href="/test" className="bg-green-500 hover:bg-green-700 text-white font-bold py-2 px-4 rounded mt-4">Go to test page</Link>
         <Link href="/test/operations" className="bg-orange-500 hover:bg-orange-700 text-white font-bold py-2 px-4 rounded mt-4">Go to Operations test page</Link>
+        <Link href="/test/technician" className="bg-emerald-500 hover:bg-orange-700 text-white font-bold py-2 px-4 rounded mt-4">Go to Technician test page</Link>   
       </main>
     </div>
   );
