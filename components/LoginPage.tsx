@@ -59,6 +59,7 @@ export default function LoginPage() {
       } catch {}
 
       const roleRoutes: Record<string, string> = {
+        super_admin: "/dashboard/admin",
         admin: "/dashboard/admin",
         operations: "/dashboard/operations",
         sales: "/dashboard/sales",

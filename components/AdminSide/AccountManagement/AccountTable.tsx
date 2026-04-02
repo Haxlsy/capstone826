@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react"
 import { Search, Filter, MoreHorizontal, ChevronLeft, ChevronRight } from "lucide-react"
 import AddAccountModal from "./AddAccountModal"
 
-type UserRole = "operations" | "sales" | "head_technician" | "technician"
+type UserRole = "admin" | "operations" | "sales" | "head_technician" | "technician"
 
 interface Account {
   user_id: string
@@ -17,6 +17,7 @@ interface Account {
 }
 
 const ROLE_LABELS: Record<UserRole, string> = {
+  admin: "Admin",
   operations: "Operations",
   sales: "Sales",
   head_technician: "Head Technician",
@@ -24,6 +25,7 @@ const ROLE_LABELS: Record<UserRole, string> = {
 }
 
 const ROLE_BADGE: Record<UserRole, string> = {
+  admin: "bg-purple-50 text-purple-600",
   operations: "bg-blue-50 text-blue-600",
   sales: "bg-green-50 text-green-600",
   head_technician: "bg-orange-50 text-orange-500",
@@ -55,6 +57,7 @@ export default function AccountTable() {
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [actionMenu, setActionMenu] = useState<string | null>(null)
   const [addModalOpen, setAddModalOpen] = useState(false)
+  const [editingAccount, setEditingAccount] = useState<Account | null>(null)
 
   const filterRef = useRef<HTMLDivElement>(null)
   const actionRef = useRef<HTMLDivElement>(null)
@@ -189,7 +192,7 @@ export default function AccountTable() {
               <div>
                 <p className="text-xs font-semibold text-gray-500 mb-1.5 uppercase tracking-wide">Role</p>
                 <div className="space-y-0.5">
-                  {(["all", "operations", "sales", "head_technician", "technician"] as const).map(
+                  {(["all", "admin", "operations", "sales", "head_technician", "technician"] as const).map(
                     (r) => (
                       <button
                         key={r}
@@ -250,6 +253,13 @@ export default function AccountTable() {
         open={addModalOpen}
         onClose={() => setAddModalOpen(false)}
         onSuccess={() => fetchAccounts()}
+      />
+
+      <AddAccountModal
+        open={!!editingAccount}
+        onClose={() => setEditingAccount(null)}
+        onSuccess={() => fetchAccounts()}
+        editAccount={editingAccount ?? undefined}
       />
 
       {/* Table */}
@@ -370,7 +380,7 @@ export default function AccountTable() {
                       {actionMenu === account.user_id && (
                         <div className="absolute right-4 top-full mt-1 w-36 bg-white border border-gray-100 rounded-xl shadow-lg z-10 py-1">
                           <button
-                            onClick={() => setActionMenu(null)}
+                            onClick={() => { setActionMenu(null); setEditingAccount(account) }}
                             className="w-full text-left text-sm px-3.5 py-2 text-gray-700 hover:bg-gray-50 transition-colors"
                           >
                             Edit

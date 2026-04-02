@@ -3,15 +3,25 @@
 import { useEffect, useState } from "react"
 import { X, Eye, EyeOff } from "lucide-react"
 
-type UserRole = "operations" | "sales" | "head_technician" | "technician"
+type UserRole = "admin" | "operations" | "sales" | "head_technician" | "technician"
+
+interface AccountData {
+  user_id: string
+  full_name: string
+  user_name: string
+  role: UserRole
+  contact_no: string
+}
 
 interface AddAccountModalProps {
   open: boolean
   onClose: () => void
   onSuccess: () => void
+  editAccount?: AccountData
 }
 
-const ROLE_OPTIONS: { value: UserRole; label: string }[] = [
+const ALL_ROLE_OPTIONS: { value: UserRole; label: string; superAdminOnly?: boolean }[] = [
+  { value: "admin", label: "Admin", superAdminOnly: true },
   { value: "operations", label: "Operations" },
   { value: "sales", label: "Sales" },
   { value: "head_technician", label: "Head Technician" },
@@ -27,24 +37,47 @@ const EMPTY_FORM = {
   contactNo: "",
 }
 
-export default function AddAccountModal({ open, onClose, onSuccess }: AddAccountModalProps) {
+export default function AddAccountModal({ open, onClose, onSuccess, editAccount }: AddAccountModalProps) {
+  const isEdit = !!editAccount
+
   const [form, setForm] = useState(EMPTY_FORM)
   const [showPassword, setShowPassword] = useState(false)
   const [showConfirm, setShowConfirm] = useState(false)
   const [errors, setErrors] = useState<Partial<typeof EMPTY_FORM>>({})
   const [submitting, setSubmitting] = useState(false)
   const [serverError, setServerError] = useState("")
+  const [currentUserRole, setCurrentUserRole] = useState("")
 
-  // Reset when modal opens
+  const roleOptions = ALL_ROLE_OPTIONS.filter(
+    (opt) => !opt.superAdminOnly || currentUserRole === "super_admin"
+  )
+
+  // Reset / pre-fill when modal opens
   useEffect(() => {
     if (open) {
-      setForm(EMPTY_FORM)
       setErrors({})
       setServerError("")
       setShowPassword(false)
       setShowConfirm(false)
+      try {
+        const raw = localStorage.getItem("826_user")
+        if (raw) setCurrentUserRole(JSON.parse(raw).role ?? "")
+      } catch {}
+
+      if (editAccount) {
+        setForm({
+          fullName: editAccount.full_name,
+          username: editAccount.user_name,
+          password: "",
+          confirmPassword: "",
+          role: editAccount.role,
+          contactNo: editAccount.contact_no,
+        })
+      } else {
+        setForm(EMPTY_FORM)
+      }
     }
-  }, [open])
+  }, [open, editAccount])
 
   // Prevent background scroll when open
   useEffect(() => {
@@ -55,11 +88,16 @@ export default function AddAccountModal({ open, onClose, onSuccess }: AddAccount
   function validate() {
     const e: Partial<typeof EMPTY_FORM> = {}
     if (!form.fullName.trim()) e.fullName = "Full name is required."
-    if (!form.username.trim()) e.username = "Username is required."
-    if (!form.password) e.password = "Password is required."
-    else if (form.password.length < 8) e.password = "Password must be at least 8 characters."
-    if (!form.confirmPassword) e.confirmPassword = "Please confirm your password."
-    else if (form.password !== form.confirmPassword) e.confirmPassword = "Passwords do not match."
+    if (!isEdit && !form.username.trim()) e.username = "Username is required."
+    if (!isEdit) {
+      if (!form.password) e.password = "Password is required."
+      else if (form.password.length < 8) e.password = "Password must be at least 8 characters."
+      if (!form.confirmPassword) e.confirmPassword = "Please confirm your password."
+      else if (form.password !== form.confirmPassword) e.confirmPassword = "Passwords do not match."
+    } else if (form.password) {
+      if (form.password.length < 8) e.password = "Password must be at least 8 characters."
+      if (form.password !== form.confirmPassword) e.confirmPassword = "Passwords do not match."
+    }
     if (!form.contactNo.trim()) {
       e.contactNo = "Contact number is required."
     } else if (!/^[0-9+\-\s()]{7,15}$/.test(form.contactNo.trim())) {
@@ -81,17 +119,33 @@ export default function AddAccountModal({ open, onClose, onSuccess }: AddAccount
     setSubmitting(true)
 
     try {
-      const res = await fetch("/api/admin/create-account", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          fullName: form.fullName.trim(),
-          username: form.username.trim(),
-          password: form.password,
-          role: form.role,
-          contactNo: form.contactNo.trim(),
-        }),
-      })
+      let res: Response
+
+      if (isEdit) {
+        res = await fetch("/api/admin/update-account", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            userId: editAccount!.user_id,
+            fullName: form.fullName.trim(),
+            role: form.role,
+            contactNo: form.contactNo.trim(),
+            ...(form.password ? { password: form.password } : {}),
+          }),
+        })
+      } else {
+        res = await fetch("/api/admin/create-account", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            fullName: form.fullName.trim(),
+            username: form.username.trim(),
+            password: form.password,
+            role: form.role,
+            contactNo: form.contactNo.trim(),
+          }),
+        })
+      }
 
       const json = await res.json()
 
@@ -132,7 +186,9 @@ export default function AddAccountModal({ open, onClose, onSuccess }: AddAccount
       >
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-5 border-b border-gray-100 shrink-0">
-          <h2 className="text-lg font-semibold text-gray-800">Add New Account</h2>
+          <h2 className="text-lg font-semibold text-gray-800">
+            {isEdit ? "Edit Account" : "Add New Account"}
+          </h2>
           <button
             onClick={onClose}
             className="p-1.5 rounded-lg text-gray-400 hover:bg-gray-100 hover:text-gray-600 transition-colors"
@@ -166,15 +222,20 @@ export default function AddAccountModal({ open, onClose, onSuccess }: AddAccount
             )}
           </div>
 
-          {/* Username */}
+          {/* Username — read-only in edit mode */}
           <div className="space-y-1.5">
             <label className="block text-sm font-medium text-gray-700">Username</label>
             <input
               type="text"
               value={form.username}
-              onChange={(e) => setField("username", e.target.value)}
-              className={`w-full px-3 py-2.5 text-sm border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-100 focus:border-blue-400 transition-colors ${
-                errors.username ? "border-red-400 bg-red-50" : "border-gray-200"
+              onChange={(e) => !isEdit && setField("username", e.target.value)}
+              readOnly={isEdit}
+              className={`w-full px-3 py-2.5 text-sm border rounded-lg focus:outline-none transition-colors ${
+                isEdit
+                  ? "border-gray-200 bg-gray-50 text-gray-400 cursor-not-allowed"
+                  : errors.username
+                  ? "border-red-400 bg-red-50 focus:ring-2 focus:ring-blue-100 focus:border-blue-400"
+                  : "border-gray-200 focus:ring-2 focus:ring-blue-100 focus:border-blue-400"
               }`}
               placeholder=""
             />
@@ -185,7 +246,9 @@ export default function AddAccountModal({ open, onClose, onSuccess }: AddAccount
 
           {/* Password */}
           <div className="space-y-1.5">
-            <label className="block text-sm font-medium text-gray-700">Password</label>
+            <label className="block text-sm font-medium text-gray-700">
+              Password{isEdit && <span className="text-gray-400 font-normal"> (leave blank to keep current)</span>}
+            </label>
             <div className="relative">
               <input
                 type={showPassword ? "text" : "password"}
@@ -243,7 +306,7 @@ export default function AddAccountModal({ open, onClose, onSuccess }: AddAccount
               onChange={(e) => setField("role", e.target.value)}
               className="w-full px-3 py-2.5 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-100 focus:border-blue-400 bg-white transition-colors"
             >
-              {ROLE_OPTIONS.map(({ value, label }) => (
+              {roleOptions.map(({ value, label }) => (
                 <option key={value} value={value}>
                   {label}
                 </option>
@@ -284,7 +347,7 @@ export default function AddAccountModal({ open, onClose, onSuccess }: AddAccount
             disabled={submitting}
             className="px-6 py-2.5 text-sm font-medium bg-gray-900 text-white rounded-lg hover:bg-gray-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            {submitting ? "Saving..." : "Save Account"}
+            {submitting ? "Saving..." : isEdit ? "Save Changes" : "Save Account"}
           </button>
         </div>
       </div>
