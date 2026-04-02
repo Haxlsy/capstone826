@@ -1,7 +1,8 @@
 "use client"
 
-import { useState } from "react"
-import { Search, Filter, Eye, MoreVertical, ChevronLeft, ChevronRight } from "lucide-react"
+import { useState, useEffect } from "react"
+import { useRouter } from "next/navigation"
+import { Search, Filter, Eye, ChevronLeft, ChevronRight, ClipboardList } from "lucide-react"
 import IntakeInfoBanner from "./IntakeInfoBanner"
 import IntakeRecordDrawer, { type IntakeRecordFull } from "./IntakeRecordDrawer"
 
@@ -9,160 +10,38 @@ type IntakeStatus = "Pending Job Order" | "Job Created" | "Cancelled"
 type PaymentType = "DP Paid" | "Full Payment"
 type TabType = "All" | "Pending Job Order" | "Job Created" | "Cancelled"
 
-const intakeRecords: IntakeRecordFull[] = [
-  {
-    id: "INT-2026-015",
-    customer: "Juan Dela Cruz",
-    contact: "0917-123-4567",
-    email: "juan@email.com",
-    address: "123 Rizal St, Quezon City",
-    plate: "ABC 1234",
-    vehicle: "Toyota Fortuner 2022",
-    color: "White",
-    service: "PPF Installation",
-    bookingDate: "Apr 3, 2026",
-    payment: "DP Paid",
-    paymentMethod: "GCash",
-    downpayment: "₱15,000",
-    remainingBalance: "₱35,000",
-    submitted: "Mar 30, 2026",
-    status: "Pending Job Order",
-    rescheduleHistory: [
-      {
-        prevDate: "Apr 1, 2026",
-        newDate: "Apr 3, 2026",
-        reason: "Customer requested due to schedule conflict",
-        changed: "Mar 29, 2026",
-      },
-    ],
-  },
-  {
-    id: "INT-2026-014",
-    customer: "Maria Garcia",
-    contact: "0918-234-5678",
-    email: "maria@email.com",
-    address: "456 Oak Ave, Makati",
-    plate: "DEF 5678",
-    vehicle: "Honda Civic 2023",
-    color: "Silver",
-    service: "Ceramic Coating",
-    bookingDate: "Apr 2, 2026",
-    payment: "Full Payment",
-    paymentMethod: "Bank Transfer",
-    downpayment: "₱20,000",
-    remainingBalance: "₱0",
-    submitted: "Mar 29, 2026",
-    status: "Job Created",
-  },
-  {
-    id: "INT-2026-013",
-    customer: "Carlos Rivera",
-    contact: "0919-345-6789",
-    email: "carlos@email.com",
-    address: "789 Pine Rd, Taguig",
-    plate: "GHI 9012",
-    vehicle: "Ford Ranger 2022",
-    color: "Black",
-    service: "Window Tinting",
-    bookingDate: "Mar 28, 2026",
-    payment: "DP Paid",
-    paymentMethod: "Cash",
-    downpayment: "₱5,000",
-    remainingBalance: "₱8,000",
-    submitted: "Mar 28, 2026",
-    status: "Job Created",
-  },
-  {
-    id: "INT-2026-012",
-    customer: "Ana Reyes",
-    contact: "0920-456-7890",
-    email: "ana@email.com",
-    address: "321 Elm Blvd, Pasig",
-    plate: "JKL 3456",
-    vehicle: "Mitsubishi Montero 2021",
-    color: "Gray",
-    service: "Dash Cam Installation",
-    bookingDate: "Apr 5, 2026",
-    payment: "Full Payment",
-    paymentMethod: "GCash",
-    downpayment: "₱3,500",
-    remainingBalance: "₱0",
-    submitted: "Mar 27, 2026",
-    status: "Pending Job Order",
-  },
-  {
-    id: "INT-2026-011",
-    customer: "Lisa Tan",
-    contact: "0921-567-8901",
-    email: "lisa@email.com",
-    address: "654 Cedar Ln, Mandaluyong",
-    plate: "MNO 7890",
-    vehicle: "Toyota Vios 2023",
-    color: "Pearl White",
-    service: "Interior Detailing",
-    bookingDate: "Mar 26, 2026",
-    payment: "DP Paid",
-    paymentMethod: "Cash",
-    downpayment: "₱4,000",
-    remainingBalance: "₱4,000",
-    submitted: "Mar 26, 2026",
-    status: "Job Created",
-  },
-  {
-    id: "INT-2026-010",
-    customer: "Pedro Santos",
-    contact: "0922-678-9012",
-    email: "pedro@email.com",
-    address: "987 Birch St, Manila",
-    plate: "PQR 1234",
-    vehicle: "Suzuki Swift 2024",
-    color: "Red",
-    service: "PPF Installation",
-    bookingDate: "Apr 4, 2026",
-    payment: "DP Paid",
-    paymentMethod: "GCash",
-    downpayment: "₱15,000",
-    remainingBalance: "₱35,000",
-    submitted: "Mar 25, 2026",
-    status: "Pending Job Order",
-  },
-  {
-    id: "INT-2026-009",
-    customer: "Elena Flores",
-    contact: "0923-789-0123",
-    email: "elena@email.com",
-    address: "147 Maple Dr, Paranaque",
-    plate: "STU 5678",
-    vehicle: "Hyundai Tucson 2023",
-    color: "Blue",
-    service: "Ceramic Coating",
-    bookingDate: "Mar 24, 2026",
-    payment: "DP Paid",
-    paymentMethod: "Bank Transfer",
-    downpayment: "₱10,000",
-    remainingBalance: "₱10,000",
-    submitted: "Mar 24, 2026",
-    status: "Cancelled",
-  },
-  {
-    id: "INT-2026-008",
-    customer: "Roberto Lim",
-    contact: "0924-890-1234",
-    email: "roberto@email.com",
-    address: "258 Walnut Ave, Las Pinas",
-    plate: "VWX 9012",
-    vehicle: "Mazda CX-5 2022",
-    color: "Dark Gray",
-    service: "PPF + Ceramic Coating",
-    bookingDate: "Apr 7, 2026",
-    payment: "DP Paid",
-    paymentMethod: "Cash",
-    downpayment: "₱25,000",
-    remainingBalance: "₱45,000",
-    submitted: "Mar 23, 2026",
-    status: "Pending Job Order",
-  },
-]
+const DB_STATUS_MAP: Record<string, IntakeStatus> = {
+  pending: "Pending Job Order",
+  job_created: "Job Created",
+  cancelled: "Cancelled",
+}
+
+function mapApiToFull(i: any): IntakeRecordFull {
+  const year = new Date(i.created_at).getFullYear()
+  const dp = Number(i.downpayment ?? 0)
+  const bal = Number(i.balance ?? 0)
+  return {
+    intake_id: i.intake_id,
+    id: `INT-${year}-${String(i.intake_id).padStart(3, "0")}`,
+    customer: i.customer?.full_name ?? "—",
+    contact: i.customer?.contact_number ?? "—",
+    email: i.customer?.email ?? "—",
+    address: i.customer?.home_address ?? "—",
+    plate: i.plate_number ?? "—",
+    vehicle: [i.make, i.model].filter(Boolean).join(" ") || "—",
+    color: i.color ?? "—",
+    service: i.service?.service_name ?? "—",
+    bookingDate: i.scheduled_date
+      ? new Date(i.scheduled_date).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })
+      : "—",
+    payment: bal === 0 ? "Full Payment" : "DP Paid",
+    paymentMethod: i.payment_method ?? "—",
+    downpayment: `₱${dp.toLocaleString("en-PH")}`,
+    remainingBalance: `₱${bal.toLocaleString("en-PH")}`,
+    submitted: new Date(i.created_at).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }),
+    status: DB_STATUS_MAP[i.status] ?? "Pending Job Order",
+  }
+}
 
 const TABS: TabType[] = ["All", "Pending Job Order", "Job Created", "Cancelled"]
 
@@ -178,11 +57,30 @@ const statusBadgeMap: Record<IntakeStatus, string> = {
 }
 
 export default function CustomerIntakeRecords() {
+  const router = useRouter()
+  const [intakeRecords, setIntakeRecords] = useState<IntakeRecordFull[]>([])
+  const [loading, setLoading] = useState(true)
   const [activeTab, setActiveTab] = useState<TabType>("All")
   const [searchQuery, setSearchQuery] = useState("")
   const [currentPage, setCurrentPage] = useState(1)
   const [pageSize, setPageSize] = useState(15)
   const [selectedRecord, setSelectedRecord] = useState<IntakeRecordFull | null>(null)
+
+  useEffect(() => {
+    async function load() {
+      setLoading(true)
+      try {
+        const res = await fetch("/api/sales/intakes")
+        const json = await res.json()
+        if (res.ok) setIntakeRecords((json.intakes ?? []).map(mapApiToFull))
+      } catch {
+        // leave empty
+      } finally {
+        setLoading(false)
+      }
+    }
+    load()
+  }, [])
 
   const filtered = intakeRecords.filter((record) => {
     const matchesTab = activeTab === "All" || record.status === activeTab
@@ -273,7 +171,13 @@ export default function CustomerIntakeRecords() {
               </tr>
             </thead>
             <tbody>
-              {paginated.length === 0 ? (
+              {loading ? (
+                <tr>
+                  <td colSpan={10} className="px-4 py-10 text-center text-sm text-gray-400">
+                    Loading intake records...
+                  </td>
+                </tr>
+              ) : paginated.length === 0 ? (
                 <tr>
                   <td colSpan={10} className="px-4 py-10 text-center text-sm text-gray-400">
                     No intake records found.
@@ -331,8 +235,13 @@ export default function CustomerIntakeRecords() {
                           <Eye className="w-4 h-4" />
                         </button>
                         {record.status === "Pending Job Order" && (
-                          <button className="text-gray-400 hover:text-gray-600 transition-colors">
-                            <MoreVertical className="w-4 h-4" />
+                          <button
+                            onClick={() => router.push(`/dashboard/job-management/add?intake_id=${record.intake_id}`)}
+                            className="flex items-center gap-1 text-xs font-medium text-blue-600 hover:text-blue-800 border border-blue-200 rounded-md px-2 py-1 hover:bg-blue-50 transition-colors"
+                            title="Create Job Order"
+                          >
+                            <ClipboardList className="w-3.5 h-3.5" />
+                            Create JO
                           </button>
                         )}
                       </div>

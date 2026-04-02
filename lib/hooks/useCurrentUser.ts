@@ -9,6 +9,7 @@ export interface CurrentUser {
 }
 
 const ROLE_LABELS: Record<string, string> = {
+  super_admin: "Super Admin",
   admin: "Admin",
   operations: "Operations",
   sales: "Sales",

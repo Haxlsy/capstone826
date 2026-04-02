@@ -17,6 +17,7 @@ export type Stage = {
 
 export type Job = {
   job_id: string;
+  raw_id?: number;
   name: string;
   plate_number: string;
   car_make: string;

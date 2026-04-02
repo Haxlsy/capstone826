@@ -1,8 +1,9 @@
 "use client";
 
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { ChevronLeft } from "lucide-react";
-import { JOBS } from "./technician_component/data";
+import { type Job } from "./technician_component/types";
 import { JobInfoCard } from "./technician_component/JobInfoCard";
 import { ServiceStagesList } from "./technician_component/ServiceStagesList";
 import { QualityCheckReview } from "./technician_component/QualityCheckReview";
@@ -14,7 +15,38 @@ type JobDetailPageProps = {
 
 export default function JobDetailPage({ jobId }: JobDetailPageProps) {
   const router = useRouter();
-  const job = JOBS.find((j) => j.job_id === jobId);
+  const [job, setJob] = useState<Job | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    async function load() {
+      setLoading(true);
+      try {
+        const numericId = parseInt(jobId, 10);
+        if (!isNaN(numericId)) {
+          const res = await fetch(`/api/technician/jobs/${numericId}`);
+          const json = await res.json();
+          if (res.ok && json.job) {
+            setJob(json.job);
+            return;
+          }
+        }
+      } catch {
+        // fall through to not-found
+      } finally {
+        setLoading(false);
+      }
+    }
+    load();
+  }, [jobId]);
+
+  if (loading) {
+    return (
+      <main className="px-4 py-4 max-w-md mx-auto">
+        <p className="text-sm text-gray-400">Loading...</p>
+      </main>
+    );
+  }
 
   if (!job) {
     return (
