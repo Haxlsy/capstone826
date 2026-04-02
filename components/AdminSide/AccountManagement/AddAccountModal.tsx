@@ -60,7 +60,11 @@ export default function AddAccountModal({ open, onClose, onSuccess }: AddAccount
     else if (form.password.length < 8) e.password = "Password must be at least 8 characters."
     if (!form.confirmPassword) e.confirmPassword = "Please confirm your password."
     else if (form.password !== form.confirmPassword) e.confirmPassword = "Passwords do not match."
-    if (!form.contactNo.trim()) e.contactNo = "Contact number is required."
+    if (!form.contactNo.trim()) {
+      e.contactNo = "Contact number is required."
+    } else if (!/^[0-9+\-\s()]{7,15}$/.test(form.contactNo.trim())) {
+      e.contactNo = "Enter a valid contact number (digits only, 7–15 characters)."
+    }
     return e
   }
 
@@ -122,7 +126,7 @@ export default function AddAccountModal({ open, onClose, onSuccess }: AddAccount
 
       {/* Drawer — slides in from right */}
       <div
-        className={`fixed top-0 right-0 h-full w-[480px] bg-white z-50 shadow-2xl flex flex-col
+        className={`fixed top-0 right-0 h-full w-120 bg-white z-50 shadow-2xl flex flex-col
           transform transition-transform duration-300 ease-in-out
           ${open ? "translate-x-0" : "translate-x-full"}`}
       >

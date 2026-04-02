@@ -53,7 +53,22 @@ export default function LoginPage() {
         return
       }
 
-      router.push("/")
+      // Persist user info for topbar/profile display across the app
+      try {
+        localStorage.setItem("826_user", JSON.stringify(data.user))
+      } catch {}
+
+      const roleRoutes: Record<string, string> = {
+        admin: "/dashboard/admin",
+        operations: "/dashboard/operations",
+        sales: "/dashboard/sales",
+        head_technician: "/dashboard/technician",
+        technician: "/dashboard/technician",
+      }
+
+      const role: string = data.user?.role ?? ""
+      console.log("[Login] role:", role, "→ redirecting to", roleRoutes[role] ?? "/")
+      router.push(roleRoutes[role] ?? "/")
     } catch {
       setServerError("Network error. Please try again.")
     } finally {
@@ -62,7 +77,7 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="min-h-screen flex flex-col items-center justify-center bg-gradient-to-br from-slate-100 to-blue-50 px-4">
+    <div className="min-h-screen flex flex-col items-center justify-center bg-linear-to-br from-slate-100 to-blue-50 px-4">
 
       {/* Logo */}
       <div className="flex flex-col items-center mb-8">
@@ -160,7 +175,7 @@ export default function LoginPage() {
               <button
                 type="submit"
                 disabled={isLoading}
-                className="w-full flex items-center justify-center gap-2 py-3 rounded-xl bg-gradient-to-r from-blue-500 to-blue-700 text-white font-semibold text-sm tracking-wide shadow-md hover:from-blue-600 hover:to-blue-800 active:scale-[0.98] transition-all disabled:opacity-60 disabled:cursor-not-allowed"
+                className="w-full flex items-center justify-center gap-2 py-3 rounded-xl bg-linear-to-r from-blue-500 to-blue-700 text-white font-semibold text-sm tracking-wide shadow-md hover:from-blue-600 hover:to-blue-800 active:scale-[0.98] transition-all disabled:opacity-60 disabled:cursor-not-allowed"
               >
                 {isLoading ? "Signing in…" : "Access Operations"}
                 {!isLoading && <LogIn className="w-4 h-4" />}

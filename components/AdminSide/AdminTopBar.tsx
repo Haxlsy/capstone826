@@ -1,38 +1,14 @@
 "use client"
 
-import { useEffect, useState } from "react"
 import { Bell } from "lucide-react"
-import { createClient } from "@/utils/supabase/client"
+import { useCurrentUser, getRoleLabel, getInitials } from "@/lib/hooks/useCurrentUser"
 
 export default function AdminTopBar() {
-  const [fullName, setFullName] = useState("Admin")
-  const [initials, setInitials] = useState("AD")
+  const user = useCurrentUser()
 
-  useEffect(() => {
-    const supabase = createClient()
-
-    async function loadUser() {
-      const { data: { user } } = await supabase.auth.getUser()
-      if (!user) return
-
-      const { data: profile } = await supabase
-        .from("profile")
-        .select("full_name")
-        .eq("user_id", user.id)
-        .single()
-
-      if (profile?.full_name) {
-        setFullName(profile.full_name)
-        const parts = profile.full_name.trim().split(" ")
-        const ini = parts.length >= 2
-          ? parts[0][0] + parts[parts.length - 1][0]
-          : parts[0].slice(0, 2)
-        setInitials(ini.toUpperCase())
-      }
-    }
-
-    loadUser()
-  }, [])
+  const displayName = user.full_name || "Admin"
+  const roleLabel = getRoleLabel(user.role) || "Admin"
+  const initials = getInitials(displayName)
 
   return (
     <header className="h-14 bg-white border-b border-gray-100 flex items-center justify-end px-6 gap-5 shrink-0">
@@ -47,8 +23,8 @@ export default function AdminTopBar() {
           {initials}
         </div>
         <div className="flex flex-col leading-tight">
-          <span className="text-sm font-semibold text-gray-800">{fullName}</span>
-          <span className="text-xs text-gray-400">Admin</span>
+          <span className="text-sm font-semibold text-gray-800">{displayName}</span>
+          <span className="text-xs text-gray-400">{roleLabel}</span>
         </div>
       </div>
     </header>

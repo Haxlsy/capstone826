@@ -2,7 +2,6 @@
 
 import { useEffect, useRef, useState } from "react"
 import { Search, Filter, MoreHorizontal, ChevronLeft, ChevronRight } from "lucide-react"
-import { createClient } from "@/utils/supabase/client"
 import AddAccountModal from "./AddAccountModal"
 
 type UserRole = "operations" | "sales" | "head_technician" | "technician"
@@ -40,11 +39,10 @@ function getInitials(name: string) {
 }
 
 export default function AccountTable() {
-  const supabase = createClient()
-
   const [accounts, setAccounts] = useState<Account[]>([])
   const [totalCount, setTotalCount] = useState(0)
   const [loading, setLoading] = useState(true)
+  const [fetchError, setFetchError] = useState<string | null>(null)
 
   const [search, setSearch] = useState("")
   const [roleFilter, setRoleFilter] = useState<UserRole | "all">("all")
@@ -85,49 +83,51 @@ export default function AccountTable() {
 
   async function fetchAccounts() {
     setLoading(true)
+    setFetchError(null)
 
-    let query = supabase
-      .from("profile")
-      .select("user_id, full_name, user_name, role, contact_no, is_archived, created_at", {
-        count: "exact",
-      })
-      .neq("role", "admin")
-      .order("created_at", { ascending: false })
+    const params = new URLSearchParams({
+      search,
+      role: roleFilter,
+      status: statusFilter,
+      page: String(page),
+      pageSize: String(pageSize),
+    })
 
-    if (search.trim()) {
-      query = query.or(
-        `full_name.ilike.%${search.trim()}%,user_name.ilike.%${search.trim()}%`
-      )
+    console.log("[AccountTable] fetching /api/admin/accounts?", params.toString())
+
+    try {
+      const res = await fetch(`/api/admin/accounts?${params}`)
+      const json = await res.json()
+
+      if (!res.ok) {
+        console.error("[AccountTable] fetch error:", json.error)
+        setFetchError(json.error ?? "Failed to load accounts.")
+      } else {
+        console.log("[AccountTable] received", json.accounts?.length, "rows, total:", json.total)
+        setAccounts(json.accounts ?? [])
+        setTotalCount(json.total ?? 0)
+      }
+    } catch (err) {
+      console.error("[AccountTable] network error:", err)
+      setFetchError("Network error. Please try again.")
+    } finally {
+      setLoading(false)
     }
-    if (roleFilter !== "all") {
-      query = query.eq("role", roleFilter)
-    }
-    if (statusFilter === "active") {
-      query = query.eq("is_archived", false)
-    } else if (statusFilter === "archived") {
-      query = query.eq("is_archived", true)
-    }
-
-    const from = (page - 1) * pageSize
-    const to = from + pageSize - 1
-    query = query.range(from, to)
-
-    const { data, count, error } = await query
-
-    if (!error) {
-      setAccounts((data as Account[]) ?? [])
-      setTotalCount(count ?? 0)
-    }
-    setLoading(false)
   }
 
   async function handleArchiveToggle(account: Account) {
     setActionMenu(null)
     const newArchived = !account.is_archived
-    await supabase
-      .from("profile")
-      .update({ is_archived: newArchived })
-      .eq("user_id", account.user_id)
+    console.log("[AccountTable] toggling archive for", account.user_id, "→", newArchived)
+    const res = await fetch("/api/admin/archive-account", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ userId: account.user_id, isArchived: newArchived }),
+    })
+    if (!res.ok) {
+      const json = await res.json().catch(() => ({}))
+      console.error("[AccountTable] archive toggle failed:", json.error)
+    }
     fetchAccounts()
   }
 
@@ -288,6 +288,12 @@ export default function AccountTable() {
               <tr>
                 <td colSpan={7} className="text-center py-12 text-sm text-gray-400">
                   Loading...
+                </td>
+              </tr>
+            ) : fetchError ? (
+              <tr>
+                <td colSpan={7} className="text-center py-12 text-sm text-red-400">
+                  Failed to load accounts: {fetchError}
                 </td>
               </tr>
             ) : accounts.length === 0 ? (
