@@ -1,4 +1,6 @@
 import { NextResponse } from "next/server"
+import { cookies } from "next/headers"
+import { createClient } from "@/lib/supabase/server"
 import { createAdminClient } from "@/lib/supabase/admin"
 
 export async function POST(request: Request) {
@@ -16,6 +18,27 @@ export async function POST(request: Request) {
   if (!fullName || !username || !password || !role || !contactNo) {
     console.log("[create-account] Validation failed — missing fields")
     return NextResponse.json({ error: "All fields are required." }, { status: 400 })
+  }
+
+  // Only super_admin can create admin accounts
+  if (role === "admin" || role === "super_admin") {
+    const cookieStore = await cookies()
+    const supabaseUser = createClient(cookieStore)
+    const { data: { user: caller } } = await supabaseUser.auth.getUser()
+
+    let callerRole = ""
+    if (caller) {
+      const { data: callerProfile } = await supabaseUser
+        .from("profile")
+        .select("role")
+        .eq("user_id", caller.id)
+        .single()
+      callerRole = callerProfile?.role ?? ""
+    }
+
+    if (callerRole !== "super_admin") {
+      return NextResponse.json({ error: "Only a Super Admin can assign the Admin role." }, { status: 403 })
+    }
   }
 
   const supabase = createAdminClient()
