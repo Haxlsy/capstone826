@@ -1,28 +1,26 @@
 "use client";
 
-import { Job, STATUS_STYLES } from "./types";
+import { HeadTechJob, STATUS_STYLES } from "./types";
 
-type JobCardViewProps = {
-  job: Job;
-  onClick: () => void;
+type HeadTechJobCardProps = {
+  job: HeadTechJob;
 };
 
-export const JobCardView = ({ job, onClick }: JobCardViewProps) => {
+export function HeadTechJobCard({ job }: HeadTechJobCardProps) {
   return (
-    <div
-      onClick={onClick}
-      className="bg-white rounded-2xl p-4 shadow-sm transition-all duration-300 hover:shadow-xl space-y-3 cursor-pointer active:scale-[0.99]"
-    >
+    <div className="bg-white rounded-2xl p-4 shadow-sm space-y-3">
       {/* Top Row */}
       <div className="flex items-center justify-between">
         <p className="font-medium text-sm text-gray-800">{job.job_id}</p>
-        <span className={`text-xs px-3 py-1 rounded-full font-medium ${STATUS_STYLES[job.status]}`}>
+        <span
+          className={`text-xs px-3 py-1 rounded-full font-medium ${STATUS_STYLES[job.status]}`}
+        >
           {job.status}
         </span>
       </div>
 
-      {/* Name */}
-      <p className="font-semibold text-gray-900">{job.name}</p>
+      {/* Customer name */}
+      <p className="font-semibold text-gray-900">{job.customer_name}</p>
 
       {/* Vehicle */}
       <p className="text-sm text-gray-500">
@@ -32,8 +30,10 @@ export const JobCardView = ({ job, onClick }: JobCardViewProps) => {
       {/* Service */}
       <p className="text-sm text-gray-700">{job.service}</p>
 
-      {/* Date */}
-      <p className="text-xs text-gray-400">{job.scheduled_start}</p>
+      {/* Technician + Schedule */}
+      <p className="text-xs text-gray-400">
+        Tech: {job.technician_name} | {job.scheduled_start}
+      </p>
 
       {/* Progress Bar */}
       <div>
@@ -43,8 +43,8 @@ export const JobCardView = ({ job, onClick }: JobCardViewProps) => {
             style={{ width: `${job.progress}%` }}
           />
         </div>
-        <p className="text-xs text-gray-400 mt-1">{job.stages_label}</p>
+        <p className="text-xs text-gray-400 mt-1">{job.progress}% complete</p>
       </div>
     </div>
   );
-};
+}
