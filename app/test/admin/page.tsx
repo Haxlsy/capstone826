@@ -27,6 +27,12 @@ export default function TestAdminPage() {
           >
             Service Management
           </Link>
+          <Link
+            href="/dashboard/admin/reports"
+            className="inline-flex items-center gap-2 bg-purple-600 text-white text-sm font-medium px-5 py-2.5 rounded-lg hover:bg-purple-700 transition-colors w-fit"
+          >
+            Reports
+          </Link>
         </main>
       </div>
     </div>
