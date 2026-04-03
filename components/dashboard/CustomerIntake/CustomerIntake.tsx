@@ -97,6 +97,7 @@ export default React.memo(function CustomerIntake() {
           model: form.model,
           color: form.color,
           service_name: form.serviceType,
+          vehicle_type_id: form.vehicleTypeId ? Number(form.vehicleTypeId) : null,
           downpayment: form.downpayment ? Number(form.downpayment) : 0,
           balance: form.balance ? Number(form.balance) : 0,
           payment_method: form.paymentMethod,

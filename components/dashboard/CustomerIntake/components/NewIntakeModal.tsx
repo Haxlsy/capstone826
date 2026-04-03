@@ -1,16 +1,16 @@
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { X } from "lucide-react"
 
 export interface NewIntakeForm {
   customerName: string; contactNumber: string; email: string; address: string
-  plate: string; make: string; model: string; color: string
+  plate: string; vehicleTypeId: string; make: string; model: string; color: string
   serviceType: string; downpayment: string; balance: string; paymentMethod: string
   scheduledDate: string
 }
 
 const emptyForm: NewIntakeForm = {
   customerName: "", contactNumber: "", email: "", address: "",
-  plate: "", make: "", model: "", color: "",
+  plate: "", vehicleTypeId: "", make: "", model: "", color: "",
   serviceType: "", downpayment: "", balance: "", paymentMethod: "",
   scheduledDate: "",
 }
@@ -25,6 +25,14 @@ interface Props {
 
 export default function NewIntakeModal({ onClose, onSave, serviceTypes }: Props) {
   const [form, setForm] = useState<NewIntakeForm>(emptyForm)
+  const [vehicleTypes, setVehicleTypes] = useState<{ vehicle_type_id: number; type_name: string }[]>([])
+
+  useEffect(() => {
+    fetch("/api/operations/job-management/list-vehicle-types")
+      .then((r) => r.json())
+      .then((j) => setVehicleTypes(j.vehicle_types ?? []))
+      .catch(() => {})
+  }, [])
 
   function set(key: keyof NewIntakeForm, val: string) {
     setForm((prev) => ({ ...prev, [key]: val }))
@@ -73,8 +81,27 @@ export default function NewIntakeModal({ onClose, onSave, serviceTypes }: Props)
           <div>
             <p className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-3">Vehicle Information</p>
             <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block text-xs font-medium text-gray-500 mb-1">Plate Number</label>
+                <input
+                  type="text"
+                  value={form.plate}
+                  onChange={(e) => set("plate", e.target.value)}
+                  className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg bg-gray-50 text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-400 transition"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-500 mb-1">Vehicle Type</label>
+                <select
+                  value={form.vehicleTypeId}
+                  onChange={(e) => set("vehicleTypeId", e.target.value)}
+                  className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg bg-gray-50 text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-400 transition"
+                >
+                  <option value="">Select type...</option>
+                  {vehicleTypes.map((t) => <option key={t.vehicle_type_id} value={t.vehicle_type_id}>{t.type_name}</option>)}
+                </select>
+              </div>
               {([
-                ["plate", "Plate Number"],
                 ["make", "Make"],
                 ["model", "Model"],
                 ["color", "Color"],

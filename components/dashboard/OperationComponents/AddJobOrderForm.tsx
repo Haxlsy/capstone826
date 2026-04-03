@@ -19,7 +19,9 @@ interface IntakeRecord {
   serviceType: string
   customer_id: number
   service_id: number | null
+  vehicle_type_id: number | null
   estimated_duration_days: number
+  scheduledDate: string // raw ISO date string from DB
 }
 
 function formatDate(dateStr: string): string {
@@ -51,7 +53,9 @@ function mapRawIntake(i: any): IntakeRecord {
     serviceType: i.service?.service_name ?? "—",
     customer_id: i.customer?.customer_id ?? 0,
     service_id: i.service?.service_id ?? null,
+    vehicle_type_id: i.vehicle_type_id ?? null,
     estimated_duration_days: i.service?.estimated_duration_days ?? 0,
+    scheduledDate: i.scheduled_date ?? "",
   }
 }
 
@@ -95,8 +99,8 @@ export default function AddJobOrderForm() {
       setLoadingRefs(true)
       try {
         const [vRes, tRes, iRes] = await Promise.all([
-          fetch("/api/operations/Job%20Management/list-vehicle-types"),
-          fetch("/api/operations/Job%20Management/list-technicians"),
+          fetch("/api/operations/job-management/list-vehicle-types"),
+          fetch("/api/operations/job-management/list-technicians"),
           fetch("/api/sales/intakes"),
         ])
         const [vJson, tJson, iJson] = await Promise.all([vRes.json(), tRes.json(), iRes.json()])
@@ -132,15 +136,38 @@ export default function AddJobOrderForm() {
     setSelectedIntake(match)
   }, [selectedIntakeId, intakeRecords])
 
+  // Auto-fill scheduled date from intake if not already set
+  useEffect(() => {
+    if (!selectedIntake) return
+    if (selectedIntake.scheduledDate && !scheduledDate) {
+      // Convert ISO datetime to yyyy-MM-dd for the date input
+      setScheduledDate(selectedIntake.scheduledDate.slice(0, 10))
+    }
+  }, [selectedIntake])
+
   // Auto-pick vehicle type when intake changes
   useEffect(() => {
     if (!selectedIntake || vehicleTypes.length === 0) return
-    const makeModel = `${selectedIntake.make} ${selectedIntake.model}`.toLowerCase()
-    const match = vehicleTypes.find((v) => makeModel.includes((v.type_name ?? "").toLowerCase()))
-    setSelectedVehicleTypeId(match?.vehicle_type_id ?? vehicleTypes[0]?.vehicle_type_id ?? null)
+    // Use the vehicle_type_id stored on the intake if available
+    if (selectedIntake.vehicle_type_id) {
+      const match = vehicleTypes.find((v) => v.vehicle_type_id === selectedIntake.vehicle_type_id)
+      if (match) { setSelectedVehicleTypeId(match.vehicle_type_id); return }
+    }
+    // Fallback: default to first type
+    setSelectedVehicleTypeId(vehicleTypes[0]?.vehicle_type_id ?? null)
   }, [selectedIntake, vehicleTypes])
 
   async function handleSubmit() {
+    console.group("[CreateJO] Form submission values")
+    console.log("selectedIntake:", selectedIntake)
+    console.log("selectedVehicleTypeId:", selectedVehicleTypeId)
+    console.log("selectedTechnicianId:", selectedTechnicianId || "(none)")
+    console.log("scheduledDate:", scheduledDate || "(empty)")
+    console.log("preselectedIntakeId (from URL):", preselectedIntakeId)
+    console.log("intakeRecords (dropdown options):", intakeRecords)
+    console.log("techniciansList:", techniciansList)
+    console.groupEnd()
+
     setError(null)
     if (!selectedIntake) { setError("Please select a customer intake record."); return }
     if (!selectedVehicleTypeId) { setError("Please select a vehicle type."); return }
@@ -153,7 +180,7 @@ export default function AddJobOrderForm() {
 
     setLoading(true)
     try {
-      const res = await fetch("/api/operations/Job%20Management/add-job-order", {
+      const res = await fetch("/api/operations/job-management/add-job-order", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -285,6 +312,10 @@ export default function AddJobOrderForm() {
               <div>
                 <p className="text-xs text-gray-400">Email</p>
                 <p className="text-sm text-gray-700 mt-0.5">{selectedIntake.email}</p>
+              </div>
+              <div>
+                <p className="text-xs text-gray-400">Scheduled Date</p>
+                <p className="text-sm text-gray-700 mt-0.5">{selectedIntake.scheduledDate ? formatDate(selectedIntake.scheduledDate) : "—"}</p>
               </div>
               <div>
                 <p className="text-xs text-gray-400">Vehicle Type</p>
