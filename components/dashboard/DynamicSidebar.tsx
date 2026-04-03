@@ -15,14 +15,24 @@ const OPERATIONS_PATHS = [
 
 const ADMIN_PATHS = ["/dashboard/admin"]
 
+// Technician/head-technician use a mobile BottomNav — no sidebar needed
+const TECHNICIAN_PATHS = ["/dashboard/technician"]
+
 export default function DynamicSidebar() {
   const pathname = usePathname()
+
+  const isTechnician = TECHNICIAN_PATHS.some(
+    (p) => pathname === p || pathname.startsWith(p + "/")
+  )
+  if (isTechnician) return null
+
   const isOperations = OPERATIONS_PATHS.some(
     (p) => pathname === p || pathname.startsWith(p + "/")
   )
   const isAdmin = ADMIN_PATHS.some(
     (p) => pathname === p || pathname.startsWith(p + "/")
   )
+
   if (isAdmin) return <AdminSidebar />
   return isOperations ? <OperationsSidebar /> : <Sidebar />
 }

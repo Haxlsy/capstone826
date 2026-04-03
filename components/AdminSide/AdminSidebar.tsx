@@ -1,24 +1,36 @@
 "use client"
 
 import Link from "next/link"
-import { usePathname } from "next/navigation"
+import { usePathname, useRouter } from "next/navigation"
 import {
   LayoutDashboard,
   Users,
   Wrench,
   FileBarChart2,
   Settings,
+  LogOut,
+  Car,
 } from "lucide-react"
 
 const navItems = [
   { label: "Dashboard", href: "/dashboard/admin", icon: LayoutDashboard },
   { label: "Account Management", href: "/dashboard/admin/accounts", icon: Users },
   { label: "Service Management", href: "/dashboard/admin/services", icon: Wrench },
+  { label: "Vehicle Types", href: "/dashboard/admin/vehicle-types", icon: Car },
   { label: "Reports", href: "/dashboard/admin/reports", icon: FileBarChart2 },
 ]
 
 export default function AdminSidebar() {
   const pathname = usePathname()
+  const router = useRouter()
+
+  async function handleLogout() {
+    try {
+      await fetch("/api/auth/logout", { method: "POST" })
+    } catch {}
+    try { localStorage.removeItem("826_user") } catch {}
+    router.push("/")
+  }
 
   return (
     <aside className="w-60 bg-white border-r border-gray-100 flex flex-col shrink-0 h-full">
@@ -51,8 +63,8 @@ export default function AdminSidebar() {
         })}
       </nav>
 
-      {/* Settings (placeholder) */}
-      <div className="py-4 px-3 border-t border-gray-100">
+      {/* Settings + Logout */}
+      <div className="py-4 px-3 border-t border-gray-100 space-y-0.5">
         <Link
           href="/dashboard/admin/settings"
           className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-gray-500 hover:bg-gray-50 hover:text-gray-800 transition-colors"
@@ -60,6 +72,13 @@ export default function AdminSidebar() {
           <Settings className="w-4 h-4 shrink-0" />
           <span>Settings</span>
         </Link>
+        <button
+          onClick={handleLogout}
+          className="flex items-center gap-3 w-full px-3 py-2.5 rounded-lg text-sm font-medium text-gray-500 hover:bg-red-50 hover:text-red-600 transition-colors"
+        >
+          <LogOut className="w-4 h-4 shrink-0" />
+          Log Out
+        </button>
       </div>
     </aside>
   )

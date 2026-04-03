@@ -233,12 +233,35 @@ export default function CustomerRecords() {
         )
       )
     } else {
-      const initials = form.name.split(" ").map((w) => w[0]).join("").toUpperCase().slice(0, 3)
-      setCustomers((prev) => [
-        { id: Date.now(), initials, name: form.name, email: form.email, contact: form.contact, address: form.address, jobs: 0, status: "Active" },
-        ...prev,
-      ])
-      setPage(1)
+      ;(async () => {
+        try {
+          const res = await fetch("/api/sales/customers", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ full_name: form.name, contact_number: form.contact, email: form.email, home_address: form.address }),
+          })
+          const json = await res.json()
+          if (res.ok && json.customer) {
+            const cust = json.customer
+            const initials = (cust.full_name || form.name).split(" ").map((w: string) => w[0]).join("").toUpperCase().slice(0, 3)
+            setCustomers((prev) => [
+              { id: cust.customer_id ?? Date.now(), initials, name: cust.full_name ?? form.name, email: cust.email ?? form.email, contact: cust.contact_number ?? form.contact, address: cust.home_address ?? form.address, jobs: 0, status: "Active" },
+              ...prev,
+            ])
+            setPage(1)
+            return
+          }
+        } catch (e) {
+          // fallback to local-only add
+        }
+
+        const initials = form.name.split(" ").map((w) => w[0]).join("").toUpperCase().slice(0, 3)
+        setCustomers((prev) => [
+          { id: Date.now(), initials, name: form.name, email: form.email, contact: form.contact, address: form.address, jobs: 0, status: "Active" },
+          ...prev,
+        ])
+        setPage(1)
+      })()
     }
     setModal(null)
     setEditTarget(null)

@@ -1,7 +1,7 @@
 "use client"
 
 import Link from "next/link"
-import { usePathname } from "next/navigation"
+import { usePathname, useRouter } from "next/navigation"
 import {
   LayoutDashboard,
   MessageCircle,
@@ -9,6 +9,7 @@ import {
   UserPlus,
   Users,
   ClipboardList,
+  LogOut,
 } from "lucide-react"
 
 const navItems = [
@@ -22,6 +23,15 @@ const navItems = [
 
 export default function Sidebar() {
   const pathname = usePathname()
+  const router = useRouter()
+
+  async function handleLogout() {
+    try {
+      await fetch("/api/auth/logout", { method: "POST" })
+    } catch {}
+    try { localStorage.removeItem("826_user") } catch {}
+    router.push("/")
+  }
 
   return (
     <aside className="w-60 bg-white border-r border-gray-100 flex flex-col shrink-0 h-full">
@@ -53,6 +63,17 @@ export default function Sidebar() {
           )
         })}
       </nav>
+
+      {/* Logout */}
+      <div className="px-3 pb-4 border-t border-gray-100 pt-3">
+        <button
+          onClick={handleLogout}
+          className="flex items-center gap-3 w-full px-3 py-2.5 rounded-lg text-sm font-medium text-gray-500 hover:bg-red-50 hover:text-red-600 transition-colors"
+        >
+          <LogOut className="w-4 h-4 shrink-0" />
+          Log Out
+        </button>
+      </div>
     </aside>
   )
 }

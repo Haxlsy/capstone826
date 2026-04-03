@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import Link from "next/link"
 import { Search, Filter, MoreHorizontal } from "lucide-react"
 
@@ -24,16 +24,7 @@ interface JobOrder {
   status: JobStatus
 }
 
-const jobOrders: JobOrder[] = [
-  { id: "JO-2026-012", customer: "Juan Dela Cruz", plate: "ABC-1234", vehicle: "Toyota Fortuner", service: "PPF", technician: "Mark Santos", scheduled: "Apr 5, 2026", status: "Pending" },
-  { id: "JO-2026-011", customer: "Maria Garcia", plate: "DEF-5678", vehicle: "Honda Civic", service: "Ceramic Coating", technician: "Pedro Lim", scheduled: "Apr 3, 2026", status: "Ongoing" },
-  { id: "JO-2026-010", customer: "Carlos Rivera", plate: "GHI-9012", vehicle: "Ford Ranger", service: "Window Tinting", technician: "Rosa Aquino", scheduled: "Apr 2, 2026", status: "Quality Check" },
-  { id: "JO-2026-009", customer: "Ana Reyes", plate: "JKL-3456", vehicle: "Mitsubishi Montero", service: "Dash Cam", technician: "Mark Santos", scheduled: "Apr 1, 2026", status: "Completed" },
-  { id: "JO-2026-008", customer: "Lisa Tan", plate: "MNO-7890", vehicle: "Toyota Vios", service: "Interior Detailing", technician: "Pedro Lim", scheduled: "Mar 30, 2026", status: "Delayed" },
-  { id: "JO-2026-007", customer: "Pedro Santos", plate: "PQR-1234", vehicle: "Suzuki Swift", service: "PPF", technician: "Rosa Aquino", scheduled: "Mar 28, 2026", status: "Released" },
-  { id: "JO-2026-006", customer: "Elena Flores", plate: "STU-5678", vehicle: "Nissan Navara", service: "Ceramic Coating", technician: "David Cruz", scheduled: "Mar 25, 2026", status: "Ongoing" },
-  { id: "JO-2026-005", customer: "Roberto Lim", plate: "VWX-9012", vehicle: "Hyundai Tucson", service: "Window Tinting", technician: "Mark Santos", scheduled: "Mar 22, 2026", status: "Cancelled" },
-]
+const jobOrdersInitial: JobOrder[] = []
 
 const statusBadgeMap: Record<JobStatus, string> = {
   Pending: "bg-amber-100 text-amber-700",
@@ -52,8 +43,56 @@ const TABS: TabType[] = ["All", "Pending", "Ongoing", "Quality Check", "Complete
 export default function JobManagementTable() {
   const [activeTab, setActiveTab] = useState<TabType>("All")
   const [searchQuery, setSearchQuery] = useState("")
+  const [jobOrders, setJobOrders] = useState<JobOrder[]>(jobOrdersInitial)
+  const [loading, setLoading] = useState(false)
+  const [fetchError, setFetchError] = useState<string | null>(null)
   const [currentPage] = useState(1)
   const pageSize = 15
+
+  useEffect(() => {
+    let mounted = true
+    async function load() {
+      setLoading(true)
+      setFetchError(null)
+      try {
+        const res = await fetch("/api/operations/Job%20Management/list-job-orders")
+        const json = await res.json()
+        if (!res.ok) throw new Error(json?.error ?? "Failed to fetch job orders")
+
+        const mapped: JobOrder[] = (json.job_orders || []).map((r: any) => {
+          const id = `JO-${new Date(r.created_at).getFullYear()}-${String(r.job_order_id).padStart(3, "0")}`
+          const customer = r.customer?.full_name ?? `Customer #${r.customer?.customer_id ?? r.customer_id ?? "-"}`
+          const plate = r.plate_number ?? "—"
+          const vehicle = `${r.car_make ?? ""} ${r.car_model ?? ""}`.trim()
+          const service = r.service?.service_name ?? "—"
+          const technician = r.assigned_technician?.full_name ?? "Unassigned"
+          const scheduled = r.scheduled_start ? new Date(r.scheduled_start).toLocaleDateString() : "—"
+          const statusMap: Record<string, JobStatus> = {
+            pending: "Pending",
+            ongoing: "Ongoing",
+            quality_check: "Quality Check",
+            completed: "Completed",
+            delayed: "Delayed",
+            released: "Released",
+            cancelled: "Cancelled",
+          }
+          const status = statusMap[r.current_status] ?? (r.current_status as JobStatus) ?? "Pending"
+
+          return { id, customer, plate, vehicle, service, technician, scheduled, status }
+        })
+
+        if (mounted) setJobOrders(mapped)
+      } catch (err: any) {
+        if (mounted) setFetchError(err?.message ?? String(err))
+      } finally {
+        if (mounted) setLoading(false)
+      }
+    }
+    load()
+    return () => {
+      mounted = false
+    }
+  }, [])
 
   const filtered = jobOrders.filter((job) => {
     const matchesTab = activeTab === "All" || job.status === activeTab
@@ -149,10 +188,16 @@ export default function JobManagementTable() {
             </tr>
           </thead>
           <tbody>
-            {paginated.length === 0 ? (
+            {loading ? (
               <tr>
                 <td colSpan={9} className="px-4 py-10 text-center text-sm text-gray-400">
-                  No job orders found.
+                  Loading job orders…
+                </td>
+              </tr>
+            ) : paginated.length === 0 ? (
+              <tr>
+                <td colSpan={9} className="px-4 py-10 text-center text-sm text-gray-400">
+                  {fetchError ? `Error: ${fetchError}` : "No job orders found."}
                 </td>
               </tr>
             ) : (

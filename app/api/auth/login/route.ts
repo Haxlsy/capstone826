@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server"
 import { cookies } from "next/headers"
 import { createClient } from "@/lib/supabase/server"
+import { createClient as createAdminClient } from "@supabase/supabase-js"
 
 export async function POST(request: Request) {
   const { username, password } = await request.json()
@@ -13,7 +14,6 @@ export async function POST(request: Request) {
   const supabase = createClient(cookieStore)
 
   // look up the email from the username via DB function
-  // (Supabase Auth requires email for signInWithPassword)
   const { data: email, error: lookupError } = await supabase
     .rpc("get_user_email_by_username", { p_username: username })
 
@@ -42,6 +42,18 @@ export async function POST(request: Request) {
   if (profileError || !profile) {
     await supabase.auth.signOut()
     return NextResponse.json({ error: "Access denied." }, { status: 403 })
+  }
+
+  // Mark user as online
+  if (process.env.SUPABASE_SERVICE_ROLE_KEY) {
+    const admin = createAdminClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.SUPABASE_SERVICE_ROLE_KEY
+    )
+    await admin
+      .from("profile")
+      .update({ is_online: true })
+      .eq("user_id", data.user.id)
   }
 
   return NextResponse.json({ user: profile })

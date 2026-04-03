@@ -1,9 +1,9 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { Bell } from "lucide-react";
-import { JOBS } from "./technician_component/data";
+import { type Job } from "./technician_component/types";
 import { JobCardView } from "./technician_component/JobCardView";
 import { JobFilters } from "./technician_component/JobFilters";
 import { BottomNav } from "./technician_component/BottomNav";
@@ -11,10 +11,28 @@ import { Status } from "./technician_component/types";
 
 export default function Technician() {
   const router = useRouter();
+  const [jobs, setJobs] = useState<Job[]>([]);
+  const [loading, setLoading] = useState(true);
   const [dateFilter, setDateFilter] = useState("all");
   const [statusFilter, setStatusFilter] = useState("all");
 
-  const filteredJobs = JOBS.filter((job) => {
+  useEffect(() => {
+    async function load() {
+      setLoading(true);
+      try {
+        const res = await fetch("/api/technician/jobs");
+        const json = await res.json();
+        if (res.ok) setJobs(json.jobs ?? []);
+      } catch {
+        // leave empty
+      } finally {
+        setLoading(false);
+      }
+    }
+    load();
+  }, []);
+
+  const filteredJobs = jobs.filter((job) => {
     if (statusFilter !== "all" && job.status !== (statusFilter as Status)) return false;
     return true;
   });
@@ -43,14 +61,17 @@ export default function Technician() {
 
         {/* Job List */}
         <div className="mt-4 flex flex-col gap-4">
-          {filteredJobs.map((job) => (
+          {loading && (
+            <p className="text-sm text-gray-400 text-center py-8">Loading jobs...</p>
+          )}
+          {!loading && filteredJobs.map((job) => (
             <JobCardView
-              key={job.job_id}
+              key={job.raw_id ?? job.job_id}
               job={job}
-              onClick={() => router.push(`/technician/${job.job_id}`)}
+              onClick={() => router.push(`/technician/${job.raw_id ?? job.job_id}`)}
             />
           ))}
-          {filteredJobs.length === 0 && (
+          {!loading && filteredJobs.length === 0 && (
             <p className="text-sm text-gray-400 text-center py-8">No jobs found.</p>
           )}
         </div>

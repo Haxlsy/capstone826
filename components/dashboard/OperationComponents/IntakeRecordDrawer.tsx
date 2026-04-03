@@ -6,6 +6,7 @@ type IntakeStatus = "Pending Job Order" | "Job Created" | "Cancelled"
 type PaymentType = "DP Paid" | "Full Payment"
 
 export interface IntakeRecordFull {
+  intake_id: number
   id: string
   customer: string
   contact: string

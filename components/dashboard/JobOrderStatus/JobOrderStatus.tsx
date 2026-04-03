@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import React, { useState, useEffect } from "react"
 import { Search, Info, Eye, ChevronDown, ChevronLeft, ChevronRight } from "lucide-react"
 
 type JobStatus = "Ongoing" | "Quality Check" | "Completed" | "Released" | "Delayed" | "Pending" | "Cancelled"
@@ -18,29 +18,37 @@ interface JobOrder {
   expectedCompletion: string
 }
 
-const mockJobs: JobOrder[] = [
-  { id: "JO-2026-0412", customerName: "Ricardo Santos",  plate: "ABC 1234", vehicleModel: "Toyota Vios",        vehicleYear: "2022", serviceType: "Full Detail",        assignedTechnician: "Marco Reyes",  status: "Ongoing",       scheduledDate: "Mar 28, 2026", expectedCompletion: "Apr 2, 2026"  },
-  { id: "JO-2026-0411", customerName: "Maria Cruz",      plate: "XYZ 5678", vehicleModel: "Honda Civic",        vehicleYear: "2023", serviceType: "Engine Tune-Up",     assignedTechnician: "Jason Lim",    status: "Quality Check", scheduledDate: "Mar 27, 2026", expectedCompletion: "Apr 1, 2026"  },
-  { id: "JO-2026-0410", customerName: "James Tan",       plate: "DEF 9012", vehicleModel: "Mitsubishi Montero", vehicleYear: "2021", serviceType: "Brake Replacement",  assignedTechnician: "Marco Reyes",  status: "Completed",     scheduledDate: "Mar 25, 2026", expectedCompletion: "Mar 28, 2026" },
-  { id: "JO-2026-0409", customerName: "Angela Reyes",    plate: "GHI 3456", vehicleModel: "Nissan Navara",      vehicleYear: "2020", serviceType: "Oil Change",         assignedTechnician: "Paolo Garcia", status: "Released",      scheduledDate: "Mar 24, 2026", expectedCompletion: "Mar 24, 2026" },
-  { id: "JO-2026-0408", customerName: "Kenneth Ong",     plate: "JKL 7890", vehicleModel: "Ford Ranger",        vehicleYear: "2022", serviceType: "Suspension Repair",  assignedTechnician: "Jason Lim",    status: "Delayed",       scheduledDate: "Mar 22, 2026", expectedCompletion: "Mar 27, 2026" },
-  { id: "JO-2026-0407", customerName: "Patricia Lim",    plate: "MNO 1234", vehicleModel: "Hyundai Tucson",     vehicleYear: "2023", serviceType: "AC Repair",          assignedTechnician: "Marco Reyes",  status: "Pending",       scheduledDate: "Apr 2, 2026",  expectedCompletion: "Apr 5, 2026"  },
-  { id: "JO-2026-0406", customerName: "David Villanueva",plate: "PQR 5678", vehicleModel: "Toyota Fortuner",    vehicleYear: "2021", serviceType: "Full Detail",        assignedTechnician: "Paolo Garcia", status: "Ongoing",       scheduledDate: "Mar 30, 2026", expectedCompletion: "Apr 3, 2026"  },
-  { id: "JO-2026-0405", customerName: "Grace Mendoza",   plate: "STU 9012", vehicleModel: "Kia Seltos",         vehicleYear: "2024", serviceType: "Tire Replacement",   assignedTechnician: "Jason Lim",    status: "Completed",     scheduledDate: "Mar 26, 2026", expectedCompletion: "Mar 26, 2026" },
-  { id: "JO-2026-0404", customerName: "Roberto Flores",  plate: "VWX 3456", vehicleModel: "Mazda CX-5",         vehicleYear: "2022", serviceType: "Engine Tune-Up",     assignedTechnician: "Paolo Garcia", status: "Ongoing",       scheduledDate: "Mar 31, 2026", expectedCompletion: "Apr 4, 2026"  },
-  { id: "JO-2026-0403", customerName: "Isabelle Navarro",plate: "YZA 7890", vehicleModel: "Suzuki Ertiga",      vehicleYear: "2023", serviceType: "Brake Replacement",  assignedTechnician: "Marco Reyes",  status: "Pending",       scheduledDate: "Apr 3, 2026",  expectedCompletion: "Apr 6, 2026"  },
-  { id: "JO-2026-0402", customerName: "Fernando Cruz",   plate: "BCD 1234", vehicleModel: "Toyota Innova",      vehicleYear: "2021", serviceType: "Full Detail",        assignedTechnician: "Jason Lim",    status: "Released",      scheduledDate: "Mar 20, 2026", expectedCompletion: "Mar 23, 2026" },
-  { id: "JO-2026-0401", customerName: "Luz Santos",      plate: "EFG 5678", vehicleModel: "Honda BR-V",         vehicleYear: "2022", serviceType: "Oil Change",         assignedTechnician: "Paolo Garcia", status: "Cancelled",     scheduledDate: "Mar 18, 2026", expectedCompletion: "Mar 18, 2026" },
-  { id: "JO-2026-0400", customerName: "Miguel Reyes",    plate: "HIJ 9012", vehicleModel: "Mitsubishi Xpander", vehicleYear: "2023", serviceType: "AC Repair",          assignedTechnician: "Marco Reyes",  status: "Completed",     scheduledDate: "Mar 15, 2026", expectedCompletion: "Mar 18, 2026" },
-  { id: "JO-2026-0399", customerName: "Teresa Lim",      plate: "KLM 3456", vehicleModel: "Ford EcoSport",      vehicleYear: "2020", serviceType: "Suspension Repair",  assignedTechnician: "Jason Lim",    status: "Delayed",       scheduledDate: "Mar 14, 2026", expectedCompletion: "Mar 19, 2026" },
-  { id: "JO-2026-0398", customerName: "Antonio Garcia",  plate: "NOP 7890", vehicleModel: "Nissan Terra",       vehicleYear: "2022", serviceType: "Tire Replacement",   assignedTechnician: "Paolo Garcia", status: "Ongoing",       scheduledDate: "Mar 29, 2026", expectedCompletion: "Apr 1, 2026"  },
-  { id: "JO-2026-0397", customerName: "Cecilia Tan",     plate: "QRS 1234", vehicleModel: "Toyota Rush",        vehicleYear: "2021", serviceType: "Full Detail",        assignedTechnician: "Marco Reyes",  status: "Quality Check", scheduledDate: "Mar 28, 2026", expectedCompletion: "Mar 31, 2026" },
-  { id: "JO-2026-0396", customerName: "Ernesto Flores",  plate: "TUV 5678", vehicleModel: "Hyundai Starex",     vehicleYear: "2020", serviceType: "Brake Replacement",  assignedTechnician: "Jason Lim",    status: "Completed",     scheduledDate: "Mar 22, 2026", expectedCompletion: "Mar 25, 2026" },
-  { id: "JO-2026-0395", customerName: "Marisol Ong",     plate: "WXY 9012", vehicleModel: "Kia Sportage",       vehicleYear: "2023", serviceType: "Engine Tune-Up",     assignedTechnician: "Paolo Garcia", status: "Released",      scheduledDate: "Mar 10, 2026", expectedCompletion: "Mar 13, 2026" },
-]
+const DB_STATUS_MAP: Record<string, JobStatus> = {
+  pending: "Pending",
+  ongoing: "Ongoing",
+  quality_check: "Quality Check",
+  completed: "Completed",
+  delayed: "Delayed",
+  cancelled: "Cancelled",
+  released: "Released",
+}
+
+function mapApiJob(r: any): JobOrder {
+  const year = r.created_at ? new Date(r.created_at).getFullYear() : new Date().getFullYear()
+  return {
+    id: `JO-${year}-${String(r.job_order_id).padStart(3, "0")}`,
+    customerName: r.customer?.full_name ?? "—",
+    plate: r.plate_number ?? "—",
+    vehicleModel: `${r.car_make ?? ""} ${r.car_model ?? ""}`.trim() || "—",
+    vehicleYear: "",
+    serviceType: r.service?.service_name ?? "—",
+    assignedTechnician: r.assigned_technician?.full_name ?? "Unassigned",
+    status: DB_STATUS_MAP[r.current_status] ?? "Pending",
+    scheduledDate: r.scheduled_start
+      ? new Date(r.scheduled_start).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })
+      : "—",
+    expectedCompletion: r.scheduled_end
+      ? new Date(r.scheduled_end).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })
+      : "—",
+  }
+}
 
 const ALL_STATUSES: JobStatus[] = ["Ongoing", "Quality Check", "Completed", "Released", "Delayed", "Pending", "Cancelled"]
-const ALL_TECHNICIANS = ["Marco Reyes", "Jason Lim", "Paolo Garcia"]
 const PAGE_SIZE_OPTIONS = [10, 15, 20]
 
 const statusStyle: Record<JobStatus, string> = {
@@ -53,7 +61,10 @@ const statusStyle: Record<JobStatus, string> = {
   "Cancelled":     "bg-gray-100 text-gray-400",
 }
 
-export default function JobOrderStatus() {
+export default React.memo(function JobOrderStatus() {
+  const [jobs, setJobs]               = useState<JobOrder[]>([])
+  const [loading, setLoading]         = useState(true)
+  const [technicians, setTechnicians] = useState<string[]>([])
   const [search, setSearch]           = useState("")
   const [statusFilter, setStatusFilter] = useState("All")
   const [techFilter, setTechFilter]   = useState("All")
@@ -61,7 +72,37 @@ export default function JobOrderStatus() {
   const [pageSize, setPageSize]       = useState(15)
   const [page, setPage]               = useState(1)
 
-  const filtered = mockJobs.filter((j) => {
+  useEffect(() => {
+    const abortController = new AbortController()
+    
+    async function load() {
+      setLoading(true)
+      try {
+        const res = await fetch("/api/operations/Job%20Management/list-job-orders", {
+          signal: abortController.signal
+        })
+        const json = await res.json()
+        if (res.ok) {
+          const mapped: JobOrder[] = (json.job_orders ?? []).map(mapApiJob)
+          setJobs(mapped)
+          const techNames = [...new Set(mapped.map((j) => j.assignedTechnician).filter((t) => t !== "Unassigned"))]
+          setTechnicians(techNames)
+        }
+      } catch (err: any) {
+        // ignore abort errors (component unmounted)
+        if (err?.name !== "AbortError") {
+          // leave empty for other errors
+        }
+      } finally {
+        setLoading(false)
+      }
+    }
+    load()
+    
+    return () => abortController.abort()
+  }, [])
+
+  const filtered = jobs.filter((j) => {
     const q = search.toLowerCase()
     const matchSearch =
       j.customerName.toLowerCase().includes(q) ||
@@ -120,7 +161,7 @@ export default function JobOrderStatus() {
             className="appearance-none pl-3 pr-8 py-2 text-sm border border-gray-200 rounded-lg bg-white text-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-400 transition cursor-pointer"
           >
             <option value="All">All</option>
-            {ALL_TECHNICIANS.map((t) => <option key={t}>{t}</option>)}
+            {technicians.map((t) => <option key={t}>{t}</option>)}
           </select>
           <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400 pointer-events-none" />
         </div>
@@ -169,7 +210,12 @@ export default function JobOrderStatus() {
             </tr>
           </thead>
           <tbody>
-            {paginated.map((j) => (
+            {loading ? (
+              <tr>
+                <td colSpan={9} className="text-center py-10 text-sm text-gray-400">Loading...</td>
+              </tr>
+            ) : null}
+            {!loading && paginated.map((j) => (
               <tr key={j.id} className="border-b border-gray-50 last:border-0 hover:bg-gray-50 transition-colors">
                 <td className="px-4 py-3.5 font-mono text-xs text-blue-500">{j.id}</td>
                 <td className="px-4 py-3.5 font-semibold text-gray-800">{j.customerName}</td>
@@ -193,7 +239,7 @@ export default function JobOrderStatus() {
                 </td>
               </tr>
             ))}
-            {paginated.length === 0 && (
+            {!loading && paginated.length === 0 && (
               <tr>
                 <td colSpan={9} className="text-center py-10 text-sm text-gray-400">
                   No job orders found.
@@ -250,4 +296,4 @@ export default function JobOrderStatus() {
       </div>
     </div>
   )
-}
+})
