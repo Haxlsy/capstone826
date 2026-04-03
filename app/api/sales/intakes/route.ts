@@ -15,8 +15,10 @@ const INTAKE_SELECT = `
   scheduled_date,
   status,
   created_at,
+  vehicle_type_id,
   customer:customer_id(full_name,customer_id,contact_number,email,home_address),
-  service:service_id(service_name,service_id,estimated_duration_days)
+  service:service_id(service_name,service_id,estimated_duration_days),
+  vehicle_type:vehicle_type_id(vehicle_type_id,type_name)
 `;
 
 export async function POST(request: Request) {
@@ -92,27 +94,15 @@ export async function POST(request: Request) {
 
 export async function GET() {
   try {
-    const cookieStore = await cookies();
-    const supabase = createClient(cookieStore);
+    const admin = createAdminClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.SUPABASE_SERVICE_ROLE_KEY!
+    );
 
-    let { data, error } = await supabase
+    const { data, error } = await admin
       .from("customer_intake")
       .select(INTAKE_SELECT)
       .order("created_at", { ascending: false });
-
-    // Fallback to admin client if RLS blocks the read
-    if ((error || !data) && process.env.SUPABASE_SERVICE_ROLE_KEY) {
-      const admin = createAdminClient(
-        process.env.NEXT_PUBLIC_SUPABASE_URL!,
-        process.env.SUPABASE_SERVICE_ROLE_KEY
-      );
-      const adminRes = await admin
-        .from("customer_intake")
-        .select(INTAKE_SELECT)
-        .order("created_at", { ascending: false });
-      data = adminRes.data;
-      error = adminRes.error ?? null;
-    }
 
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
