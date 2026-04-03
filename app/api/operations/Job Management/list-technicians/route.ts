@@ -8,17 +8,16 @@ export async function GET() {
     const cookieStore = await cookies();
     const supabase = createClient(cookieStore);
 
-    // Get only online technicians (role = "technician", is_online = true, not archived)
+    // Get all active technicians (role = "technician", not archived)
     let { data: techs, error } = await supabase
       .from("profile")
       .select("user_id, full_name, role, is_online")
       .eq("role", "technician")
-      .eq("is_online", true)
       .eq("is_archived", false)
       .order("full_name");
 
-    // Fallback to admin client if RLS blocks
-    if ((error || !techs) && process.env.SUPABASE_SERVICE_ROLE_KEY) {
+    // Fallback to admin client if RLS blocks or returns empty
+    if ((error || !techs || techs.length === 0) && process.env.SUPABASE_SERVICE_ROLE_KEY) {
       const admin = createAdminClient(
         process.env.NEXT_PUBLIC_SUPABASE_URL!,
         process.env.SUPABASE_SERVICE_ROLE_KEY
@@ -27,7 +26,6 @@ export async function GET() {
         .from("profile")
         .select("user_id, full_name, role, is_online")
         .eq("role", "technician")
-        .eq("is_online", true)
         .eq("is_archived", false)
         .order("full_name");
       techs = adminRes.data;
