@@ -1,8 +1,9 @@
 import { NextResponse } from "next/server"
 import { createAdminClient } from "@/lib/supabase/admin"
 
-export async function PATCH(request: Request, { params }: { params: { id: string } }) {
-  const id = Number(params.id)
+export async function PATCH(request: Request, { params }: { params: Promise<{ id: string }> }) {
+  const { id: rawId } = await params
+  const id = Number(rawId)
   if (!id) return NextResponse.json({ error: "Invalid id." }, { status: 400 })
 
   const body = await request.json()

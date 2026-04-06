@@ -46,14 +46,10 @@ export async function GET(request: Request) {
   }
 }
 
-export async function PATCH(
-  request: Request,
-  { params }: { params: { id: string } }
-) {
+export async function PATCH(request: Request) {
   try {
-    const { id } = await Promise.resolve(params);
     const body = await request.json();
-    const { stage_status, rework_note } = body;
+    const { id, stage_status, rework_note } = body;
 
     if (!id) {
       return NextResponse.json({ error: "Missing document ID" }, { status: 400 });

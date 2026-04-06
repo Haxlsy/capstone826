@@ -5,10 +5,10 @@ import { createClient as createAdminClient } from "@supabase/supabase-js";
 
 export async function PATCH(
   request: Request,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const { id } = await Promise.resolve(params);
+    const { id } = await params;
     const body = await request.json();
     const { status, admin_note, resolved_by_user_id } = body;
 
@@ -70,10 +70,10 @@ export async function PATCH(
 
 export async function GET(
   request: Request,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const { id } = await Promise.resolve(params);
+    const { id } = await params;
 
     if (!id) {
       return NextResponse.json({ error: "Missing concern ID" }, { status: 400 });
