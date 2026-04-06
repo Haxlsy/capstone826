@@ -78,7 +78,7 @@ export default React.memo(function JobOrderStatus() {
     async function load() {
       setLoading(true)
       try {
-        const res = await fetch("/api/operations/Job%20Management/list-job-orders", {
+        const res = await fetch("/api/sales/job-orders", {
           signal: abortController.signal
         })
         const json = await res.json()

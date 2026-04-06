@@ -45,7 +45,9 @@ export default function AdminSidebar() {
       {/* Nav */}
       <nav className="flex-1 py-4 px-3 space-y-0.5">
         {navItems.map(({ label, href, icon: Icon }) => {
-          const active = pathname === href || pathname.startsWith(href + "/")
+          const isExact = pathname === href
+          const isSubRoute = pathname.startsWith(href + "/") && href !== "/dashboard/admin"
+          const active = isExact || isSubRoute
           return (
             <Link
               key={href}
