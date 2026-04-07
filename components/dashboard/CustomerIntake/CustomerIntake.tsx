@@ -80,9 +80,8 @@ export default React.memo(function CustomerIntake() {
     setRecords((prev) => prev.map((r) => r.id === id ? { ...r, status: "Cancelled" } : r))
   }
 
-  // Handle new intake submission
-  async function handleNewIntake(form: NewIntakeForm) {
-    const nextId = `INT-2026-${String(records.length + 1).padStart(3, "0")}`
+  // Handle new intake submission — returns error string on failure, null on success
+  async function handleNewIntake(form: NewIntakeForm): Promise<string | null> {
     try {
       const res = await fetch("/api/sales/create-intake", {
         method: "POST",
@@ -108,40 +107,13 @@ export default React.memo(function CustomerIntake() {
       const json = await res.json()
       if (res.ok && json.intake) {
         setRecords((prev) => [mapApiIntake(json.intake), ...prev])
-      } else {
-        const newRecord: IntakeRecord = {
-          id: nextId,
-          intakeId: undefined,
-          customerName: form.customerName,
-          plate: form.plate,
-          vehicle: form.model || "—",
-          serviceType: form.serviceType,
-          scheduledDate: form.scheduledDate ? new Date(form.scheduledDate).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) : "—",
-          rescheduled: false,
-          paymentStatus: Number(form.balance) === 0 ? "Full Payment" : "DP Paid",
-          dateSubmitted: new Date().toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }),
-          status: "Pending Job Order",
-        }
-        setRecords((prev) => [newRecord, ...prev])
+        setShowModal(false)
+        setPage(1)
+        return null
       }
+      return json.error ?? "Failed to save intake. Please try again."
     } catch {
-      const newRecord: IntakeRecord = {
-        id: nextId,
-        intakeId: undefined,
-        customerName: form.customerName,
-        plate: form.plate,
-        vehicle: form.model || "—",
-        serviceType: form.serviceType,
-        scheduledDate: form.scheduledDate ? new Date(form.scheduledDate).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) : "—",
-        rescheduled: false,
-        paymentStatus: Number(form.balance) === 0 ? "Full Payment" : "DP Paid",
-        dateSubmitted: new Date().toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }),
-        status: "Pending Job Order",
-      }
-      setRecords((prev) => [newRecord, ...prev])
-    } finally {
-      setShowModal(false)
-      setPage(1)
+      return "Network error. Please check your connection and try again."
     }
   }
 

@@ -76,7 +76,7 @@ export default function JobOrderRecords() {
     async function load() {
       setLoading(true)
       try {
-        const res = await fetch("/api/operations/Job%20Management/list-job-orders")
+        const res = await fetch("/api/operations/job-management/list-job-orders")
         const json = await res.json()
         if (res.ok) {
           const mapped = (json.job_orders ?? []).map(mapApiToRecord)

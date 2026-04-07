@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useRef, useEffect } from "react"
+import { useState, useRef, useEffect, useCallback } from "react"
 import { Search, Filter, ChevronDown, ChevronLeft, ChevronRight, MoreHorizontal, X } from "lucide-react"
 
 type CustomerStatus = "Active" | "Archived"
@@ -16,26 +16,22 @@ interface Customer {
   status: CustomerStatus
 }
 
-const initialCustomers: Customer[] = [
-  { id: 1,  initials: "JDC", name: "Juan Dela Cruz",   email: "juan@email.com",    contact: "0917-123-4567", address: "123 Main St, Quezon City",     jobs: 5, status: "Active"   },
-  { id: 2,  initials: "MG",  name: "Maria Garcia",     email: "maria@email.com",   contact: "0918-234-5678", address: "456 Oak Ave, Makati",           jobs: 3, status: "Active"   },
-  { id: 3,  initials: "CR",  name: "Carlos Rivera",    email: "carlos@email.com",  contact: "0919-345-6789", address: "789 Pine Rd, Taguig",           jobs: 7, status: "Active"   },
-  { id: 4,  initials: "AR",  name: "Ana Reyes",        email: "ana@email.com",     contact: "0920-456-7890", address: "321 Elm Blvd, Pasig",           jobs: 2, status: "Active"   },
-  { id: 5,  initials: "LT",  name: "Lisa Tan",         email: "lisa@email.com",    contact: "0921-567-8901", address: "654 Cedar Ln, Mandaluyong",     jobs: 4, status: "Archived" },
-  { id: 6,  initials: "PS",  name: "Pedro Santos",     email: "pedro@email.com",   contact: "0922-678-9012", address: "987 Birch St, Manila",          jobs: 1, status: "Active"   },
-  { id: 7,  initials: "EF",  name: "Elena Flores",     email: "elena@email.com",   contact: "0923-789-0123", address: "147 Maple Dr, Paranaque",       jobs: 3, status: "Active"   },
-  { id: 8,  initials: "RL",  name: "Roberto Lim",      email: "roberto@email.com", contact: "0924-890-1234", address: "258 Walnut Ave, Las Pinas",     jobs: 2, status: "Active"   },
-  { id: 9,  initials: "KO",  name: "Kenneth Ong",      email: "kenneth@email.com", contact: "0925-901-2345", address: "369 Acacia St, Caloocan",       jobs: 6, status: "Active"   },
-  { id: 10, initials: "DV",  name: "David Villanueva", email: "david@email.com",   contact: "0926-012-3456", address: "480 Narra Rd, Muntinlupa",      jobs: 2, status: "Active"   },
-  { id: 11, initials: "RS",  name: "Rosa Santiago",    email: "rosa@email.com",    contact: "0927-123-4567", address: "591 Ipil Blvd, Valenzuela",     jobs: 1, status: "Archived" },
-  { id: 12, initials: "MR",  name: "Marco Reyes",      email: "marco@email.com",   contact: "0928-234-5678", address: "612 Molave Ave, Marikina",      jobs: 4, status: "Active"   },
-  { id: 13, initials: "AC",  name: "Angela Cruz",      email: "angela@email.com",  contact: "0929-345-6789", address: "723 Yakal St, San Juan",        jobs: 3, status: "Active"   },
-  { id: 14, initials: "BT",  name: "Bernard Tan",      email: "bernard@email.com", contact: "0930-456-7890", address: "834 Kamagong Rd, Pasay",        jobs: 1, status: "Archived" },
-  { id: 15, initials: "CM",  name: "Carla Mendoza",    email: "carla@email.com",   contact: "0931-567-8901", address: "945 Tindalo St, Malabon",       jobs: 2, status: "Active"   },
-  { id: 16, initials: "FU",  name: "Francis Uy",       email: "francis@email.com", contact: "0932-678-9012", address: "156 Dao Ave, Navotas",          jobs: 3, status: "Active"   },
-  { id: 17, initials: "GS",  name: "Grace Santos",     email: "grace@email.com",   contact: "0933-789-0123", address: "267 Almaciga Blvd, Pateros",    jobs: 5, status: "Active"   },
-  { id: 18, initials: "HL",  name: "Henry Lim",        email: "henry@email.com",   contact: "0934-890-1234", address: "378 Batikuling St, Taguig",     jobs: 2, status: "Active"   },
-]
+function makeInitials(name: string): string {
+  return name.split(" ").map((w) => w[0] ?? "").join("").toUpperCase().slice(0, 3)
+}
+
+function mapApiCustomer(c: any): Customer {
+  return {
+    id: c.customer_id,
+    initials: makeInitials(c.full_name ?? ""),
+    name: c.full_name ?? "",
+    email: c.email ?? "",
+    contact: c.contact_number ?? "",
+    address: c.home_address ?? "",
+    jobs: 0,
+    status: c.is_archived ? "Archived" : "Active",
+  }
+}
 
 const PAGE_SIZE_OPTIONS = [10, 15, 20]
 
@@ -61,9 +57,19 @@ function CustomerModal({
       ? { name: customer.name, email: customer.email, contact: customer.contact, address: customer.address }
       : emptyForm
   )
+  const [errors, setErrors] = useState<Partial<CustomerForm>>({})
 
   function set(key: keyof CustomerForm, val: string) {
     setForm((prev) => ({ ...prev, [key]: val }))
+    setErrors((prev) => { const e = { ...prev }; delete e[key]; return e })
+  }
+
+  function handleSave() {
+    const e: Partial<CustomerForm> = {}
+    if (!form.name.trim()) e.name = "Full name is required."
+    if (!form.contact.trim()) e.contact = "Contact number is required."
+    if (Object.keys(e).length > 0) { setErrors(e); return }
+    onSave(form)
   }
 
   return (
@@ -84,13 +90,17 @@ function CustomerModal({
             ["address", "Home Address"],
           ] as [keyof CustomerForm, string][]).map(([key, label]) => (
             <div key={key}>
-              <label className="block text-xs font-medium text-gray-500 mb-1">{label}</label>
+              <label className="block text-xs font-medium text-gray-500 mb-1">
+                {label}
+                {(key === "name" || key === "contact") && <span className="text-red-400 ml-0.5">*</span>}
+              </label>
               <input
                 type="text"
                 value={form[key]}
                 onChange={(e) => set(key, e.target.value)}
-                className="w-full px-3 py-2.5 text-sm border border-gray-200 rounded-lg bg-gray-50 text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-400 transition"
+                className={`w-full px-3 py-2.5 text-sm border rounded-lg bg-gray-50 text-gray-700 focus:outline-none focus:ring-2 transition ${errors[key] ? "border-red-400 focus:ring-red-300" : "border-gray-200 focus:ring-blue-400"}`}
               />
+              {errors[key] && <p className="text-xs text-red-500 mt-1">{errors[key]}</p>}
             </div>
           ))}
         </div>
@@ -100,7 +110,7 @@ function CustomerModal({
             Cancel
           </button>
           <button
-            onClick={() => { if (form.name.trim()) onSave(form) }}
+            onClick={handleSave}
             className="px-4 py-2 text-sm font-semibold bg-gray-900 text-white rounded-lg hover:bg-gray-700 transition-colors"
           >
             Save Customer
@@ -173,7 +183,9 @@ function ActionsMenu({
 // ── Main Component ────────────────────────────────────────────────────────────
 
 export default function CustomerRecords() {
-  const [customers, setCustomers]     = useState<Customer[]>(initialCustomers)
+  const [customers, setCustomers]     = useState<Customer[]>([])
+  const [loading, setLoading]         = useState(true)
+  const [loadError, setLoadError]     = useState<string | null>(null)
   const [search, setSearch]           = useState("")
   const [pageSize, setPageSize]       = useState(15)
   const [page, setPage]               = useState(1)
@@ -182,6 +194,25 @@ export default function CustomerRecords() {
   const [editTarget, setEditTarget]   = useState<Customer | null>(null)
   const [exportOpen, setExportOpen]   = useState(false)
   const exportRef                     = useRef<HTMLDivElement>(null)
+
+  const loadCustomers = useCallback(async () => {
+    setLoading(true)
+    setLoadError(null)
+    try {
+      const res = await fetch("/api/sales/customers")
+      const json = await res.json()
+      if (!res.ok) { setLoadError(json.error ?? "Failed to load customers."); return }
+      setCustomers((json.customers ?? []).map(mapApiCustomer))
+    } catch {
+      setLoadError("Network error. Could not load customers.")
+    } finally {
+      setLoading(false)
+    }
+  }, [])
+
+  useEffect(() => {
+    loadCustomers()
+  }, [loadCustomers])
 
   useEffect(() => {
     function handleClick(e: MouseEvent) {
@@ -223,45 +254,40 @@ export default function CustomerRecords() {
     )
   }
 
-  function handleSave(form: CustomerForm) {
+  async function handleSave(form: CustomerForm) {
     if (modal === "edit" && editTarget) {
       setCustomers((prev) =>
         prev.map((c) =>
           c.id === editTarget.id
-            ? { ...c, name: form.name, email: form.email, contact: form.contact, address: form.address }
+            ? { ...c, name: form.name, email: form.email, contact: form.contact, address: form.address,
+                initials: makeInitials(form.name) }
             : c
         )
       )
     } else {
-      ;(async () => {
-        try {
-          const res = await fetch("/api/sales/customers", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ full_name: form.name, contact_number: form.contact, email: form.email, home_address: form.address }),
-          })
-          const json = await res.json()
-          if (res.ok && json.customer) {
-            const cust = json.customer
-            const initials = (cust.full_name || form.name).split(" ").map((w: string) => w[0]).join("").toUpperCase().slice(0, 3)
-            setCustomers((prev) => [
-              { id: cust.customer_id ?? Date.now(), initials, name: cust.full_name ?? form.name, email: cust.email ?? form.email, contact: cust.contact_number ?? form.contact, address: cust.home_address ?? form.address, jobs: 0, status: "Active" },
-              ...prev,
-            ])
-            setPage(1)
-            return
-          }
-        } catch (e) {
-          // fallback to local-only add
+      try {
+        const res = await fetch("/api/sales/customers", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ full_name: form.name, contact_number: form.contact, email: form.email, home_address: form.address }),
+        })
+        const json = await res.json()
+        if (res.ok && json.customer) {
+          setCustomers((prev) => [mapApiCustomer(json.customer), ...prev])
+          setPage(1)
+          setModal(null)
+          setEditTarget(null)
+          return
         }
-
-        const initials = form.name.split(" ").map((w) => w[0]).join("").toUpperCase().slice(0, 3)
-        setCustomers((prev) => [
-          { id: Date.now(), initials, name: form.name, email: form.email, contact: form.contact, address: form.address, jobs: 0, status: "Active" },
-          ...prev,
-        ])
-        setPage(1)
-      })()
+      } catch {
+        // fall through to local add
+      }
+      setCustomers((prev) => [
+        { id: Date.now(), initials: makeInitials(form.name), name: form.name, email: form.email,
+          contact: form.contact, address: form.address, jobs: 0, status: "Active" },
+        ...prev,
+      ])
+      setPage(1)
     }
     setModal(null)
     setEditTarget(null)
@@ -318,84 +344,89 @@ export default function CustomerRecords() {
 
       {/* Table */}
       <div className="bg-white border border-gray-200 rounded-2xl overflow-hidden">
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="border-b border-gray-100">
-              <th className="px-4 py-3 w-10">
-                <input
-                  type="checkbox"
-                  checked={allOnPageSelected}
-                  onChange={toggleAll}
-                  className="w-4 h-4 rounded accent-gray-800 cursor-pointer"
-                />
-              </th>
-              {["CUSTOMER", "EMAIL", "CONTACT", "ADDRESS", "JOBS", "STATUS", ""].map((col) => (
-                <th
-                  key={col}
-                  className="text-left text-[11px] font-semibold text-gray-400 uppercase tracking-wider px-4 py-3 whitespace-nowrap"
-                >
-                  {col}
+        {loading ? (
+          <div className="text-center py-16 text-sm text-gray-400">Loading customers...</div>
+        ) : loadError ? (
+          <div className="text-center py-16 text-sm text-red-500">{loadError}</div>
+        ) : (
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-gray-100">
+                <th className="px-4 py-3 w-10">
+                  <input
+                    type="checkbox"
+                    checked={allOnPageSelected}
+                    onChange={toggleAll}
+                    className="w-4 h-4 rounded accent-gray-800 cursor-pointer"
+                  />
                 </th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {paginated.map((c) => {
-              const archived = c.status === "Archived"
-              return (
-                <tr
-                  key={c.id}
-                  className={`border-b border-gray-50 last:border-0 hover:bg-gray-50 transition-colors ${archived ? "opacity-50" : ""}`}
-                >
-                  <td className="px-4 py-3.5">
-                    <input
-                      type="checkbox"
-                      checked={selected.has(c.id)}
-                      onChange={() => toggleOne(c.id)}
-                      className="w-4 h-4 rounded accent-gray-800 cursor-pointer"
-                    />
-                  </td>
-                  <td className="px-4 py-3.5">
-                    <div className="flex items-center gap-2.5">
-                      <div className="w-8 h-8 rounded-full bg-gray-200 text-gray-500 text-[11px] font-semibold flex items-center justify-center shrink-0">
-                        {c.initials}
+                {["CUSTOMER", "EMAIL", "CONTACT", "ADDRESS", "STATUS", ""].map((col) => (
+                  <th
+                    key={col}
+                    className="text-left text-[11px] font-semibold text-gray-400 uppercase tracking-wider px-4 py-3 whitespace-nowrap"
+                  >
+                    {col}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {paginated.map((c) => {
+                const archived = c.status === "Archived"
+                return (
+                  <tr
+                    key={c.id}
+                    className={`border-b border-gray-50 last:border-0 hover:bg-gray-50 transition-colors ${archived ? "opacity-50" : ""}`}
+                  >
+                    <td className="px-4 py-3.5">
+                      <input
+                        type="checkbox"
+                        checked={selected.has(c.id)}
+                        onChange={() => toggleOne(c.id)}
+                        className="w-4 h-4 rounded accent-gray-800 cursor-pointer"
+                      />
+                    </td>
+                    <td className="px-4 py-3.5">
+                      <div className="flex items-center gap-2.5">
+                        <div className="w-8 h-8 rounded-full bg-gray-200 text-gray-500 text-[11px] font-semibold flex items-center justify-center shrink-0">
+                          {c.initials}
+                        </div>
+                        <span className="font-semibold text-gray-800">{c.name}</span>
                       </div>
-                      <span className="font-semibold text-gray-800">{c.name}</span>
-                    </div>
-                  </td>
-                  <td className="px-4 py-3.5 text-blue-500">{c.email}</td>
-                  <td className="px-4 py-3.5 text-gray-600">{c.contact}</td>
-                  <td className="px-4 py-3.5 text-gray-600">{c.address}</td>
-                  <td className="px-4 py-3.5 text-gray-700 font-medium">{c.jobs}</td>
-                  <td className="px-4 py-3.5">
-                    <span
-                      className={`text-xs font-medium px-2.5 py-1 rounded-full ${
-                        archived ? "bg-gray-100 text-gray-400" : "bg-green-100 text-green-600"
-                      }`}
-                    >
-                      {c.status}
-                    </span>
-                  </td>
-                  <td className="px-4 py-3.5">
-                    <ActionsMenu
-                      customer={c}
-                      onEdit={() => { setEditTarget(c); setModal("edit") }}
-                      onArchive={() => handleArchive(c.id)}
-                      onViewHistory={() => {}}
-                    />
+                    </td>
+                    <td className="px-4 py-3.5 text-blue-500">{c.email || "—"}</td>
+                    <td className="px-4 py-3.5 text-gray-600">{c.contact}</td>
+                    <td className="px-4 py-3.5 text-gray-600">{c.address || "—"}</td>
+                    <td className="px-4 py-3.5">
+                      <span
+                        className={`text-xs font-medium px-2.5 py-1 rounded-full ${
+                          archived ? "bg-gray-100 text-gray-400" : "bg-green-100 text-green-600"
+                        }`}
+                      >
+                        {c.status}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3.5">
+                      <ActionsMenu
+                        customer={c}
+                        onEdit={() => { setEditTarget(c); setModal("edit") }}
+                        onArchive={() => handleArchive(c.id)}
+                        onViewHistory={() => {}}
+                      />
+                    </td>
+                  </tr>
+                )
+              })}
+              {paginated.length === 0 && (
+                <tr>
+                  <td colSpan={7} className="text-center py-10 text-sm text-gray-400">
+                    No customers found.
                   </td>
                 </tr>
-              )
-            })}
-            {paginated.length === 0 && (
-              <tr>
-                <td colSpan={8} className="text-center py-10 text-sm text-gray-400">
-                  No customers found.
-                </td>
-              </tr>
-            )}
-          </tbody>
-        </table>
+              )}
+            </tbody>
+          </table>
+        )}
       </div>
 
       {/* Pagination */}

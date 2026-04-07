@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useEffect } from "react"
+import { useRouter } from "next/navigation"
 
 const DB_STATUS_LABEL: Record<string, string> = {
   pending:       "Pending",
@@ -29,6 +30,7 @@ interface RecentJob {
 }
 
 export default function QuickAccessPanel() {
+  const router = useRouter()
   const [recentJobs, setRecentJobs] = useState<RecentJob[]>([])
   const [loading, setLoading] = useState(true)
 
@@ -56,7 +58,7 @@ export default function QuickAccessPanel() {
       <div>
         <div className="flex items-center justify-between mb-3">
           <span className="font-semibold text-sm text-gray-800">Recent Job Orders</span>
-          <button className="text-xs text-blue-500 hover:text-blue-600 transition-colors">View All →</button>
+          <button onClick={() => router.push("/dashboard/job-order-records")} className="text-xs text-blue-500 hover:text-blue-600 transition-colors">View All →</button>
         </div>
         <div className="flex flex-col">
           {loading ? (

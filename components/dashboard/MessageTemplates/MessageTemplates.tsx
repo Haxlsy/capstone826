@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { Pencil, Trash2, Info, X } from "lucide-react"
 
 const PLACEHOLDERS = [
@@ -166,6 +166,28 @@ export default function MessageTemplates() {
   const [templates, setTemplates] = useState<Template[]>(initialTemplates)
   const [modal, setModal] = useState<Partial<Template> | null>(null)
   const [deleteId, setDeleteId] = useState<number | null>(null)
+
+  useEffect(() => {
+    fetch("/api/operations/message-templates")
+      .then((r) => r.json())
+      .then((json) => {
+        if (json.templates && json.templates.length > 0) {
+          const dbTemplates: Template[] = json.templates.map((t: any) => ({
+            id: t.template_id,
+            title: t.template_name,
+            body: t.body_text,
+            modified: new Date(t.created_at).toLocaleDateString("en-US", {
+              month: "short", day: "numeric", year: "numeric",
+            }),
+          }))
+          // Show DB templates first, keep mock data below
+          setTemplates([...dbTemplates, ...initialTemplates])
+        }
+      })
+      .catch(() => {
+        // keep mock data on error
+      })
+  }, [])
 
   function openAdd() {
     setModal({})
