@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
-import { Search, Filter, Eye, ChevronLeft, ChevronRight, ClipboardList } from "lucide-react"
+import { Search, Filter, ChevronLeft, ChevronRight, ClipboardList } from "lucide-react"
 import IntakeInfoBanner from "./IntakeInfoBanner"
 import IntakeRecordDrawer, { type IntakeRecordFull } from "./IntakeRecordDrawer"
 
@@ -154,8 +154,8 @@ export default function CustomerIntakeRecords() {
         <IntakeInfoBanner />
 
         {/* Table */}
-        <div className="bg-white rounded-xl border border-gray-100 overflow-hidden">
-          <table className="w-full text-sm">
+        <div className="bg-white rounded-xl border border-gray-100 overflow-auto">
+          <table className="w-full min-w-250 text-sm">
             <thead>
               <tr className="border-b border-gray-100 bg-gray-50">
                 <th className="px-4 py-3 text-left text-[11px] font-semibold text-gray-400 uppercase tracking-wide">Intake ID</th>
@@ -166,8 +166,8 @@ export default function CustomerIntakeRecords() {
                 <th className="px-4 py-3 text-left text-[11px] font-semibold text-gray-400 uppercase tracking-wide">Scheduled Date</th>
                 <th className="px-4 py-3 text-left text-[11px] font-semibold text-gray-400 uppercase tracking-wide">Payment</th>
                 <th className="px-4 py-3 text-left text-[11px] font-semibold text-gray-400 uppercase tracking-wide">Submitted</th>
-                <th className="px-4 py-3 text-left text-[11px] font-semibold text-gray-400 uppercase tracking-wide">Status</th>
-                <th className="w-16 px-4 py-3" />
+                <th className="px-4 py-3 text-left text-[11px] font-semibold text-gray-400 uppercase tracking-wide whitespace-nowrap">Status</th>
+                <th className="w-32 px-4 py-3" />
               </tr>
             </thead>
             <tbody>
@@ -187,7 +187,9 @@ export default function CustomerIntakeRecords() {
                 paginated.map((record, idx) => (
                   <tr
                     key={record.id}
-                    className={`border-b border-gray-50 hover:bg-gray-50/50 transition-colors ${
+                    onClick={() => setSelectedRecord(record)}
+                    title="Click to view intake details"
+                    className={`border-b border-gray-50 hover:bg-gray-50/50 transition-colors cursor-pointer ${
                       idx === paginated.length - 1 ? "border-b-0" : ""
                     }`}
                   >
@@ -220,31 +222,22 @@ export default function CustomerIntakeRecords() {
                     <td className="px-4 py-3.5">
                       <span className="text-xs text-gray-400">{record.submitted}</span>
                     </td>
-                    <td className="px-4 py-3.5">
-                      <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${statusBadgeMap[record.status]}`}>
+                    <td className="px-4 py-3.5 whitespace-nowrap">
+                      <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium whitespace-nowrap ${statusBadgeMap[record.status]}`}>
                         {record.status}
                       </span>
                     </td>
-                    <td className="px-4 py-3.5">
-                      <div className="flex items-center gap-2">
+                    <td className="px-4 py-3.5 whitespace-nowrap">
+                      {record.status === "Pending Job Order" && (
                         <button
-                          onClick={() => setSelectedRecord(record)}
-                          className="text-gray-400 hover:text-blue-500 transition-colors"
-                          title="View details"
+                          onClick={(e) => { e.stopPropagation(); router.push(`/dashboard/job-management/add?intake_id=${record.intake_id}`) }}
+                          className="flex items-center gap-1 text-xs font-medium text-blue-600 hover:text-blue-800 border border-blue-200 rounded-md px-2 py-1 hover:bg-blue-50 transition-colors"
+                          title="Create Job Order"
                         >
-                          <Eye className="w-4 h-4" />
+                          <ClipboardList className="w-3.5 h-3.5" />
+                          Create JO
                         </button>
-                        {record.status === "Pending Job Order" && (
-                          <button
-                            onClick={() => router.push(`/dashboard/job-management/add?intake_id=${record.intake_id}`)}
-                            className="flex items-center gap-1 text-xs font-medium text-blue-600 hover:text-blue-800 border border-blue-200 rounded-md px-2 py-1 hover:bg-blue-50 transition-colors"
-                            title="Create Job Order"
-                          >
-                            <ClipboardList className="w-3.5 h-3.5" />
-                            Create JO
-                          </button>
-                        )}
-                      </div>
+                      )}
                     </td>
                   </tr>
                 ))

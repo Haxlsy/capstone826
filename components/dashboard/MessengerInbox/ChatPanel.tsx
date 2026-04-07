@@ -1,8 +1,14 @@
 "use client"
 
 import { useState, useRef, useEffect } from "react"
-import { Paperclip, FileText, Send, ChevronUp, ChevronDown, ExternalLink, AlertCircle } from "lucide-react"
+import { Paperclip, FileText, Send, ChevronUp, ChevronDown, ExternalLink, AlertCircle, X } from "lucide-react"
 import type { Conversation } from "./MessengerInbox"
+
+interface TemplateItem {
+  id: number
+  title: string
+  body: string
+}
 
 interface Props {
   conversation: Conversation
@@ -25,11 +31,39 @@ const jobStatusBadge: Record<string, string> = {
 export default function ChatPanel({ conversation, onSend }: Props) {
   const [input, setInput] = useState("")
   const [jobRefOpen, setJobRefOpen] = useState(true)
+  const [showTemplatePicker, setShowTemplatePicker] = useState(false)
+  const [templates, setTemplates] = useState<TemplateItem[]>([])
+  const [templatesLoading, setTemplatesLoading] = useState(false)
   const messagesEndRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" })
   }, [conversation.messages])
+
+  function handleOpenTemplatePicker() {
+    setShowTemplatePicker(true)
+    if (templates.length === 0) {
+      setTemplatesLoading(true)
+      fetch("/api/operations/message-templates")
+        .then((r) => r.json())
+        .then((json) => {
+          if (json.templates) {
+            setTemplates(json.templates.map((t: any) => ({
+              id: t.template_id,
+              title: t.template_name,
+              body: t.body_text,
+            })))
+          }
+        })
+        .catch(() => {})
+        .finally(() => setTemplatesLoading(false))
+    }
+  }
+
+  function handleSelectTemplate(body: string) {
+    setInput(body)
+    setShowTemplatePicker(false)
+  }
 
   function handleSend() {
     if (!input.trim()) return
@@ -215,7 +249,37 @@ export default function ChatPanel({ conversation, onSend }: Props) {
       )}
 
       {/* Input Area */}
-      <div className="shrink-0 border-t border-gray-100 bg-white px-4 py-3 flex items-end gap-3">
+      <div className="shrink-0 border-t border-gray-100 bg-white px-4 py-3 flex items-end gap-3 relative">
+        {/* Template Picker Popup */}
+        {showTemplatePicker && (
+          <div className="absolute bottom-full right-4 mb-2 w-80 bg-white border border-gray-200 rounded-xl shadow-lg z-20 overflow-hidden">
+            <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100">
+              <span className="text-sm font-semibold text-gray-800">Use a Template</span>
+              <button onClick={() => setShowTemplatePicker(false)} className="text-gray-400 hover:text-gray-600 transition-colors">
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            <div className="max-h-64 overflow-y-auto">
+              {templatesLoading ? (
+                <p className="text-xs text-gray-400 text-center py-6">Loading templates…</p>
+              ) : templates.length === 0 ? (
+                <p className="text-xs text-gray-400 text-center py-6">No templates found.</p>
+              ) : (
+                templates.map((t) => (
+                  <button
+                    key={t.id}
+                    onClick={() => handleSelectTemplate(t.body)}
+                    className="w-full text-left px-4 py-3 border-b border-gray-50 last:border-0 hover:bg-gray-50 transition-colors"
+                  >
+                    <p className="text-sm font-semibold text-gray-800 mb-0.5">{t.title}</p>
+                    <p className="text-xs text-gray-400 line-clamp-2 leading-relaxed">{t.body}</p>
+                  </button>
+                ))
+              )}
+            </div>
+          </div>
+        )}
+
         <button className="shrink-0 text-gray-400 hover:text-gray-600 transition-colors pb-1">
           <Paperclip className="w-5 h-5" />
         </button>
@@ -227,7 +291,10 @@ export default function ChatPanel({ conversation, onSend }: Props) {
           rows={1}
           className="flex-1 resize-none text-sm text-gray-700 placeholder-gray-400 bg-transparent focus:outline-none py-1 leading-relaxed max-h-28 overflow-y-auto"
         />
-        <button className="shrink-0 flex items-center gap-1.5 text-xs font-medium text-gray-500 border border-gray-200 px-3 py-2 rounded-lg hover:bg-gray-50 transition-colors">
+        <button
+          onClick={handleOpenTemplatePicker}
+          className="shrink-0 flex items-center gap-1.5 text-xs font-medium text-gray-500 border border-gray-200 px-3 py-2 rounded-lg hover:bg-gray-50 transition-colors"
+        >
           <FileText className="w-3.5 h-3.5" />
           Use Template
         </button>

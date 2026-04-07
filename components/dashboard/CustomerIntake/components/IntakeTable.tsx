@@ -21,8 +21,8 @@ interface Props {
 
 export default function IntakeTable({ records, loading, onCancel }: Props) {
   return (
-    <div className="bg-white border border-gray-200 rounded-b-2xl rounded-tr-2xl p-4 overflow-y-auto max-h-[60vh]">
-      <table className="w-full text-sm">
+    <div className="bg-white border border-gray-200 rounded-b-2xl rounded-tr-2xl overflow-auto max-h-[60vh]">
+      <table className="w-full min-w-225 text-sm">
         <thead>
           <tr className="border-b border-gray-100">
             {["INTAKE ID", "CUSTOMER NAME", "VEHICLE", "SERVICE TYPE", "SCHEDULED DATE", "PAYMENT STATUS", "DATE SUBMITTED", "STATUS", ""].map((col) => (
@@ -63,8 +63,8 @@ export default function IntakeTable({ records, loading, onCancel }: Props) {
                   </span>
                 </td>
                 <td className={`px-4 py-3.5 ${dim}`}>{r.dateSubmitted}</td>
-                <td className="px-4 py-3.5">
-                  <span className={`text-xs font-medium px-2.5 py-1 rounded-full ${statusBadge[r.status]}`}>
+                <td className="px-4 py-3.5 whitespace-nowrap">
+                  <span className={`text-xs font-medium px-2.5 py-1 rounded-full whitespace-nowrap ${statusBadge[r.status]}`}>
                     {r.status}
                   </span>
                 </td>

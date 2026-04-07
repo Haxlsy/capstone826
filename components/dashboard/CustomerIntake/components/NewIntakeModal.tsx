@@ -17,15 +17,24 @@ const emptyForm: NewIntakeForm = {
 
 const PAYMENT_METHODS = ["Cash", "GCash", "Bank Transfer", "Credit Card"]
 
+type FormErrors = Partial<Record<keyof NewIntakeForm | "_save", string>>
+
+function isValidPHNumber(raw: string): boolean {
+  const n = raw.replace(/[-\s]/g, "")
+  return /^(09\d{9}|\+639\d{9})$/.test(n)
+}
+
 interface Props {
   onClose: () => void
-  onSave: (f: NewIntakeForm) => void
+  onSave: (f: NewIntakeForm) => Promise<string | null>
   serviceTypes: string[]
 }
 
 export default function NewIntakeModal({ onClose, onSave, serviceTypes }: Props) {
   const [form, setForm] = useState<NewIntakeForm>(emptyForm)
   const [vehicleTypes, setVehicleTypes] = useState<{ vehicle_type_id: number; type_name: string }[]>([])
+  const [errors, setErrors] = useState<FormErrors>({})
+  const [saving, setSaving] = useState(false)
 
   useEffect(() => {
     fetch("/api/operations/job-management/list-vehicle-types")
@@ -36,11 +45,51 @@ export default function NewIntakeModal({ onClose, onSave, serviceTypes }: Props)
 
   function set(key: keyof NewIntakeForm, val: string) {
     setForm((prev) => ({ ...prev, [key]: val }))
+    setErrors((prev) => { const e = { ...prev }; delete e[key]; delete e._save; return e })
   }
 
-  function handleSave() {
-    if (!form.customerName.trim() || !form.plate.trim() || !form.serviceType) return
-    onSave(form)
+  function validate(): boolean {
+    const e: FormErrors = {}
+    if (!form.customerName.trim()) e.customerName = "Full name is required."
+    if (!form.contactNumber.trim()) {
+      e.contactNumber = "Contact number is required."
+    } else if (!isValidPHNumber(form.contactNumber)) {
+      e.contactNumber = "Enter a valid PH mobile number (e.g. 09171234567)."
+    }
+    if (!form.plate.trim()) e.plate = "Plate number is required."
+    if (!form.serviceType) e.serviceType = "Service type is required."
+    if (form.downpayment && isNaN(Number(form.downpayment))) e.downpayment = "Must be a valid number."
+    if (form.balance && isNaN(Number(form.balance))) e.balance = "Must be a valid number."
+    setErrors(e)
+    return Object.keys(e).length === 0
+  }
+
+  async function handleSave() {
+    if (!validate()) return
+    setSaving(true)
+    const errMsg = await onSave(form)
+    setSaving(false)
+    if (errMsg) setErrors({ _save: errMsg })
+  }
+
+  function field(key: keyof NewIntakeForm, label: string, type = "text", className = "") {
+    return (
+      <div key={key} className={className}>
+        <label className="block text-xs font-medium text-gray-500 mb-1">
+          {label}
+          {["customerName","contactNumber","plate","serviceType"].includes(key) && (
+            <span className="text-red-400 ml-0.5">*</span>
+          )}
+        </label>
+        <input
+          type={type}
+          value={form[key]}
+          onChange={(e) => set(key, e.target.value)}
+          className={`w-full px-3 py-2 text-sm border rounded-lg bg-gray-50 text-gray-700 placeholder-gray-400 focus:outline-none focus:ring-2 transition ${errors[key] ? "border-red-400 focus:ring-red-300" : "border-gray-200 focus:ring-blue-400"}`}
+        />
+        {errors[key] && <p className="text-xs text-red-500 mt-1">{errors[key]}</p>}
+      </div>
+    )
   }
 
   return (
@@ -58,22 +107,10 @@ export default function NewIntakeModal({ onClose, onSave, serviceTypes }: Props)
           <div>
             <p className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-3">Customer Details</p>
             <div className="grid grid-cols-2 gap-3">
-              {([
-                ["customerName", "Full Name"],
-                ["contactNumber", "Contact Number"],
-                ["email", "Email Address"],
-                ["address", "Home Address"],
-              ] as [keyof NewIntakeForm, string][]).map(([key, label]) => (
-                <div key={key} className={key === "address" ? "col-span-2" : ""}>
-                  <label className="block text-xs font-medium text-gray-500 mb-1">{label}</label>
-                  <input
-                    type="text"
-                    value={form[key]}
-                    onChange={(e) => set(key, e.target.value)}
-                    className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg bg-gray-50 text-gray-700 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-400 transition"
-                  />
-                </div>
-              ))}
+              {field("customerName", "Full Name")}
+              {field("contactNumber", "Contact Number")}
+              {field("email", "Email Address")}
+              {field("address", "Home Address", "text", "col-span-2")}
             </div>
           </div>
 
@@ -81,15 +118,7 @@ export default function NewIntakeModal({ onClose, onSave, serviceTypes }: Props)
           <div>
             <p className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-3">Vehicle Information</p>
             <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="block text-xs font-medium text-gray-500 mb-1">Plate Number</label>
-                <input
-                  type="text"
-                  value={form.plate}
-                  onChange={(e) => set("plate", e.target.value)}
-                  className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg bg-gray-50 text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-400 transition"
-                />
-              </div>
+              {field("plate", "Plate Number")}
               <div>
                 <label className="block text-xs font-medium text-gray-500 mb-1">Vehicle Type</label>
                 <select
@@ -101,21 +130,9 @@ export default function NewIntakeModal({ onClose, onSave, serviceTypes }: Props)
                   {vehicleTypes.map((t) => <option key={t.vehicle_type_id} value={t.vehicle_type_id}>{t.type_name}</option>)}
                 </select>
               </div>
-              {([
-                ["make", "Make"],
-                ["model", "Model"],
-                ["color", "Color"],
-              ] as [keyof NewIntakeForm, string][]).map(([key, label]) => (
-                <div key={key}>
-                  <label className="block text-xs font-medium text-gray-500 mb-1">{label}</label>
-                  <input
-                    type="text"
-                    value={form[key]}
-                    onChange={(e) => set(key, e.target.value)}
-                    className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg bg-gray-50 text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-400 transition"
-                  />
-                </div>
-              ))}
+              {field("make", "Make")}
+              {field("model", "Model")}
+              {field("color", "Color")}
             </div>
           </div>
 
@@ -124,43 +141,22 @@ export default function NewIntakeModal({ onClose, onSave, serviceTypes }: Props)
             <p className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-3">Service & Payment</p>
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className="block text-xs font-medium text-gray-500 mb-1">Service Type</label>
+                <label className="block text-xs font-medium text-gray-500 mb-1">
+                  Service Type <span className="text-red-400">*</span>
+                </label>
                 <select
                   value={form.serviceType}
                   onChange={(e) => set("serviceType", e.target.value)}
-                  className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg bg-gray-50 text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-400 transition"
+                  className={`w-full px-3 py-2 text-sm border rounded-lg bg-gray-50 text-gray-700 focus:outline-none focus:ring-2 transition ${errors.serviceType ? "border-red-400 focus:ring-red-300" : "border-gray-200 focus:ring-blue-400"}`}
                 >
                   <option value="">Select service...</option>
                   {serviceTypes.map((s) => <option key={s}>{s}</option>)}
                 </select>
+                {errors.serviceType && <p className="text-xs text-red-500 mt-1">{errors.serviceType}</p>}
               </div>
-              <div>
-                <label className="block text-xs font-medium text-gray-500 mb-1">Scheduled Date</label>
-                <input
-                  type="date"
-                  value={form.scheduledDate}
-                  onChange={(e) => set("scheduledDate", e.target.value)}
-                  className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg bg-gray-50 text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-400 transition"
-                />
-              </div>
-              <div>
-                <label className="block text-xs font-medium text-gray-500 mb-1">Downpayment (₱)</label>
-                <input
-                  type="number"
-                  value={form.downpayment}
-                  onChange={(e) => set("downpayment", e.target.value)}
-                  className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg bg-gray-50 text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-400 transition"
-                />
-              </div>
-              <div>
-                <label className="block text-xs font-medium text-gray-500 mb-1">Remaining Balance (₱)</label>
-                <input
-                  type="number"
-                  value={form.balance}
-                  onChange={(e) => set("balance", e.target.value)}
-                  className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg bg-gray-50 text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-400 transition"
-                />
-              </div>
+              {field("scheduledDate", "Scheduled Date", "date")}
+              {field("downpayment", "Downpayment (₱)", "number")}
+              {field("balance", "Remaining Balance (₱)", "number")}
               <div className="col-span-2">
                 <label className="block text-xs font-medium text-gray-500 mb-1">Payment Method</label>
                 <select
@@ -176,12 +172,18 @@ export default function NewIntakeModal({ onClose, onSave, serviceTypes }: Props)
           </div>
         </div>
 
+        {errors._save && (
+          <p className="mt-4 text-sm text-red-500 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
+            {errors._save}
+          </p>
+        )}
+
         <div className="flex justify-end gap-2 mt-6">
-          <button onClick={onClose} className="px-4 py-2 text-sm text-gray-500 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors">
+          <button onClick={onClose} disabled={saving} className="px-4 py-2 text-sm text-gray-500 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors disabled:opacity-50">
             Cancel
           </button>
-          <button onClick={handleSave} className="px-4 py-2 text-sm font-semibold bg-gray-900 text-white rounded-lg hover:bg-gray-700 transition-colors">
-            Save Intake
+          <button onClick={handleSave} disabled={saving} className="px-4 py-2 text-sm font-semibold bg-gray-900 text-white rounded-lg hover:bg-gray-700 transition-colors disabled:opacity-50">
+            {saving ? "Saving..." : "Save Intake"}
           </button>
         </div>
       </div>
