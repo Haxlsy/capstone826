@@ -116,7 +116,7 @@ export default function LoginPage() {
                       setUsername(e.target.value)
                       if (errors.username) setErrors((prev) => ({ ...prev, username: undefined }))
                     }}
-                    placeholder="826admin"
+                    placeholder="Ex. role-name"
                     className={`w-full pl-10 pr-4 py-2.5 text-sm rounded-lg border bg-slate-50 text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 transition ${
                       errors.username ? "border-red-400 focus:ring-red-400" : "border-slate-200"
                     }`}
