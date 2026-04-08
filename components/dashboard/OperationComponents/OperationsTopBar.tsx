@@ -1,7 +1,50 @@
 "use client"
 
-import { Bell } from "lucide-react"
 import { useCurrentUser, getRoleLabel, getInitials } from "@/lib/hooks/useCurrentUser"
+import NotificationBell, { NotificationItem } from "@/components/shared/NotificationBell"
+
+const MOCK_NOTIFICATIONS: NotificationItem[] = [
+  {
+    id: 1,
+    title: "New intake submitted",
+    message: "Customer Juan Dela Cruz submitted a new intake request. Awaiting review.",
+    time: "10m ago",
+    read: false,
+    type: "info",
+  },
+  {
+    id: 2,
+    title: "Job order overdue",
+    message: "Job Order #JO-2024-041 has passed its target completion date.",
+    time: "1h ago",
+    read: false,
+    type: "warning",
+  },
+  {
+    id: 3,
+    title: "Technician assigned",
+    message: "Tech Roel Mendoza was assigned to Job Order #JO-2024-038.",
+    time: "3h ago",
+    read: false,
+    type: "success",
+  },
+  {
+    id: 4,
+    title: "Job order completed",
+    message: "Job Order #JO-2024-035 was marked as completed by the head technician.",
+    time: "5h ago",
+    read: true,
+    type: "success",
+  },
+  {
+    id: 5,
+    title: "Parts request pending",
+    message: "A parts request for Job Order #JO-2024-033 needs your approval.",
+    time: "1d ago",
+    read: true,
+    type: "warning",
+  },
+]
 
 export default function OperationsTopBar() {
   const user = useCurrentUser()
@@ -12,12 +55,7 @@ export default function OperationsTopBar() {
 
   return (
     <header className="h-14 bg-white border-b border-gray-100 flex items-center justify-end px-6 gap-5 shrink-0">
-      <div className="relative">
-        <Bell className="w-5 h-5 text-gray-500" />
-        <span className="absolute -top-1.5 -right-1.5 w-4 h-4 bg-red-500 text-white text-[9px] font-bold rounded-full flex items-center justify-center">
-          2
-        </span>
-      </div>
+      <NotificationBell notifications={MOCK_NOTIFICATIONS} />
       <div className="flex items-center gap-2.5">
         <div className="w-8 h-8 rounded-full bg-gray-700 text-white text-xs font-semibold flex items-center justify-center">
           {initials}

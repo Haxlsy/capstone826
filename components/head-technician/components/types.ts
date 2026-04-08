@@ -9,6 +9,7 @@ export type Status =
 
 export type HeadTechJob = {
   job_id: string;
+  raw_id?: number;
   customer_name: string;
   plate_number: string;
   car_make: string;

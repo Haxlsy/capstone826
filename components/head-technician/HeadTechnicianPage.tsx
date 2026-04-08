@@ -1,18 +1,40 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Bell } from "lucide-react";
-import { ACTIVE_JOBS } from "./components/data";
+import { HeadTechJob, Status } from "./components/types";
 import { HeadTechJobCard } from "./components/HeadTechJobCard";
 import { HeadTechFilters } from "./components/HeadTechFilters";
 import { BottomNav } from "./components/BottomNav";
-import { Status } from "./components/types";
 
 export default function HeadTechnicianPage() {
+  const [jobs, setJobs] = useState<HeadTechJob[]>([]);
+  const [loading, setLoading] = useState(true);
   const [statusFilter, setStatusFilter] = useState("all");
   const [technicianFilter, setTechnicianFilter] = useState("all");
 
-  const filteredJobs = ACTIVE_JOBS.filter((job) => {
+  useEffect(() => {
+    async function load() {
+      setLoading(true);
+      try {
+        const res = await fetch("/api/head-technician/jobs");
+        const json = await res.json();
+        if (res.ok) setJobs(json.jobs ?? []);
+      } catch {
+        // leave empty
+      } finally {
+        setLoading(false);
+      }
+    }
+    load();
+  }, []);
+
+  // Derive unique technician names from live data
+  const technicians = Array.from(
+    new Set(jobs.map((j) => j.technician_name).filter(Boolean))
+  );
+
+  const filteredJobs = jobs.filter((job) => {
     if (statusFilter !== "all" && job.status !== (statusFilter as Status)) return false;
     if (technicianFilter !== "all" && job.technician_name !== technicianFilter) return false;
     return true;
@@ -36,16 +58,20 @@ export default function HeadTechnicianPage() {
         <HeadTechFilters
           statusFilter={statusFilter}
           technicianFilter={technicianFilter}
+          technicians={technicians}
           onStatusChange={setStatusFilter}
           onTechnicianChange={setTechnicianFilter}
         />
 
         {/* Job List */}
         <div className="mt-4 flex flex-col gap-4">
-          {filteredJobs.map((job) => (
+          {loading && (
+            <p className="text-sm text-gray-400 text-center py-8">Loading jobs...</p>
+          )}
+          {!loading && filteredJobs.map((job) => (
             <HeadTechJobCard key={job.job_id} job={job} />
           ))}
-          {filteredJobs.length === 0 && (
+          {!loading && filteredJobs.length === 0 && (
             <p className="text-sm text-gray-400 text-center py-8">No jobs found.</p>
           )}
         </div>

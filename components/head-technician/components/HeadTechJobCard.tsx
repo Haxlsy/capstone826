@@ -1,5 +1,6 @@
 "use client";
 
+import { useRouter } from "next/navigation";
 import { HeadTechJob, STATUS_STYLES } from "./types";
 
 type HeadTechJobCardProps = {
@@ -7,8 +8,18 @@ type HeadTechJobCardProps = {
 };
 
 export function HeadTechJobCard({ job }: HeadTechJobCardProps) {
+  const router = useRouter();
+
+  function handleClick() {
+    const id = job.raw_id ?? job.job_id;
+    router.push(`/head-technician/${id}`);
+  }
+
   return (
-    <div className="bg-white rounded-2xl p-4 shadow-sm space-y-3">
+    <div
+      onClick={handleClick}
+      className="bg-white rounded-2xl p-4 shadow-sm space-y-3 cursor-pointer active:scale-[0.98] transition-transform"
+    >
       {/* Top Row */}
       <div className="flex items-center justify-between">
         <p className="font-medium text-sm text-gray-800">{job.job_id}</p>
