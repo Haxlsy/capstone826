@@ -178,7 +178,7 @@ export default function LoginPage() {
                 disabled={isLoading}
                 className="w-full flex items-center justify-center gap-2 py-3 rounded-xl bg-linear-to-r from-blue-500 to-blue-700 text-white font-semibold text-sm tracking-wide shadow-md hover:from-blue-600 hover:to-blue-800 active:scale-[0.98] transition-all disabled:opacity-60 disabled:cursor-not-allowed"
               >
-                {isLoading ? "Signing in…" : "Access Operations"}
+                {isLoading ? "Signing in…" : "Login"}
                 {!isLoading && <LogIn className="w-4 h-4" />}
               </button>
             </form>
