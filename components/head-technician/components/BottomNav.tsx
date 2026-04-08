@@ -26,14 +26,14 @@ export function BottomNav({ active = "jobs" }: BottomNavProps) {
   return (
     <nav className="fixed bottom-0 left-0 right-0 bg-white border-t flex justify-around py-3 z-10">
       <button
-        onClick={() => router.push("/test/head-technician")}
+        onClick={() => router.push("/head-technician")}
         className={`${base} ${active === "jobs" ? activeClass : inactiveClass}`}
       >
         <Briefcase size={20} />
         Jobs
       </button>
       <button
-        onClick={() => router.push("/test/head-technician/concerns")}
+        onClick={() => router.push("/head-technician/concerns")}
         className={`${base} ${active === "concerns" ? activeClass : inactiveClass}`}
       >
         <TriangleAlert size={20} />

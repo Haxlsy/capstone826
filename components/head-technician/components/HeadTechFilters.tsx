@@ -1,7 +1,6 @@
 "use client";
 
 import { Status } from "./types";
-import { TECHNICIANS } from "./data";
 
 const STATUS_OPTIONS: Status[] = [
   "Pending",
@@ -16,6 +15,7 @@ const STATUS_OPTIONS: Status[] = [
 type HeadTechFiltersProps = {
   statusFilter: string;
   technicianFilter: string;
+  technicians: string[];
   onStatusChange: (value: string) => void;
   onTechnicianChange: (value: string) => void;
 };
@@ -23,6 +23,7 @@ type HeadTechFiltersProps = {
 export function HeadTechFilters({
   statusFilter,
   technicianFilter,
+  technicians,
   onStatusChange,
   onTechnicianChange,
 }: HeadTechFiltersProps) {
@@ -47,7 +48,7 @@ export function HeadTechFilters({
         className="text-sm border border-gray-200 rounded-lg px-3 py-1.5 bg-white text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-100"
       >
         <option value="all">Technician: All</option>
-        {TECHNICIANS.map((t) => (
+        {technicians.map((t) => (
           <option key={t} value={t}>
             {t}
           </option>

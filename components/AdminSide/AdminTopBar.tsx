@@ -1,7 +1,50 @@
 "use client"
 
-import { Bell } from "lucide-react"
 import { useCurrentUser, getRoleLabel, getInitials } from "@/lib/hooks/useCurrentUser"
+import NotificationBell, { NotificationItem } from "@/components/shared/NotificationBell"
+
+const MOCK_NOTIFICATIONS: NotificationItem[] = [
+  {
+    id: 1,
+    title: "New user registered",
+    message: "A new staff account was created for Maria Santos (Sales role).",
+    time: "5m ago",
+    read: false,
+    type: "info",
+  },
+  {
+    id: 2,
+    title: "System backup complete",
+    message: "Scheduled daily backup finished successfully at 2:00 AM.",
+    time: "2h ago",
+    read: false,
+    type: "success",
+  },
+  {
+    id: 3,
+    title: "Unusual login detected",
+    message: "Login from an unrecognized device for account admin@company.com.",
+    time: "3h ago",
+    read: false,
+    type: "warning",
+  },
+  {
+    id: 4,
+    title: "Monthly report ready",
+    message: "The March 2026 operations summary report is now available.",
+    time: "1d ago",
+    read: true,
+    type: "info",
+  },
+  {
+    id: 5,
+    title: "Role permission updated",
+    message: "Permissions for the Technician role were modified by admin.",
+    time: "2d ago",
+    read: true,
+    type: "info",
+  },
+]
 
 export default function AdminTopBar() {
   const user = useCurrentUser()
@@ -12,12 +55,7 @@ export default function AdminTopBar() {
 
   return (
     <header className="h-14 bg-white border-b border-gray-100 flex items-center justify-end px-6 gap-5 shrink-0">
-      <div className="relative">
-        <Bell className="w-5 h-5 text-gray-500" />
-        <span className="absolute -top-1.5 -right-1.5 w-4 h-4 bg-red-500 text-white text-[9px] font-bold rounded-full flex items-center justify-center">
-          3
-        </span>
-      </div>
+      <NotificationBell notifications={MOCK_NOTIFICATIONS} />
       <div className="flex items-center gap-2.5">
         <div className="w-8 h-8 rounded-full bg-gray-700 text-white text-xs font-semibold flex items-center justify-center">
           {initials}
