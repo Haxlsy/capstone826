@@ -39,7 +39,18 @@ const MONTH_NAMES = [
 
 interface CalendarJob {
   scheduled_start: string
+  scheduled_end: string | null
   status: string
+  team_id: string | null
+  team_name: string
+  team_lead: string | null
+  duration_hours: number | null
+  job_order_id: number
+}
+
+interface DayJobs {
+  date: number
+  jobs: CalendarJob[]
 }
 
 export default function JobCalendarView() {
@@ -48,6 +59,7 @@ export default function JobCalendarView() {
   const [month, setMonth] = useState(today.getMonth()) // 0-indexed
 
   const [calendarJobs, setCalendarJobs] = useState<CalendarJob[]>([])
+  const [hoveredDay, setHoveredDay] = useState<number | null>(null)
 
   useEffect(() => {
     fetch("/api/operations/dashboard")
@@ -70,16 +82,17 @@ export default function JobCalendarView() {
     setMonth(today.getMonth())
   }
 
-  // Build dot data for this month
-  const dotData = useMemo<Record<number, DotColor[]>>(() => {
-    const map: Record<number, DotColor[]> = {}
+  // Build dot and job data for this month
+  const jobsByDate = useMemo<Record<number, { colors: DotColor[]; jobs: CalendarJob[] }>>(() => {
+    const map: Record<number, { colors: DotColor[]; jobs: CalendarJob[] }> = {}
     for (const job of calendarJobs) {
       const d = new Date(job.scheduled_start)
       if (d.getFullYear() === year && d.getMonth() === month) {
         const day = d.getDate()
         const color = STATUS_DOT_COLOR[job.status] ?? "gray"
-        if (!map[day]) map[day] = []
-        map[day].push(color)
+        if (!map[day]) map[day] = { colors: [], jobs: [] }
+        map[day].colors.push(color)
+        map[day].jobs.push(job)
       }
     }
     return map
@@ -99,7 +112,7 @@ export default function JobCalendarView() {
     <div className="bg-white rounded-xl border border-gray-100 p-5 flex flex-col gap-4">
       {/* Header */}
       <div className="flex items-center justify-between">
-        <h2 className="text-sm font-semibold text-gray-800">Job Calendar View</h2>
+        <h2 className="text-sm font-semibold text-gray-800">Technician Team Schedule</h2>
         <div className="flex items-center gap-2">
           <button
             onClick={prevMonth}
@@ -135,26 +148,70 @@ export default function JobCalendarView() {
       </div>
 
       {/* Calendar grid */}
-      <div className="grid grid-cols-7 gap-1">
+      <div className="grid grid-cols-7 gap-1 relative">
         {cells.map((day, idx) => {
-          if (day === null) return <div key={`empty-${idx}`} className="h-14" />
+          if (day === null) return <div key={`empty-${idx}`} className="h-20" />
           const isToday = isCurrentMonth && day === today.getDate()
-          const dots    = dotData[day] ?? []
+          const dayData = jobsByDate[day] ?? { colors: [], jobs: [] }
+          const hasJobs = dayData.jobs.length > 0
+          const showDetails = hoveredDay === day && hasJobs
+
           return (
             <div
               key={day}
-              className={`h-14 rounded-lg flex flex-col items-center pt-1.5 gap-1 cursor-pointer transition-colors ${
-                isToday ? "bg-gray-900" : "hover:bg-gray-50"
-              }`}
+              className="relative"
+              onMouseEnter={() => hasJobs && setHoveredDay(day)}
+              onMouseLeave={() => setHoveredDay(null)}
             >
-              <span className={`text-xs font-medium leading-none ${isToday ? "text-white" : "text-gray-700"}`}>
-                {day}
-              </span>
-              <div className="flex gap-0.5 flex-wrap justify-center px-1">
-                {dots.slice(0, 3).map((color, i) => (
-                  <span key={i} className={`w-1.5 h-1.5 rounded-full ${dotColorMap[color]}`} />
-                ))}
+              <div
+                className={`h-20 rounded-lg flex flex-col items-center pt-1.5 gap-1 cursor-pointer transition-colors ${
+                  isToday ? "bg-gray-900" : "hover:bg-gray-50"
+                } ${hasJobs ? "border-2 border-blue-200" : ""}`}
+              >
+                <span className={`text-xs font-medium leading-none ${isToday ? "text-white" : "text-gray-700"}`}>
+                  {day}
+                </span>
+                <div className="flex gap-0.5 flex-wrap justify-center px-1">
+                  {dayData.colors.slice(0, 3).map((color, i) => (
+                    <span key={i} className={`w-1.5 h-1.5 rounded-full ${dotColorMap[color]}`} />
+                  ))}
+                  {dayData.colors.length > 3 && (
+                    <span className="text-xs text-gray-400">+{dayData.colors.length - 3}</span>
+                  )}
+                </div>
+                {hasJobs && (
+                  <span className="text-xs font-semibold text-blue-600">{dayData.jobs.length} job{dayData.jobs.length !== 1 ? "s" : ""}</span>
+                )}
               </div>
+
+              {/* Tooltip with team and duration details */}
+              {showDetails && (
+                <div className="absolute z-20 top-full mt-1 left-0 bg-white rounded-lg shadow-lg border border-gray-200 p-3 w-48 max-h-64 overflow-y-auto">
+                  <div className="text-xs font-semibold text-gray-800 mb-2">Scheduled Teams & Durations</div>
+                  {dayData.jobs.map((job) => (
+                    <div key={job.job_order_id} className="mb-2 pb-2 border-b border-gray-100 last:border-b-0 last:pb-0">
+                      <div className="text-xs font-medium text-gray-700">{job.team_name}</div>
+                      {job.duration_hours && (
+                        <div className="text-xs text-gray-600">Duration: {job.duration_hours} hours</div>
+                      )}
+                      {job.team_lead && (
+                        <div className="text-xs text-gray-500">Lead: {job.team_lead}</div>
+                      )}
+                      <div className={`text-xs py-0.5 px-1.5 rounded mt-1 inline-block ${
+                        job.status === 'pending' ? 'bg-blue-100 text-blue-700' :
+                        job.status === 'ongoing' ? 'bg-blue-100 text-blue-700' :
+                        job.status === 'completed' ? 'bg-green-100 text-green-700' :
+                        job.status === 'quality_check' ? 'bg-orange-100 text-orange-700' :
+                        job.status === 'delayed' ? 'bg-red-100 text-red-700' :
+                        job.status === 'released' ? 'bg-teal-100 text-teal-700' :
+                        'bg-gray-100 text-gray-700'
+                      }`}>
+                        {job.status.replace('_', ' ')}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           )
         })}

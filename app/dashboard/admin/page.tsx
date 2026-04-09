@@ -39,9 +39,7 @@ export default async function AdminPage() {
 
   for (const p of recentProfiles ?? []) {
     const roleLabel =
-      p.role === "technician"
-        ? "Technician"
-        : p.role === "head_technician"
+      p.role === "head_technician"
         ? "Head Technician"
         : p.role === "operations"
         ? "Operations"

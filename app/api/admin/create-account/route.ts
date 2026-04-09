@@ -20,6 +20,13 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "All fields are required." }, { status: 400 })
   }
 
+  // Prevent technician role assignment (technician role is deprecated)
+  const ALLOWED_ROLES = ["admin", "super_admin", "operations", "sales", "head_technician"]
+  if (!ALLOWED_ROLES.includes(role)) {
+    console.log("[create-account] Invalid role:", role)
+    return NextResponse.json({ error: `Invalid role. Allowed roles: ${ALLOWED_ROLES.join(", ")}` }, { status: 400 })
+  }
+
   // Only super_admin can create admin accounts
   if (role === "admin" || role === "super_admin") {
     const cookieStore = await cookies()

@@ -1,30 +1,16 @@
 "use client"
 
 import Link from "next/link"
-import { FileText, Users, Activity, Download } from "lucide-react"
+import { FileText, Download } from "lucide-react"
 import { formatDate } from "./ExportUtils"
 
 const REPORT_CARDS = [
   {
     title: "Job Order Reports",
     description:
-      "Summary of all job orders by period, status, service type, or technician.",
+      "Summary of all job orders by period, status, service type, or assigned team.",
     icon: FileText,
     href: "/dashboard/admin/reports/job-orders",
-  },
-  {
-    title: "Customer Reports",
-    description:
-      "Summary of customer records and associated service histories.",
-    icon: Users,
-    href: "/dashboard/admin/reports/customers",
-  },
-  {
-    title: "Technician Performance Log",
-    description:
-      "Detailed work history per technician for accountability and monitoring.",
-    icon: Activity,
-    href: "/dashboard/admin/reports/technician-performance",
   },
 ]
 

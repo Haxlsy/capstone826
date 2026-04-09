@@ -7,7 +7,10 @@ export async function GET() {
     const cookieStore = await cookies();
     const supabase = createClient(cookieStore);
 
-    const { data, error } = await supabase.from("service").select("service_id, service_name, price").order("service_name");
+    const { data, error } = await supabase
+      .from("service")
+      .select("service_id, service_name, price, estimated_duration_days")
+      .order("service_name");
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
     return NextResponse.json({ services: data });

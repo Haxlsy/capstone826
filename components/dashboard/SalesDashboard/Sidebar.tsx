@@ -6,8 +6,6 @@ import {
   LayoutDashboard,
   MessageCircle,
   FileText,
-  UserPlus,
-  Users,
   ClipboardList,
   LogOut,
 } from "lucide-react"
@@ -16,8 +14,6 @@ const navItems = [
   { label: "Dashboard", href: "/dashboard/sales", icon: LayoutDashboard },
   { label: "Messenger Inbox", href: "/dashboard/messenger", icon: MessageCircle },
   { label: "Message Templates", href: "/dashboard/templates", icon: FileText },
-  { label: "Customer Intake", href: "/dashboard/intake", icon: UserPlus },
-  { label: "Customer Records", href: "/dashboard/customers", icon: Users },
   { label: "Job Order Status", href: "/dashboard/jobs", icon: ClipboardList },
 ]
 

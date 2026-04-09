@@ -13,8 +13,12 @@ export async function GET() {
         `job_order_id,
          current_status,
          scheduled_start,
+         scheduled_end,
+         duration_hours,
          created_at,
-         customer:customer_id(full_name)`
+         assigned_team_id,
+         customer:customer_id(full_name),
+         team:assigned_team_id(team_id, team_name, team_lead:team_lead_id(full_name))`
       )
       .order("created_at", { ascending: false })
 
@@ -41,22 +45,26 @@ export async function GET() {
       created_at: r.created_at,
     }))
 
-    // Calendar jobs (scheduled_start + status for dot rendering)
+    // Calendar jobs with team and duration information
     const calendar_jobs = rows
       .filter((r: any) => r.scheduled_start)
       .map((r: any) => ({
         scheduled_start: r.scheduled_start,
+        scheduled_end: r.scheduled_end,
         status: r.current_status,
+        team_id: r.assigned_team_id,
+        team_name: r.team?.team_name ?? "Unassigned",
+        team_lead: r.team?.team_lead_id?.full_name ?? null,
+        duration_hours: r.duration_hours ?? null,
+        job_order_id: r.job_order_id,
       }))
 
-    // Pending intake count
-    const { count: pending_intakes_count } = await supabase
-      .from("customer_intake")
-      .select("intake_id", { count: "exact", head: true })
-      .eq("status", "pending")
+    // Pending intake count (disabled feature, return 0)
+    const pending_intakes_count = 0
 
-    return NextResponse.json({ status_counts, recent_jobs, calendar_jobs, pending_intakes_count: pending_intakes_count ?? 0 })
+    return NextResponse.json({ status_counts, recent_jobs, calendar_jobs, pending_intakes_count })
   } catch (err: any) {
     return NextResponse.json({ error: err?.message ?? String(err) }, { status: 500 })
   }
 }
+

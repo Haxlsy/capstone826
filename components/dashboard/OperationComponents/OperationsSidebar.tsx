@@ -5,7 +5,6 @@ import { usePathname, useRouter } from "next/navigation"
 import {
   LayoutDashboard,
   ClipboardList,
-  FileText,
   AlertTriangle,
   Archive,
   LogOut,
@@ -14,7 +13,6 @@ import {
 const navItems = [
   { label: "Dashboard", href: "/dashboard/operations", icon: LayoutDashboard },
   { label: "Job Management", href: "/dashboard/job-management", icon: ClipboardList },
-  { label: "Customer Intake Records", href: "/dashboard/customer-intake-records", icon: FileText },
   { label: "Concerns", href: "/dashboard/concerns", icon: AlertTriangle, badge: 3 },
   { label: "Job Order Records", href: "/dashboard/job-order-records", icon: Archive },
 ]
