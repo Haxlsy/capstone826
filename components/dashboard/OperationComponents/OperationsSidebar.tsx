@@ -7,15 +7,17 @@ import {
   ClipboardList,
   AlertTriangle,
   Archive,
+  UserCheck,
   Settings,
   LogOut,
 } from "lucide-react"
 
 const navItems = [
-  { label: "Dashboard", href: "/dashboard/operations", icon: LayoutDashboard },
-  { label: "Job Management", href: "/dashboard/job-management", icon: ClipboardList },
-  { label: "Concerns", href: "/dashboard/concerns", icon: AlertTriangle, badge: 3 },
-  { label: "Job Order Records", href: "/dashboard/job-order-records", icon: Archive },
+  { label: "Dashboard",               href: "/dashboard/operations",               icon: LayoutDashboard },
+  { label: "Job Management",          href: "/dashboard/job-management",           icon: ClipboardList },
+  { label: "Concerns",                href: "/dashboard/concerns",                 icon: AlertTriangle, badge: 3 },
+  { label: "Job Order Records",       href: "/dashboard/job-order-records",        icon: Archive },
+  { label: "Technician Availability", href: "/dashboard/technician-availability",  icon: UserCheck },
 ]
 
 export default function OperationsSidebar() {

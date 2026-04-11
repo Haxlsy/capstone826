@@ -10,6 +10,7 @@ const OPERATIONS_PATHS = [
   "/dashboard/job-management",
   "/dashboard/concerns",
   "/dashboard/job-order-records",
+  "/dashboard/technician-availability",
   "/dashboard/operations/settings",
 ]
 

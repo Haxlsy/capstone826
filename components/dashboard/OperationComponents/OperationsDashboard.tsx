@@ -3,7 +3,6 @@
 import StatusSummaryCards from "./StatusSummaryCards"
 import JobCalendarView from "./JobCalendarView"
 import QuickAccessPanel from "./QuickAccessPanel"
-import TechnicianAvailability from "./TechnicianAvailability"
 
 export default function OperationsDashboard() {
   return (
@@ -15,10 +14,7 @@ export default function OperationsDashboard() {
       <StatusSummaryCards />
       <div className="grid grid-cols-[1fr_300px] gap-5">
         <JobCalendarView />
-        <div className="flex flex-col gap-5">
-          <QuickAccessPanel />
-          <TechnicianAvailability />
-        </div>
+        <QuickAccessPanel />
       </div>
     </div>
   )
