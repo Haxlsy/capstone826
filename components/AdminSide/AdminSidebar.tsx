@@ -6,18 +6,16 @@ import {
   LayoutDashboard,
   Users,
   Wrench,
-  FileBarChart2,
+  Bot,
   Settings,
   LogOut,
-  Car,
 } from "lucide-react"
 
 const navItems = [
   { label: "Dashboard", href: "/dashboard/admin", icon: LayoutDashboard },
   { label: "Account Management", href: "/dashboard/admin/accounts", icon: Users },
   { label: "Service Management", href: "/dashboard/admin/services", icon: Wrench },
-  { label: "Vehicle Types", href: "/dashboard/admin/vehicle-types", icon: Car },
-  { label: "Reports", href: "/dashboard/admin/reports", icon: FileBarChart2 },
+  { label: "AI Chatbot", href: "/dashboard/admin/chatbot", icon: Bot },
 ]
 
 export default function AdminSidebar() {

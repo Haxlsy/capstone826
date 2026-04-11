@@ -1,5 +1,5 @@
-import AccountTable from "@/components/AdminSide/AccountManagement/AccountTable"
+import AccountManagementPage from "@/components/AdminSide/AccountManagement/AccountManagementPage"
 
-export default function AccountManagementPage() {
-  return <AccountTable />
+export default function AccountsPage() {
+  return <AccountManagementPage />
 }

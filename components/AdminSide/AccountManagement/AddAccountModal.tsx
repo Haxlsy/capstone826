@@ -1,9 +1,17 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import { X, Eye, EyeOff } from "lucide-react"
+import { X, Eye, EyeOff, Lock } from "lucide-react"
 
-type UserRole = "admin" | "operations" | "sales" | "head_technician" | "technician"
+function generatePassword(fullName: string): string {
+  const parts = fullName.trim().split(/\s+/).filter(Boolean)
+  if (parts.length === 0) return ""
+  const first = parts[0].toLowerCase()
+  const last = parts.length > 1 ? parts[parts.length - 1].toLowerCase() : parts[0].toLowerCase()
+  return `${first}_826_${last}`
+}
+
+type UserRole = "admin" | "operations" | "sales" | "head_detailer" | "head_installer" | "installer" | "detailer"
 
 interface AccountData {
   user_id: string
@@ -21,11 +29,13 @@ interface AddAccountModalProps {
 }
 
 const ALL_ROLE_OPTIONS: { value: UserRole; label: string; superAdminOnly?: boolean }[] = [
-  { value: "admin", label: "Admin", superAdminOnly: true },
-  { value: "operations", label: "Operations" },
-  { value: "sales", label: "Sales" },
-  { value: "head_technician", label: "Head Technician" },
-  { value: "technician", label: "Technician" },
+  { value: "admin",          label: "Admin",          superAdminOnly: true },
+  { value: "operations",     label: "Operations" },
+  { value: "sales",          label: "Sales" },
+  { value: "head_detailer",  label: "Head Detailer" },
+  { value: "head_installer", label: "Head Installer" },
+  { value: "installer",      label: "Installer" },
+  { value: "detailer",       label: "Detailer" },
 ]
 
 const EMPTY_FORM = {
@@ -78,6 +88,15 @@ export default function AddAccountModal({ open, onClose, onSuccess, editAccount 
       }
     }
   }, [open, editAccount])
+
+  // Auto-generate password from full name (new accounts only)
+  useEffect(() => {
+    if (!isEdit && form.fullName) {
+      const generated = generatePassword(form.fullName)
+      setForm((prev) => ({ ...prev, password: generated, confirmPassword: generated }))
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [form.fullName, isEdit])
 
   // Prevent background scroll when open
   useEffect(() => {
@@ -205,9 +224,14 @@ export default function AddAccountModal({ open, onClose, onSuccess, editAccount 
             </div>
           )}
 
+          {/* Required fields note */}
+          <p className="text-xs text-gray-400"><span className="text-red-500">*</span> Required fields</p>
+
           {/* Full Name */}
           <div className="space-y-1.5">
-            <label className="block text-sm font-medium text-gray-700">Full Name</label>
+            <label className="block text-sm font-medium text-gray-700">
+              Full Name <span className="text-red-500">*</span>
+            </label>
             <input
               type="text"
               value={form.fullName}
@@ -215,7 +239,7 @@ export default function AddAccountModal({ open, onClose, onSuccess, editAccount 
               className={`w-full px-3 py-2.5 text-sm border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-100 focus:border-blue-400 transition-colors ${
                 errors.fullName ? "border-red-400 bg-red-50" : "border-gray-200"
               }`}
-              placeholder=""
+              placeholder="e.g. Juan Dela Cruz"
             />
             {errors.fullName && (
               <p className="text-xs text-red-500">{errors.fullName}</p>
@@ -224,7 +248,10 @@ export default function AddAccountModal({ open, onClose, onSuccess, editAccount 
 
           {/* Username — read-only in edit mode */}
           <div className="space-y-1.5">
-            <label className="block text-sm font-medium text-gray-700">Username</label>
+            <label className="block text-sm font-medium text-gray-700">
+              Username {!isEdit && <span className="text-red-500">*</span>}
+              {isEdit && <span className="text-gray-400 font-normal"> (cannot be changed)</span>}
+            </label>
             <input
               type="text"
               value={form.username}
@@ -237,7 +264,7 @@ export default function AddAccountModal({ open, onClose, onSuccess, editAccount 
                   ? "border-red-400 bg-red-50 focus:ring-2 focus:ring-blue-100 focus:border-blue-400"
                   : "border-gray-200 focus:ring-2 focus:ring-blue-100 focus:border-blue-400"
               }`}
-              placeholder=""
+              placeholder="e.g. juan.delacruz"
             />
             {errors.username && (
               <p className="text-xs text-red-500">{errors.username}</p>
@@ -247,60 +274,90 @@ export default function AddAccountModal({ open, onClose, onSuccess, editAccount 
           {/* Password */}
           <div className="space-y-1.5">
             <label className="block text-sm font-medium text-gray-700">
-              Password{isEdit && <span className="text-gray-400 font-normal"> (leave blank to keep current)</span>}
+              Password{" "}
+              {!isEdit && <span className="text-red-500">*</span>}
+              {isEdit && <span className="text-gray-400 font-normal"> (leave blank to keep current)</span>}
             </label>
-            <div className="relative">
-              <input
-                type={showPassword ? "text" : "password"}
-                value={form.password}
-                onChange={(e) => setField("password", e.target.value)}
-                className={`w-full px-3 py-2.5 pr-10 text-sm border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-100 focus:border-blue-400 transition-colors ${
-                  errors.password ? "border-red-400 bg-red-50" : "border-gray-200"
-                }`}
-                placeholder=""
-              />
-              <button
-                type="button"
-                onClick={() => setShowPassword((v) => !v)}
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
-              >
-                {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-              </button>
-            </div>
+            {!isEdit ? (
+              <>
+                <div className="relative">
+                  <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400 pointer-events-none" />
+                  <input
+                    type={showPassword ? "text" : "password"}
+                    value={form.password}
+                    readOnly
+                    className="w-full pl-9 pr-10 py-2.5 text-sm border border-gray-200 rounded-lg bg-gray-50 text-gray-500 cursor-not-allowed font-mono"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword((v) => !v)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                  >
+                    {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  </button>
+                </div>
+                <p className="text-xs text-blue-500">
+                  Auto-generated from full name: <span className="font-mono">{form.password || "—"}</span>
+                </p>
+              </>
+            ) : (
+              <div className="relative">
+                <input
+                  type={showPassword ? "text" : "password"}
+                  value={form.password}
+                  onChange={(e) => setField("password", e.target.value)}
+                  className={`w-full px-3 py-2.5 pr-10 text-sm border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-100 focus:border-blue-400 transition-colors ${
+                    errors.password ? "border-red-400 bg-red-50" : "border-gray-200"
+                  }`}
+                  placeholder=""
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword((v) => !v)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                >
+                  {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                </button>
+              </div>
+            )}
             {errors.password && (
               <p className="text-xs text-red-500">{errors.password}</p>
             )}
           </div>
 
-          {/* Confirm Password */}
-          <div className="space-y-1.5">
-            <label className="block text-sm font-medium text-gray-700">Confirm Password</label>
-            <div className="relative">
-              <input
-                type={showConfirm ? "text" : "password"}
-                value={form.confirmPassword}
-                onChange={(e) => setField("confirmPassword", e.target.value)}
-                className={`w-full px-3 py-2.5 pr-10 text-sm border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-100 focus:border-blue-400 transition-colors ${
-                  errors.confirmPassword ? "border-red-400 bg-red-50" : "border-gray-200"
-                }`}
-                placeholder=""
-              />
-              <button
-                type="button"
-                onClick={() => setShowConfirm((v) => !v)}
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
-              >
-                {showConfirm ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-              </button>
+          {/* Confirm Password — only shown in edit mode */}
+          {isEdit && (
+            <div className="space-y-1.5">
+              <label className="block text-sm font-medium text-gray-700">Confirm Password</label>
+              <div className="relative">
+                <input
+                  type={showConfirm ? "text" : "password"}
+                  value={form.confirmPassword}
+                  onChange={(e) => setField("confirmPassword", e.target.value)}
+                  className={`w-full px-3 py-2.5 pr-10 text-sm border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-100 focus:border-blue-400 transition-colors ${
+                    errors.confirmPassword ? "border-red-400 bg-red-50" : "border-gray-200"
+                  }`}
+                  placeholder=""
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowConfirm((v) => !v)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                >
+                  {showConfirm ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                </button>
+              </div>
+              {errors.confirmPassword && (
+                <p className="text-xs text-red-500">{errors.confirmPassword}</p>
+              )}
             </div>
-            {errors.confirmPassword && (
-              <p className="text-xs text-red-500">{errors.confirmPassword}</p>
-            )}
-          </div>
+          )}
 
           {/* Role */}
           <div className="space-y-1.5">
-            <label className="block text-sm font-medium text-gray-700">Role</label>
+            <label className="block text-sm font-medium text-gray-700">
+              Role <span className="text-red-500">*</span>
+            </label>
             <select
               value={form.role}
               onChange={(e) => setField("role", e.target.value)}
@@ -316,7 +373,9 @@ export default function AddAccountModal({ open, onClose, onSuccess, editAccount 
 
           {/* Contact Number */}
           <div className="space-y-1.5">
-            <label className="block text-sm font-medium text-gray-700">Contact Number</label>
+            <label className="block text-sm font-medium text-gray-700">
+              Contact Number <span className="text-red-500">*</span>
+            </label>
             <input
               type="text"
               value={form.contactNo}
@@ -324,7 +383,7 @@ export default function AddAccountModal({ open, onClose, onSuccess, editAccount 
               className={`w-full px-3 py-2.5 text-sm border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-100 focus:border-blue-400 transition-colors ${
                 errors.contactNo ? "border-red-400 bg-red-50" : "border-gray-200"
               }`}
-              placeholder=""
+              placeholder="e.g. 09171234567"
             />
             {errors.contactNo && (
               <p className="text-xs text-red-500">{errors.contactNo}</p>

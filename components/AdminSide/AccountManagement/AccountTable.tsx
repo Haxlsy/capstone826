@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react"
 import { Search, Filter, MoreHorizontal, ChevronLeft, ChevronRight } from "lucide-react"
 import AddAccountModal from "./AddAccountModal"
 
-type UserRole = "admin" | "operations" | "sales" | "head_technician" | "technician"
+type UserRole = "admin" | "operations" | "sales" | "head_detailer" | "head_installer" | "installer" | "detailer"
 
 interface Account {
   user_id: string
@@ -17,19 +17,23 @@ interface Account {
 }
 
 const ROLE_LABELS: Record<UserRole, string> = {
-  admin: "Admin",
-  operations: "Operations",
-  sales: "Sales",
-  head_technician: "Head Technician",
-  technician: "Technician",
+  admin:          "Admin",
+  operations:     "Operations",
+  sales:          "Sales",
+  head_detailer:  "Head Detailer",
+  head_installer: "Head Installer",
+  installer:      "Installer",
+  detailer:       "Detailer",
 }
 
 const ROLE_BADGE: Record<UserRole, string> = {
-  admin: "bg-purple-50 text-purple-600",
-  operations: "bg-blue-50 text-blue-600",
-  sales: "bg-green-50 text-green-600",
-  head_technician: "bg-orange-50 text-orange-500",
-  technician: "border border-gray-200 text-gray-600",
+  admin:          "bg-purple-50 text-purple-600",
+  operations:     "bg-blue-50 text-blue-600",
+  sales:          "bg-green-50 text-green-600",
+  head_detailer:  "bg-orange-50 text-orange-500",
+  head_installer: "bg-amber-50 text-amber-600",
+  installer:      "border border-gray-200 text-gray-600",
+  detailer:       "bg-gray-50 text-gray-500",
 }
 
 const PAGE_SIZE_OPTIONS = [10, 15, 20, 30]
@@ -192,7 +196,7 @@ export default function AccountTable() {
               <div>
                 <p className="text-xs font-semibold text-gray-500 mb-1.5 uppercase tracking-wide">Role</p>
                 <div className="space-y-0.5">
-                  {(["all", "admin", "operations", "sales", "head_technician", "technician"] as const).map(
+                  {(["all", "admin", "operations", "sales", "head_detailer", "head_installer", "installer", "detailer"] as const).map(
                     (r) => (
                       <button
                         key={r}

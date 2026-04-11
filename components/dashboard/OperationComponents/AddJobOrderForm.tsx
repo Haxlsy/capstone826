@@ -4,7 +4,6 @@ import { useState, useEffect } from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { CheckCircle2 } from "lucide-react"
-import TeamAssignmentRecommender from "./TeamAssignmentRecommender"
 
 interface Customer {
   customer_id: number
@@ -44,8 +43,6 @@ export default function AddJobOrderForm() {
   const [plateNumber, setPlateNumber] = useState("")
   const [carColor, setCarColor] = useState("")
   const [scheduledDate, setScheduledDate] = useState("")
-  const [selectedTeamId, setSelectedTeamId] = useState<string | null>(null)
-
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [success, setSuccess] = useState(false)
@@ -176,7 +173,6 @@ export default function AddJobOrderForm() {
           service_id: selectedServiceId,
           vehicle_type_id: selectedVehicleTypeId,
           assigned_technician_id: null,
-          assigned_team_id: selectedTeamId,
           plate_number: plateNumber.trim(),
           car_make: "",
           car_model: "",
@@ -458,21 +454,6 @@ export default function AddJobOrderForm() {
           </div>
         )}
       </div>
-
-      {/* Card 3: Team Assignment Recommendations */}
-      {selectedServiceId && scheduledDate && (
-        <div className="bg-white border border-gray-200 rounded-xl p-5">
-          <TeamAssignmentRecommender
-            service_id={selectedServiceId}
-            scheduled_start={scheduledDate}
-            duration_hours={estimatedDays > 0 ? Math.ceil((estimatedDays * 24) / 8) : undefined}
-            onTeamSelect={(teamId, teamName) => {
-              setSelectedTeamId(teamId)
-              console.log(`Selected team: ${teamName}`)
-            }}
-          />
-        </div>
-      )}
 
       {/* Footer */}
       <div className="flex gap-3">

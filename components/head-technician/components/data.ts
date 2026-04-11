@@ -22,7 +22,7 @@ export const ACTIVE_JOBS: HeadTechJob[] = [
     service: "Window Tinting",
     technician_name: "Rosa Aquino",
     scheduled_start: "Apr 2, 2026, 10:00 AM",
-    status: "Quality Check",
+    status: "For Release",
     progress: 100,
   },
   {
@@ -46,7 +46,7 @@ export const ACTIVE_JOBS: HeadTechJob[] = [
     service: "Ceramic Coating",
     technician_name: "David Cruz",
     scheduled_start: "Mar 31, 2026, 1:00 PM",
-    status: "Quality Check",
+    status: "For Release",
     progress: 100,
   },
   {
