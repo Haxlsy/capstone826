@@ -48,3 +48,6 @@ memory/
 
 # internal docs
 /docs
+
+# supabase local cache (keep migrations/ committed)
+supabase/.temp/

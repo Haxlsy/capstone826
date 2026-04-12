@@ -52,16 +52,16 @@ export default function AddJobOrderForm() {
     async function loadRefs() {
       setLoadingRefs(true)
       try {
-        const [cRes, sRes, vRes] = await Promise.all([
-          fetch("/api/operations/job-management/list-customers").catch(() => ({ ok: false, json: () => ({}) })),
-          fetch("/api/operations/job-management/list-services").catch(() => ({ ok: false, json: () => ({}) })),
-          fetch("/api/operations/job-management/list-vehicle-types"),
-        ])
-        
         const [cJson, sJson, vJson] = await Promise.all([
-          cRes.ok ? cRes.json() : { customers: [] },
-          sRes.ok ? sRes.json() : { services: [] },
-          vRes.json(),
+          fetch("/api/operations/job-management/list-customers")
+            .then((r) => (r.ok ? r.json() : { customers: [] as Customer[] }))
+            .catch(() => ({ customers: [] as Customer[] })),
+          fetch("/api/operations/job-management/list-services")
+            .then((r) => (r.ok ? r.json() : { services: [] as Service[] }))
+            .catch(() => ({ services: [] as Service[] })),
+          fetch("/api/operations/job-management/list-vehicle-types")
+            .then((r) => r.json())
+            .catch(() => ({ vehicle_types: [] as VehicleType[] })),
         ])
 
         setCustomers(cJson.customers ?? [])

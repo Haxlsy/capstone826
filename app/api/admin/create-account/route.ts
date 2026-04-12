@@ -3,121 +3,106 @@ import { cookies } from "next/headers"
 import { createClient } from "@/lib/supabase/server"
 import { createAdminClient } from "@/lib/supabase/admin"
 
+const ALLOWED_ROLES = [
+  "admin",
+  "operations",
+  "sales",
+  "head_detailer",
+  "head_installer",
+]
+
 export async function POST(request: Request) {
   const body = await request.json()
-  const { fullName, username, password, role, contactNo } = body
+  const { fullName, username, password, role } = body
 
-  console.log("[create-account] Received request:", {
-    fullName,
-    username,
-    role,
-    contactNo,
-    password: password ? "***" : "(empty)",
-  })
-
-  if (!fullName || !username || !password || !role || !contactNo) {
-    console.log("[create-account] Validation failed — missing fields")
+  if (!fullName || !username || !password || !role) {
     return NextResponse.json({ error: "All fields are required." }, { status: 400 })
   }
 
-  // Prevent technician role assignment (technician role is deprecated)
-  const ALLOWED_ROLES = ["admin", "super_admin", "operations", "sales", "head_technician"]
   if (!ALLOWED_ROLES.includes(role)) {
-    console.log("[create-account] Invalid role:", role)
-    return NextResponse.json({ error: `Invalid role. Allowed roles: ${ALLOWED_ROLES.join(", ")}` }, { status: 400 })
+    return NextResponse.json(
+      { error: `Invalid role. Allowed: ${ALLOWED_ROLES.join(", ")}` },
+      { status: 400 }
+    )
   }
 
   // Only super_admin can create admin accounts
-  if (role === "admin" || role === "super_admin") {
+  if (role === "admin") {
     const cookieStore = await cookies()
-    const supabaseUser = createClient(cookieStore)
-    const { data: { user: caller } } = await supabaseUser.auth.getUser()
+    const supabase = createClient(cookieStore)
+    const { data: { user: caller } } = await supabase.auth.getUser()
 
-    let callerRole = ""
-    if (caller) {
-      const { data: callerProfile } = await supabaseUser
-        .from("profile")
-        .select("role")
-        .eq("user_id", caller.id)
-        .single()
-      callerRole = callerProfile?.role ?? ""
+    if (!caller) {
+      return NextResponse.json(
+        { error: "Authentication required." },
+        { status: 401 }
+      )
     }
 
-    if (callerRole !== "super_admin") {
-      return NextResponse.json({ error: "Only a Super Admin can assign the Admin role." }, { status: 403 })
+    // Use admin client to bypass RLS — user_account has no read policies for authenticated role
+    const adminClient = createAdminClient()
+    const { data: callerProfile } = await adminClient
+      .from("user_account")
+      .select("role")
+      .eq("id", caller.id)
+      .single()
+
+    if (callerProfile?.role !== "super_admin") {
+      return NextResponse.json(
+        { error: "Only a Super Admin can create Admin accounts." },
+        { status: 403 }
+      )
     }
   }
 
   const supabase = createAdminClient()
 
-  // Internal email derived from username
-  const email = `${username.toLowerCase().trim()}@826autocare.internal`
-  console.log("[create-account] Generated email:", email)
-
-  // Check if username already exists in profile
-  const { data: existing, error: lookupError } = await supabase
-    .from("profile")
-    .select("user_id")
-    .eq("user_name", username.trim())
+  // Check username uniqueness
+  const { data: existing } = await supabase
+    .from("user_account")
+    .select("id")
+    .eq("username", username.trim())
     .maybeSingle()
 
-  if (lookupError) {
-    console.error("[create-account] Username lookup error:", lookupError.message)
-  }
-
   if (existing) {
-    console.log("[create-account] Username already taken:", username)
     return NextResponse.json({ error: "Username is already taken." }, { status: 409 })
   }
 
-  // Create the Supabase Auth user.
-  // Pass user_metadata so the handle_new_user trigger creates the profile row
-  // with the correct user_name, full_name, and contact_no automatically.
-  console.log("[create-account] Creating auth user...")
+  // Internal email derived from username
+  const email = `${username.toLowerCase().trim()}@826autocare.internal`
+
+  // Create Supabase Auth user — handle_new_user trigger creates user_account row
   const { data: authData, error: authError } = await supabase.auth.admin.createUser({
     email,
     password,
     email_confirm: true,
     user_metadata: {
-      user_name: username.trim(),
+      username:  username.trim(),
       full_name: fullName.trim(),
-      contact_no: contactNo.trim(),
     },
   })
 
   if (authError || !authData.user) {
-    console.error("[create-account] Auth user creation failed:", authError?.message)
     return NextResponse.json(
       { error: authError?.message ?? "Failed to create auth user." },
       { status: 500 }
     )
   }
 
-  console.log("[create-account] Auth user created:", authData.user.id)
-
-  // The handle_new_user trigger auto-inserted a profile row with user_name,
-  // full_name, and contact_no from the metadata. Role defaults to 'technician'.
-  // UPDATE here to set the actual role (and ensure all fields are correct).
+  // Update role (trigger defaults role to 'sales') and ensure full_name is set
   const { error: profileError } = await supabase
-    .from("profile")
+    .from("user_account")
     .update({
       role,
       full_name: fullName.trim(),
-      contact_no: contactNo.trim(),
     })
-    .eq("user_id", authData.user.id)
+    .eq("id", authData.user.id)
 
   if (profileError) {
-    console.error("[create-account] Profile update failed:", profileError.message)
-    // Rollback: delete the auth user (cascade will remove the profile row too)
+    // Rollback auth user
     await supabase.auth.admin.deleteUser(authData.user.id)
-    console.log("[create-account] Rolled back auth user:", authData.user.id)
-    return NextResponse.json(
-      { error: profileError.message ?? "Failed to update profile." },
-      { status: 500 }
-    )
+    return NextResponse.json({ error: profileError.message }, { status: 500 })
   }
 
-  console.log("[create-account] Profile updated successfully for user:", authData.user.id)
   return NextResponse.json({ success: true })
 }

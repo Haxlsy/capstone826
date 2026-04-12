@@ -1,99 +1,109 @@
-import { NextResponse } from "next/server";
-import { cookies } from "next/headers";
-import { createClient } from "@/lib/supabase/server";
-import { createClient as createAdminClient } from "@supabase/supabase-js";
-import { randomUUID } from "crypto";
+import { NextResponse } from "next/server"
+import { cookies } from "next/headers"
+import { createClient } from "@/lib/supabase/server"
+import { createAdminClient } from "@/lib/supabase/admin"
 
 export async function POST(request: Request) {
   try {
-    const body = await request.json();
+    const body = await request.json()
     const {
-      customer_id,
+      customer_record_id,  // optional — from Messenger booking
       service_id,
-      vehicle_type_id,
-      assigned_technician_id,
-      assigned_team_id,
+      head_detailer_id,    // user_account.id of head detailer (optional)
+      head_installer_id,   // user_account.id of head installer (optional)
+      scheduled_at,
+      // Manual fields (when no Messenger booking)
+      customer_name,
+      contact_number,
       plate_number,
-      car_make,
-      car_model,
-      car_color,
-      payment_amount,
-      scheduled_start,
-      scheduled_end,
-    } = body;
+      vehicle_unit,
+    } = body
 
-    if (!customer_id || !service_id || !vehicle_type_id) {
-      return NextResponse.json({ error: "Missing required fields." }, { status: 400 });
+    if (!service_id) {
+      return NextResponse.json({ error: "service_id is required." }, { status: 400 })
+    }
+    if (!customer_record_id && !customer_name) {
+      return NextResponse.json(
+        { error: "Either customer_record_id or manual customer details are required." },
+        { status: 400 }
+      )
     }
 
-    const cookieStore = await cookies();
-    const supabase = createClient(cookieStore);
+    const cookieStore = await cookies()
+    const supabase = createClient(cookieStore)
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) return NextResponse.json({ error: "Unauthorized." }, { status: 401 })
 
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-    if (!user) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
+    const admin = createAdminClient()
 
-    const now = new Date();
-    const startDate = scheduled_start ?? now.toISOString().slice(0, 10);
-
-    // Calculate end date from service duration if not provided
-    let endDate = scheduled_end ?? null;
-    if (!endDate && scheduled_start) {
-      const { data: svc } = await supabase
+    // Calculate expected_completion_at from service duration
+    let expected_completion_at: string | null = null
+    if (scheduled_at) {
+      const { data: svc } = await admin
         .from("service")
-        .select("estimated_duration_days")
-        .eq("service_id", service_id)
-        .single();
-      if (svc?.estimated_duration_days) {
-        const d = new Date(scheduled_start);
-        d.setDate(d.getDate() + svc.estimated_duration_days);
-        endDate = d.toISOString().slice(0, 10);
+        .select("estimated_duration_mins")
+        .eq("id", service_id)
+        .single()
+      if (svc?.estimated_duration_mins) {
+        const d = new Date(scheduled_at)
+        d.setMinutes(d.getMinutes() + svc.estimated_duration_mins)
+        expected_completion_at = d.toISOString()
       }
     }
 
-    const payload: any = {
-      customer_id,
+    const payload: Record<string, any> = {
       service_id,
-      vehicle_type_id,
-      assigned_technician_id: assigned_technician_id ?? null,
-      assigned_team_id: assigned_team_id ?? null,
-      created_by_user_id: user.id,
-      plate_number: plate_number ?? null,
-      car_make: car_make ?? null,
-      car_model: car_model ?? null,
-      car_color: car_color ?? null,
-      payment_amount: payment_amount ?? 0,
-      scheduled_start: startDate,
-      scheduled_end: endDate,
-      local_uuid: randomUUID(),
-    };
+      scheduled_at:           scheduled_at ?? null,
+      expected_completion_at,
+      status:                 "Pending",
+    }
 
-    let { data, error } = await supabase
+    if (customer_record_id) {
+      payload.customer_record_id = customer_record_id
+    } else {
+      payload.customer_name   = customer_name?.trim() ?? null
+      payload.contact_number  = contact_number?.trim() ?? null
+      payload.plate_number    = plate_number?.trim() ?? null
+      payload.vehicle_unit    = vehicle_unit?.trim() ?? null
+    }
+
+    const { data, error } = await admin
       .from("job_order")
-      .insert([payload])
+      .insert(payload)
       .select()
-      .single();
+      .single()
 
-    // Fallback to admin client if RLS blocks insert
-    if (error && process.env.SUPABASE_SERVICE_ROLE_KEY) {
-      const admin = createAdminClient(
-        process.env.NEXT_PUBLIC_SUPABASE_URL!,
-        process.env.SUPABASE_SERVICE_ROLE_KEY
-      );
-      const adminRes = await admin.from("job_order").insert([payload]).select().single();
-      data = adminRes.data;
-      error = (adminRes.error as any) ?? null;
+    if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+
+    // Assign head detailer / head installer to the team table
+    const teamInserts: Record<string, any>[] = []
+    if (head_detailer_id) {
+      teamInserts.push({
+        job_order_id:    data.id,
+        user_account_id: head_detailer_id,
+        role_in_job:     "head_detailer",
+      })
+    }
+    if (head_installer_id) {
+      teamInserts.push({
+        job_order_id:    data.id,
+        user_account_id: head_installer_id,
+        role_in_job:     "head_installer",
+      })
+    }
+    if (teamInserts.length > 0) {
+      await admin.from("job_order_team").insert(teamInserts)
     }
 
-    if (error) {
-      return NextResponse.json({ error: (error as any).message ?? String(error) }, { status: 500 });
-    }
+    // Log initial status to history
+    await admin.from("job_order_history").insert({
+      job_order_id: data.id,
+      status:       "Pending",
+      changed_by_id: user.id,
+    })
 
-    return NextResponse.json({ success: true, job_order: data }, { status: 201 });
+    return NextResponse.json({ success: true, job: data }, { status: 201 })
   } catch (err: any) {
-    return NextResponse.json({ error: err?.message ?? String(err) }, { status: 500 });
+    return NextResponse.json({ error: err?.message ?? String(err) }, { status: 500 })
   }
 }

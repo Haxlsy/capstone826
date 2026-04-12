@@ -6,7 +6,7 @@ import { z } from "zod"
 const CreateCustomerSchema = z.object({
   full_name: z.string().min(1, "Name required").max(255),
   contact_number: z.string().min(1, "Phone required").max(20),
-  email: z.string().email("Valid email required"),
+  email: z.email({ message: "Valid email required" }),
 })
 
 export async function POST(request: Request) {
@@ -56,7 +56,7 @@ export async function POST(request: Request) {
   } catch (err: any) {
     if (err instanceof z.ZodError) {
       return NextResponse.json(
-        { error: err.errors[0]?.message ?? "Validation failed" },
+        { error: err.issues[0]?.message ?? "Validation failed" },
         { status: 400 }
       )
     }

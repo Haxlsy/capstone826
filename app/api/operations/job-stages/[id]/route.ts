@@ -1,47 +1,32 @@
-import { NextResponse } from "next/server";
-import { cookies } from "next/headers";
-import { createClient } from "@/lib/supabase/server";
+import { NextResponse } from "next/server"
+import { createAdminClient } from "@/lib/supabase/admin"
 
 export async function GET(
-  request: Request,
+  _request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const { id } = await params;
+    const { id } = await params
 
-    if (!id) {
-      return NextResponse.json({ error: "Missing document ID" }, { status: 400 });
-    }
-
-    const cookieStore = await cookies();
-    const supabase = createClient(cookieStore);
+    const supabase = createAdminClient()
 
     const { data, error } = await supabase
-      .from("job_stage_documentation")
+      .from("job_stage_progress")
       .select(
-        `document_id,
-         job_order_id,
-         stage_template_id,
-         submitted_by_user_id,
-         stage_status,
-         media_url,
-         media_type,
-         submitted_at,
-         rework_note,
-         local_uuid,
-         job_order:job_order_id(job_order_id, plate_number),
-         stage_template:stage_template_id(stage_template_id, stage_name),
-         submitted_by:submitted_by_user_id(user_id, full_name)`
+        `id, job_order_id, status, rework_instructions, handoff_notes, completed_at,
+         stage:service_stage_id(id, name, category, sequence_order),
+         completed_by:completed_by_id(full_name),
+         media:stage_media(id, file_url, media_type, uploaded_at)`
       )
-      .eq("document_id", Number(id))
-      .single();
+      .eq("id", id)
+      .single()
 
-    if (error) {
-      return NextResponse.json({ error: error.message }, { status: 500 });
+    if (error || !data) {
+      return NextResponse.json({ error: "Not found." }, { status: 404 })
     }
 
-    return NextResponse.json({ stage_document: data });
+    return NextResponse.json({ stage: data })
   } catch (err: any) {
-    return NextResponse.json({ error: err?.message ?? String(err) }, { status: 500 });
+    return NextResponse.json({ error: err?.message ?? String(err) }, { status: 500 })
   }
 }

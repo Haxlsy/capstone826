@@ -1,13 +1,9 @@
-import AdminSidebar from "@/components/AdminSide/AdminSidebar"
-import AdminTopBar from "@/components/AdminSide/AdminTopBar"
 import Link from "next/link"
 
 export default function TestAdminPage() {
   return (
     <div className="flex h-screen bg-gray-50 overflow-hidden">
-      <AdminSidebar />
       <div className="flex flex-col flex-1 overflow-hidden">
-        <AdminTopBar />
         <main className="flex-1 overflow-y-auto p-6 flex flex-col gap-3">
           <Link
             href="/dashboard/admin"

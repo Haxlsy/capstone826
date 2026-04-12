@@ -1,70 +1,65 @@
 import { NextResponse } from "next/server"
-import { cookies } from "next/headers"
-import { createClient } from "@/lib/supabase/server"
+import { createAdminClient } from "@/lib/supabase/admin"
 
 export async function GET() {
   try {
-    const cookieStore = await cookies()
-    const supabase = createClient(cookieStore)
+    const supabase = createAdminClient()
 
-    const { data, error } = await supabase
+    // All job orders
+    const { data: jobs, error } = await supabase
       .from("job_order")
       .select(
-        `job_order_id,
-         current_status,
-         scheduled_start,
-         scheduled_end,
-         duration_hours,
-         created_at,
-         assigned_team_id,
-         customer:customer_id(full_name),
-         team:assigned_team_id(team_id, team_name, team_lead:team_lead_id(full_name))`
+        `id, status, scheduled_at, created_at,
+         customer:customer_record_id(full_name),
+         service:service_id(name)`
       )
       .order("created_at", { ascending: false })
 
-    if (error) {
-      return NextResponse.json({ error: error.message }, { status: 500 })
-    }
+    if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
-    const rows = data ?? []
+    const rows = jobs ?? []
 
     // Status counts
-    const STATUS_KEYS = ["pending", "ongoing", "quality_check", "completed", "delayed", "released", "cancelled"]
+    const STATUS_KEYS = ["Pending", "Ongoing", "For Rework", "For Release", "Released", "Delayed", "Cancelled"]
     const status_counts: Record<string, number> = Object.fromEntries(STATUS_KEYS.map((k) => [k, 0]))
     for (const row of rows) {
-      const s = row.current_status as string
+      const s = row.status as string
       if (s in status_counts) status_counts[s]++
     }
 
-    // Recent job orders (latest 5)
+    // Open concern count
+    const { count: concern_count } = await supabase
+      .from("concern")
+      .select("id", { count: "exact", head: true })
+      .eq("status", "Pending")
+
+    // Recent jobs (latest 5)
     const recent_jobs = rows.slice(0, 5).map((r: any) => ({
-      job_order_id: r.job_order_id,
-      id: `JO-${new Date(r.created_at).getFullYear()}-${String(r.job_order_id).padStart(3, "0")}`,
-      customer: r.customer?.full_name ?? `Customer #${r.job_order_id}`,
-      status: r.current_status,
+      id:         r.id,
+      customer:   r.customer?.full_name ?? "Manual Entry",
+      service:    r.service?.name ?? "—",
+      status:     r.status,
       created_at: r.created_at,
     }))
 
-    // Calendar jobs with team and duration information
+    // Calendar jobs
     const calendar_jobs = rows
-      .filter((r: any) => r.scheduled_start)
+      .filter((r: any) => r.scheduled_at)
       .map((r: any) => ({
-        scheduled_start: r.scheduled_start,
-        scheduled_end: r.scheduled_end,
-        status: r.current_status,
-        team_id: r.assigned_team_id,
-        team_name: r.team?.team_name ?? "Unassigned",
-        team_lead: r.team?.team_lead_id?.full_name ?? null,
-        duration_hours: r.duration_hours ?? null,
-        job_order_id: r.job_order_id,
+        id:           r.id,
+        scheduled_at: r.scheduled_at,
+        status:       r.status,
+        customer:     r.customer?.full_name ?? "Manual Entry",
+        service:      r.service?.name ?? "—",
       }))
 
-    // Pending intake count (disabled feature, return 0)
-    const pending_intakes_count = 0
-
-    return NextResponse.json({ status_counts, recent_jobs, calendar_jobs, pending_intakes_count })
+    return NextResponse.json({
+      status_counts,
+      concern_count: concern_count ?? 0,
+      recent_jobs,
+      calendar_jobs,
+    })
   } catch (err: any) {
     return NextResponse.json({ error: err?.message ?? String(err) }, { status: 500 })
   }
 }
-

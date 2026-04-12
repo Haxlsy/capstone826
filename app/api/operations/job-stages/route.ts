@@ -1,104 +1,85 @@
-import { NextResponse } from "next/server";
-import { cookies } from "next/headers";
-import { createClient } from "@/lib/supabase/server";
-import { createClient as createAdminClient } from "@supabase/supabase-js";
+import { NextResponse } from "next/server"
+import { cookies } from "next/headers"
+import { createClient } from "@/lib/supabase/server"
+import { createAdminClient } from "@/lib/supabase/admin"
 
 export async function GET(request: Request) {
   try {
-    const url = new URL(request.url);
-    const jobId = url.searchParams.get("jobId");
+    const url = new URL(request.url)
+    const jobOrderId = url.searchParams.get("jobOrderId")
 
-    const cookieStore = await cookies();
-    const supabase = createClient(cookieStore);
+    const supabase = createAdminClient()
 
     let query = supabase
-      .from("job_stage_documentation")
+      .from("job_stage_progress")
       .select(
-        `document_id,
-         job_order_id,
-         stage_template_id,
-         submitted_by_user_id,
-         stage_status,
-         media_url,
-         media_type,
-         submitted_at,
-         rework_note,
-         local_uuid,
-         job_order:job_order_id(job_order_id, plate_number),
-         stage_template:stage_template_id(stage_template_id, stage_name),
-         submitted_by:submitted_by_user_id(user_id, full_name)`
+        `id, job_order_id, status, rework_instructions, handoff_notes, completed_at,
+         stage:service_stage_id(id, name, category, sequence_order),
+         completed_by:completed_by_id(full_name),
+         media:stage_media(id, file_url, media_type, uploaded_at)`
       )
-      .order("submitted_at", { ascending: false });
+      .order("service_stage_id")
 
-    if (jobId) {
-      query = query.eq("job_order_id", Number(jobId));
+    if (jobOrderId) {
+      query = query.eq("job_order_id", jobOrderId)
     }
 
-    const { data, error } = await query;
+    const { data, error } = await query
 
     if (error) {
-      return NextResponse.json({ error: error.message }, { status: 500 });
+      return NextResponse.json({ error: error.message }, { status: 500 })
     }
 
-    return NextResponse.json({ stage_documents: data });
+    return NextResponse.json({ stages: data ?? [] })
   } catch (err: any) {
-    return NextResponse.json({ error: err?.message ?? String(err) }, { status: 500 });
+    return NextResponse.json({ error: err?.message ?? String(err) }, { status: 500 })
   }
 }
 
 export async function PATCH(request: Request) {
   try {
-    const body = await request.json();
-    const { id, stage_status, rework_note } = body;
+    const body = await request.json()
+    const { id, status, rework_instructions, handoff_notes } = body
 
     if (!id) {
-      return NextResponse.json({ error: "Missing document ID" }, { status: 400 });
+      return NextResponse.json({ error: "Missing stage progress ID" }, { status: 400 })
     }
 
-    const cookieStore = await cookies();
-    const supabase = createClient(cookieStore);
+    const cookieStore = await cookies()
+    const supabase = createClient(cookieStore)
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) return NextResponse.json({ error: "Unauthorized." }, { status: 401 })
 
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    const admin = createAdminClient()
+    const updatePayload: Record<string, any> = {}
+
+    if (status !== undefined) {
+      updatePayload.status = status
+      if (status === "done") {
+        updatePayload.completed_at     = new Date().toISOString()
+        updatePayload.completed_by_id  = user.id
+      }
+    }
+    if (rework_instructions !== undefined) updatePayload.rework_instructions = rework_instructions
+    if (handoff_notes !== undefined)        updatePayload.handoff_notes       = handoff_notes
+
+    if (Object.keys(updatePayload).length === 0) {
+      return NextResponse.json({ error: "Nothing to update." }, { status: 400 })
     }
 
-    const updatePayload: any = {};
-    if (stage_status) updatePayload.stage_status = stage_status;
-    if (rework_note !== undefined) updatePayload.rework_note = rework_note;
-
-    let { data, error } = await supabase
-      .from("job_stage_documentation")
+    const { data, error } = await admin
+      .from("job_stage_progress")
       .update(updatePayload)
-      .eq("document_id", Number(id))
+      .eq("id", id)
       .select()
-      .single();
-
-    // Fallback to admin client if RLS blocks update
-    if (error && process.env.SUPABASE_SERVICE_ROLE_KEY) {
-      const admin = createAdminClient(
-        process.env.NEXT_PUBLIC_SUPABASE_URL!,
-        process.env.SUPABASE_SERVICE_ROLE_KEY
-      );
-      const adminRes = await admin
-        .from("job_stage_documentation")
-        .update(updatePayload)
-        .eq("document_id", Number(id))
-        .select()
-        .single();
-      data = adminRes.data;
-      error = (adminRes.error as any) ?? null;
-    }
+      .single()
 
     if (error) {
-      return NextResponse.json(
-        { error: (error as any).message ?? String(error) },
-        { status: 500 }
-      );
+      return NextResponse.json({ error: error.message }, { status: 500 })
     }
 
-    return NextResponse.json({ success: true, stage_document: data });
+    return NextResponse.json({ success: true, stage: data })
   } catch (err: any) {
-    return NextResponse.json({ error: err?.message ?? String(err) }, { status: 500 });
+    return NextResponse.json({ error: err?.message ?? String(err) }, { status: 500 })
   }
 }

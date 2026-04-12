@@ -4,36 +4,29 @@ import { useEffect, useRef, useState } from "react"
 import { Search, Filter, MoreHorizontal, ChevronLeft, ChevronRight } from "lucide-react"
 import AddAccountModal from "./AddAccountModal"
 
-type UserRole = "admin" | "operations" | "sales" | "head_detailer" | "head_installer" | "installer" | "detailer"
+type UserRole = "operations" | "sales" | "head_detailer" | "head_installer"
 
 interface Account {
-  user_id: string
+  id: string
   full_name: string
-  user_name: string
+  username: string
   role: UserRole
-  contact_no: string
   is_archived: boolean
   created_at: string
 }
 
 const ROLE_LABELS: Record<UserRole, string> = {
-  admin:          "Admin",
   operations:     "Operations",
   sales:          "Sales",
   head_detailer:  "Head Detailer",
   head_installer: "Head Installer",
-  installer:      "Installer",
-  detailer:       "Detailer",
 }
 
 const ROLE_BADGE: Record<UserRole, string> = {
-  admin:          "bg-purple-50 text-purple-600",
   operations:     "bg-blue-50 text-blue-600",
   sales:          "bg-green-50 text-green-600",
   head_detailer:  "bg-orange-50 text-orange-500",
   head_installer: "bg-amber-50 text-amber-600",
-  installer:      "border border-gray-200 text-gray-600",
-  detailer:       "bg-gray-50 text-gray-500",
 }
 
 const PAGE_SIZE_OPTIONS = [10, 15, 20, 30]
@@ -125,11 +118,10 @@ export default function AccountTable() {
   async function handleArchiveToggle(account: Account) {
     setActionMenu(null)
     const newArchived = !account.is_archived
-    console.log("[AccountTable] toggling archive for", account.user_id, "→", newArchived)
     const res = await fetch("/api/admin/archive-account", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ userId: account.user_id, isArchived: newArchived }),
+      body: JSON.stringify({ userId: account.id, isArchived: newArchived }),
     })
     if (!res.ok) {
       const json = await res.json().catch(() => ({}))
@@ -152,7 +144,7 @@ export default function AccountTable() {
     if (selected.size === accounts.length) {
       setSelected(new Set())
     } else {
-      setSelected(new Set(accounts.map((a) => a.user_id)))
+      setSelected(new Set(accounts.map((a) => a.id)))
     }
   }
 
@@ -196,7 +188,7 @@ export default function AccountTable() {
               <div>
                 <p className="text-xs font-semibold text-gray-500 mb-1.5 uppercase tracking-wide">Role</p>
                 <div className="space-y-0.5">
-                  {(["all", "admin", "operations", "sales", "head_detailer", "head_installer", "installer", "detailer"] as const).map(
+                  {(["all", "operations", "sales", "head_detailer", "head_installer"] as const).map(
                     (r) => (
                       <button
                         key={r}
@@ -289,9 +281,6 @@ export default function AccountTable() {
                 Role
               </th>
               <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">
-                Contact Number
-              </th>
-              <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">
                 Status
               </th>
               <th className="w-10" />
@@ -300,33 +289,33 @@ export default function AccountTable() {
           <tbody>
             {loading ? (
               <tr>
-                <td colSpan={7} className="text-center py-12 text-sm text-gray-400">
+                <td colSpan={6} className="text-center py-12 text-sm text-gray-400">
                   Loading...
                 </td>
               </tr>
             ) : fetchError ? (
               <tr>
-                <td colSpan={7} className="text-center py-12 text-sm text-red-400">
+                <td colSpan={6} className="text-center py-12 text-sm text-red-400">
                   Failed to load accounts: {fetchError}
                 </td>
               </tr>
             ) : accounts.length === 0 ? (
               <tr>
-                <td colSpan={7} className="text-center py-12 text-sm text-gray-400">
+                <td colSpan={6} className="text-center py-12 text-sm text-gray-400">
                   No accounts found.
                 </td>
               </tr>
             ) : (
               accounts.map((account) => (
                 <tr
-                  key={account.user_id}
+                  key={account.id}
                   className="border-b border-gray-50 hover:bg-gray-50/50 transition-colors"
                 >
                   <td className="px-4 py-3.5">
                     <input
                       type="checkbox"
-                      checked={selected.has(account.user_id)}
-                      onChange={() => toggleSelect(account.user_id)}
+                      checked={selected.has(account.id)}
+                      onChange={() => toggleSelect(account.id)}
                       className="rounded border-gray-300"
                     />
                   </td>
@@ -342,19 +331,16 @@ export default function AccountTable() {
                   </td>
 
                   {/* Username */}
-                  <td className="px-4 py-3.5 text-gray-500">{account.user_name}</td>
+                  <td className="px-4 py-3.5 text-gray-500">{account.username}</td>
 
                   {/* Role */}
                   <td className="px-4 py-3.5">
                     <span
-                      className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${ROLE_BADGE[account.role]}`}
+                      className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${ROLE_BADGE[account.role] ?? "bg-gray-50 text-gray-500"}`}
                     >
-                      {ROLE_LABELS[account.role]}
+                      {ROLE_LABELS[account.role] ?? account.role}
                     </span>
                   </td>
-
-                  {/* Contact */}
-                  <td className="px-4 py-3.5 text-gray-600">{account.contact_no}</td>
 
                   {/* Status */}
                   <td className="px-4 py-3.5">
@@ -369,11 +355,11 @@ export default function AccountTable() {
 
                   {/* Actions */}
                   <td className="px-4 py-3.5 relative">
-                    <div ref={actionMenu === account.user_id ? actionRef : null}>
+                    <div ref={actionMenu === account.id ? actionRef : null}>
                       <button
                         onClick={() =>
                           setActionMenu((prev) =>
-                            prev === account.user_id ? null : account.user_id
+                            prev === account.id ? null : account.id
                           )
                         }
                         className="p-1 rounded-lg hover:bg-gray-100 text-gray-400 hover:text-gray-600 transition-colors"
@@ -381,7 +367,7 @@ export default function AccountTable() {
                         <MoreHorizontal className="w-4 h-4" />
                       </button>
 
-                      {actionMenu === account.user_id && (
+                      {actionMenu === account.id && (
                         <div className="absolute right-4 top-full mt-1 w-36 bg-white border border-gray-100 rounded-xl shadow-lg z-10 py-1">
                           <button
                             onClick={() => { setActionMenu(null); setEditingAccount(account) }}

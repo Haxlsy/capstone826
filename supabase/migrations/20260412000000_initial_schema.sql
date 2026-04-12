@@ -5,6 +5,18 @@
 -- =================================================================
 
 -- =================================================================
+-- DROP EXISTING TYPES (safe re-run — tables already dropped)
+-- =================================================================
+
+DROP TYPE IF EXISTS user_role        CASCADE;
+DROP TYPE IF EXISTS job_status       CASCADE;
+DROP TYPE IF EXISTS stage_type       CASCADE;
+DROP TYPE IF EXISTS inquiry_type     CASCADE;
+DROP TYPE IF EXISTS concern_status   CASCADE;
+DROP TYPE IF EXISTS media_file_type  CASCADE;
+DROP TYPE IF EXISTS kb_category      CASCADE;
+
+-- =================================================================
 -- ENUMS
 -- =================================================================
 

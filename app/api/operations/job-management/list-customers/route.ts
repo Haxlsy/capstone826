@@ -1,17 +1,27 @@
-import { NextResponse } from "next/server";
-import { cookies } from "next/headers";
-import { createClient } from "@/lib/supabase/server";
+import { NextResponse } from "next/server"
+import { createAdminClient } from "@/lib/supabase/admin"
 
-export async function GET() {
+export async function GET(request: Request) {
   try {
-    const cookieStore = await cookies();
-    const supabase = createClient(cookieStore);
+    const { searchParams } = new URL(request.url)
+    const search = searchParams.get("search") ?? ""
 
-    const { data, error } = await supabase.from("customer").select("customer_id, full_name, contact_number, email").order("created_at", { ascending: false });
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    const supabase = createAdminClient()
+    let query = supabase
+      .from("customer_record")
+      .select("id, full_name, contact_number, plate_number, vehicle_unit, email, psid")
+      .order("full_name")
 
-    return NextResponse.json({ customers: data });
+    if (search.trim()) {
+      query = query.or(
+        `full_name.ilike.%${search.trim()}%,plate_number.ilike.%${search.trim()}%`
+      )
+    }
+
+    const { data, error } = await query
+    if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+    return NextResponse.json({ customers: data ?? [] })
   } catch (err: any) {
-    return NextResponse.json({ error: err?.message ?? String(err) }, { status: 500 });
+    return NextResponse.json({ error: err?.message ?? String(err) }, { status: 500 })
   }
 }
