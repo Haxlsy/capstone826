@@ -9,7 +9,7 @@ export type Status =
 
 export type HeadTechJob = {
   job_id: string;
-  raw_id?: number;
+  raw_id?: string;   // UUID for real DB rows, "1"/"2" for mock
   customer_name: string;
   plate_number: string;
   car_make: string;
