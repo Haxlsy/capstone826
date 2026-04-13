@@ -10,7 +10,7 @@ import { BottomNav } from "./components/BottomNav";
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
-interface StageMedia { id: string; url: string; type: string }
+interface StageMedia { id: string; url: string; type: string; pending?: boolean }
 
 interface StageDoc {
   id:                  string;   // UUID — the job_stage_progress row ID
@@ -64,8 +64,8 @@ export default function HeadTechJobHistoryPage({ jobId }: { jobId: string }) {
   const [loading, setLoading] = useState(true);
   const [userRole, setUserRole] = useState<string>("");
 
-  // Per-stage upload progress: stageId → uploading boolean
   const [uploadingId, setUploadingId] = useState<string | null>(null);
+  const [uploadError,  setUploadError]  = useState<Record<string, string>>({});
 
   // Per-stage marking progress
   const [markingId, setMarkingId] = useState<string | null>(null);
@@ -160,8 +160,27 @@ export default function HeadTechJobHistoryPage({ jobId }: { jobId: string }) {
   async function handleFileChange(stage: StageDoc, files: FileList | null) {
     if (!files || files.length === 0) return;
     setUploadingId(stage.id);
-    try {
-      for (const file of Array.from(files)) {
+    setUploadError((prev) => { const n = { ...prev }; delete n[stage.id]; return n; });
+
+    for (const file of Array.from(files)) {
+      const tmpId    = `tmp-${Date.now()}`;
+      const localUrl = URL.createObjectURL(file);
+      const isPhoto  = file.type.startsWith("image/");
+
+      // Show preview immediately
+      setJob((prev) => {
+        if (!prev) return prev;
+        return {
+          ...prev,
+          stages: prev.stages.map((s) =>
+            s.id === stage.id
+              ? { ...s, media: [...s.media, { id: tmpId, url: localUrl, type: isPhoto ? "photo" : "video", pending: true }] }
+              : s
+          ),
+        };
+      });
+
+      try {
         const form = new FormData();
         form.append("file", file);
         const res  = await fetch(
@@ -169,21 +188,57 @@ export default function HeadTechJobHistoryPage({ jobId }: { jobId: string }) {
           { method: "POST", body: form }
         );
         const json = await res.json();
+
         if (res.ok && json.media) {
+          // Replace tmp entry with real data
+          URL.revokeObjectURL(localUrl);
           setJob((prev) => {
             if (!prev) return prev;
             return {
               ...prev,
               stages: prev.stages.map((s) =>
                 s.id === stage.id
-                  ? { ...s, media: [...s.media, { id: json.media.id, url: json.media.file_url, type: json.media.media_type }] }
+                  ? { ...s, media: s.media.map((m) => m.id === tmpId
+                      ? { id: json.media.id, url: json.media.file_url, type: json.media.media_type }
+                      : m
+                    )}
                   : s
               ),
             };
           });
+        } else {
+          // Upload failed — remove the tmp preview and show error
+          URL.revokeObjectURL(localUrl);
+          setJob((prev) => {
+            if (!prev) return prev;
+            return {
+              ...prev,
+              stages: prev.stages.map((s) =>
+                s.id === stage.id
+                  ? { ...s, media: s.media.filter((m) => m.id !== tmpId) }
+                  : s
+              ),
+            };
+          });
+          setUploadError((prev) => ({ ...prev, [stage.id]: json?.error ?? "Upload failed." }));
         }
+      } catch (err: unknown) {
+        URL.revokeObjectURL(localUrl);
+        setJob((prev) => {
+          if (!prev) return prev;
+          return {
+            ...prev,
+            stages: prev.stages.map((s) =>
+              s.id === stage.id
+                ? { ...s, media: s.media.filter((m) => m.id !== tmpId) }
+                : s
+            ),
+          };
+        });
+        setUploadError((prev) => ({ ...prev, [stage.id]: err instanceof Error ? err.message : "Upload failed." }));
       }
-    } catch {}
+    }
+
     setUploadingId(null);
   }
 
@@ -317,6 +372,7 @@ export default function HeadTechJobHistoryPage({ jobId }: { jobId: string }) {
                   readOnly
                   isMarking={false}
                   isUploading={false}
+                  uploadError={null}
                   onMarkDone={() => {}}
                   onFileChange={() => {}}
                 />
@@ -342,6 +398,7 @@ export default function HeadTechJobHistoryPage({ jobId }: { jobId: string }) {
                   readOnly={approved}
                   isMarking={markingId === stage.id}
                   isUploading={uploadingId === stage.id}
+                  uploadError={uploadError[stage.id] ?? null}
                   onMarkDone={() => markDone(stage)}
                   onFileChange={(files) => handleFileChange(stage, files)}
                 />
@@ -421,13 +478,14 @@ export default function HeadTechJobHistoryPage({ jobId }: { jobId: string }) {
 // ── StageCard ─────────────────────────────────────────────────────────────────
 
 function StageCard({
-  stage, readOnly, isMarking, isUploading,
+  stage, readOnly, isMarking, isUploading, uploadError,
   onMarkDone, onFileChange,
 }: {
   stage:       StageDoc;
   readOnly:    boolean;
   isMarking:   boolean;
   isUploading: boolean;
+  uploadError: string | null;
   onMarkDone:  () => void;
   onFileChange:(files: FileList | null) => void;
 }) {
@@ -473,23 +531,34 @@ function StageCard({
       {/* Media thumbnails */}
       {stage.media.length > 0 && (
         <div className="flex flex-wrap gap-2 pl-7">
-          {stage.media.map((m) =>
-            m.type === "video" ? (
-              <a key={m.id} href={m.url} target="_blank" rel="noopener noreferrer"
-                className="w-14 h-14 rounded-xl bg-gray-200 flex items-center justify-center text-xs text-gray-500">
-                ▶
-              </a>
-            ) : (
-              <img
-                key={m.id}
-                src={m.url}
-                alt=""
-                className="w-14 h-14 rounded-xl object-cover bg-gray-100"
-                onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = "none"; }}
-              />
-            )
-          )}
+          {stage.media.map((m) => (
+            <div key={m.id} className="relative w-14 h-14">
+              {m.type === "video" ? (
+                <a href={m.pending ? undefined : m.url} target="_blank" rel="noopener noreferrer"
+                  className="w-14 h-14 rounded-xl bg-gray-200 flex items-center justify-center text-xs text-gray-500">
+                  ▶
+                </a>
+              ) : (
+                <img
+                  src={m.url}
+                  alt=""
+                  className="w-14 h-14 rounded-xl object-cover bg-gray-100"
+                  onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = "none"; }}
+                />
+              )}
+              {m.pending && (
+                <div className="absolute inset-0 rounded-xl bg-black/40 flex items-center justify-center">
+                  <Loader2 size={16} className="text-white animate-spin" />
+                </div>
+              )}
+            </div>
+          ))}
         </div>
+      )}
+
+      {/* Upload error */}
+      {uploadError && (
+        <p className="text-[11px] text-red-500 pl-7">{uploadError}</p>
       )}
 
       {/* Actions — hidden for read-only (prep stages viewed by installer, or after approve) */}
