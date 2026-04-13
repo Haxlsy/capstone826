@@ -1,114 +1,69 @@
-import { NextResponse } from "next/server";
-import { cookies } from "next/headers";
-import { createClient } from "@/lib/supabase/server";
-import { createClient as createAdminClient } from "@supabase/supabase-js";
+import { NextResponse } from "next/server"
+import { cookies } from "next/headers"
+import { createClient } from "@/lib/supabase/server"
+import { createAdminClient } from "@/lib/supabase/admin"
+
+export async function GET(
+  _request: Request,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  try {
+    const { id } = await params
+
+    const supabase = createAdminClient()
+    const { data, error } = await supabase
+      .from("concern")
+      .select(
+        `id, title, description, status, response_note,
+         submitted_at, resolved_at,
+         job:job_order_id(id, status),
+         submitter:submitted_by_id(id, full_name, role),
+         resolver:resolved_by_id(full_name),
+         media:concern_media(id, file_url, media_type)`
+      )
+      .eq("id", id)
+      .single()
+
+    if (error || !data) return NextResponse.json({ error: "Not found." }, { status: 404 })
+    return NextResponse.json({ concern: data })
+  } catch (err: any) {
+    return NextResponse.json({ error: err?.message ?? String(err) }, { status: 500 })
+  }
+}
 
 export async function PATCH(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const { id } = await params;
-    const body = await request.json();
-    const { status, admin_note, resolved_by_user_id } = body;
+    const { id } = await params
 
-    if (!id) {
-      return NextResponse.json({ error: "Missing concern ID" }, { status: 400 });
+    const body = await request.json()
+    const { status, response_note } = body
+
+    if (!status) return NextResponse.json({ error: "status is required." }, { status: 400 })
+
+    const cookieStore = await cookies()
+    const supabase = createClient(cookieStore)
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) return NextResponse.json({ error: "Unauthorized." }, { status: 401 })
+
+    const admin = createAdminClient()
+    const updates: Record<string, any> = { status }
+    if (status === "Resolved") {
+      updates.resolved_by_id = user.id
+      updates.resolved_at    = new Date().toISOString()
+      updates.response_note  = response_note ?? null
     }
 
-    const cookieStore = await cookies();
-    const supabase = createClient(cookieStore);
+    const { error } = await admin
+      .from("concern")
+      .update(updates)
+      .eq("id", id)
 
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-
-    const updatePayload: any = {};
-    if (status) updatePayload.status = status;
-    if (admin_note !== undefined) updatePayload.admin_note = admin_note;
-    if (resolved_by_user_id) {
-      updatePayload.resolved_by_user_id = resolved_by_user_id;
-      updatePayload.resolved_at = new Date().toISOString();
-    }
-
-    let { data, error } = await supabase
-      .from("job_concern")
-      .update(updatePayload)
-      .eq("concern_id", Number(id))
-      .select()
-      .single();
-
-    // Fallback to admin client if RLS blocks update
-    if (error && process.env.SUPABASE_SERVICE_ROLE_KEY) {
-      const admin = createAdminClient(
-        process.env.NEXT_PUBLIC_SUPABASE_URL!,
-        process.env.SUPABASE_SERVICE_ROLE_KEY
-      );
-      const adminRes = await admin
-        .from("job_concern")
-        .update(updatePayload)
-        .eq("concern_id", Number(id))
-        .select()
-        .single();
-      data = adminRes.data;
-      error = (adminRes.error as any) ?? null;
-    }
-
-    if (error) {
-      return NextResponse.json(
-        { error: (error as any).message ?? String(error) },
-        { status: 500 }
-      );
-    }
-
-    return NextResponse.json({ success: true, concern: data });
+    if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+    return NextResponse.json({ success: true })
   } catch (err: any) {
-    return NextResponse.json({ error: err?.message ?? String(err) }, { status: 500 });
-  }
-}
-
-export async function GET(
-  request: Request,
-  { params }: { params: Promise<{ id: string }> }
-) {
-  try {
-    const { id } = await params;
-
-    if (!id) {
-      return NextResponse.json({ error: "Missing concern ID" }, { status: 400 });
-    }
-
-    const cookieStore = await cookies();
-    const supabase = createClient(cookieStore);
-
-    const { data, error } = await supabase
-      .from("job_concern")
-      .select(
-        `concern_id,
-         job_order_id,
-         submitted_by_user_id,
-         resolved_by_user_id,
-         concern_type,
-         description,
-         photo_url,
-         status,
-         admin_note,
-         resolved_at,
-         submitted_at,
-         job_order:job_order_id(job_order_id, customer_id),
-         submitted_by:submitted_by_user_id(user_id, full_name),
-         resolved_by:resolved_by_user_id(user_id, full_name)`
-      )
-      .eq("concern_id", Number(id))
-      .single();
-
-    if (error) {
-      return NextResponse.json({ error: error.message }, { status: 500 });
-    }
-
-    return NextResponse.json({ concern: data });
-  } catch (err: any) {
-    return NextResponse.json({ error: err?.message ?? String(err) }, { status: 500 });
+    return NextResponse.json({ error: err?.message ?? String(err) }, { status: 500 })
   }
 }

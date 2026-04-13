@@ -5,8 +5,8 @@ import { Status } from "./types";
 const STATUS_OPTIONS: Status[] = [
   "Pending",
   "Ongoing",
-  "Quality Check",
-  "Completed",
+  "For Rework",
+  "For Release",
   "Delayed",
   "Cancelled",
   "Released",

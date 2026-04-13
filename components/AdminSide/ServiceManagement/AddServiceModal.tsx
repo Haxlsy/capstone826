@@ -3,9 +3,12 @@
 import { useEffect, useRef, useState } from "react"
 import { X, GripVertical, Trash2, Plus } from "lucide-react"
 
+type StageCategory = "preparation" | "installation"
+
 interface Stage {
   id: string
   name: string
+  category: StageCategory
 }
 
 interface AddServiceModalProps {
@@ -17,7 +20,6 @@ interface AddServiceModalProps {
 const EMPTY_FORM = {
   serviceName: "",
   description: "",
-  price: "",
   estimatedDays: "3",
 }
 
@@ -59,15 +61,17 @@ export default function AddServiceModal({
   }
 
   function addStage() {
-    setStages((p) => [...p, { id: makeId(), name: "" }])
+    setStages((p) => [...p, { id: makeId(), name: "", category: "preparation" }])
   }
 
   function removeStage(id: string) {
     setStages((p) => p.filter((s) => s.id !== id))
   }
 
-  function updateStage(id: string, name: string) {
-    setStages((p) => p.map((s) => (s.id === id ? { ...s, name } : s)))
+  function updateStage(id: string, field: "name" | "category", value: string) {
+    setStages((p) =>
+      p.map((s) => (s.id === id ? { ...s, [field]: value } : s))
+    )
     setErrors((p) => ({ ...p, [`stage_${id}`]: undefined }))
   }
 
@@ -95,19 +99,16 @@ export default function AddServiceModal({
   function validate() {
     const e: Record<string, string> = {}
     if (!form.serviceName.trim()) e.serviceName = "Service name is required."
-    if (!form.price.trim()) e.price = "Price is required."
-    else if (isNaN(Number(form.price)) || Number(form.price) < 0)
-      e.price = "Enter a valid price."
     if (!form.estimatedDays.trim()) e.estimatedDays = "Duration is required."
     else if (isNaN(Number(form.estimatedDays)) || Number(form.estimatedDays) < 1)
-      e.estimatedDays = "Enter a valid number of days."
+      e.estimatedDays = "Enter a valid number of days (minimum 1)."
     stages.forEach((s) => {
       if (!s.name.trim()) e[`stage_${s.id}`] = "Stage name cannot be empty."
     })
     return e
   }
 
-  async function handleSubmit(e: React.FormEvent) {
+  async function handleSubmit(e: React.SyntheticEvent) {
     e.preventDefault()
     setServerError("")
     const errs = validate()
@@ -123,11 +124,11 @@ export default function AddServiceModal({
         body: JSON.stringify({
           serviceName: form.serviceName.trim(),
           description: form.description.trim(),
-          price: Number(form.price),
-          estimatedDays: Number(form.estimatedDays),
+          estimatedDurationMins: Number(form.estimatedDays) * 24 * 60,
           stages: stages.map((s, i) => ({
-            stage_name: s.name.trim(),
-            stage_order: i + 1,
+            name: s.name.trim(),
+            category: s.category,
+            sequence_order: i + 1,
           })),
         }),
       })
@@ -182,11 +183,14 @@ export default function AddServiceModal({
 
           {/* Service Name */}
           <div className="space-y-1.5">
-            <label className="block text-sm font-medium text-gray-700">Service Name</label>
+            <label className="block text-sm font-medium text-gray-700">
+              Service Name <span className="text-red-500">*</span>
+            </label>
             <input
               type="text"
               value={form.serviceName}
               onChange={(e) => setField("serviceName", e.target.value)}
+              placeholder="e.g. Full Detail Package"
               className={`w-full px-3 py-2.5 text-sm border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-100 focus:border-blue-400 transition-colors ${
                 errors.serviceName ? "border-red-400 bg-red-50" : "border-gray-200"
               }`}
@@ -203,34 +207,15 @@ export default function AddServiceModal({
               value={form.description}
               onChange={(e) => setField("description", e.target.value)}
               rows={4}
+              placeholder="Optional — describe what this service includes."
               className="w-full px-3 py-2.5 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-100 focus:border-blue-400 transition-colors resize-none"
             />
-          </div>
-
-          {/* Price */}
-          <div className="space-y-1.5">
-            <label className="block text-sm font-medium text-gray-700">Price</label>
-            <div className="relative">
-              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-gray-400 font-medium">
-                ₱
-              </span>
-              <input
-                type="number"
-                min="0"
-                value={form.price}
-                onChange={(e) => setField("price", e.target.value)}
-                className={`w-full pl-7 pr-3 py-2.5 text-sm border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-100 focus:border-blue-400 transition-colors ${
-                  errors.price ? "border-red-400 bg-red-50" : "border-gray-200"
-                }`}
-              />
-            </div>
-            {errors.price && <p className="text-xs text-red-500">{errors.price}</p>}
           </div>
 
           {/* Estimated Duration */}
           <div className="space-y-1.5">
             <label className="block text-sm font-medium text-gray-700">
-              Estimated Service Duration
+              Estimated Duration <span className="text-red-500">*</span>
             </label>
             <div className="flex items-center gap-2">
               <input
@@ -248,17 +233,17 @@ export default function AddServiceModal({
               <p className="text-xs text-red-500">{errors.estimatedDays}</p>
             )}
             <p className="text-xs text-gray-400">
-              This duration is used to automatically calculate the job timeline when a job
-              order is created.
+              Used to automatically calculate the job timeline when a job order is created.
             </p>
           </div>
 
           {/* Workflow Stages */}
           <div className="space-y-3">
             <div>
-              <h3 className="text-sm font-semibold text-gray-800">Define Workflow Stages</h3>
+              <h3 className="text-sm font-semibold text-gray-800">Workflow Stages</h3>
               <p className="text-xs text-gray-400 mt-0.5">
-                Add the sequential stages for this service.
+                Define the sequential stages for this service. Each stage is assigned to either
+                the preparation (detailing) or installation team.
               </p>
             </div>
 
@@ -270,36 +255,51 @@ export default function AddServiceModal({
                   onDragStart={() => onDragStart(index)}
                   onDragOver={(e) => onDragOver(e, index)}
                   onDragEnd={onDragEnd}
-                  className="flex items-center gap-2 group"
+                  className="flex items-start gap-2 group"
                 >
                   {/* Drag handle */}
-                  <div className="cursor-grab active:cursor-grabbing text-gray-300 hover:text-gray-400 shrink-0">
+                  <div className="cursor-grab active:cursor-grabbing text-gray-300 hover:text-gray-400 shrink-0 mt-2.5">
                     <GripVertical className="w-4 h-4" />
                   </div>
 
                   {/* Number */}
-                  <span className="text-sm text-gray-400 w-5 shrink-0 text-right">
+                  <span className="text-sm text-gray-400 w-5 shrink-0 text-right mt-2.5">
                     {index + 1}.
                   </span>
 
-                  {/* Input */}
-                  <input
-                    type="text"
-                    value={stage.name}
-                    onChange={(e) => updateStage(stage.id, e.target.value)}
-                    placeholder={`Stage ${index + 1}`}
-                    className={`flex-1 px-3 py-2 text-sm border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-100 focus:border-blue-400 transition-colors ${
-                      errors[`stage_${stage.id}`]
-                        ? "border-red-400 bg-red-50"
-                        : "border-gray-200"
-                    }`}
-                  />
+                  {/* Stage name + category */}
+                  <div className="flex-1 flex flex-col gap-1.5">
+                    <input
+                      type="text"
+                      value={stage.name}
+                      onChange={(e) => updateStage(stage.id, "name", e.target.value)}
+                      placeholder={`Stage ${index + 1} name`}
+                      className={`w-full px-3 py-2 text-sm border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-100 focus:border-blue-400 transition-colors ${
+                        errors[`stage_${stage.id}`]
+                          ? "border-red-400 bg-red-50"
+                          : "border-gray-200"
+                      }`}
+                    />
+                    <select
+                      value={stage.category}
+                      onChange={(e) =>
+                        updateStage(stage.id, "category", e.target.value)
+                      }
+                      className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-100 focus:border-blue-400 transition-colors bg-white"
+                    >
+                      <option value="preparation">Preparation (Detailing team)</option>
+                      <option value="installation">Installation (Installer team)</option>
+                    </select>
+                    {errors[`stage_${stage.id}`] && (
+                      <p className="text-xs text-red-500">{errors[`stage_${stage.id}`]}</p>
+                    )}
+                  </div>
 
                   {/* Delete */}
                   <button
                     type="button"
                     onClick={() => removeStage(stage.id)}
-                    className="shrink-0 p-1 text-gray-300 hover:text-red-400 transition-colors"
+                    className="shrink-0 p-1 text-gray-300 hover:text-red-400 transition-colors mt-1.5"
                   >
                     <Trash2 className="w-4 h-4" />
                   </button>
@@ -316,6 +316,11 @@ export default function AddServiceModal({
               Add Stage
             </button>
           </div>
+
+          {/* Required field legend */}
+          <p className="text-xs text-gray-400">
+            <span className="text-red-500">*</span> Required field
+          </p>
         </form>
 
         {/* Footer */}

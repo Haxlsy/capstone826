@@ -63,8 +63,8 @@ export default function LoginPage() {
         admin: "/dashboard/admin",
         operations: "/dashboard/operations",
         sales: "/dashboard/sales",
-        head_technician: "/dashboard/technician",
-        technician: "/dashboard/technician",
+        head_detailer:  "/head-technician",
+        head_installer: "/head-technician",
       }
 
       const role: string = data.user?.role ?? ""

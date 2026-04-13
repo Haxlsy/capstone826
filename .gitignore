@@ -42,7 +42,12 @@ next-env.d.ts
 
 # claude
 .claude
+CLAUDE.md
+AGENTS.md
 memory/
 
 # internal docs
 /docs
+
+# supabase local cache (keep migrations/ committed)
+supabase/.temp/

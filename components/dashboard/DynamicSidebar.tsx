@@ -8,23 +8,16 @@ import AdminSidebar from "@/components/AdminSide/AdminSidebar"
 const OPERATIONS_PATHS = [
   "/dashboard/operations",
   "/dashboard/job-management",
-  "/dashboard/customer-intake-records",
   "/dashboard/concerns",
   "/dashboard/job-order-records",
+  "/dashboard/technician-availability",
+  "/dashboard/operations/settings",
 ]
 
 const ADMIN_PATHS = ["/dashboard/admin"]
 
-// Technician/head-technician use a mobile BottomNav — no sidebar needed
-const TECHNICIAN_PATHS = ["/dashboard/technician"]
-
 export default function DynamicSidebar() {
   const pathname = usePathname()
-
-  const isTechnician = TECHNICIAN_PATHS.some(
-    (p) => pathname === p || pathname.startsWith(p + "/")
-  )
-  if (isTechnician) return null
 
   const isOperations = OPERATIONS_PATHS.some(
     (p) => pathname === p || pathname.startsWith(p + "/")

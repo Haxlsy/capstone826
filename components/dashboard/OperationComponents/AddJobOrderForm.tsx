@@ -1,221 +1,249 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef } from "react"
 import Link from "next/link"
-import { useRouter, useSearchParams } from "next/navigation"
-import { Info, CheckCircle2 } from "lucide-react"
+import { useRouter } from "next/navigation"
+import { CheckCircle2 } from "lucide-react"
 
-interface IntakeRecord {
-  intake_id: number
-  id: string
-  label: string
-  customer: string
-  contact: string
-  email: string
-  plate: string
-  make: string
-  model: string
-  color: string
-  serviceType: string
-  customer_id: number
-  service_id: number | null
-  vehicle_type_id: number | null
-  estimated_duration_days: number
-  scheduledDate: string // raw ISO date string from DB
+interface CustomerRecord {
+  id:             string
+  full_name:      string
+  contact_number: string
+  email:          string | null
+  plate_number:   string
+  vehicle_unit:   string | null
 }
 
-function formatDate(dateStr: string): string {
-  if (!dateStr) return "—"
-  return new Date(dateStr).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })
+interface Service {
+  id:                     string
+  name:                   string
+  estimated_duration_mins: number
 }
 
-function addDays(dateStr: string, days: number): string {
-  if (!dateStr || !days) return "—"
-  const d = new Date(dateStr)
-  d.setDate(d.getDate() + days)
-  return d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })
+interface HeadTech {
+  id:          string
+  full_name:   string
+  role:        "head_detailer" | "head_installer"
+  active_jobs: number
 }
 
-function mapRawIntake(i: any): IntakeRecord {
-  const year = new Date(i.created_at).getFullYear()
-  const id = `INT-${year}-${String(i.intake_id).padStart(3, "0")}`
-  return {
-    intake_id: i.intake_id,
-    id,
-    label: `${id} — ${i.customer?.full_name ?? "?"} | ${i.service?.service_name ?? "?"}`,
-    customer: i.customer?.full_name ?? "—",
-    contact: i.customer?.contact_number ?? "—",
-    email: i.customer?.email ?? "—",
-    plate: i.plate_number ?? "—",
-    make: i.make ?? "",
-    model: i.model ?? "",
-    color: i.color ?? "—",
-    serviceType: i.service?.service_name ?? "—",
-    customer_id: i.customer?.customer_id ?? 0,
-    service_id: i.service?.service_id ?? null,
-    vehicle_type_id: i.vehicle_type_id ?? null,
-    estimated_duration_days: i.service?.estimated_duration_days ?? 0,
-    scheduledDate: i.scheduled_date ?? "",
-  }
+interface CrewMember {
+  id:           string
+  full_name:    string
+  role:         "detailer" | "installer"
+  is_available: boolean
+}
+
+const INPUT_CLS  = "w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-700 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+const SELECT_CLS = `${INPUT_CLS} disabled:opacity-50`
+
+function CrewCheckboxList({
+  label,
+  members,
+  selected,
+  onToggle,
+  loading,
+}: {
+  label:    string
+  members:  CrewMember[]
+  selected: Set<string>
+  onToggle: (id: string) => void
+  loading:  boolean
+}) {
+  return (
+    <div className="flex flex-col gap-1.5">
+      <label className="text-xs font-medium text-gray-600">
+        {label}
+        {selected.size > 0 && (
+          <span className="ml-1.5 text-blue-600 font-semibold">({selected.size} selected)</span>
+        )}
+      </label>
+      {loading ? (
+        <p className="text-xs text-gray-400 py-2">Loading…</p>
+      ) : members.length === 0 ? (
+        <p className="text-xs text-gray-400 py-2">No {label.toLowerCase()} added yet.</p>
+      ) : (
+        <div className="border border-gray-200 rounded-lg divide-y divide-gray-50 max-h-40 overflow-y-auto">
+          {members.map((c) => (
+            <label key={c.id} className="flex items-center gap-3 px-3 py-2.5 hover:bg-gray-50 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={selected.has(c.id)}
+                onChange={() => onToggle(c.id)}
+                className="w-4 h-4 rounded border-gray-300"
+              />
+              <div className="flex-1 min-w-0">
+                <p className="text-sm text-gray-700 truncate">{c.full_name}</p>
+              </div>
+              <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded-full ${
+                c.is_available ? "bg-green-50 text-green-600" : "bg-gray-100 text-gray-400"
+              }`}>
+                {c.is_available ? "Available" : "Busy"}
+              </span>
+            </label>
+          ))}
+        </div>
+      )}
+    </div>
+  )
 }
 
 export default function AddJobOrderForm() {
-  const router = useRouter()
-  const searchParams = useSearchParams()
-  const preselectedIntakeId = searchParams.get("intake_id")
+  const router        = useRouter()
+  const redirectTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
-  // Reference data
-  const [intakeRecords, setIntakeRecords] = useState<IntakeRecord[]>([])
-  const [vehicleTypes, setVehicleTypes] = useState<any[]>([])
-  const [techniciansList, setTechniciansList] = useState<any[]>([])
+  const [customers,   setCustomers]   = useState<CustomerRecord[]>([])
+  const [services,    setServices]    = useState<Service[]>([])
+  const [headTechs,   setHeadTechs]   = useState<HeadTech[]>([])
+  const [crewMembers, setCrewMembers] = useState<CrewMember[]>([])
   const [loadingRefs, setLoadingRefs] = useState(true)
 
-  // The resolved intake (either pre-fetched by ID or chosen from dropdown)
-  const [selectedIntake, setSelectedIntake] = useState<IntakeRecord | null>(null)
-  const [selectedIntakeId, setSelectedIntakeId] = useState("") // for dropdown mode
+  const [useManualCustomer,    setUseManualCustomer]    = useState(false)
+  const [selectedCustomerId,   setSelectedCustomerId]   = useState<string | null>(null)
+  const [manualCustomerName,   setManualCustomerName]   = useState("")
+  const [manualContactNumber,  setManualContactNumber]  = useState("")
+  const [manualPlateNumber,    setManualPlateNumber]    = useState("")
+  const [manualVehicleUnit,    setManualVehicleUnit]    = useState("")
 
-  const [selectedVehicleTypeId, setSelectedVehicleTypeId] = useState<number | null>(null)
-  const [selectedTechnicianId, setSelectedTechnicianId] = useState("")
-  const [scheduledDate, setScheduledDate] = useState("")
+  const [selectedServiceId,       setSelectedServiceId]       = useState<string | null>(null)
+  const [selectedHeadDetailerId,  setSelectedHeadDetailerId]  = useState<string | null>(null)
+  const [selectedHeadInstallerId, setSelectedHeadInstallerId] = useState<string | null>(null)
+  const [selectedDetailerIds,     setSelectedDetailerIds]     = useState<Set<string>>(new Set())
+  const [selectedInstallerIds,    setSelectedInstallerIds]    = useState<Set<string>>(new Set())
+  const [scheduledAt, setScheduledAt] = useState("")
 
   const [loading, setLoading] = useState(false)
-  const [error, setError] = useState<string | null>(null)
+  const [error,   setError]   = useState<string | null>(null)
   const [success, setSuccess] = useState(false)
 
-  const hasIntake = selectedIntake !== null
-  const hasDate = scheduledDate !== ""
-  const estimatedDays = selectedIntake?.estimated_duration_days ?? 0
-  const startDate = hasIntake && hasDate ? formatDate(scheduledDate) : "—"
-  const expectedCompletion =
-    hasIntake && hasDate && estimatedDays > 0
-      ? addDays(scheduledDate, estimatedDays)
-      : hasDate ? formatDate(scheduledDate) : "—"
-  const durationLabel = estimatedDays > 0
-    ? `${estimatedDays} day${estimatedDays !== 1 ? "s" : ""}`
-    : "—"
+  useEffect(() => {
+    return () => { if (redirectTimer.current) clearTimeout(redirectTimer.current) }
+  }, [])
 
   useEffect(() => {
     async function loadRefs() {
       setLoadingRefs(true)
       try {
-        const [vRes, tRes, iRes] = await Promise.all([
-          fetch("/api/operations/job-management/list-vehicle-types"),
-          fetch("/api/operations/job-management/list-technicians"),
-          fetch("/api/sales/intakes"),
+        const [cRes, sRes, tRes] = await Promise.all([
+          fetch("/api/operations/job-management/list-customers").then((r) =>
+            r.ok ? r.json() : { customers: [] }
+          ),
+          fetch("/api/operations/job-management/list-services").then((r) =>
+            r.ok ? r.json() : { services: [] }
+          ),
+          fetch("/api/operations/job-management/list-technicians").then((r) =>
+            r.ok ? r.json() : { technicians: [], crew_members: [] }
+          ),
         ])
-        const [vJson, tJson, iJson] = await Promise.all([vRes.json(), tRes.json(), iRes.json()])
-
-        setVehicleTypes(vJson.vehicle_types ?? [])
-        setTechniciansList(tJson.technicians ?? [])
-
-        const allIntakes: any[] = iJson.intakes ?? []
-
-        if (preselectedIntakeId) {
-          // Find the specific intake by ID (regardless of status)
-          const raw = allIntakes.find((i: any) => i.intake_id === Number(preselectedIntakeId))
-          if (raw) setSelectedIntake(mapRawIntake(raw))
-        } else {
-          // Dropdown mode: only show pending intakes
-          const mapped = allIntakes.filter((i: any) => i.status === "pending").map(mapRawIntake)
-          setIntakeRecords(mapped)
-        }
+        setCustomers(cRes.customers ?? [])
+        setServices(sRes.services ?? [])
+        setHeadTechs(tRes.technicians ?? [])
+        setCrewMembers(tRes.crew_members ?? [])
       } catch {
-        // ignore
+        setError("Failed to load form data. Please refresh.")
       } finally {
         setLoadingRefs(false)
       }
     }
     loadRefs()
-  }, [preselectedIntakeId])
+  }, [])
 
-  // When dropdown selection changes, update selectedIntake
-  useEffect(() => {
-    if (preselectedIntakeId) return
-    if (!selectedIntakeId) { setSelectedIntake(null); return }
-    const match = intakeRecords.find((r) => r.id === selectedIntakeId) ?? null
-    setSelectedIntake(match)
-  }, [selectedIntakeId, intakeRecords])
+  const selectedCustomer = !useManualCustomer
+    ? customers.find((c) => c.id === selectedCustomerId) ?? null
+    : null
 
-  // Auto-fill scheduled date from intake if not already set
-  useEffect(() => {
-    if (!selectedIntake) return
-    if (selectedIntake.scheduledDate && !scheduledDate) {
-      // Convert ISO datetime to yyyy-MM-dd for the date input
-      setScheduledDate(selectedIntake.scheduledDate.slice(0, 10))
-    }
-  }, [selectedIntake])
+  const selectedService = services.find((s) => s.id === selectedServiceId) ?? null
 
-  // Auto-pick vehicle type when intake changes
-  useEffect(() => {
-    if (!selectedIntake || vehicleTypes.length === 0) return
-    // Use the vehicle_type_id stored on the intake if available
-    if (selectedIntake.vehicle_type_id) {
-      const match = vehicleTypes.find((v) => v.vehicle_type_id === selectedIntake.vehicle_type_id)
-      if (match) { setSelectedVehicleTypeId(match.vehicle_type_id); return }
-    }
-    // Fallback: default to first type
-    setSelectedVehicleTypeId(vehicleTypes[0]?.vehicle_type_id ?? null)
-  }, [selectedIntake, vehicleTypes])
+  const headDetailers  = headTechs.filter((t) => t.role === "head_detailer")
+  const headInstallers = headTechs.filter((t) => t.role === "head_installer")
+  const detailers      = crewMembers.filter((c) => c.role === "detailer")
+  const installers     = crewMembers.filter((c) => c.role === "installer")
+
+  function toggleCrew(id: string, set: Set<string>, setter: (s: Set<string>) => void) {
+    const next = new Set(set)
+    next.has(id) ? next.delete(id) : next.add(id)
+    setter(next)
+  }
+
+  function formatDate(dateStr: string): string {
+    if (!dateStr) return "—"
+    return new Date(dateStr).toLocaleString("en-US", {
+      month: "short", day: "numeric", year: "numeric",
+      hour: "numeric", minute: "2-digit",
+    })
+  }
+
+  function addMinutes(dateStr: string, mins: number): string {
+    if (!dateStr || !mins) return "—"
+    const d = new Date(dateStr)
+    d.setMinutes(d.getMinutes() + mins)
+    return d.toLocaleString("en-US", {
+      month: "short", day: "numeric", year: "numeric",
+      hour: "numeric", minute: "2-digit",
+    })
+  }
 
   async function handleSubmit() {
-    console.group("[CreateJO] Form submission values")
-    console.log("selectedIntake:", selectedIntake)
-    console.log("selectedVehicleTypeId:", selectedVehicleTypeId)
-    console.log("selectedTechnicianId:", selectedTechnicianId || "(none)")
-    console.log("scheduledDate:", scheduledDate || "(empty)")
-    console.log("preselectedIntakeId (from URL):", preselectedIntakeId)
-    console.log("intakeRecords (dropdown options):", intakeRecords)
-    console.log("techniciansList:", techniciansList)
-    console.groupEnd()
-
     setError(null)
-    if (!selectedIntake) { setError("Please select a customer intake record."); return }
-    if (!selectedVehicleTypeId) { setError("Please select a vehicle type."); return }
-    if (!scheduledDate) { setError("Please set a scheduled date."); return }
 
-    if (!selectedIntake.customer_id || !selectedIntake.service_id) {
-      setError("Selected intake is missing customer or service data. Please contact Sales.")
-      return
+    if (!useManualCustomer && !selectedCustomerId) {
+      setError("Please select a customer."); return
     }
+    if (useManualCustomer) {
+      if (!manualCustomerName.trim())   { setError("Please enter customer name."); return }
+      if (!manualContactNumber.trim())  { setError("Please enter contact number."); return }
+      if (!manualPlateNumber.trim())    { setError("Please enter plate number."); return }
+    }
+    if (!selectedServiceId) { setError("Please select a service."); return }
+    if (!scheduledAt)        { setError("Please set a scheduled date."); return }
 
     setLoading(true)
     try {
-      const res = await fetch("/api/operations/job-management/add-job-order", {
+      const payload: Record<string, unknown> = {
+        service_id:        selectedServiceId,
+        scheduled_at:      scheduledAt,
+        head_detailer_id:  selectedHeadDetailerId ?? null,
+        head_installer_id: selectedHeadInstallerId ?? null,
+        detailer_ids:      [...selectedDetailerIds],
+        installer_ids:     [...selectedInstallerIds],
+      }
+
+      if (!useManualCustomer) {
+        payload.customer_record_id = selectedCustomerId
+      } else {
+        payload.customer_name   = manualCustomerName.trim()
+        payload.contact_number  = manualContactNumber.trim()
+        payload.plate_number    = manualPlateNumber.trim()
+        payload.vehicle_unit    = manualVehicleUnit.trim() || null
+      }
+
+      const res  = await fetch("/api/operations/job-management/add-job-order", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          customer_id: selectedIntake.customer_id,
-          service_id: selectedIntake.service_id,
-          vehicle_type_id: selectedVehicleTypeId,
-          assigned_technician_id: selectedTechnicianId || null,
-          plate_number: selectedIntake.plate,
-          car_make: selectedIntake.make,
-          car_model: selectedIntake.model,
-          car_color: selectedIntake.color,
-          payment_amount: 0,
-          scheduled_start: scheduledDate,
-          scheduled_end: estimatedDays > 0 ? addDays(scheduledDate, estimatedDays) : undefined,
-        }),
+        body: JSON.stringify(payload),
       })
-
       const data = await res.json()
       if (!res.ok) throw new Error(data?.error ?? "Failed to create job order")
 
-      // Mark intake as job_created
-      await fetch(`/api/sales/intakes/${selectedIntake.intake_id}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ status: "job_created" }),
-      })
-
       setSuccess(true)
-      setTimeout(() => router.push("/dashboard/job-management"), 1200)
-    } catch (err: any) {
-      setError(err?.message ?? String(err))
+      redirectTimer.current = setTimeout(() => router.push("/dashboard/job-management"), 1200)
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : String(err))
     } finally {
       setLoading(false)
     }
   }
+
+  const estimatedMins   = selectedService?.estimated_duration_mins ?? 0
+  const hrs             = Math.round(estimatedMins / 60)
+  const durationLabel   = estimatedMins > 0
+    ? estimatedMins >= 60
+      ? `${hrs} hr${hrs !== 1 ? "s" : ""}`
+      : `${estimatedMins} min${estimatedMins !== 1 ? "s" : ""}`
+    : "—"
+  const expectedCompletion = scheduledAt && estimatedMins > 0
+    ? addMinutes(scheduledAt, estimatedMins)
+    : scheduledAt ? formatDate(scheduledAt) : "—"
 
   return (
     <div className="flex flex-col gap-5 max-w-3xl">
@@ -235,181 +263,190 @@ export default function AddJobOrderForm() {
         </div>
       )}
 
-      {/* Card 1: Intake Selection */}
+      {/* Card 1: Customer & Vehicle Details */}
       <div className="bg-white border border-gray-200 rounded-xl p-5 space-y-4">
         <div>
-          <h2 className="font-semibold text-sm text-gray-800">Customer Intake Reference</h2>
-          <p className="text-xs text-gray-400 mt-0.5">Select a pending intake submitted by Sales.</p>
+          <h2 className="font-semibold text-sm text-gray-800">Customer & Vehicle Details</h2>
+          <p className="text-xs text-gray-400 mt-0.5">Select from Sales records or enter manually.</p>
         </div>
 
-        <div className="flex flex-col gap-1.5">
-          <label className="text-xs font-medium text-gray-600">Intake Record</label>
+        {!useManualCustomer ? (
+          <div className="flex flex-col gap-4">
+            <div className="flex flex-col gap-1.5">
+              <div className="flex items-center justify-between">
+                <label className="text-xs font-medium text-red-600">Customer *</label>
+                <button
+                  type="button"
+                  onClick={() => { setUseManualCustomer(true); setSelectedCustomerId(null); setError(null) }}
+                  className="text-xs text-blue-600 hover:underline"
+                >
+                  Enter manually
+                </button>
+              </div>
+              <select
+                value={selectedCustomerId ?? ""}
+                onChange={(e) => { setSelectedCustomerId(e.target.value || null); setError(null) }}
+                disabled={loadingRefs}
+                className={SELECT_CLS}
+              >
+                <option value="">
+                  {loadingRefs ? "Loading…" : customers.length === 0 ? "No customer records found" : "— Select customer —"}
+                </option>
+                {customers.map((c) => (
+                  <option key={c.id} value={c.id}>{c.full_name} — {c.plate_number}</option>
+                ))}
+              </select>
+            </div>
 
-          {preselectedIntakeId ? (
-            /* Came from Customer Intake Records — show locked field */
-            loadingRefs ? (
-              <div className="w-full border border-gray-200 bg-gray-50 rounded-lg px-3 py-2 text-sm text-gray-400">
-                Loading intake data…
+            {selectedCustomer && (
+              <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 space-y-1.5">
+                <p className="text-sm font-semibold text-blue-900">{selectedCustomer.full_name}</p>
+                <p className="text-xs text-blue-700">📞 {selectedCustomer.contact_number}</p>
+                {selectedCustomer.email && <p className="text-xs text-blue-700">✉️ {selectedCustomer.email}</p>}
+                <p className="text-xs text-blue-700">🚗 {selectedCustomer.plate_number}</p>
+                {selectedCustomer.vehicle_unit && <p className="text-xs text-blue-700">Unit: {selectedCustomer.vehicle_unit}</p>}
               </div>
-            ) : selectedIntake ? (
-              <div className="w-full border border-green-300 bg-green-50 rounded-lg px-3 py-2 text-sm text-green-800 font-medium">
-                {selectedIntake.label}
-              </div>
-            ) : (
-              <div className="w-full border border-red-200 bg-red-50 rounded-lg px-3 py-2 text-sm text-red-600">
-                Could not load intake #{preselectedIntakeId}. Please go back and try again.
-              </div>
-            )
-          ) : (
-            /* Manual selection mode */
-            <select
-              value={selectedIntakeId}
-              onChange={(e) => { setSelectedIntakeId(e.target.value); setError(null) }}
-              disabled={loadingRefs}
-              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-700 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50"
-            >
-              <option value="">
-                {loadingRefs ? "Loading intake records…" : intakeRecords.length === 0 ? "No pending intake records" : "— Select an intake record —"}
-              </option>
-              {intakeRecords.map((r) => (
-                <option key={r.id} value={r.id}>{r.label}</option>
-              ))}
-            </select>
-          )}
-        </div>
-
-        {!hasIntake ? (
-          <div className="text-center py-6 text-sm text-gray-400 italic border border-dashed border-gray-200 rounded-lg">
-            {loadingRefs ? "Loading…" : "Select an intake record above to auto-fill customer and vehicle details."}
+            )}
           </div>
         ) : (
-          <div className="bg-gray-50 rounded-lg p-4">
-            <div className="grid grid-cols-2 gap-x-8 gap-y-3">
-              <div>
-                <p className="text-xs text-gray-400">Customer Name</p>
-                <p className="text-sm font-medium text-gray-800 mt-0.5">{selectedIntake.customer}</p>
-              </div>
-              <div>
-                <p className="text-xs text-gray-400">Plate Number</p>
-                <p className="text-sm font-medium text-gray-800 mt-0.5">{selectedIntake.plate}</p>
-              </div>
-              <div>
-                <p className="text-xs text-gray-400">Contact</p>
-                <p className="text-sm text-gray-700 mt-0.5">{selectedIntake.contact}</p>
-              </div>
-              <div>
-                <p className="text-xs text-gray-400">Make / Model</p>
-                <p className="text-sm text-gray-700 mt-0.5">{[selectedIntake.make, selectedIntake.model].filter(Boolean).join(" ") || "—"}</p>
-              </div>
-              <div>
-                <p className="text-xs text-gray-400">Color</p>
-                <p className="text-sm text-gray-700 mt-0.5">{selectedIntake.color}</p>
-              </div>
-              <div>
-                <p className="text-xs text-gray-400">Service Type</p>
-                <p className="text-sm font-medium text-blue-600 mt-0.5">{selectedIntake.serviceType}</p>
-              </div>
-              <div>
-                <p className="text-xs text-gray-400">Email</p>
-                <p className="text-sm text-gray-700 mt-0.5">{selectedIntake.email}</p>
-              </div>
-              <div>
-                <p className="text-xs text-gray-400">Scheduled Date</p>
-                <p className="text-sm text-gray-700 mt-0.5">{selectedIntake.scheduledDate ? formatDate(selectedIntake.scheduledDate) : "—"}</p>
-              </div>
-              <div>
-                <p className="text-xs text-gray-400">Vehicle Type</p>
-                <select
-                  value={selectedVehicleTypeId ?? ""}
-                  onChange={(e) => setSelectedVehicleTypeId(e.target.value ? Number(e.target.value) : null)}
-                  className="mt-0.5 w-full border border-gray-300 rounded-lg px-2 py-1.5 text-sm text-gray-700 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+          <div className="grid grid-cols-2 gap-4">
+            <div className="flex flex-col gap-1.5 col-span-2">
+              <div className="flex items-center justify-between">
+                <label className="text-xs font-medium text-gray-600">Customer Name *</label>
+                <button
+                  type="button"
+                  onClick={() => { setUseManualCustomer(false); setError(null) }}
+                  className="text-xs text-blue-600 hover:underline"
                 >
-                  <option value="">— Select —</option>
-                  {vehicleTypes.map((v) => (
-                    <option key={v.vehicle_type_id} value={v.vehicle_type_id}>{v.type_name}</option>
-                  ))}
-                </select>
+                  Select from records
+                </button>
               </div>
+              <input type="text" value={manualCustomerName} onChange={(e) => setManualCustomerName(e.target.value)} placeholder="e.g., Juan dela Cruz" className={INPUT_CLS} />
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <label className="text-xs font-medium text-gray-600">Contact Number *</label>
+              <input type="tel" value={manualContactNumber} onChange={(e) => setManualContactNumber(e.target.value)} placeholder="e.g., 09XX-XXX-XXXX" className={INPUT_CLS} />
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <label className="text-xs font-medium text-gray-600">Plate Number *</label>
+              <input type="text" value={manualPlateNumber} onChange={(e) => setManualPlateNumber(e.target.value)} placeholder="e.g., ABC-1234" className={INPUT_CLS} />
+            </div>
+            <div className="flex flex-col gap-1.5 col-span-2">
+              <label className="text-xs font-medium text-gray-600">Vehicle Unit</label>
+              <input type="text" value={manualVehicleUnit} onChange={(e) => setManualVehicleUnit(e.target.value)} placeholder="e.g., Toyota Vios 2020" className={INPUT_CLS} />
             </div>
           </div>
         )}
       </div>
 
-      {/* Card 2: Assignment */}
+      {/* Card 2: Service & Schedule */}
       <div className="bg-white border border-gray-200 rounded-xl p-5 space-y-4">
-        <h2 className="font-semibold text-sm text-gray-800">Job Assignment</h2>
-
-        <div className="grid grid-cols-3 gap-4">
+        <h2 className="font-semibold text-sm text-gray-800">Service & Schedule</h2>
+        <div className="grid grid-cols-2 gap-4">
           <div className="flex flex-col gap-1.5">
-            <label className="text-xs font-medium text-gray-600">Assigned Technician</label>
+            <label className="text-xs font-medium text-red-600">Service *</label>
             <select
-              value={selectedTechnicianId}
-              onChange={(e) => setSelectedTechnicianId(e.target.value)}
-              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-700 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+              value={selectedServiceId ?? ""}
+              onChange={(e) => { setSelectedServiceId(e.target.value || null); setError(null) }}
+              disabled={loadingRefs}
+              className={SELECT_CLS}
             >
-              <option value="">— Optional —</option>
-              {techniciansList.length === 0
-                ? <option disabled>No technicians currently online</option>
-                : techniciansList.map((t) => (
-                  <option key={t.user_id} value={t.user_id}>
-                    {t.full_name} — {t.active_jobs === 0 ? "Available" : `${t.active_jobs} active job${t.active_jobs !== 1 ? "s" : ""}`}
-                  </option>
-                ))
-              }
+              <option value="">{loadingRefs ? "Loading…" : services.length === 0 ? "No services found" : "— Select service —"}</option>
+              {services.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
             </select>
-            {techniciansList.length > 0 && (
-              <p className="text-xs text-green-600 mt-1">{techniciansList.length} technician{techniciansList.length !== 1 ? "s" : ""} currently online</p>
-            )}
           </div>
-
           <div className="flex flex-col gap-1.5">
-            <label className="text-xs font-medium text-gray-600">Scheduled Date</label>
+            <label className="text-xs font-medium text-red-600">Scheduled Date & Time *</label>
             <input
-              type="date"
-              value={scheduledDate}
-              onChange={(e) => { setScheduledDate(e.target.value); setError(null) }}
-              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-700 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+              type="datetime-local"
+              value={scheduledAt}
+              onChange={(e) => { setScheduledAt(e.target.value); setError(null) }}
+              className={INPUT_CLS}
             />
           </div>
+        </div>
 
-          <div className="flex flex-col gap-1.5">
-            <label className="text-xs font-medium text-gray-600">Estimated Duration</label>
-            <div className="px-3 py-2 text-sm text-gray-700 bg-gray-50 border border-gray-200 rounded-lg">
-              {durationLabel}
+        {scheduledAt && (
+          <div className="bg-gray-50 rounded-lg p-4 grid grid-cols-2 gap-4">
+            <div>
+              <p className="text-xs text-gray-500">Scheduled Start</p>
+              <p className="text-sm font-medium text-gray-800 mt-1">{formatDate(scheduledAt)}</p>
+            </div>
+            <div>
+              <p className="text-xs text-gray-500">Expected Completion</p>
+              <p className="text-sm font-medium text-gray-800 mt-1">{expectedCompletion}</p>
+            </div>
+            <div>
+              <p className="text-xs text-gray-500">Service</p>
+              <p className="text-sm font-medium text-gray-800 mt-1">{selectedService?.name ?? "—"}</p>
+            </div>
+            <div>
+              <p className="text-xs text-gray-500">Estimated Duration</p>
+              <p className="text-sm font-medium text-gray-800 mt-1">{durationLabel}</p>
             </div>
           </div>
-        </div>
+        )}
       </div>
 
-      {/* Card 3: Timeline */}
-      <div className="bg-white border border-gray-200 rounded-xl p-5 space-y-4">
-        <div className="flex items-center gap-2">
-          <h2 className="font-semibold text-sm text-gray-800">Auto-Generated Timeline</h2>
-          <Info className="w-4 h-4 text-gray-400" />
+      {/* Card 3: Team Assignment */}
+      <div className="bg-white border border-gray-200 rounded-xl p-5 space-y-5">
+        <div>
+          <h2 className="font-semibold text-sm text-gray-800">Team Assignment</h2>
+          <p className="text-xs text-gray-400 mt-0.5">Optional — can be assigned later.</p>
+        </div>
+
+        {/* Head techs */}
+        <div className="grid grid-cols-2 gap-4">
+          <div className="flex flex-col gap-1.5">
+            <label className="text-xs font-medium text-gray-600">Head Detailer</label>
+            <select
+              value={selectedHeadDetailerId ?? ""}
+              onChange={(e) => setSelectedHeadDetailerId(e.target.value || null)}
+              disabled={loadingRefs}
+              className={SELECT_CLS}
+            >
+              <option value="">— None —</option>
+              {headDetailers.map((t) => (
+                <option key={t.id} value={t.id}>
+                  {t.full_name}{t.active_jobs > 0 ? ` (${t.active_jobs} active)` : ""}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <label className="text-xs font-medium text-gray-600">Head Installer</label>
+            <select
+              value={selectedHeadInstallerId ?? ""}
+              onChange={(e) => setSelectedHeadInstallerId(e.target.value || null)}
+              disabled={loadingRefs}
+              className={SELECT_CLS}
+            >
+              <option value="">— None —</option>
+              {headInstallers.map((t) => (
+                <option key={t.id} value={t.id}>
+                  {t.full_name}{t.active_jobs > 0 ? ` (${t.active_jobs} active)` : ""}
+                </option>
+              ))}
+            </select>
+          </div>
         </div>
 
         <div className="grid grid-cols-2 gap-4">
-          <div>
-            <p className="text-xs text-gray-400">Service Type</p>
-            <p className="text-sm text-gray-700 mt-0.5">{selectedIntake?.serviceType ?? "—"}</p>
-          </div>
-          <div>
-            <p className="text-xs text-gray-400">Estimated Duration</p>
-            <p className="text-sm text-gray-700 mt-0.5">{durationLabel}</p>
-          </div>
-          <div>
-            <p className="text-xs text-gray-400">Start Date</p>
-            <p className="text-sm text-gray-700 mt-0.5">{startDate}</p>
-          </div>
-          <div>
-            <p className="text-xs text-gray-400">Expected Completion</p>
-            <p className="text-sm text-gray-700 mt-0.5">{expectedCompletion}</p>
-          </div>
+          <CrewCheckboxList
+            label="Detailers"
+            members={detailers}
+            selected={selectedDetailerIds}
+            onToggle={(id) => toggleCrew(id, selectedDetailerIds, setSelectedDetailerIds)}
+            loading={loadingRefs}
+          />
+          <CrewCheckboxList
+            label="Installers"
+            members={installers}
+            selected={selectedInstallerIds}
+            onToggle={(id) => toggleCrew(id, selectedInstallerIds, setSelectedInstallerIds)}
+            loading={loadingRefs}
+          />
         </div>
-
-        <p className="text-xs text-blue-500 italic">
-          Timeline is auto-calculated from the service duration set by Admin and cannot be modified.
-        </p>
       </div>
 
       {/* Footer */}
@@ -422,7 +459,9 @@ export default function AddJobOrderForm() {
         </Link>
         <div className="flex-1 flex flex-col gap-2">
           {error && (
-            <p className="text-sm text-red-500 bg-red-50 border border-red-200 rounded-lg px-3 py-2">{error}</p>
+            <p className="text-sm text-red-500 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
+              {error}
+            </p>
           )}
           <button
             onClick={handleSubmit}

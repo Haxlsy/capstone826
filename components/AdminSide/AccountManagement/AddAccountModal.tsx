@@ -1,16 +1,31 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import { X, Eye, EyeOff } from "lucide-react"
+import { X, Eye, EyeOff, Lock } from "lucide-react"
 
-type UserRole = "admin" | "operations" | "sales" | "head_technician" | "technician"
+function generateUsername(fullName: string): string {
+  const parts = fullName.trim().split(/\s+/).filter(Boolean)
+  if (parts.length === 0) return ""
+  const first = parts[0].toLowerCase()
+  const last = parts.length > 1 ? parts[parts.length - 1].toLowerCase() : parts[0].toLowerCase()
+  return `${first}.${last}`
+}
+
+function generatePassword(fullName: string): string {
+  const parts = fullName.trim().split(/\s+/).filter(Boolean)
+  if (parts.length === 0) return ""
+  const first = parts[0].toLowerCase()
+  const last = parts.length > 1 ? parts[parts.length - 1].toLowerCase() : parts[0].toLowerCase()
+  return `${first}_826_${last}`
+}
+
+type UserRole = "admin" | "operations" | "sales" | "head_detailer" | "head_installer"
 
 interface AccountData {
-  user_id: string
+  id: string
   full_name: string
-  user_name: string
+  username: string
   role: UserRole
-  contact_no: string
 }
 
 interface AddAccountModalProps {
@@ -18,14 +33,19 @@ interface AddAccountModalProps {
   onClose: () => void
   onSuccess: () => void
   editAccount?: AccountData
+  /** "staff" shows operations/sales/head roles. "admin" shows only Admin role. */
+  mode?: "staff" | "admin"
 }
 
-const ALL_ROLE_OPTIONS: { value: UserRole; label: string; superAdminOnly?: boolean }[] = [
-  { value: "admin", label: "Admin", superAdminOnly: true },
-  { value: "operations", label: "Operations" },
-  { value: "sales", label: "Sales" },
-  { value: "head_technician", label: "Head Technician" },
-  { value: "technician", label: "Technician" },
+const STAFF_ROLE_OPTIONS: { value: UserRole; label: string }[] = [
+  { value: "operations",     label: "Operations" },
+  { value: "sales",          label: "Sales" },
+  { value: "head_detailer",  label: "Head Detailer" },
+  { value: "head_installer", label: "Head Installer" },
+]
+
+const ADMIN_ROLE_OPTIONS: { value: UserRole; label: string }[] = [
+  { value: "admin", label: "Admin" },
 ]
 
 const EMPTY_FORM = {
@@ -34,23 +54,27 @@ const EMPTY_FORM = {
   password: "",
   confirmPassword: "",
   role: "operations" as UserRole,
-  contactNo: "",
 }
 
-export default function AddAccountModal({ open, onClose, onSuccess, editAccount }: AddAccountModalProps) {
+export default function AddAccountModal({
+  open,
+  onClose,
+  onSuccess,
+  editAccount,
+  mode = "staff",
+}: AddAccountModalProps) {
   const isEdit = !!editAccount
+  const roleOptions = mode === "admin" ? ADMIN_ROLE_OPTIONS : STAFF_ROLE_OPTIONS
 
-  const [form, setForm] = useState(EMPTY_FORM)
+  const [form, setForm] = useState({
+    ...EMPTY_FORM,
+    role: (mode === "admin" ? "admin" : "operations") as UserRole,
+  })
   const [showPassword, setShowPassword] = useState(false)
   const [showConfirm, setShowConfirm] = useState(false)
   const [errors, setErrors] = useState<Partial<typeof EMPTY_FORM>>({})
   const [submitting, setSubmitting] = useState(false)
   const [serverError, setServerError] = useState("")
-  const [currentUserRole, setCurrentUserRole] = useState("")
-
-  const roleOptions = ALL_ROLE_OPTIONS.filter(
-    (opt) => !opt.superAdminOnly || currentUserRole === "super_admin"
-  )
 
   // Reset / pre-fill when modal opens
   useEffect(() => {
@@ -59,25 +83,38 @@ export default function AddAccountModal({ open, onClose, onSuccess, editAccount 
       setServerError("")
       setShowPassword(false)
       setShowConfirm(false)
-      try {
-        const raw = localStorage.getItem("826_user")
-        if (raw) setCurrentUserRole(JSON.parse(raw).role ?? "")
-      } catch {}
 
       if (editAccount) {
         setForm({
-          fullName: editAccount.full_name,
-          username: editAccount.user_name,
-          password: "",
+          fullName:        editAccount.full_name,
+          username:        editAccount.username,
+          password:        "",
           confirmPassword: "",
-          role: editAccount.role,
-          contactNo: editAccount.contact_no,
+          role:            editAccount.role,
         })
       } else {
-        setForm(EMPTY_FORM)
+        setForm({
+          ...EMPTY_FORM,
+          role: (mode === "admin" ? "admin" : "operations") as UserRole,
+        })
       }
     }
-  }, [open, editAccount])
+  }, [open, editAccount, mode])
+
+  // Auto-generate username and password from full name (new accounts only)
+  useEffect(() => {
+    if (!isEdit) {
+      const generatedUsername = generateUsername(form.fullName)
+      const generatedPassword = generatePassword(form.fullName)
+      setForm((prev) => ({
+        ...prev,
+        username:        generatedUsername,
+        password:        generatedPassword,
+        confirmPassword: generatedPassword,
+      }))
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [form.fullName, isEdit])
 
   // Prevent background scroll when open
   useEffect(() => {
@@ -92,16 +129,9 @@ export default function AddAccountModal({ open, onClose, onSuccess, editAccount 
     if (!isEdit) {
       if (!form.password) e.password = "Password is required."
       else if (form.password.length < 8) e.password = "Password must be at least 8 characters."
-      if (!form.confirmPassword) e.confirmPassword = "Please confirm your password."
-      else if (form.password !== form.confirmPassword) e.confirmPassword = "Passwords do not match."
     } else if (form.password) {
       if (form.password.length < 8) e.password = "Password must be at least 8 characters."
       if (form.password !== form.confirmPassword) e.confirmPassword = "Passwords do not match."
-    }
-    if (!form.contactNo.trim()) {
-      e.contactNo = "Contact number is required."
-    } else if (!/^[0-9+\-\s()]{7,15}$/.test(form.contactNo.trim())) {
-      e.contactNo = "Enter a valid contact number (digits only, 7–15 characters)."
     }
     return e
   }
@@ -126,10 +156,9 @@ export default function AddAccountModal({ open, onClose, onSuccess, editAccount 
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            userId: editAccount!.user_id,
+            userId:   editAccount!.id,
             fullName: form.fullName.trim(),
-            role: form.role,
-            contactNo: form.contactNo.trim(),
+            role:     form.role,
             ...(form.password ? { password: form.password } : {}),
           }),
         })
@@ -141,8 +170,7 @@ export default function AddAccountModal({ open, onClose, onSuccess, editAccount 
             fullName: form.fullName.trim(),
             username: form.username.trim(),
             password: form.password,
-            role: form.role,
-            contactNo: form.contactNo.trim(),
+            role:     form.role,
           }),
         })
       }
@@ -187,7 +215,7 @@ export default function AddAccountModal({ open, onClose, onSuccess, editAccount 
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-5 border-b border-gray-100 shrink-0">
           <h2 className="text-lg font-semibold text-gray-800">
-            {isEdit ? "Edit Account" : "Add New Account"}
+            {isEdit ? "Edit Account" : mode === "admin" ? "Add Admin Account" : "Add New Account"}
           </h2>
           <button
             onClick={onClose}
@@ -205,9 +233,13 @@ export default function AddAccountModal({ open, onClose, onSuccess, editAccount 
             </div>
           )}
 
+          <p className="text-xs text-gray-400"><span className="text-red-500">*</span> Required fields</p>
+
           {/* Full Name */}
           <div className="space-y-1.5">
-            <label className="block text-sm font-medium text-gray-700">Full Name</label>
+            <label className="block text-sm font-medium text-gray-700">
+              Full Name <span className="text-red-500">*</span>
+            </label>
             <input
               type="text"
               value={form.fullName}
@@ -215,119 +247,137 @@ export default function AddAccountModal({ open, onClose, onSuccess, editAccount 
               className={`w-full px-3 py-2.5 text-sm border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-100 focus:border-blue-400 transition-colors ${
                 errors.fullName ? "border-red-400 bg-red-50" : "border-gray-200"
               }`}
-              placeholder=""
+              placeholder="e.g. Juan Dela Cruz"
             />
-            {errors.fullName && (
-              <p className="text-xs text-red-500">{errors.fullName}</p>
-            )}
+            {errors.fullName && <p className="text-xs text-red-500">{errors.fullName}</p>}
           </div>
 
-          {/* Username — read-only in edit mode */}
+          {/* Username */}
           <div className="space-y-1.5">
-            <label className="block text-sm font-medium text-gray-700">Username</label>
+            <label className="block text-sm font-medium text-gray-700">
+              Username {!isEdit && <span className="text-red-500">*</span>}
+              {isEdit && <span className="text-gray-400 font-normal"> (cannot be changed)</span>}
+            </label>
             <input
               type="text"
               value={form.username}
-              onChange={(e) => !isEdit && setField("username", e.target.value)}
               readOnly={isEdit}
-              className={`w-full px-3 py-2.5 text-sm border rounded-lg focus:outline-none transition-colors ${
+              onChange={(e) => !isEdit && setField("username", e.target.value)}
+              className={`w-full px-3 py-2.5 text-sm border rounded-lg focus:outline-none transition-colors font-mono ${
                 isEdit
                   ? "border-gray-200 bg-gray-50 text-gray-400 cursor-not-allowed"
                   : errors.username
                   ? "border-red-400 bg-red-50 focus:ring-2 focus:ring-blue-100 focus:border-blue-400"
                   : "border-gray-200 focus:ring-2 focus:ring-blue-100 focus:border-blue-400"
               }`}
-              placeholder=""
+              placeholder="Auto-filled from full name"
             />
-            {errors.username && (
-              <p className="text-xs text-red-500">{errors.username}</p>
+            {!isEdit && (
+              <p className="text-xs text-blue-500">Auto-generated from full name (editable)</p>
             )}
+            {errors.username && <p className="text-xs text-red-500">{errors.username}</p>}
           </div>
 
           {/* Password */}
           <div className="space-y-1.5">
             <label className="block text-sm font-medium text-gray-700">
-              Password{isEdit && <span className="text-gray-400 font-normal"> (leave blank to keep current)</span>}
+              Password{" "}
+              {!isEdit && <span className="text-red-500">*</span>}
+              {isEdit && <span className="text-gray-400 font-normal"> (leave blank to keep current)</span>}
             </label>
-            <div className="relative">
-              <input
-                type={showPassword ? "text" : "password"}
-                value={form.password}
-                onChange={(e) => setField("password", e.target.value)}
-                className={`w-full px-3 py-2.5 pr-10 text-sm border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-100 focus:border-blue-400 transition-colors ${
-                  errors.password ? "border-red-400 bg-red-50" : "border-gray-200"
-                }`}
-                placeholder=""
-              />
-              <button
-                type="button"
-                onClick={() => setShowPassword((v) => !v)}
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
-              >
-                {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-              </button>
-            </div>
-            {errors.password && (
-              <p className="text-xs text-red-500">{errors.password}</p>
+            {!isEdit ? (
+              <>
+                <div className="relative">
+                  <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400 pointer-events-none" />
+                  <input
+                    type={showPassword ? "text" : "password"}
+                    value={form.password}
+                    readOnly
+                    className="w-full pl-9 pr-10 py-2.5 text-sm border border-gray-200 rounded-lg bg-gray-50 text-gray-500 cursor-not-allowed font-mono"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword((v) => !v)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                  >
+                    {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  </button>
+                </div>
+                <p className="text-xs text-blue-500">
+                  Auto-generated from full name: <span className="font-mono">{form.password || "—"}</span>
+                </p>
+              </>
+            ) : (
+              <div className="relative">
+                <input
+                  type={showPassword ? "text" : "password"}
+                  value={form.password}
+                  onChange={(e) => setField("password", e.target.value)}
+                  className={`w-full px-3 py-2.5 pr-10 text-sm border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-100 focus:border-blue-400 transition-colors ${
+                    errors.password ? "border-red-400 bg-red-50" : "border-gray-200"
+                  }`}
+                  placeholder=""
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword((v) => !v)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                >
+                  {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                </button>
+              </div>
             )}
+            {errors.password && <p className="text-xs text-red-500">{errors.password}</p>}
           </div>
 
-          {/* Confirm Password */}
-          <div className="space-y-1.5">
-            <label className="block text-sm font-medium text-gray-700">Confirm Password</label>
-            <div className="relative">
-              <input
-                type={showConfirm ? "text" : "password"}
-                value={form.confirmPassword}
-                onChange={(e) => setField("confirmPassword", e.target.value)}
-                className={`w-full px-3 py-2.5 pr-10 text-sm border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-100 focus:border-blue-400 transition-colors ${
-                  errors.confirmPassword ? "border-red-400 bg-red-50" : "border-gray-200"
-                }`}
-                placeholder=""
-              />
-              <button
-                type="button"
-                onClick={() => setShowConfirm((v) => !v)}
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
-              >
-                {showConfirm ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-              </button>
+          {/* Confirm Password — edit mode only */}
+          {isEdit && (
+            <div className="space-y-1.5">
+              <label className="block text-sm font-medium text-gray-700">Confirm Password</label>
+              <div className="relative">
+                <input
+                  type={showConfirm ? "text" : "password"}
+                  value={form.confirmPassword}
+                  onChange={(e) => setField("confirmPassword", e.target.value)}
+                  className={`w-full px-3 py-2.5 pr-10 text-sm border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-100 focus:border-blue-400 transition-colors ${
+                    errors.confirmPassword ? "border-red-400 bg-red-50" : "border-gray-200"
+                  }`}
+                  placeholder=""
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowConfirm((v) => !v)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                >
+                  {showConfirm ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                </button>
+              </div>
+              {errors.confirmPassword && <p className="text-xs text-red-500">{errors.confirmPassword}</p>}
             </div>
-            {errors.confirmPassword && (
-              <p className="text-xs text-red-500">{errors.confirmPassword}</p>
-            )}
-          </div>
+          )}
 
           {/* Role */}
           <div className="space-y-1.5">
-            <label className="block text-sm font-medium text-gray-700">Role</label>
-            <select
-              value={form.role}
-              onChange={(e) => setField("role", e.target.value)}
-              className="w-full px-3 py-2.5 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-100 focus:border-blue-400 bg-white transition-colors"
-            >
-              {roleOptions.map(({ value, label }) => (
-                <option key={value} value={value}>
-                  {label}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          {/* Contact Number */}
-          <div className="space-y-1.5">
-            <label className="block text-sm font-medium text-gray-700">Contact Number</label>
-            <input
-              type="text"
-              value={form.contactNo}
-              onChange={(e) => setField("contactNo", e.target.value)}
-              className={`w-full px-3 py-2.5 text-sm border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-100 focus:border-blue-400 transition-colors ${
-                errors.contactNo ? "border-red-400 bg-red-50" : "border-gray-200"
-              }`}
-              placeholder=""
-            />
-            {errors.contactNo && (
-              <p className="text-xs text-red-500">{errors.contactNo}</p>
+            <label className="block text-sm font-medium text-gray-700">
+              Role <span className="text-red-500">*</span>
+            </label>
+            {mode === "admin" ? (
+              /* Admin mode — role is fixed, just display it */
+              <div className="w-full px-3 py-2.5 text-sm border border-gray-200 rounded-lg bg-gray-50 text-gray-500 cursor-not-allowed">
+                Admin
+              </div>
+            ) : (
+              <select
+                value={form.role}
+                onChange={(e) => setField("role", e.target.value)}
+                className="w-full px-3 py-2.5 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-100 focus:border-blue-400 bg-white transition-colors"
+              >
+                {roleOptions.map(({ value, label }) => (
+                  <option key={value} value={value}>
+                    {label}
+                  </option>
+                ))}
+              </select>
             )}
           </div>
         </form>

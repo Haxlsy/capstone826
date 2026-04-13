@@ -4,24 +4,18 @@ import { createAdminClient } from "@/lib/supabase/admin"
 export async function POST(request: Request) {
   const { userId, isArchived } = await request.json()
 
-  console.log("[archive-account] Request:", { userId, isArchived })
-
   if (!userId || typeof isArchived !== "boolean") {
-    return NextResponse.json({ error: "userId and isArchived are required." }, { status: 400 })
+    return NextResponse.json({ error: "userId and isArchived (boolean) are required." }, { status: 400 })
   }
 
   const supabase = createAdminClient()
 
   const { error } = await supabase
-    .from("profile")
+    .from("user_account")
     .update({ is_archived: isArchived })
-    .eq("user_id", userId)
+    .eq("id", userId)
 
-  if (error) {
-    console.error("[archive-account] Update failed:", error.message)
-    return NextResponse.json({ error: error.message }, { status: 500 })
-  }
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
-  console.log("[archive-account] Done — userId:", userId, "isArchived:", isArchived)
   return NextResponse.json({ success: true })
 }

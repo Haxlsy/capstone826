@@ -14,7 +14,6 @@ const ROLE_LABELS: Record<string, string> = {
   operations: "Operations",
   sales: "Sales",
   head_technician: "Head Technician",
-  technician: "Technician",
 }
 
 export function getRoleLabel(role: string) {

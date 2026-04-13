@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback, useMemo } from "react"
 import Link from "next/link"
-import { Search, Filter, MoreHorizontal, ChevronRight } from "lucide-react"
+import { Search, Filter, ChevronRight } from "lucide-react"
 import StatusPickerModal, {
   type JobStatus,
   type StatusOption,
@@ -12,29 +12,24 @@ import StatusConfirmDialog from "./StatusConfirmDialog"
 import BulkStatusButton from "./BulkStatusButton"
 
 interface JobOrder {
-  rawId: number
-  id: string
-  customer: string
-  plate: string
-  vehicle: string
-  service: string
-  technician: string
-  scheduled: string
-  status: JobStatus
+  id:           string   // UUID — used for API calls and links
+  displayId:    string   // e.g. "JO-2026-abc"
+  customer:     string
+  plate:        string
+  vehicle:      string
+  service:      string
+  headDetailer: string
+  scheduled:    string
+  status:       JobStatus
 }
 
-const DB_STATUS_MAP: Record<string, JobStatus> = {
-  pending:       "Pending",
-  ongoing:       "Ongoing",
-  quality_check: "Quality Check",
-  completed:     "Completed",
-  delayed:       "Delayed",
-  released:      "Released",
-  cancelled:     "Cancelled",
-}
+type TabType = "All" | "Pending" | "Ongoing" | "For Rework" | "For Release" | "Delayed" | "Released"
+const TABS: TabType[] = ["All", "Pending", "Ongoing", "For Rework", "For Release", "Delayed", "Released"]
 
-type TabType = "All" | "Pending" | "Ongoing" | "Quality Check" | "Completed" | "Delayed" | "Released"
-const TABS: TabType[] = ["All", "Pending", "Ongoing", "Quality Check", "Completed", "Delayed", "Released"]
+function fmtDate(iso: string | null | undefined): string {
+  if (!iso) return "—"
+  return new Date(iso).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })
+}
 
 export default function JobManagementTable() {
   const [activeTab, setActiveTab]     = useState<TabType>("All")
@@ -45,8 +40,8 @@ export default function JobManagementTable() {
   const [currentPage]                 = useState(1)
   const pageSize = 15
 
-  // Selection state
-  const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set())
+  // Selection state (UUID strings)
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
 
   // Single-row picker modal state
   const [pickerJob, setPickerJob]         = useState<JobOrder | null>(null)
@@ -68,21 +63,21 @@ export default function JobManagementTable() {
       const json = await res.json()
       if (!res.ok) throw new Error(json?.error ?? "Failed to fetch job orders")
 
-      const mapped: JobOrder[] = (json.job_orders || []).map((r: any) => ({
-        rawId:      r.job_order_id,
-        id:         `JO-${new Date(r.created_at).getFullYear()}-${String(r.job_order_id).padStart(3, "0")}`,
-        customer:   r.customer?.full_name ?? `Customer #${r.customer_id ?? "-"}`,
-        plate:      r.plate_number ?? "—",
-        vehicle:    `${r.car_make ?? ""} ${r.car_model ?? ""}`.trim() || "—",
-        service:    r.service?.service_name ?? "—",
-        technician: r.assigned_technician?.full_name ?? "Unassigned",
-        scheduled:  r.scheduled_start ? new Date(r.scheduled_start).toLocaleDateString() : "—",
-        status:     DB_STATUS_MAP[r.current_status] ?? "Pending",
+      const mapped: JobOrder[] = (json.job_orders ?? []).map((r: any) => ({
+        id:           r.id,
+        displayId:    `JO-${new Date(r.created_at).getFullYear()}-${r.id.slice(-4).toUpperCase()}`,
+        customer:     r.customer_name ?? "—",
+        plate:        r.plate_number  ?? "—",
+        vehicle:      r.vehicle_unit  ?? "—",
+        service:      r.service       ?? "—",
+        headDetailer: r.head_detailer ?? "Unassigned",
+        scheduled:    fmtDate(r.scheduled_at),
+        status:       (r.status as JobStatus) ?? "Pending",
       }))
 
       setJobOrders(mapped)
-    } catch (err: any) {
-      setFetchError(err?.message ?? String(err))
+    } catch (err: unknown) {
+      setFetchError(err instanceof Error ? err.message : String(err))
     } finally {
       setLoading(false)
     }
@@ -90,19 +85,20 @@ export default function JobManagementTable() {
 
   useEffect(() => { load() }, [load])
 
-  // Derived filter/pagination
   const filtered = useMemo(() => jobOrders.filter((job) => {
     const matchesTab    = activeTab === "All" || job.status === activeTab
     const q             = searchQuery.toLowerCase()
-    const matchesSearch = q === "" || job.customer.toLowerCase().includes(q) || job.id.toLowerCase().includes(q)
+    const matchesSearch = q === "" ||
+      job.customer.toLowerCase().includes(q) ||
+      job.displayId.toLowerCase().includes(q) ||
+      job.plate.toLowerCase().includes(q)
     return matchesTab && matchesSearch
   }), [jobOrders, activeTab, searchQuery])
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize))
   const paginated  = filtered.slice((currentPage - 1) * pageSize, currentPage * pageSize)
 
-  // Selection helpers
-  const paginatedIds     = paginated.map((j) => j.rawId)
+  const paginatedIds     = paginated.map((j) => j.id)
   const allPageSelected  = paginatedIds.length > 0 && paginatedIds.every((id) => selectedIds.has(id))
   const somePageSelected = paginatedIds.some((id) => selectedIds.has(id))
 
@@ -118,21 +114,19 @@ export default function JobManagementTable() {
     })
   }
 
-  function toggleRow(rawId: number) {
+  function toggleRow(id: string) {
     setSelectedIds((prev) => {
       const next = new Set(prev)
-      next.has(rawId) ? next.delete(rawId) : next.add(rawId)
+      next.has(id) ? next.delete(id) : next.add(id)
       return next
     })
   }
 
-  // Derive common status from selected rows
-  const selectedJobs   = jobOrders.filter((j) => selectedIds.has(j.rawId))
+  const selectedJobs   = jobOrders.filter((j) => selectedIds.has(j.id))
   const uniqueStatuses = [...new Set(selectedJobs.map((j) => j.status))]
   const allSameStatus  = uniqueStatuses.length === 1
   const commonStatus   = allSameStatus ? uniqueStatuses[0] : null
 
-  // ── Single-row picker ──
   function openSinglePicker(job: JobOrder) {
     setPickerJob(job)
     setIsBulkMode(false)
@@ -140,7 +134,6 @@ export default function JobManagementTable() {
     setUpdateError(null)
   }
 
-  // ── Bulk picker ──
   function openBulkPicker() {
     setBulkPickerOpen(true)
     setIsBulkMode(true)
@@ -156,7 +149,6 @@ export default function JobManagementTable() {
     setUpdateError(null)
   }
 
-  // ── Confirm handler (single + bulk) ──
   async function confirmUpdate() {
     if (!confirmTarget) return
     setUpdating(true)
@@ -165,8 +157,8 @@ export default function JobManagementTable() {
       if (isBulkMode) {
         const ids = [...selectedIds]
         await Promise.all(
-          ids.map((rawId) =>
-            fetch(`/api/operations/job-orders/${rawId}`, {
+          ids.map((id) =>
+            fetch(`/api/operations/job-orders/${id}`, {
               method: "PATCH",
               headers: { "Content-Type": "application/json" },
               body: JSON.stringify({ status: confirmTarget.db }),
@@ -174,12 +166,12 @@ export default function JobManagementTable() {
           )
         )
         setJobOrders((prev) =>
-          prev.map((j) => selectedIds.has(j.rawId) ? { ...j, status: confirmTarget.label } : j)
+          prev.map((j) => selectedIds.has(j.id) ? { ...j, status: confirmTarget.label } : j)
         )
         setSelectedIds(new Set())
       } else {
         if (!pickerJob) return
-        const res  = await fetch(`/api/operations/job-orders/${pickerJob.rawId}`, {
+        const res  = await fetch(`/api/operations/job-orders/${pickerJob.id}`, {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ status: confirmTarget.db }),
@@ -187,12 +179,12 @@ export default function JobManagementTable() {
         const json = await res.json()
         if (!res.ok) throw new Error(json?.error ?? "Failed to update status")
         setJobOrders((prev) =>
-          prev.map((j) => j.rawId === pickerJob.rawId ? { ...j, status: confirmTarget.label } : j)
+          prev.map((j) => j.id === pickerJob.id ? { ...j, status: confirmTarget.label } : j)
         )
       }
       closeAll()
-    } catch (err: any) {
-      setUpdateError(err?.message ?? String(err))
+    } catch (err: unknown) {
+      setUpdateError(err instanceof Error ? err.message : String(err))
     } finally {
       setUpdating(false)
     }
@@ -225,7 +217,7 @@ export default function JobManagementTable() {
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
             <input
               type="text"
-              placeholder="Search jobs..."
+              placeholder="Search by customer, plate, or Job ID…"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               className="w-full pl-9 pr-4 py-2 text-sm border border-gray-200 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
@@ -268,12 +260,11 @@ export default function JobManagementTable() {
                     onChange={toggleSelectAll}
                   />
                 </th>
-                {["Job Order ID", "Customer", "Vehicle", "Service", "Technician", "Scheduled", "Status"].map((h) => (
+                {["Job Order ID", "Customer", "Vehicle", "Service", "Head Detailer", "Scheduled", "Status", ""].map((h) => (
                   <th key={h} className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">
                     {h}
                   </th>
                 ))}
-                <th className="w-12 px-4 py-3" />
               </tr>
             </thead>
             <tbody>
@@ -291,7 +282,7 @@ export default function JobManagementTable() {
                 </tr>
               ) : (
                 paginated.map((job, idx) => {
-                  const isSelected = selectedIds.has(job.rawId)
+                  const isSelected = selectedIds.has(job.id)
                   return (
                     <tr
                       key={job.id}
@@ -304,11 +295,16 @@ export default function JobManagementTable() {
                           type="checkbox"
                           className="w-4 h-4 rounded border-gray-300 cursor-pointer"
                           checked={isSelected}
-                          onChange={() => toggleRow(job.rawId)}
+                          onChange={() => toggleRow(job.id)}
                         />
                       </td>
                       <td className="px-4 py-3">
-                        <span className="text-xs text-gray-500 font-mono">{job.id}</span>
+                        <Link
+                          href={`/dashboard/job-management/${job.id}`}
+                          className="text-xs font-mono text-blue-600 hover:underline"
+                        >
+                          {job.displayId}
+                        </Link>
                       </td>
                       <td className="px-4 py-3">
                         <span className="font-semibold text-gray-800">{job.customer}</span>
@@ -321,7 +317,7 @@ export default function JobManagementTable() {
                         <span className="text-sm text-gray-700">{job.service}</span>
                       </td>
                       <td className="px-4 py-3">
-                        <span className="text-sm text-gray-700">{job.technician}</span>
+                        <span className="text-sm text-gray-700">{job.headDetailer}</span>
                       </td>
                       <td className="px-4 py-3">
                         <span className="text-sm text-gray-500">{job.scheduled}</span>
@@ -337,9 +333,13 @@ export default function JobManagementTable() {
                         </button>
                       </td>
                       <td className="px-4 py-3">
-                        <button className="text-gray-400 hover:text-gray-600 transition-colors">
-                          <MoreHorizontal className="w-4 h-4" />
-                        </button>
+                        <Link
+                          href={`/dashboard/job-management/${job.id}`}
+                          className="text-gray-400 hover:text-blue-600 transition-colors text-xs font-medium"
+                          title="View details"
+                        >
+                          View →
+                        </Link>
                       </td>
                     </tr>
                   )
@@ -385,7 +385,7 @@ export default function JobManagementTable() {
       {/* Single-row Status Picker */}
       {pickerJob && !confirmTarget && (
         <StatusPickerModal
-          jobId={pickerJob.id}
+          jobId={pickerJob.displayId}
           customerName={pickerJob.customer}
           currentStatus={pickerJob.status}
           onSelect={(opt) => setConfirmTarget(opt)}
@@ -404,7 +404,7 @@ export default function JobManagementTable() {
         />
       )}
 
-      {/* Confirm Dialog (single + bulk) */}
+      {/* Confirm Dialog */}
       {confirmTarget && (
         <StatusConfirmDialog
           customerName={isBulkMode

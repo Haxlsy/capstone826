@@ -5,20 +5,14 @@ import { usePathname, useRouter } from "next/navigation"
 import {
   LayoutDashboard,
   MessageCircle,
-  FileText,
-  UserPlus,
   Users,
-  ClipboardList,
+  Settings,
   LogOut,
 } from "lucide-react"
 
 const navItems = [
-  { label: "Dashboard", href: "/dashboard/sales", icon: LayoutDashboard },
-  { label: "Messenger Inbox", href: "/dashboard/messenger", icon: MessageCircle },
-  { label: "Message Templates", href: "/dashboard/templates", icon: FileText },
-  { label: "Customer Intake", href: "/dashboard/intake", icon: UserPlus },
-  { label: "Customer Records", href: "/dashboard/customers", icon: Users },
-  { label: "Job Order Status", href: "/dashboard/jobs", icon: ClipboardList },
+  { label: "Inquiry Management", href: "/dashboard/sales", icon: MessageCircle },
+  { label: "Customer Records", href: "/dashboard/sales/customer-records", icon: Users },
 ]
 
 export default function Sidebar() {
@@ -64,8 +58,19 @@ export default function Sidebar() {
         })}
       </nav>
 
-      {/* Logout */}
-      <div className="px-3 pb-4 border-t border-gray-100 pt-3">
+      {/* Settings + Logout */}
+      <div className="py-4 px-3 border-t border-gray-100 space-y-0.5">
+        <Link
+          href="/dashboard/settings"
+          className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
+            pathname === "/dashboard/settings"
+              ? "bg-blue-50 text-blue-600 border-l-4 border-blue-500 pl-2 pr-3"
+              : "text-gray-500 hover:bg-gray-50 hover:text-gray-800"
+          }`}
+        >
+          <Settings className="w-4 h-4 shrink-0" />
+          Settings
+        </Link>
         <button
           onClick={handleLogout}
           className="flex items-center gap-3 w-full px-3 py-2.5 rounded-lg text-sm font-medium text-gray-500 hover:bg-red-50 hover:text-red-600 transition-colors"

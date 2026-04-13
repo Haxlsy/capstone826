@@ -5,18 +5,19 @@ import { usePathname, useRouter } from "next/navigation"
 import {
   LayoutDashboard,
   ClipboardList,
-  FileText,
   AlertTriangle,
   Archive,
+  UserCheck,
+  Settings,
   LogOut,
 } from "lucide-react"
 
 const navItems = [
-  { label: "Dashboard", href: "/dashboard/operations", icon: LayoutDashboard },
-  { label: "Job Management", href: "/dashboard/job-management", icon: ClipboardList },
-  { label: "Customer Intake Records", href: "/dashboard/customer-intake-records", icon: FileText },
-  { label: "Concerns", href: "/dashboard/concerns", icon: AlertTriangle, badge: 3 },
-  { label: "Job Order Records", href: "/dashboard/job-order-records", icon: Archive },
+  { label: "Dashboard",               href: "/dashboard/operations",               icon: LayoutDashboard },
+  { label: "Job Management",          href: "/dashboard/job-management",           icon: ClipboardList },
+  { label: "Concerns",                href: "/dashboard/concerns",                 icon: AlertTriangle, badge: 3 },
+  { label: "Job Order Records",       href: "/dashboard/job-order-records",        icon: Archive },
+  { label: "Technician Availability", href: "/dashboard/technician-availability",  icon: UserCheck },
 ]
 
 export default function OperationsSidebar() {
@@ -67,8 +68,19 @@ export default function OperationsSidebar() {
         })}
       </nav>
 
-      {/* Logout */}
-      <div className="px-3 pb-4 border-t border-gray-100 pt-3">
+      {/* Settings + Logout */}
+      <div className="py-4 px-3 border-t border-gray-100 space-y-0.5">
+        <Link
+          href="/dashboard/operations/settings"
+          className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
+            pathname === "/dashboard/operations/settings"
+              ? "bg-blue-50 text-blue-600 border-l-4 border-blue-500 pl-2 pr-3"
+              : "text-gray-500 hover:bg-gray-50 hover:text-gray-800"
+          }`}
+        >
+          <Settings className="w-4 h-4 shrink-0" />
+          Settings
+        </Link>
         <button
           onClick={handleLogout}
           className="flex items-center gap-3 w-full px-3 py-2.5 rounded-lg text-sm font-medium text-gray-500 hover:bg-red-50 hover:text-red-600 transition-colors"

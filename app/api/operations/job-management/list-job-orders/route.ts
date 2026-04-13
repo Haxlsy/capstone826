@@ -1,37 +1,78 @@
-import { NextResponse } from "next/server";
-import { cookies } from "next/headers";
-import { createClient } from "@/lib/supabase/server";
+import { NextResponse } from "next/server"
+import { createAdminClient } from "@/lib/supabase/admin"
 
 export async function GET() {
   try {
-    const cookieStore = await cookies();
-    const supabase = createClient(cookieStore);
+    const supabase = createAdminClient()
 
-    const { data, error } = await supabase
+    const { data: jobs, error } = await supabase
       .from("job_order")
       .select(
-        `job_order_id,
-         plate_number,
-         car_make,
-         car_model,
-         payment_amount,
-         current_status,
-         scheduled_start,
-         scheduled_end,
-         created_at,
-         customer:customer_id(full_name,customer_id),
-         service:service_id(service_name,service_id),
-         vehicle_type:vehicle_type_id(type_name,vehicle_type_id),
-         assigned_technician:assigned_technician_id(full_name,user_id)`
+        `id, status, scheduled_at, actual_start_at, expected_completion_at, created_at,
+         customer:customer_record_id(full_name, plate_number, vehicle_unit, contact_number),
+         service:service_id(name),
+         customer_name, contact_number, plate_number, vehicle_unit`
       )
-      .order("created_at", { ascending: false });
+      .order("created_at", { ascending: false })
 
-    if (error) {
-      return NextResponse.json({ error: error.message }, { status: 500 });
+    if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+
+    const jobIds = (jobs ?? []).map((j: any) => j.id)
+
+    // Team assignments (head detailer / head installer)
+    const { data: teamRows } = await supabase
+      .from("job_order_team")
+      .select("job_order_id, role_in_job, user_account:user_account_id(id, full_name)")
+      .in("job_order_id", jobIds)
+      .in("role_in_job", ["head_detailer", "head_installer"])
+
+    // Stage progress counts
+    const { data: stageCounts } = await supabase
+      .from("job_stage_progress")
+      .select("job_order_id, status")
+      .in("job_order_id", jobIds)
+
+    // Build maps
+    const teamMap = new Map<string, { head_detailer: string; head_installer: string }>()
+    for (const t of teamRows ?? []) {
+      const entry = teamMap.get(t.job_order_id) ?? { head_detailer: "Unassigned", head_installer: "Unassigned" }
+      const ua = t.user_account as any
+      if (t.role_in_job === "head_detailer") entry.head_detailer = ua?.full_name ?? "Unassigned"
+      if (t.role_in_job === "head_installer") entry.head_installer = ua?.full_name ?? "Unassigned"
+      teamMap.set(t.job_order_id, entry)
     }
 
-    return NextResponse.json({ job_orders: data });
+    const progressMap = new Map<string, { total: number; done: number }>()
+    for (const s of stageCounts ?? []) {
+      const entry = progressMap.get(s.job_order_id) ?? { total: 0, done: 0 }
+      entry.total++
+      if (s.status === "done") entry.done++
+      progressMap.set(s.job_order_id, entry)
+    }
+
+    const result = (jobs ?? []).map((j: any) => {
+      const prog = progressMap.get(j.id) ?? { total: 0, done: 0 }
+      const team = teamMap.get(j.id) ?? { head_detailer: "Unassigned", head_installer: "Unassigned" }
+      return {
+        id:                      j.id,
+        customer_name:           j.customer?.full_name ?? j.customer_name ?? "—",
+        plate_number:            j.customer?.plate_number ?? j.plate_number ?? "—",
+        vehicle_unit:            j.customer?.vehicle_unit ?? j.vehicle_unit ?? "—",
+        contact_number:          j.customer?.contact_number ?? j.contact_number ?? "—",
+        service:                 j.service?.name ?? "—",
+        head_detailer:           team.head_detailer,
+        head_installer:          team.head_installer,
+        status:                  j.status,
+        scheduled_at:            j.scheduled_at,
+        actual_start_at:         j.actual_start_at,
+        expected_completion_at:  j.expected_completion_at,
+        created_at:              j.created_at,
+        progress:                prog.total > 0 ? Math.round((prog.done / prog.total) * 100) : 0,
+      }
+    })
+
+    return NextResponse.json({ job_orders: result })
   } catch (err: any) {
-    return NextResponse.json({ error: err?.message ?? String(err) }, { status: 500 });
+    return NextResponse.json({ error: err?.message ?? String(err) }, { status: 500 })
   }
 }
