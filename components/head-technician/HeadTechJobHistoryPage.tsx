@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import {
   ChevronLeft, CheckCircle2, Circle, ImagePlus,
@@ -79,7 +79,6 @@ export default function HeadTechJobHistoryPage({ jobId }: { jobId: string }) {
   const [approving, setApproving]       = useState(false);
   const [approved, setApproved]         = useState(false);
 
-  const fileInputRefs = useRef<Map<string, HTMLInputElement>>(new Map());
 
   // ── Load ──────────────────────────────────────────────────────────────────
 
@@ -319,8 +318,6 @@ export default function HeadTechJobHistoryPage({ jobId }: { jobId: string }) {
                   isMarking={false}
                   isUploading={false}
                   onMarkDone={() => {}}
-                  onAddMedia={() => {}}
-                  fileRef={() => {}}
                   onFileChange={() => {}}
                 />
               ))}
@@ -346,8 +343,6 @@ export default function HeadTechJobHistoryPage({ jobId }: { jobId: string }) {
                   isMarking={markingId === stage.id}
                   isUploading={uploadingId === stage.id}
                   onMarkDone={() => markDone(stage)}
-                  onAddMedia={() => fileInputRefs.current.get(stage.id)?.click()}
-                  fileRef={(el) => { if (el) fileInputRefs.current.set(stage.id, el); }}
                   onFileChange={(files) => handleFileChange(stage, files)}
                 />
               ))}
@@ -427,15 +422,13 @@ export default function HeadTechJobHistoryPage({ jobId }: { jobId: string }) {
 
 function StageCard({
   stage, readOnly, isMarking, isUploading,
-  onMarkDone, onAddMedia, fileRef, onFileChange,
+  onMarkDone, onFileChange,
 }: {
   stage:       StageDoc;
   readOnly:    boolean;
   isMarking:   boolean;
   isUploading: boolean;
   onMarkDone:  () => void;
-  onAddMedia:  () => void;
-  fileRef:     (el: HTMLInputElement | null) => void;
   onFileChange:(files: FileList | null) => void;
 }) {
   const done     = stage.status === "done";
@@ -503,23 +496,18 @@ function StageCard({
       {!readOnly && (
         <div className="flex flex-col gap-2 pl-7">
           <div className="flex items-center gap-2">
-            <button
-              onClick={onAddMedia}
-              disabled={isUploading}
-              className="flex items-center gap-1.5 text-xs font-medium text-gray-500 border border-gray-200 rounded-lg px-2.5 py-1.5 hover:bg-gray-50 transition-colors disabled:opacity-40"
-            >
+            {/* label wraps the input — direct user gesture, reliably opens camera on mobile */}
+            <label className={`flex items-center gap-1.5 text-xs font-medium text-gray-500 border border-gray-200 rounded-lg px-2.5 py-1.5 hover:bg-gray-50 transition-colors ${isUploading ? "opacity-40 pointer-events-none" : "cursor-pointer"}`}>
               {isUploading ? <Loader2 size={12} className="animate-spin" /> : <ImagePlus size={12} />}
               {isUploading ? "Uploading…" : "Take Photo / Video"}
-            </button>
-            {/* camera input — no file browsing, opens camera directly on mobile */}
-            <input
-              ref={fileRef}
-              type="file"
-              accept="image/*,video/*"
-              capture="environment"
-              className="hidden"
-              onChange={(e) => onFileChange(e.target.files)}
-            />
+              <input
+                type="file"
+                accept="image/*,video/*"
+                capture="environment"
+                className="hidden"
+                onChange={(e) => onFileChange(e.target.files)}
+              />
+            </label>
 
             {!done && (
               <button
