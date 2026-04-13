@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import {
   ChevronLeft, CheckCircle2, Circle, ImagePlus, Video,
-  ThumbsUp, AlertTriangle, Loader2, Info, RefreshCw, Play,
+  ThumbsUp, AlertTriangle, Loader2, Info, RefreshCw, Play, X,
 } from "lucide-react";
 import { BottomNav } from "./components/BottomNav";
 
@@ -66,6 +66,8 @@ export default function HeadTechJobHistoryPage({ jobId }: { jobId: string }) {
 
   const [uploadingId, setUploadingId] = useState<string | null>(null);
   const [uploadError,  setUploadError]  = useState<Record<string, string>>({});
+  const [removingId,   setRemovingId]   = useState<string | null>(null);
+  const [preview, setPreview] = useState<{ url: string; type: string } | null>(null);
 
   // Per-stage marking progress
   const [markingId, setMarkingId] = useState<string | null>(null);
@@ -242,6 +244,29 @@ export default function HeadTechJobHistoryPage({ jobId }: { jobId: string }) {
     setUploadingId(null);
   }
 
+  async function removeMedia(stage: StageDoc, mediaId: string) {
+    setRemovingId(mediaId);
+    try {
+      await fetch(`/api/head-technician/jobs/${jobId}/stages/${stage.id}/media`, {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ media_id: mediaId }),
+      });
+      setJob((prev) => {
+        if (!prev) return prev;
+        return {
+          ...prev,
+          stages: prev.stages.map((s) =>
+            s.id === stage.id
+              ? { ...s, media: s.media.filter((m) => m.id !== mediaId) }
+              : s
+          ),
+        };
+      });
+    } catch {}
+    setRemovingId(null);
+  }
+
   async function handleApprove() {
     setApproving(true);
     try {
@@ -372,9 +397,12 @@ export default function HeadTechJobHistoryPage({ jobId }: { jobId: string }) {
                   readOnly
                   isMarking={false}
                   isUploading={false}
+                  removingId={null}
                   uploadError={null}
                   onMarkDone={() => {}}
                   onFileChange={() => {}}
+                  onRemoveMedia={() => {}}
+                  onPreview={(url, type) => setPreview({ url, type })}
                 />
               ))}
             </div>
@@ -398,9 +426,12 @@ export default function HeadTechJobHistoryPage({ jobId }: { jobId: string }) {
                   readOnly={approved}
                   isMarking={markingId === stage.id}
                   isUploading={uploadingId === stage.id}
+                  removingId={removingId}
                   uploadError={uploadError[stage.id] ?? null}
                   onMarkDone={() => markDone(stage)}
                   onFileChange={(files) => handleFileChange(stage, files)}
+                  onRemoveMedia={(mediaId) => removeMedia(stage, mediaId)}
+                  onPreview={(url, type) => setPreview({ url, type })}
                 />
               ))}
             </div>
@@ -470,6 +501,37 @@ export default function HeadTechJobHistoryPage({ jobId }: { jobId: string }) {
 
       </main>
 
+      {/* Full-screen preview modal */}
+      {preview && (
+        <div
+          className="fixed inset-0 z-50 bg-black flex items-center justify-center"
+          onClick={() => setPreview(null)}
+        >
+          <button
+            className="absolute top-4 right-4 text-white bg-black/50 rounded-full p-2"
+            onClick={() => setPreview(null)}
+          >
+            <X size={20} />
+          </button>
+          {preview.type === "video" ? (
+            <video
+              src={preview.url}
+              controls
+              autoPlay
+              className="max-w-full max-h-full"
+              onClick={(e) => e.stopPropagation()}
+            />
+          ) : (
+            <img
+              src={preview.url}
+              alt=""
+              className="max-w-full max-h-full object-contain"
+              onClick={(e) => e.stopPropagation()}
+            />
+          )}
+        </div>
+      )}
+
       <BottomNav active="jobs" />
     </>
   );
@@ -478,19 +540,26 @@ export default function HeadTechJobHistoryPage({ jobId }: { jobId: string }) {
 // ── StageCard ─────────────────────────────────────────────────────────────────
 
 function StageCard({
-  stage, readOnly, isMarking, isUploading, uploadError,
-  onMarkDone, onFileChange,
+  stage, readOnly, isMarking, isUploading, removingId, uploadError,
+  onMarkDone, onFileChange, onRemoveMedia, onPreview,
 }: {
-  stage:       StageDoc;
-  readOnly:    boolean;
-  isMarking:   boolean;
-  isUploading: boolean;
-  uploadError: string | null;
-  onMarkDone:  () => void;
-  onFileChange:(files: FileList | null) => void;
+  stage:         StageDoc;
+  readOnly:      boolean;
+  isMarking:     boolean;
+  isUploading:   boolean;
+  removingId:    string | null;
+  uploadError:   string | null;
+  onMarkDone:    () => void;
+  onFileChange:  (files: FileList | null) => void;
+  onRemoveMedia: (mediaId: string) => void;
+  onPreview:     (url: string, type: string) => void;
 }) {
-  const done     = stage.status === "done";
-  const rework   = stage.status === "for_rework";
+  const done       = stage.status === "done";
+  const rework     = stage.status === "for_rework";
+  const photoCount = stage.media.filter((m) => m.type !== "video").length;
+  const videoCount = stage.media.filter((m) => m.type === "video").length;
+  const photoFull  = photoCount >= 5;
+  const videoFull  = videoCount >= 1;
 
   return (
     <div className={`bg-white rounded-2xl p-4 space-y-3 border transition-colors ${
@@ -533,23 +602,41 @@ function StageCard({
         <div className="flex flex-wrap gap-2 pl-7">
           {stage.media.map((m) => (
             <div key={m.id} className="relative w-14 h-14">
-              {m.type === "video" ? (
-                <a href={m.pending ? undefined : m.url} target="_blank" rel="noopener noreferrer"
-                  className="w-14 h-14 rounded-xl bg-gray-200 flex items-center justify-center text-xs text-gray-500">
-                  ▶
-                </a>
-              ) : (
-                <img
-                  src={m.url}
-                  alt=""
-                  className="w-14 h-14 rounded-xl object-cover bg-gray-100"
-                  onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = "none"; }}
-                />
-              )}
+              <button
+                className="w-14 h-14 rounded-xl overflow-hidden block focus:outline-none"
+                onClick={() => !m.pending && onPreview(m.url, m.type)}
+              >
+                {m.type === "video" ? (
+                  <div className="w-full h-full bg-gray-200 flex items-center justify-center text-base text-gray-500">▶</div>
+                ) : (
+                  <img
+                    src={m.url}
+                    alt=""
+                    className="w-full h-full object-cover bg-gray-100"
+                    onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = "none"; }}
+                  />
+                )}
+              </button>
+
+              {/* Upload spinner overlay */}
               {m.pending && (
-                <div className="absolute inset-0 rounded-xl bg-black/40 flex items-center justify-center">
+                <div className="absolute inset-0 rounded-xl bg-black/40 flex items-center justify-center pointer-events-none">
                   <Loader2 size={16} className="text-white animate-spin" />
                 </div>
+              )}
+
+              {/* Remove button — only shown when not pending and not readOnly */}
+              {!m.pending && !readOnly && !done && (
+                <button
+                  onClick={() => onRemoveMedia(m.id)}
+                  disabled={removingId === m.id}
+                  className="absolute -top-1.5 -right-1.5 w-5 h-5 bg-gray-900 rounded-full flex items-center justify-center shadow"
+                >
+                  {removingId === m.id
+                    ? <Loader2 size={9} className="text-white animate-spin" />
+                    : <X size={9} className="text-white" />
+                  }
+                </button>
               )}
             </div>
           ))}
@@ -561,14 +648,18 @@ function StageCard({
         <p className="text-[11px] text-red-500 pl-7">{uploadError}</p>
       )}
 
-      {/* Actions — hidden for read-only (prep stages viewed by installer, or after approve) */}
+      {/* Actions — hidden for read-only */}
       {!readOnly && (
         <div className="flex flex-col gap-2 pl-7">
-          <div className="flex items-center gap-2">
-            {/* Photo — accept image only so Android opens camera directly */}
-            <label className={`flex items-center gap-1.5 text-xs font-medium text-gray-500 border border-gray-200 rounded-lg px-2.5 py-1.5 hover:bg-gray-50 transition-colors ${isUploading ? "opacity-40 pointer-events-none" : "cursor-pointer"}`}>
-              {isUploading ? <Loader2 size={12} className="animate-spin" /> : <ImagePlus size={12} />}
-              Photo
+          <div className="flex items-center gap-2 flex-wrap">
+            {/* Photo button — disabled at 5 */}
+            <label className={`flex items-center gap-1.5 text-xs font-medium border rounded-lg px-2.5 py-1.5 transition-colors ${
+              isUploading || photoFull
+                ? "opacity-40 pointer-events-none text-gray-400 border-gray-200"
+                : "text-gray-500 border-gray-200 hover:bg-gray-50 cursor-pointer"
+            }`}>
+              <ImagePlus size={12} />
+              Photo {photoCount > 0 && `(${photoCount}/5)`}
               <input
                 ref={(el) => { if (el) el.setAttribute("capture", "environment") }}
                 type="file"
@@ -578,10 +669,14 @@ function StageCard({
               />
             </label>
 
-            {/* Video — separate input so Android opens camera in video mode */}
-            <label className={`flex items-center gap-1.5 text-xs font-medium text-gray-500 border border-gray-200 rounded-lg px-2.5 py-1.5 hover:bg-gray-50 transition-colors ${isUploading ? "opacity-40 pointer-events-none" : "cursor-pointer"}`}>
+            {/* Video button — disabled at 1 */}
+            <label className={`flex items-center gap-1.5 text-xs font-medium border rounded-lg px-2.5 py-1.5 transition-colors ${
+              isUploading || videoFull
+                ? "opacity-40 pointer-events-none text-gray-400 border-gray-200"
+                : "text-gray-500 border-gray-200 hover:bg-gray-50 cursor-pointer"
+            }`}>
               <Video size={12} />
-              Video
+              Video {videoFull ? "(1/1)" : ""}
               <input
                 ref={(el) => { if (el) el.setAttribute("capture", "environment") }}
                 type="file"
