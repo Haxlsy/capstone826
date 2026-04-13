@@ -501,9 +501,9 @@ function StageCard({
               {isUploading ? <Loader2 size={12} className="animate-spin" /> : <ImagePlus size={12} />}
               {isUploading ? "Uploading…" : "Take Photo / Video"}
               <input
+                ref={(el) => { if (el) el.setAttribute("capture", "environment") }}
                 type="file"
                 accept="image/*,video/*"
-                capture="environment"
                 className="hidden"
                 onChange={(e) => onFileChange(e.target.files)}
               />
