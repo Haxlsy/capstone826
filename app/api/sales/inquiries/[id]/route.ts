@@ -19,16 +19,16 @@ export async function PATCH(
     if (!user) return NextResponse.json({ error: "Unauthorized." }, { status: 401 })
 
     const admin = createAdminClient()
-    const updates: Record<string, any> = {}
+    const updates: Record<string, unknown> = {}
 
-    if (status === "resolved") {
-      updates.status         = "resolved"
+    if (status === "resolved" || status === "recorded") {
+      updates.status         = status
       updates.resolved_at    = new Date().toISOString()
       updates.resolved_by_id = user.id
     } else if (status === "open") {
       updates.status = "open"
     } else if (status !== undefined) {
-      return NextResponse.json({ error: "status must be 'open' or 'resolved'." }, { status: 400 })
+      return NextResponse.json({ error: "status must be 'open', 'resolved', or 'recorded'." }, { status: 400 })
     }
 
     if (Object.keys(updates).length === 0) {
@@ -42,7 +42,8 @@ export async function PATCH(
 
     if (error) return NextResponse.json({ error: error.message }, { status: 500 })
     return NextResponse.json({ success: true })
-  } catch (err: any) {
-    return NextResponse.json({ error: err?.message ?? String(err) }, { status: 500 })
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err)
+    return NextResponse.json({ error: msg }, { status: 500 })
   }
 }

@@ -1,74 +1,85 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef } from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { CheckCircle2 } from "lucide-react"
 
-interface Customer {
-  customer_id: number
+interface CustomerRecord {
+  id: string
   full_name: string
   contact_number: string
-  email: string
+  email: string | null
+  plate_number: string
+  vehicle_unit: string | null
 }
 
 interface Service {
-  service_id: number
-  service_name: string
-  estimated_duration_days: number
+  id: string
+  name: string
+  estimated_duration_mins: number
 }
 
-interface VehicleType {
-  vehicle_type_id: number
-  type_name: string
+interface Technician {
+  id: string
+  full_name: string
+  role: "head_detailer" | "head_installer"
+  active_jobs: number
 }
+
+const INPUT_CLS = "w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-700 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+const SELECT_CLS = `${INPUT_CLS} disabled:opacity-50`
 
 export default function AddJobOrderForm() {
   const router = useRouter()
+  const redirectTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
-  // Reference data
-  const [customers, setCustomers] = useState<Customer[]>([])
+  const [customers, setCustomers] = useState<CustomerRecord[]>([])
   const [services, setServices] = useState<Service[]>([])
-  const [vehicleTypes, setVehicleTypes] = useState<VehicleType[]>([])
+  const [technicians, setTechnicians] = useState<Technician[]>([])
   const [loadingRefs, setLoadingRefs] = useState(true)
 
-  // Form state
-  const [selectedCustomerId, setSelectedCustomerId] = useState<number | null>(null)
   const [useManualCustomer, setUseManualCustomer] = useState(false)
+  const [selectedCustomerId, setSelectedCustomerId] = useState<string | null>(null)
   const [manualCustomerName, setManualCustomerName] = useState("")
-  const [manualCustomerPhone, setManualCustomerPhone] = useState("")
-  const [manualCustomerEmail, setManualCustomerEmail] = useState("")
-  const [selectedServiceId, setSelectedServiceId] = useState<number | null>(null)
-  const [selectedVehicleTypeId, setSelectedVehicleTypeId] = useState<number | null>(null)
-  const [plateNumber, setPlateNumber] = useState("")
-  const [carColor, setCarColor] = useState("")
-  const [scheduledDate, setScheduledDate] = useState("")
+  const [manualContactNumber, setManualContactNumber] = useState("")
+  const [manualPlateNumber, setManualPlateNumber] = useState("")
+  const [manualVehicleUnit, setManualVehicleUnit] = useState("")
+
+  const [selectedServiceId, setSelectedServiceId] = useState<string | null>(null)
+  const [selectedHeadDetailerId, setSelectedHeadDetailerId] = useState<string | null>(null)
+  const [selectedHeadInstallerId, setSelectedHeadInstallerId] = useState<string | null>(null)
+  const [scheduledAt, setScheduledAt] = useState("")
+
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [success, setSuccess] = useState(false)
 
-  // Load reference data
+  useEffect(() => {
+    return () => { if (redirectTimer.current) clearTimeout(redirectTimer.current) }
+  }, [])
+
   useEffect(() => {
     async function loadRefs() {
       setLoadingRefs(true)
       try {
-        const [cJson, sJson, vJson] = await Promise.all([
-          fetch("/api/operations/job-management/list-customers")
-            .then((r) => (r.ok ? r.json() : { customers: [] as Customer[] }))
-            .catch(() => ({ customers: [] as Customer[] })),
-          fetch("/api/operations/job-management/list-services")
-            .then((r) => (r.ok ? r.json() : { services: [] as Service[] }))
-            .catch(() => ({ services: [] as Service[] })),
-          fetch("/api/operations/job-management/list-vehicle-types")
-            .then((r) => r.json())
-            .catch(() => ({ vehicle_types: [] as VehicleType[] })),
+        const [cRes, sRes, tRes] = await Promise.all([
+          fetch("/api/operations/job-management/list-customers").then((r) =>
+            r.ok ? r.json() : { customers: [] }
+          ),
+          fetch("/api/operations/job-management/list-services").then((r) =>
+            r.ok ? r.json() : { services: [] }
+          ),
+          fetch("/api/operations/job-management/list-technicians").then((r) =>
+            r.ok ? r.json() : { technicians: [] }
+          ),
         ])
-
-        setCustomers(cJson.customers ?? [])
-        setServices(sJson.services ?? [])
-        setVehicleTypes(vJson.vehicle_types ?? [])
+        setCustomers(cRes.customers ?? [])
+        setServices(sRes.services ?? [])
+        setTechnicians(tRes.technicians ?? [])
       } catch (err) {
-        console.error("Error loading references:", err)
+        console.error("Error loading reference data:", err)
+        setError("Failed to load form data. Please refresh.")
       } finally {
         setLoadingRefs(false)
       }
@@ -76,137 +87,113 @@ export default function AddJobOrderForm() {
     loadRefs()
   }, [])
 
-  // Get selected customer info
   const selectedCustomer = !useManualCustomer
-    ? customers.find((c) => c.customer_id === selectedCustomerId) || null
+    ? customers.find((c) => c.id === selectedCustomerId) ?? null
     : null
-  const selectedService = services.find((s) => s.service_id === selectedServiceId) || null
-  const estimatedDays = selectedService?.estimated_duration_days ?? 0
+
+  const selectedService = services.find((s) => s.id === selectedServiceId) ?? null
+
+  const headDetailers = technicians.filter((t) => t.role === "head_detailer")
+  const headInstallers = technicians.filter((t) => t.role === "head_installer")
 
   function formatDate(dateStr: string): string {
     if (!dateStr) return "—"
-    return new Date(dateStr).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })
+    return new Date(dateStr).toLocaleDateString("en-US", {
+      month: "short",
+      day: "numeric",
+      year: "numeric",
+    })
   }
 
-  function addDays(dateStr: string, days: number): string {
-    if (!dateStr || !days) return "—"
+  function addMinutes(dateStr: string, mins: number): string {
+    if (!dateStr || !mins) return "—"
     const d = new Date(dateStr)
-    d.setDate(d.getDate() + days)
-    return d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })
+    d.setMinutes(d.getMinutes() + mins)
+    return d.toLocaleDateString("en-US", {
+      month: "short",
+      day: "numeric",
+      year: "numeric",
+    })
   }
 
   async function handleSubmit() {
     setError(null)
 
-    // Validate customer
-    let customerId: number | null = null
+    if (!useManualCustomer && !selectedCustomerId) {
+      setError("Please select a customer.")
+      return
+    }
     if (useManualCustomer) {
       if (!manualCustomerName.trim()) {
         setError("Please enter customer name.")
         return
       }
-      if (!manualCustomerPhone.trim()) {
-        setError("Please enter customer phone number.")
+      if (!manualContactNumber.trim()) {
+        setError("Please enter contact number.")
         return
       }
-      if (!manualCustomerEmail.trim()) {
-        setError("Please enter customer email.")
+      if (!manualPlateNumber.trim()) {
+        setError("Please enter plate number.")
         return
       }
-    } else {
-      if (!selectedCustomerId) {
-        setError("Please select a customer.")
-        return
-      }
-      customerId = selectedCustomerId
     }
-
     if (!selectedServiceId) {
       setError("Please select a service.")
       return
     }
-    if (!selectedVehicleTypeId) {
-      setError("Please select a vehicle type.")
-      return
-    }
-    if (!plateNumber.trim()) {
-      setError("Please enter a plate number.")
-      return
-    }
-    if (!carColor.trim()) {
-      setError("Please enter the car color.")
-      return
-    }
-    if (!scheduledDate) {
+    if (!scheduledAt) {
       setError("Please set a scheduled date.")
       return
     }
 
     setLoading(true)
     try {
-      // If manual customer, create them first
-      if (useManualCustomer) {
-        const createCustomerRes = await fetch("/api/operations/job-management/create-customer", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            full_name: manualCustomerName.trim(),
-            contact_number: manualCustomerPhone.trim(),
-            email: manualCustomerEmail.trim(),
-          }),
-        })
-
-        const createCustomerData = await createCustomerRes.json()
-        if (!createCustomerRes.ok) {
-          throw new Error(createCustomerData?.error ?? "Failed to create customer")
-        }
-
-        customerId = createCustomerData.customer_id
+      const payload: Record<string, unknown> = {
+        service_id: selectedServiceId,
+        scheduled_at: scheduledAt,
+        head_detailer_id: selectedHeadDetailerId ?? null,
+        head_installer_id: selectedHeadInstallerId ?? null,
       }
 
-      // Now create the job order
+      if (!useManualCustomer) {
+        payload.customer_record_id = selectedCustomerId
+      } else {
+        payload.customer_name = manualCustomerName.trim()
+        payload.contact_number = manualContactNumber.trim()
+        payload.plate_number = manualPlateNumber.trim()
+        payload.vehicle_unit = manualVehicleUnit.trim() || null
+      }
+
       const res = await fetch("/api/operations/job-management/add-job-order", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          customer_id: customerId,
-          service_id: selectedServiceId,
-          vehicle_type_id: selectedVehicleTypeId,
-          assigned_technician_id: null,
-          plate_number: plateNumber.trim(),
-          car_make: "",
-          car_model: "",
-          car_color: carColor.trim(),
-          payment_amount: 0,
-          scheduled_start: scheduledDate,
-          scheduled_end:
-            estimatedDays > 0
-              ? addDays(scheduledDate, estimatedDays)
-              : scheduledDate,
-        }),
+        body: JSON.stringify(payload),
       })
 
       const data = await res.json()
       if (!res.ok) throw new Error(data?.error ?? "Failed to create job order")
 
       setSuccess(true)
-      setTimeout(() => router.push("/dashboard/job-management"), 1200)
-    } catch (err: any) {
-      setError(err?.message ?? String(err))
+      redirectTimer.current = setTimeout(() => router.push("/dashboard/job-management"), 1200)
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : String(err))
     } finally {
       setLoading(false)
     }
   }
 
-  const durationLabel = estimatedDays > 0
-    ? `${estimatedDays} day${estimatedDays !== 1 ? "s" : ""}`
-    : "—"
-  const startDate = scheduledDate ? formatDate(scheduledDate) : "—"
+  const estimatedMins = selectedService?.estimated_duration_mins ?? 0
+  const durationLabel =
+    estimatedMins > 0
+      ? estimatedMins >= 60
+        ? `${Math.round(estimatedMins / 60)} hr${Math.round(estimatedMins / 60) !== 1 ? "s" : ""}`
+        : `${estimatedMins} min${estimatedMins !== 1 ? "s" : ""}`
+      : "—"
   const expectedCompletion =
-    scheduledDate && estimatedDays > 0
-      ? addDays(scheduledDate, estimatedDays)
-      : scheduledDate
-      ? formatDate(scheduledDate)
+    scheduledAt && estimatedMins > 0
+      ? addMinutes(scheduledAt, estimatedMins)
+      : scheduledAt
+      ? formatDate(scheduledAt)
       : "—"
 
   return (
@@ -231,158 +218,121 @@ export default function AddJobOrderForm() {
       <div className="bg-white border border-gray-200 rounded-xl p-5 space-y-4">
         <div>
           <h2 className="font-semibold text-sm text-gray-800">Customer & Vehicle Details</h2>
-          <p className="text-xs text-gray-400 mt-0.5">Enter customer and vehicle information.</p>
+          <p className="text-xs text-gray-400 mt-0.5">Select from Sales records or enter manually.</p>
         </div>
 
-        <div className="grid grid-cols-2 gap-4">
-          {/* Customer Section */}
-          {!useManualCustomer ? (
-            <>
-              <div className="flex flex-col gap-1.5">
-                <div className="flex items-center justify-between">
-                  <label className="text-xs font-medium text-gray-600">Customer *</label>
-                  {customers.length === 0 && (
-                    <button
-                      type="button"
-                      onClick={() => setUseManualCustomer(true)}
-                      className="text-xs text-blue-600 hover:underline"
-                    >
-                      Enter manually
-                    </button>
-                  )}
-                </div>
-                <select
-                  value={selectedCustomerId ?? ""}
-                  onChange={(e) => {
-                    setSelectedCustomerId(e.target.value ? Number(e.target.value) : null)
+        {!useManualCustomer ? (
+          <div className="flex flex-col gap-4">
+            <div className="flex flex-col gap-1.5">
+              <div className="flex items-center justify-between">
+                <label className="text-xs font-medium text-red-600">Customer *</label>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setUseManualCustomer(true)
+                    setSelectedCustomerId(null)
                     setError(null)
                   }}
-                  disabled={loadingRefs}
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-700 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50"
+                  className="text-xs text-blue-600 hover:underline"
                 >
-                  <option value="">
-                    {loadingRefs ? "Loading…" : customers.length === 0 ? "No customers found" : "— Select customer —"}
-                  </option>
-                  {customers.map((c) => (
-                    <option key={c.customer_id} value={c.customer_id}>
-                      {c.full_name}
-                    </option>
-                  ))}
-                </select>
+                  Enter manually
+                </button>
               </div>
-
-              {/* Plate Number */}
-              <div className="flex flex-col gap-1.5">
-                <label className="text-xs font-medium text-gray-600">Plate Number *</label>
-                <input
-                  type="text"
-                  value={plateNumber}
-                  onChange={(e) => setPlateNumber(e.target.value)}
-                  placeholder="e.g., ABC-1234"
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-700 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
-              </div>
-            </>
-          ) : (
-            <>
-              <div className="flex flex-col gap-1.5">
-                <div className="flex items-center justify-between">
-                  <label className="text-xs font-medium text-gray-600">Customer Name *</label>
-                  <button
-                    type="button"
-                    onClick={() => setUseManualCustomer(false)}
-                    className="text-xs text-blue-600 hover:underline"
-                  >
-                    Select from list
-                  </button>
-                </div>
-                <input
-                  type="text"
-                  value={manualCustomerName}
-                  onChange={(e) => setManualCustomerName(e.target.value)}
-                  placeholder="e.g., John Doe"
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-700 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
-              </div>
-
-              <div className="flex flex-col gap-1.5">
-                <label className="text-xs font-medium text-gray-600">Plate Number *</label>
-                <input
-                  type="text"
-                  value={plateNumber}
-                  onChange={(e) => setPlateNumber(e.target.value)}
-                  placeholder="e.g., ABC-1234"
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-700 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
-              </div>
-
-              <div className="flex flex-col gap-1.5">
-                <label className="text-xs font-medium text-gray-600">Phone Number *</label>
-                <input
-                  type="tel"
-                  value={manualCustomerPhone}
-                  onChange={(e) => setManualCustomerPhone(e.target.value)}
-                  placeholder="e.g., +1-555-0123"
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-700 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
-              </div>
-
-              <div className="flex flex-col gap-1.5">
-                <label className="text-xs font-medium text-gray-600">Email *</label>
-                <input
-                  type="email"
-                  value={manualCustomerEmail}
-                  onChange={(e) => setManualCustomerEmail(e.target.value)}
-                  placeholder="e.g., john@example.com"
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-700 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
-              </div>
-            </>
-          )}
-
-          {/* Vehicle Type */}
-          <div className="flex flex-col gap-1.5">
-            <label className="text-xs font-medium text-gray-600">Vehicle Type *</label>
-            <select
-              value={selectedVehicleTypeId ?? ""}
-              onChange={(e) => setSelectedVehicleTypeId(e.target.value ? Number(e.target.value) : null)}
-              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-700 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
-            >
-              <option value="">— Select type —</option>
-              {vehicleTypes.map((v) => (
-                <option key={v.vehicle_type_id} value={v.vehicle_type_id}>
-                  {v.type_name}
+              <select
+                value={selectedCustomerId ?? ""}
+                onChange={(e) => {
+                  setSelectedCustomerId(e.target.value || null)
+                  setError(null)
+                }}
+                disabled={loadingRefs}
+                className={SELECT_CLS}
+              >
+                <option value="">
+                  {loadingRefs
+                    ? "Loading…"
+                    : customers.length === 0
+                    ? "No customer records found"
+                    : "— Select customer —"}
                 </option>
-              ))}
-            </select>
-          </div>
+                {customers.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.full_name} — {c.plate_number}
+                  </option>
+                ))}
+              </select>
+            </div>
 
-          {/* Car Color */}
-          <div className="flex flex-col gap-1.5">
-            <label className="text-xs font-medium text-gray-600">Car Color *</label>
-            <input
-              type="text"
-              value={carColor}
-              onChange={(e) => setCarColor(e.target.value)}
-              placeholder="e.g., Silver, Black"
-              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-700 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
-            />
+            {selectedCustomer && (
+              <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 space-y-1.5">
+                <p className="text-sm font-semibold text-blue-900">{selectedCustomer.full_name}</p>
+                <p className="text-xs text-blue-700">📞 {selectedCustomer.contact_number}</p>
+                {selectedCustomer.email && (
+                  <p className="text-xs text-blue-700">✉️ {selectedCustomer.email}</p>
+                )}
+                <p className="text-xs text-blue-700">🚗 {selectedCustomer.plate_number}</p>
+                {selectedCustomer.vehicle_unit && (
+                  <p className="text-xs text-blue-700">Unit: {selectedCustomer.vehicle_unit}</p>
+                )}
+              </div>
+            )}
           </div>
-        </div>
+        ) : (
+          <div className="grid grid-cols-2 gap-4">
+            <div className="flex flex-col gap-1.5 col-span-2">
+              <div className="flex items-center justify-between">
+                <label className="text-xs font-medium text-gray-600">Customer Name *</label>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setUseManualCustomer(false)
+                    setError(null)
+                  }}
+                  className="text-xs text-blue-600 hover:underline"
+                >
+                  Select from records
+                </button>
+              </div>
+              <input
+                type="text"
+                value={manualCustomerName}
+                onChange={(e) => setManualCustomerName(e.target.value)}
+                placeholder="e.g., Juan dela Cruz"
+                className={INPUT_CLS}
+              />
+            </div>
 
-        {/* Customer Info Summary */}
-        {selectedCustomer && !useManualCustomer && (
-          <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 space-y-2">
-            <p className="text-sm font-medium text-blue-900">{selectedCustomer.full_name}</p>
-            <p className="text-xs text-blue-700">📞 {selectedCustomer.contact_number}</p>
-            <p className="text-xs text-blue-700">✉️ {selectedCustomer.email}</p>
-          </div>
-        )}
-        {useManualCustomer && manualCustomerName && (
-          <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 space-y-2">
-            <p className="text-sm font-medium text-amber-900">{manualCustomerName}</p>
-            <p className="text-xs text-amber-700">📞 {manualCustomerPhone || "—"}</p>
-            <p className="text-xs text-amber-700">✉️ {manualCustomerEmail || "—"}</p>
+            <div className="flex flex-col gap-1.5">
+              <label className="text-xs font-medium text-gray-600">Contact Number *</label>
+              <input
+                type="tel"
+                value={manualContactNumber}
+                onChange={(e) => setManualContactNumber(e.target.value)}
+                placeholder="e.g., 09XX-XXX-XXXX"
+                className={INPUT_CLS}
+              />
+            </div>
+
+            <div className="flex flex-col gap-1.5">
+              <label className="text-xs font-medium text-gray-600">Plate Number *</label>
+              <input
+                type="text"
+                value={manualPlateNumber}
+                onChange={(e) => setManualPlateNumber(e.target.value)}
+                placeholder="e.g., ABC-1234"
+                className={INPUT_CLS}
+              />
+            </div>
+
+            <div className="flex flex-col gap-1.5 col-span-2">
+              <label className="text-xs font-medium text-gray-600">Vehicle Unit</label>
+              <input
+                type="text"
+                value={manualVehicleUnit}
+                onChange={(e) => setManualVehicleUnit(e.target.value)}
+                placeholder="e.g., Toyota Vios 2020"
+                className={INPUT_CLS}
+              />
+            </div>
           </div>
         )}
       </div>
@@ -392,37 +342,37 @@ export default function AddJobOrderForm() {
         <h2 className="font-semibold text-sm text-gray-800">Service & Schedule</h2>
 
         <div className="grid grid-cols-2 gap-4">
-          {/* Service */}
           <div className="flex flex-col gap-1.5">
-            <label className="text-xs font-medium text-gray-600">Service *</label>
+            <label className="text-xs font-medium text-red-600">Service *</label>
             <select
               value={selectedServiceId ?? ""}
               onChange={(e) => {
-                setSelectedServiceId(e.target.value ? Number(e.target.value) : null)
-                setError(null)
+               const val = e.target.value;
+              // No parseInt! Just use the string or null if empty
+              setSelectedServiceId(val || null);
+              setError(null);
               }}
               disabled={loadingRefs}
-              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-700 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50"
+              className={SELECT_CLS}
             >
               <option value="">
                 {loadingRefs ? "Loading…" : services.length === 0 ? "No services found" : "— Select service —"}
               </option>
               {services.map((s) => (
-                <option key={s.service_id} value={s.service_id}>
-                  {s.service_name}
+                <option key={s.id} value={s.id}>
+                  {s.name}
                 </option>
               ))}
             </select>
           </div>
 
-          {/* Scheduled Date */}
           <div className="flex flex-col gap-1.5">
-            <label className="text-xs font-medium text-gray-600">Scheduled Date *</label>
+            <label className="text-xs font-medium text-red-600">Scheduled Date *</label>
             <input
               type="date"
-              value={scheduledDate}
+              value={scheduledAt}
               onChange={(e) => {
-                setScheduledDate(e.target.value)
+                setScheduledAt(e.target.value)
                 setError(null)
               }}
               className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-700 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
@@ -430,29 +380,72 @@ export default function AddJobOrderForm() {
           </div>
         </div>
 
-        {/* Timeline Preview */}
-        {scheduledDate && (
-          <div className="bg-gray-50 rounded-lg p-4 space-y-2">
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <p className="text-xs text-gray-500">Scheduled Start</p>
-                <p className="text-sm font-medium text-gray-800 mt-1">{startDate}</p>
-              </div>
-              <div>
-                <p className="text-xs text-gray-500">Expected Completion</p>
-                <p className="text-sm font-medium text-gray-800 mt-1">{expectedCompletion}</p>
-              </div>
-              <div>
-                <p className="text-xs text-gray-500">Service</p>
-                <p className="text-sm font-medium text-gray-800 mt-1">{selectedService?.service_name ?? "—"}</p>
-              </div>
-              <div>
-                <p className="text-xs text-gray-500">Estimated Duration</p>
-                <p className="text-sm font-medium text-gray-800 mt-1">{durationLabel}</p>
-              </div>
+        {scheduledAt && (
+          <div className="bg-gray-50 rounded-lg p-4 grid grid-cols-2 gap-4">
+            <div>
+              <p className="text-xs text-gray-500">Scheduled Start</p>
+              <p className="text-sm font-medium text-gray-800 mt-1">{formatDate(scheduledAt)}</p>
+            </div>
+            <div>
+              <p className="text-xs text-gray-500">Expected Completion</p>
+              <p className="text-sm font-medium text-gray-800 mt-1">{expectedCompletion}</p>
+            </div>
+            <div>
+              <p className="text-xs text-gray-500">Service</p>
+              <p className="text-sm font-medium text-gray-800 mt-1">{selectedService?.name ?? "—"}</p>
+            </div>
+            <div>
+              <p className="text-xs text-gray-500">Estimated Duration</p>
+              <p className="text-sm font-medium text-gray-800 mt-1">{durationLabel}</p>
             </div>
           </div>
         )}
+      </div>
+
+      {/* Card 3: Team Assignment */}
+      <div className="bg-white border border-gray-200 rounded-xl p-5 space-y-4">
+        <div>
+          <h2 className="font-semibold text-sm text-gray-800">Team Assignment</h2>
+          <p className="text-xs text-gray-400 mt-0.5">Optional — can be assigned later.</p>
+        </div>
+
+        <div className="grid grid-cols-2 gap-4">
+          <div className="flex flex-col gap-1.5">
+            <label className="text-xs font-medium text-gray-600">Head Detailer</label>
+            <select
+              value={selectedHeadDetailerId ?? ""}
+              onChange={(e) => setSelectedHeadDetailerId(e.target.value || null)}
+              disabled={loadingRefs}
+              className={SELECT_CLS}
+            >
+              <option value="">— None —</option>
+              {headDetailers.map((t) => (
+                <option key={t.id} value={t.id}>
+                  {t.full_name}
+                  {t.active_jobs > 0 ? ` (${t.active_jobs} active)` : ""}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div className="flex flex-col gap-1.5">
+            <label className="text-xs font-medium text-gray-600">Head Installer</label>
+            <select
+              value={selectedHeadInstallerId ?? ""}
+              onChange={(e) => setSelectedHeadInstallerId(e.target.value || null)}
+              disabled={loadingRefs}
+              className={SELECT_CLS}
+            >
+              <option value="">— None —</option>
+              {headInstallers.map((t) => (
+                <option key={t.id} value={t.id}>
+                  {t.full_name}
+                  {t.active_jobs > 0 ? ` (${t.active_jobs} active)` : ""}
+                </option>
+              ))}
+            </select>
+          </div>
+        </div>
       </div>
 
       {/* Footer */}

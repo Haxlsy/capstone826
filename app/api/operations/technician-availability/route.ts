@@ -37,7 +37,35 @@ export async function PATCH(request: Request) {
 
     if (error) return NextResponse.json({ error: error.message }, { status: 500 })
     return NextResponse.json({ success: true })
-  } catch (err: any) {
-    return NextResponse.json({ error: err?.message ?? String(err) }, { status: 500 })
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err)
+    return NextResponse.json({ error: msg }, { status: 500 })
+  }
+}
+
+// POST — create a new technician (detailer or installer)
+export async function POST(request: Request) {
+  try {
+    const { full_name, role } = await request.json()
+
+    if (!full_name?.trim()) {
+      return NextResponse.json({ error: "full_name is required." }, { status: 400 })
+    }
+    if (role !== "detailer" && role !== "installer") {
+      return NextResponse.json({ error: "role must be 'detailer' or 'installer'." }, { status: 400 })
+    }
+
+    const supabase = createAdminClient()
+    const { data, error } = await supabase
+      .from("technician")
+      .insert({ full_name: full_name.trim(), role, is_available: true })
+      .select("id, full_name, role, is_available")
+      .single()
+
+    if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+    return NextResponse.json({ technician: data }, { status: 201 })
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err)
+    return NextResponse.json({ error: msg }, { status: 500 })
   }
 }

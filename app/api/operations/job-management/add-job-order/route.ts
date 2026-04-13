@@ -9,8 +9,10 @@ export async function POST(request: Request) {
     const {
       customer_record_id,  // optional — from Messenger booking
       service_id,
-      head_detailer_id,    // user_account.id of head detailer (optional)
-      head_installer_id,   // user_account.id of head installer (optional)
+      head_detailer_id,    // user_account.id of head detailer
+      head_installer_id,   // user_account.id of head installer
+      detailer_ids,        // technician.id[] — detailer team members
+      installer_ids,       // technician.id[] — installer team members
       scheduled_at,
       // Manual fields (when no Messenger booking)
       customer_name,
@@ -36,22 +38,31 @@ export async function POST(request: Request) {
 
     const admin = createAdminClient()
 
-    // Calculate expected_completion_at from service duration
+    // Fetch service stages and duration in one query
+    const { data: svc, error: svcErr } = await admin
+      .from("service")
+      .select("estimated_duration_mins, stages:service_stage(id)")
+      .eq("id", service_id)
+      .single()
+
+    if (svcErr || !svc) {
+      return NextResponse.json({ error: "Service not found." }, { status: 400 })
+    }
+
     let expected_completion_at: string | null = null
-    if (scheduled_at) {
-      const { data: svc } = await admin
-        .from("service")
-        .select("estimated_duration_mins")
-        .eq("id", service_id)
-        .single()
-      if (svc?.estimated_duration_mins) {
-        const d = new Date(scheduled_at)
-        d.setMinutes(d.getMinutes() + svc.estimated_duration_mins)
-        expected_completion_at = d.toISOString()
+    if (scheduled_at && svc.estimated_duration_mins) {
+      const d = new Date(scheduled_at)
+      // Check if the date is actually valid
+      if (!isNaN(d.getTime())) {
+        d.setMinutes(d.getMinutes() + svc.estimated_duration_mins);
+        expected_completion_at = d.toISOString();
+      } else {
+        // If date is invalid, just use null or a safe default
+        console.error("Invalid date received:", scheduled_at);
       }
     }
 
-    const payload: Record<string, any> = {
+    const payload: Record<string, unknown> = {
       service_id,
       scheduled_at:           scheduled_at ?? null,
       expected_completion_at,
@@ -67,43 +78,60 @@ export async function POST(request: Request) {
       payload.vehicle_unit    = vehicle_unit?.trim() ?? null
     }
 
-    const { data, error } = await admin
+    const { data: job, error: jobErr } = await admin
       .from("job_order")
       .insert(payload)
       .select()
       .single()
 
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+    if (jobErr) return NextResponse.json({ error: jobErr.message }, { status: 500 })
 
-    // Assign head detailer / head installer to the team table
-    const teamInserts: Record<string, any>[] = []
+    // ── Seed job_stage_progress rows (one per service stage) ─────────────────
+    const stages = (svc.stages as { id: string }[]) ?? []
+    if (stages.length > 0) {
+      const progressRows = stages.map((s) => ({
+        job_order_id:     job.id,
+        service_stage_id: s.id,
+        status:           "pending" as const,
+      }))
+      const { error: stageErr } = await admin.from("job_stage_progress").insert(progressRows)
+      if (stageErr) {
+        // Rollback job order if stages can't be seeded
+        await admin.from("job_order").delete().eq("id", job.id)
+        return NextResponse.json({ error: `Failed to seed stages: ${stageErr.message}` }, { status: 500 })
+      }
+    }
+
+    // ── Assign team members ───────────────────────────────────────────────────
+    const teamInserts: Record<string, unknown>[] = []
     if (head_detailer_id) {
-      teamInserts.push({
-        job_order_id:    data.id,
-        user_account_id: head_detailer_id,
-        role_in_job:     "head_detailer",
-      })
+      teamInserts.push({ job_order_id: job.id, user_account_id: head_detailer_id, role_in_job: "head_detailer" })
     }
     if (head_installer_id) {
-      teamInserts.push({
-        job_order_id:    data.id,
-        user_account_id: head_installer_id,
-        role_in_job:     "head_installer",
-      })
+      teamInserts.push({ job_order_id: job.id, user_account_id: head_installer_id, role_in_job: "head_installer" })
+    }
+    for (const did of detailer_ids ?? []) {
+      teamInserts.push({ job_order_id: job.id, technician_id: did, role_in_job: "detailer" })
+    }
+    for (const iid of installer_ids ?? []) {
+      teamInserts.push({ job_order_id: job.id, technician_id: iid, role_in_job: "installer" })
     }
     if (teamInserts.length > 0) {
       await admin.from("job_order_team").insert(teamInserts)
     }
 
-    // Log initial status to history
+    // ── Log initial status to history ─────────────────────────────────────────
     await admin.from("job_order_history").insert({
-      job_order_id: data.id,
-      status:       "Pending",
+      job_order_id:  job.id,
+      status:        "Pending",
       changed_by_id: user.id,
     })
 
-    return NextResponse.json({ success: true, job: data }, { status: 201 })
-  } catch (err: any) {
-    return NextResponse.json({ error: err?.message ?? String(err) }, { status: 500 })
+    return NextResponse.json({ success: true, job }, { status: 201 })
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err)
+    console.error("CRASH IN ADD-JOB-ORDER:", msg)
+    console.log("CRASH IN ADD-JOB-ORDER:", err)
+    return NextResponse.json({ error: msg }, { status: 500 })
   }
 }

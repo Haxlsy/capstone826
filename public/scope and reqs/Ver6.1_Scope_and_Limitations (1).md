@@ -51,7 +51,7 @@ The Admin holds full system management authority over all non-Admin internal acc
 - Quick Access – Shortcuts to recent jobs and flagged concerns.
 
 **Job Management Module** – Create, edit, and assign technicians.
-- Create Job Order – Assign detailers, installers, single head detailler and head installer, select service type, set actual service start date. Auto-fill customer information (full name, contact number, and email) and vehicle information (plate number and unit) from Sales customer record or manual input if not booked through messenger.
+- Create Job Order – Assign head detailer and head installer; select service type; set actual service start date. Auto-fill customer information (full name, contact number, email, and plate number) from Sales customer record, or enter manually (full name, contact number, plate number, and vehicle unit) if not booked through Messenger.
 - Edit Job Order – Modify assigned teams, scheduled date/time, customer details and vehicle information. Scheduled date/time cannot be modified once started by tehcnician.
 - Search – By customer name, plate number, or job order ID.
 - View Details – Display current status, service stage progression, auto update status (successfully sent/uncessfull updates),  assigned teams, scheduled timeline, expected completion date, photo and video documentation.

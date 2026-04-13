@@ -1,51 +1,58 @@
 "use client"
 
 import { useState } from "react"
-import { X, CheckCircle } from "lucide-react"
+import { X, CheckCircle, Paperclip } from "lucide-react"
 
-type ConcernStatus = "Unresolved" | "Resolved"
-type ConcernType = "Material Issue" | "Equipment" | "Rework Needed"
-
-export interface ConcernRecordFull {
-  jobId: string
-  techInitials: string
-  techName: string
-  techColor: string
-  concernType: ConcernType
-  description: string
-  attachments: number
-  submitted: string
-  status: ConcernStatus
+export interface ConcernRecord {
+  id:            string
+  title:         string
+  description:   string
+  status:        "Pending" | "Resolved"
+  response_note: string | null
+  submitted_at:  string
+  jobId:         string       // display ID
+  submitterName: string
+  submitterRole: string
+  media:         { id: string; file_url: string; media_type: string }[]
 }
 
 interface ConcernDetailsDrawerProps {
-  record: ConcernRecordFull | null
-  onClose: () => void
-  onResolve: (jobId: string, note: string) => void
-}
-
-const concernTypeBadgeMap: Record<ConcernType, string> = {
-  "Material Issue": "bg-red-100 text-red-600",
-  Equipment: "bg-orange-100 text-orange-600",
-  "Rework Needed": "bg-purple-100 text-purple-600",
+  record:    ConcernRecord | null
+  onClose:   () => void
+  onResolve: (id: string, note: string) => void
 }
 
 export default function ConcernDetailsDrawer({ record, onClose, onResolve }: ConcernDetailsDrawerProps) {
   const [responseNote, setResponseNote] = useState("")
-  const isOpen = record !== null
+  const [resolving, setResolving]       = useState(false)
+  const [resolveError, setResolveError] = useState<string | null>(null)
 
-  function handleResolve() {
-    if (!record) return
-    onResolve(record.jobId, responseNote)
-    setResponseNote("")
-  }
-
-  // Reset note when a new record is opened
+  const isOpen     = record !== null
   const isResolved = record?.status === "Resolved"
+
+  async function handleResolve() {
+    if (!record) return
+    setResolving(true)
+    setResolveError(null)
+    try {
+      const res  = await fetch(`/api/operations/job-concerns/${record.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: "Resolved", response_note: responseNote }),
+      })
+      const json = await res.json()
+      if (!res.ok) throw new Error(json?.error ?? "Failed to resolve concern")
+      onResolve(record.id, responseNote)
+      setResponseNote("")
+    } catch (err: unknown) {
+      setResolveError(err instanceof Error ? err.message : String(err))
+    } finally {
+      setResolving(false)
+    }
+  }
 
   return (
     <>
-      {/* Backdrop */}
       <div
         onClick={onClose}
         className={`fixed inset-0 bg-black/20 z-40 transition-opacity duration-300 ${
@@ -53,13 +60,11 @@ export default function ConcernDetailsDrawer({ record, onClose, onResolve }: Con
         }`}
       />
 
-      {/* Drawer panel */}
       <div
-        className={`fixed top-0 right-0 h-full w-[400px] bg-white shadow-2xl z-50 flex flex-col transform transition-transform duration-300 ease-in-out ${
+        className={`fixed top-0 right-0 h-full w-105 bg-white shadow-2xl z-50 flex flex-col transform transition-transform duration-300 ease-in-out ${
           isOpen ? "translate-x-0" : "translate-x-full"
         }`}
       >
-        {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100 shrink-0">
           <h2 className="text-base font-bold text-gray-800">Concern Details</h2>
           <button
@@ -70,66 +75,73 @@ export default function ConcernDetailsDrawer({ record, onClose, onResolve }: Con
           </button>
         </div>
 
-        {/* Scrollable body */}
         {record && (
           <>
             <div className="flex-1 overflow-y-auto px-6 py-5 space-y-5">
-
-              {/* Job Order ID + Technician */}
               <div className="grid grid-cols-2 gap-x-6">
                 <div>
-                  <p className="text-xs text-gray-400 mb-0.5">Job Order ID</p>
-                  <p className="text-sm font-semibold text-gray-800">{record.jobId}</p>
+                  <p className="text-xs text-gray-400 mb-0.5">Job Order</p>
+                  <p className="text-sm font-semibold text-gray-800 font-mono">{record.jobId}</p>
                 </div>
                 <div>
-                  <p className="text-xs text-gray-400 mb-0.5">Technician</p>
-                  <p className="text-sm font-semibold text-gray-800">{record.techName}</p>
+                  <p className="text-xs text-gray-400 mb-0.5">Submitted By</p>
+                  <p className="text-sm font-semibold text-gray-800">{record.submitterName}</p>
+                  <p className="text-xs text-gray-400 capitalize">{record.submitterRole.replace("_", " ")}</p>
                 </div>
               </div>
 
-              {/* Concern Type + Submitted */}
-              <div className="grid grid-cols-2 gap-x-6">
-                <div>
-                  <p className="text-xs text-gray-400 mb-1">Concern Type</p>
-                  <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${concernTypeBadgeMap[record.concernType]}`}>
-                    {record.concernType}
-                  </span>
-                </div>
-                <div>
-                  <p className="text-xs text-gray-400 mb-0.5">Submitted</p>
-                  <p className="text-sm text-gray-800">{record.submitted}</p>
-                </div>
+              <div>
+                <p className="text-xs text-gray-400 mb-0.5">Submitted</p>
+                <p className="text-sm text-gray-700">{record.submitted_at}</p>
               </div>
 
-              {/* Description */}
+              <div>
+                <p className="text-xs text-gray-400 mb-1">Title</p>
+                <p className="text-sm font-semibold text-gray-800">{record.title}</p>
+              </div>
+
               <div>
                 <p className="text-xs text-gray-400 mb-1">Description</p>
                 <p className="text-sm text-gray-700 leading-relaxed">{record.description}</p>
               </div>
 
-              {/* Attachments */}
-              {record.attachments > 0 && (
+              {record.media.length > 0 && (
                 <div>
-                  <p className="text-xs text-gray-400 mb-2">Attachments</p>
+                  <p className="text-xs text-gray-400 mb-2 flex items-center gap-1">
+                    <Paperclip className="w-3 h-3" />
+                    Attachments ({record.media.length})
+                  </p>
                   <div className="flex gap-2 flex-wrap">
-                    {Array.from({ length: record.attachments }).map((_, i) => (
-                      <div
-                        key={i}
-                        className="w-16 h-16 rounded-lg bg-gray-100 border border-gray-200 flex items-center justify-center"
-                      >
-                        <div className="w-6 h-6 rounded bg-gray-300" />
-                      </div>
-                    ))}
+                    {record.media.map((m) =>
+                      m.media_type === "photo" ? (
+                        <a key={m.id} href={m.file_url} target="_blank" rel="noopener noreferrer">
+                          <img
+                            src={m.file_url}
+                            alt="concern attachment"
+                            className="w-16 h-16 rounded-lg object-cover border border-gray-200 hover:opacity-80 transition-opacity"
+                          />
+                        </a>
+                      ) : (
+                        <a
+                          key={m.id}
+                          href={m.file_url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="flex items-center gap-1 text-xs text-blue-600 hover:underline"
+                        >
+                          ▶ Video
+                        </a>
+                      )
+                    )}
                   </div>
                 </div>
               )}
 
-              {/* Response Note */}
               <div>
                 <p className="text-xs text-gray-400 mb-1.5">Response Note</p>
                 {isResolved ? (
-                  <div className="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm text-gray-400 bg-gray-50 min-h-[90px]">
-                    {record.description.replace("...", " — concern has been reviewed and resolved.")}
+                  <div className="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm text-gray-600 bg-gray-50 min-h-[90px]">
+                    {record.response_note ?? "—"}
                   </div>
                 ) : (
                   <textarea
@@ -141,9 +153,10 @@ export default function ConcernDetailsDrawer({ record, onClose, onResolve }: Con
                   />
                 )}
               </div>
+
+              {resolveError && <p className="text-xs text-red-500">{resolveError}</p>}
             </div>
 
-            {/* Footer button */}
             <div className="px-6 py-4 border-t border-gray-100 shrink-0">
               {isResolved ? (
                 <div className="w-full flex items-center justify-center gap-2 py-3 rounded-xl bg-green-50 text-green-600 text-sm font-semibold">
@@ -153,9 +166,10 @@ export default function ConcernDetailsDrawer({ record, onClose, onResolve }: Con
               ) : (
                 <button
                   onClick={handleResolve}
-                  className="w-full py-3 rounded-xl bg-green-500 hover:bg-green-600 text-white text-sm font-semibold transition-colors"
+                  disabled={resolving}
+                  className="w-full py-3 rounded-xl bg-green-500 hover:bg-green-600 text-white text-sm font-semibold transition-colors disabled:opacity-60"
                 >
-                  Mark as Resolved
+                  {resolving ? "Resolving…" : "Mark as Resolved"}
                 </button>
               )}
             </div>
