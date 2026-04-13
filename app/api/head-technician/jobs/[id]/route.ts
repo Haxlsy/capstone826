@@ -137,6 +137,19 @@ export async function PATCH(
 
     const admin = createAdminClient()
 
+    if (action === "start_job") {
+      await admin
+        .from("job_order")
+        .update({ status: "Ongoing", actual_start_at: new Date().toISOString() })
+        .eq("id", jobId)
+      await admin.from("job_order_history").insert({
+        job_order_id:  jobId,
+        status:        "Ongoing",
+        changed_by_id: user.id,
+      })
+      return NextResponse.json({ success: true })
+    }
+
     if (action === "mark_stage_done") {
       if (!stage_id) return NextResponse.json({ error: "stage_id is required." }, { status: 400 })
 
@@ -150,22 +163,6 @@ export async function PATCH(
         })
         .eq("id", stage_id)
         .eq("job_order_id", jobId)   // safety: must belong to this job
-
-      // If this is the first stage being marked done, set job to Ongoing
-      const { data: currentJob } = await admin
-        .from("job_order")
-        .select("status")
-        .eq("id", jobId)
-        .single()
-
-      if ((currentJob as any)?.status === "Pending") {
-        await admin.from("job_order").update({ status: "Ongoing", actual_start_at: new Date().toISOString() }).eq("id", jobId)
-        await admin.from("job_order_history").insert({
-          job_order_id:  jobId,
-          status:        "Ongoing",
-          changed_by_id: user.id,
-        })
-      }
 
       // Attach media if provided
       if (media_url && media_type) {

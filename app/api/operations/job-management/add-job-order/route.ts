@@ -38,16 +38,18 @@ export async function POST(request: Request) {
 
     const admin = createAdminClient()
 
-    // Fetch service stages and duration in one query
+    console.log("[add-job-order] step: fetch service", service_id)
     const { data: svc, error: svcErr } = await admin
       .from("service")
-      .select("estimated_duration_mins, stages:service_stage(id)")
+      .select("estimated_duration_mins")
       .eq("id", service_id)
       .single()
 
     if (svcErr || !svc) {
+      console.error("[add-job-order] service fetch error:", svcErr?.message)
       return NextResponse.json({ error: "Service not found." }, { status: 400 })
     }
+    console.log("[add-job-order] service ok, duration:", svc.estimated_duration_mins)
 
     let expected_completion_at: string | null = null
     if (scheduled_at && svc.estimated_duration_mins) {
@@ -78,29 +80,21 @@ export async function POST(request: Request) {
       payload.vehicle_unit    = vehicle_unit?.trim() ?? null
     }
 
+    console.log("[add-job-order] step: insert job_order, payload:", JSON.stringify(payload))
     const { data: job, error: jobErr } = await admin
       .from("job_order")
       .insert(payload)
       .select()
       .single()
 
-    if (jobErr) return NextResponse.json({ error: jobErr.message }, { status: 500 })
-
-    // ── Seed job_stage_progress rows (one per service stage) ─────────────────
-    const stages = (svc.stages as { id: string }[]) ?? []
-    if (stages.length > 0) {
-      const progressRows = stages.map((s) => ({
-        job_order_id:     job.id,
-        service_stage_id: s.id,
-        status:           "pending" as const,
-      }))
-      const { error: stageErr } = await admin.from("job_stage_progress").insert(progressRows)
-      if (stageErr) {
-        // Rollback job order if stages can't be seeded
-        await admin.from("job_order").delete().eq("id", job.id)
-        return NextResponse.json({ error: `Failed to seed stages: ${stageErr.message}` }, { status: 500 })
-      }
+    if (jobErr) {
+      console.error("[add-job-order] job_order insert error:", jobErr.message, jobErr.details)
+      return NextResponse.json({ error: jobErr.message }, { status: 500 })
     }
+    console.log("[add-job-order] job_order created:", job.id)
+
+    // job_stage_progress rows are seeded automatically by the
+    // on_job_order_created DB trigger — no manual insert needed here.
 
     // ── Assign team members ───────────────────────────────────────────────────
     const teamInserts: Record<string, unknown>[] = []
@@ -121,11 +115,13 @@ export async function POST(request: Request) {
     }
 
     // ── Log initial status to history ─────────────────────────────────────────
-    await admin.from("job_order_history").insert({
+    console.log("[add-job-order] step: insert history")
+    const { error: histErr } = await admin.from("job_order_history").insert({
       job_order_id:  job.id,
       status:        "Pending",
       changed_by_id: user.id,
     })
+    if (histErr) console.error("[add-job-order] history insert error:", histErr.message)
 
     return NextResponse.json({ success: true, job }, { status: 201 })
   } catch (err: unknown) {

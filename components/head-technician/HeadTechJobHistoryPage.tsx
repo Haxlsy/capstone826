@@ -4,7 +4,7 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import {
   ChevronLeft, CheckCircle2, Circle, ImagePlus,
-  ThumbsUp, AlertTriangle, Loader2, Info, RefreshCw,
+  ThumbsUp, AlertTriangle, Loader2, Info, RefreshCw, Play,
 } from "lucide-react";
 import { BottomNav } from "./components/BottomNav";
 
@@ -70,6 +70,9 @@ export default function HeadTechJobHistoryPage({ jobId }: { jobId: string }) {
   // Per-stage marking progress
   const [markingId, setMarkingId] = useState<string | null>(null);
 
+  // Start job flow
+  const [startingJob, setStartingJob] = useState(false);
+
   // Approve flow
   const [showApprove, setShowApprove]   = useState(false);
   const [handoffNotes, setHandoffNotes] = useState("");
@@ -111,6 +114,21 @@ export default function HeadTechJobHistoryPage({ jobId }: { jobId: string }) {
   const allDone   = myStages.length > 0 && myStages.every((s) => s.status === "done");
 
   // ── Actions ───────────────────────────────────────────────────────────────
+
+  async function handleStartJob() {
+    setStartingJob(true);
+    try {
+      const res = await fetch(`/api/head-technician/jobs/${jobId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "start_job" }),
+      });
+      if (res.ok) {
+        setJob((prev) => prev ? { ...prev, status: "Ongoing" } : prev);
+      }
+    } catch {}
+    setStartingJob(false);
+  }
 
   async function markDone(stage: StageDoc) {
     if (stage.status === "done" || markingId !== null) return;
@@ -245,6 +263,21 @@ export default function HeadTechJobHistoryPage({ jobId }: { jobId: string }) {
           <Row label="Service"   value={job.service} accent="orange" />
           <Row label="Scheduled" value={job.scheduled_start} />
         </div>
+
+        {/* Start Job — shown only when Pending */}
+        {job.status === "Pending" && (
+          <button
+            onClick={handleStartJob}
+            disabled={startingJob}
+            className="w-full flex items-center justify-center gap-2 text-sm font-semibold text-white bg-gray-900 rounded-2xl py-3 hover:bg-gray-800 transition-colors disabled:opacity-50"
+          >
+            {startingJob
+              ? <Loader2 size={15} className="animate-spin" />
+              : <Play size={15} />
+            }
+            {startingJob ? "Starting…" : "Start Job"}
+          </button>
+        )}
 
         {/* Handoff notes (head_installer only) */}
         {isInstaller && job.handoff_notes && (
@@ -468,33 +501,40 @@ function StageCard({
 
       {/* Actions — hidden for read-only (prep stages viewed by installer, or after approve) */}
       {!readOnly && (
-        <div className="flex items-center gap-2 pl-7">
-          <button
-            onClick={onAddMedia}
-            disabled={isUploading}
-            className="flex items-center gap-1.5 text-xs font-medium text-gray-500 border border-gray-200 rounded-lg px-2.5 py-1.5 hover:bg-gray-50 transition-colors disabled:opacity-40"
-          >
-            {isUploading ? <Loader2 size={12} className="animate-spin" /> : <ImagePlus size={12} />}
-            Add Media
-          </button>
-          <input
-            ref={fileRef}
-            type="file"
-            accept="image/jpeg,image/png,video/mp4,video/quicktime"
-            multiple
-            className="hidden"
-            onChange={(e) => onFileChange(e.target.files)}
-          />
-
-          {!done && (
+        <div className="flex flex-col gap-2 pl-7">
+          <div className="flex items-center gap-2">
             <button
-              onClick={onMarkDone}
-              disabled={isMarking}
-              className="flex items-center gap-1.5 text-xs font-semibold text-white bg-gray-900 rounded-lg px-3 py-1.5 hover:bg-gray-700 transition-colors disabled:opacity-50"
+              onClick={onAddMedia}
+              disabled={isUploading}
+              className="flex items-center gap-1.5 text-xs font-medium text-gray-500 border border-gray-200 rounded-lg px-2.5 py-1.5 hover:bg-gray-50 transition-colors disabled:opacity-40"
             >
-              {isMarking ? <Loader2 size={12} className="animate-spin" /> : <CheckCircle2 size={12} />}
-              Mark Done
+              {isUploading ? <Loader2 size={12} className="animate-spin" /> : <ImagePlus size={12} />}
+              {isUploading ? "Uploading…" : "Take Photo / Video"}
             </button>
+            {/* camera input — no file browsing, opens camera directly on mobile */}
+            <input
+              ref={fileRef}
+              type="file"
+              accept="image/*,video/*"
+              capture="environment"
+              className="hidden"
+              onChange={(e) => onFileChange(e.target.files)}
+            />
+
+            {!done && (
+              <button
+                onClick={onMarkDone}
+                disabled={isMarking || stage.media.length === 0}
+                className="flex items-center gap-1.5 text-xs font-semibold text-white bg-gray-900 rounded-lg px-3 py-1.5 hover:bg-gray-700 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                {isMarking ? <Loader2 size={12} className="animate-spin" /> : <CheckCircle2 size={12} />}
+                Mark Done
+              </button>
+            )}
+          </div>
+
+          {!done && stage.media.length === 0 && (
+            <p className="text-[11px] text-gray-400">Take a photo or video before marking done.</p>
           )}
         </div>
       )}

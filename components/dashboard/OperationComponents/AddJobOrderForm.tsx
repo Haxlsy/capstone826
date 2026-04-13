@@ -6,53 +6,114 @@ import { useRouter } from "next/navigation"
 import { CheckCircle2 } from "lucide-react"
 
 interface CustomerRecord {
-  id: string
-  full_name: string
+  id:             string
+  full_name:      string
   contact_number: string
-  email: string | null
-  plate_number: string
-  vehicle_unit: string | null
+  email:          string | null
+  plate_number:   string
+  vehicle_unit:   string | null
 }
 
 interface Service {
-  id: string
-  name: string
+  id:                     string
+  name:                   string
   estimated_duration_mins: number
 }
 
-interface Technician {
-  id: string
-  full_name: string
-  role: "head_detailer" | "head_installer"
+interface HeadTech {
+  id:          string
+  full_name:   string
+  role:        "head_detailer" | "head_installer"
   active_jobs: number
 }
 
-const INPUT_CLS = "w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-700 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+interface CrewMember {
+  id:           string
+  full_name:    string
+  role:         "detailer" | "installer"
+  is_available: boolean
+}
+
+const INPUT_CLS  = "w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-700 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
 const SELECT_CLS = `${INPUT_CLS} disabled:opacity-50`
 
+function CrewCheckboxList({
+  label,
+  members,
+  selected,
+  onToggle,
+  loading,
+}: {
+  label:    string
+  members:  CrewMember[]
+  selected: Set<string>
+  onToggle: (id: string) => void
+  loading:  boolean
+}) {
+  return (
+    <div className="flex flex-col gap-1.5">
+      <label className="text-xs font-medium text-gray-600">
+        {label}
+        {selected.size > 0 && (
+          <span className="ml-1.5 text-blue-600 font-semibold">({selected.size} selected)</span>
+        )}
+      </label>
+      {loading ? (
+        <p className="text-xs text-gray-400 py-2">Loading…</p>
+      ) : members.length === 0 ? (
+        <p className="text-xs text-gray-400 py-2">No {label.toLowerCase()} added yet.</p>
+      ) : (
+        <div className="border border-gray-200 rounded-lg divide-y divide-gray-50 max-h-40 overflow-y-auto">
+          {members.map((c) => (
+            <label key={c.id} className="flex items-center gap-3 px-3 py-2.5 hover:bg-gray-50 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={selected.has(c.id)}
+                onChange={() => onToggle(c.id)}
+                className="w-4 h-4 rounded border-gray-300"
+              />
+              <div className="flex-1 min-w-0">
+                <p className="text-sm text-gray-700 truncate">{c.full_name}</p>
+              </div>
+              <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded-full ${
+                c.is_available ? "bg-green-50 text-green-600" : "bg-gray-100 text-gray-400"
+              }`}>
+                {c.is_available ? "Available" : "Busy"}
+              </span>
+            </label>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
 export default function AddJobOrderForm() {
-  const router = useRouter()
+  const router        = useRouter()
   const redirectTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
-  const [customers, setCustomers] = useState<CustomerRecord[]>([])
-  const [services, setServices] = useState<Service[]>([])
-  const [technicians, setTechnicians] = useState<Technician[]>([])
+  const [customers,   setCustomers]   = useState<CustomerRecord[]>([])
+  const [services,    setServices]    = useState<Service[]>([])
+  const [headTechs,   setHeadTechs]   = useState<HeadTech[]>([])
+  const [crewMembers, setCrewMembers] = useState<CrewMember[]>([])
   const [loadingRefs, setLoadingRefs] = useState(true)
 
-  const [useManualCustomer, setUseManualCustomer] = useState(false)
-  const [selectedCustomerId, setSelectedCustomerId] = useState<string | null>(null)
-  const [manualCustomerName, setManualCustomerName] = useState("")
-  const [manualContactNumber, setManualContactNumber] = useState("")
-  const [manualPlateNumber, setManualPlateNumber] = useState("")
-  const [manualVehicleUnit, setManualVehicleUnit] = useState("")
+  const [useManualCustomer,    setUseManualCustomer]    = useState(false)
+  const [selectedCustomerId,   setSelectedCustomerId]   = useState<string | null>(null)
+  const [manualCustomerName,   setManualCustomerName]   = useState("")
+  const [manualContactNumber,  setManualContactNumber]  = useState("")
+  const [manualPlateNumber,    setManualPlateNumber]    = useState("")
+  const [manualVehicleUnit,    setManualVehicleUnit]    = useState("")
 
-  const [selectedServiceId, setSelectedServiceId] = useState<string | null>(null)
-  const [selectedHeadDetailerId, setSelectedHeadDetailerId] = useState<string | null>(null)
+  const [selectedServiceId,       setSelectedServiceId]       = useState<string | null>(null)
+  const [selectedHeadDetailerId,  setSelectedHeadDetailerId]  = useState<string | null>(null)
   const [selectedHeadInstallerId, setSelectedHeadInstallerId] = useState<string | null>(null)
+  const [selectedDetailerIds,     setSelectedDetailerIds]     = useState<Set<string>>(new Set())
+  const [selectedInstallerIds,    setSelectedInstallerIds]    = useState<Set<string>>(new Set())
   const [scheduledAt, setScheduledAt] = useState("")
 
   const [loading, setLoading] = useState(false)
-  const [error, setError] = useState<string | null>(null)
+  const [error,   setError]   = useState<string | null>(null)
   const [success, setSuccess] = useState(false)
 
   useEffect(() => {
@@ -71,14 +132,14 @@ export default function AddJobOrderForm() {
             r.ok ? r.json() : { services: [] }
           ),
           fetch("/api/operations/job-management/list-technicians").then((r) =>
-            r.ok ? r.json() : { technicians: [] }
+            r.ok ? r.json() : { technicians: [], crew_members: [] }
           ),
         ])
         setCustomers(cRes.customers ?? [])
         setServices(sRes.services ?? [])
-        setTechnicians(tRes.technicians ?? [])
-      } catch (err) {
-        console.error("Error loading reference data:", err)
+        setHeadTechs(tRes.technicians ?? [])
+        setCrewMembers(tRes.crew_members ?? [])
+      } catch {
         setError("Failed to load form data. Please refresh.")
       } finally {
         setLoadingRefs(false)
@@ -93,15 +154,22 @@ export default function AddJobOrderForm() {
 
   const selectedService = services.find((s) => s.id === selectedServiceId) ?? null
 
-  const headDetailers = technicians.filter((t) => t.role === "head_detailer")
-  const headInstallers = technicians.filter((t) => t.role === "head_installer")
+  const headDetailers  = headTechs.filter((t) => t.role === "head_detailer")
+  const headInstallers = headTechs.filter((t) => t.role === "head_installer")
+  const detailers      = crewMembers.filter((c) => c.role === "detailer")
+  const installers     = crewMembers.filter((c) => c.role === "installer")
+
+  function toggleCrew(id: string, set: Set<string>, setter: (s: Set<string>) => void) {
+    const next = new Set(set)
+    next.has(id) ? next.delete(id) : next.add(id)
+    setter(next)
+  }
 
   function formatDate(dateStr: string): string {
     if (!dateStr) return "—"
-    return new Date(dateStr).toLocaleDateString("en-US", {
-      month: "short",
-      day: "numeric",
-      year: "numeric",
+    return new Date(dateStr).toLocaleString("en-US", {
+      month: "short", day: "numeric", year: "numeric",
+      hour: "numeric", minute: "2-digit",
     })
   }
 
@@ -109,10 +177,9 @@ export default function AddJobOrderForm() {
     if (!dateStr || !mins) return "—"
     const d = new Date(dateStr)
     d.setMinutes(d.getMinutes() + mins)
-    return d.toLocaleDateString("en-US", {
-      month: "short",
-      day: "numeric",
-      year: "numeric",
+    return d.toLocaleString("en-US", {
+      month: "short", day: "numeric", year: "numeric",
+      hour: "numeric", minute: "2-digit",
     })
   }
 
@@ -120,56 +187,41 @@ export default function AddJobOrderForm() {
     setError(null)
 
     if (!useManualCustomer && !selectedCustomerId) {
-      setError("Please select a customer.")
-      return
+      setError("Please select a customer."); return
     }
     if (useManualCustomer) {
-      if (!manualCustomerName.trim()) {
-        setError("Please enter customer name.")
-        return
-      }
-      if (!manualContactNumber.trim()) {
-        setError("Please enter contact number.")
-        return
-      }
-      if (!manualPlateNumber.trim()) {
-        setError("Please enter plate number.")
-        return
-      }
+      if (!manualCustomerName.trim())   { setError("Please enter customer name."); return }
+      if (!manualContactNumber.trim())  { setError("Please enter contact number."); return }
+      if (!manualPlateNumber.trim())    { setError("Please enter plate number."); return }
     }
-    if (!selectedServiceId) {
-      setError("Please select a service.")
-      return
-    }
-    if (!scheduledAt) {
-      setError("Please set a scheduled date.")
-      return
-    }
+    if (!selectedServiceId) { setError("Please select a service."); return }
+    if (!scheduledAt)        { setError("Please set a scheduled date."); return }
 
     setLoading(true)
     try {
       const payload: Record<string, unknown> = {
-        service_id: selectedServiceId,
-        scheduled_at: scheduledAt,
-        head_detailer_id: selectedHeadDetailerId ?? null,
+        service_id:        selectedServiceId,
+        scheduled_at:      scheduledAt,
+        head_detailer_id:  selectedHeadDetailerId ?? null,
         head_installer_id: selectedHeadInstallerId ?? null,
+        detailer_ids:      [...selectedDetailerIds],
+        installer_ids:     [...selectedInstallerIds],
       }
 
       if (!useManualCustomer) {
         payload.customer_record_id = selectedCustomerId
       } else {
-        payload.customer_name = manualCustomerName.trim()
-        payload.contact_number = manualContactNumber.trim()
-        payload.plate_number = manualPlateNumber.trim()
-        payload.vehicle_unit = manualVehicleUnit.trim() || null
+        payload.customer_name   = manualCustomerName.trim()
+        payload.contact_number  = manualContactNumber.trim()
+        payload.plate_number    = manualPlateNumber.trim()
+        payload.vehicle_unit    = manualVehicleUnit.trim() || null
       }
 
-      const res = await fetch("/api/operations/job-management/add-job-order", {
+      const res  = await fetch("/api/operations/job-management/add-job-order", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
       })
-
       const data = await res.json()
       if (!res.ok) throw new Error(data?.error ?? "Failed to create job order")
 
@@ -182,19 +234,16 @@ export default function AddJobOrderForm() {
     }
   }
 
-  const estimatedMins = selectedService?.estimated_duration_mins ?? 0
-  const durationLabel =
-    estimatedMins > 0
-      ? estimatedMins >= 60
-        ? `${Math.round(estimatedMins / 60)} hr${Math.round(estimatedMins / 60) !== 1 ? "s" : ""}`
-        : `${estimatedMins} min${estimatedMins !== 1 ? "s" : ""}`
-      : "—"
-  const expectedCompletion =
-    scheduledAt && estimatedMins > 0
-      ? addMinutes(scheduledAt, estimatedMins)
-      : scheduledAt
-      ? formatDate(scheduledAt)
-      : "—"
+  const estimatedMins   = selectedService?.estimated_duration_mins ?? 0
+  const hrs             = Math.round(estimatedMins / 60)
+  const durationLabel   = estimatedMins > 0
+    ? estimatedMins >= 60
+      ? `${hrs} hr${hrs !== 1 ? "s" : ""}`
+      : `${estimatedMins} min${estimatedMins !== 1 ? "s" : ""}`
+    : "—"
+  const expectedCompletion = scheduledAt && estimatedMins > 0
+    ? addMinutes(scheduledAt, estimatedMins)
+    : scheduledAt ? formatDate(scheduledAt) : "—"
 
   return (
     <div className="flex flex-col gap-5 max-w-3xl">
@@ -228,11 +277,7 @@ export default function AddJobOrderForm() {
                 <label className="text-xs font-medium text-red-600">Customer *</label>
                 <button
                   type="button"
-                  onClick={() => {
-                    setUseManualCustomer(true)
-                    setSelectedCustomerId(null)
-                    setError(null)
-                  }}
+                  onClick={() => { setUseManualCustomer(true); setSelectedCustomerId(null); setError(null) }}
                   className="text-xs text-blue-600 hover:underline"
                 >
                   Enter manually
@@ -240,24 +285,15 @@ export default function AddJobOrderForm() {
               </div>
               <select
                 value={selectedCustomerId ?? ""}
-                onChange={(e) => {
-                  setSelectedCustomerId(e.target.value || null)
-                  setError(null)
-                }}
+                onChange={(e) => { setSelectedCustomerId(e.target.value || null); setError(null) }}
                 disabled={loadingRefs}
                 className={SELECT_CLS}
               >
                 <option value="">
-                  {loadingRefs
-                    ? "Loading…"
-                    : customers.length === 0
-                    ? "No customer records found"
-                    : "— Select customer —"}
+                  {loadingRefs ? "Loading…" : customers.length === 0 ? "No customer records found" : "— Select customer —"}
                 </option>
                 {customers.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.full_name} — {c.plate_number}
-                  </option>
+                  <option key={c.id} value={c.id}>{c.full_name} — {c.plate_number}</option>
                 ))}
               </select>
             </div>
@@ -266,13 +302,9 @@ export default function AddJobOrderForm() {
               <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 space-y-1.5">
                 <p className="text-sm font-semibold text-blue-900">{selectedCustomer.full_name}</p>
                 <p className="text-xs text-blue-700">📞 {selectedCustomer.contact_number}</p>
-                {selectedCustomer.email && (
-                  <p className="text-xs text-blue-700">✉️ {selectedCustomer.email}</p>
-                )}
+                {selectedCustomer.email && <p className="text-xs text-blue-700">✉️ {selectedCustomer.email}</p>}
                 <p className="text-xs text-blue-700">🚗 {selectedCustomer.plate_number}</p>
-                {selectedCustomer.vehicle_unit && (
-                  <p className="text-xs text-blue-700">Unit: {selectedCustomer.vehicle_unit}</p>
-                )}
+                {selectedCustomer.vehicle_unit && <p className="text-xs text-blue-700">Unit: {selectedCustomer.vehicle_unit}</p>}
               </div>
             )}
           </div>
@@ -283,55 +315,25 @@ export default function AddJobOrderForm() {
                 <label className="text-xs font-medium text-gray-600">Customer Name *</label>
                 <button
                   type="button"
-                  onClick={() => {
-                    setUseManualCustomer(false)
-                    setError(null)
-                  }}
+                  onClick={() => { setUseManualCustomer(false); setError(null) }}
                   className="text-xs text-blue-600 hover:underline"
                 >
                   Select from records
                 </button>
               </div>
-              <input
-                type="text"
-                value={manualCustomerName}
-                onChange={(e) => setManualCustomerName(e.target.value)}
-                placeholder="e.g., Juan dela Cruz"
-                className={INPUT_CLS}
-              />
+              <input type="text" value={manualCustomerName} onChange={(e) => setManualCustomerName(e.target.value)} placeholder="e.g., Juan dela Cruz" className={INPUT_CLS} />
             </div>
-
             <div className="flex flex-col gap-1.5">
               <label className="text-xs font-medium text-gray-600">Contact Number *</label>
-              <input
-                type="tel"
-                value={manualContactNumber}
-                onChange={(e) => setManualContactNumber(e.target.value)}
-                placeholder="e.g., 09XX-XXX-XXXX"
-                className={INPUT_CLS}
-              />
+              <input type="tel" value={manualContactNumber} onChange={(e) => setManualContactNumber(e.target.value)} placeholder="e.g., 09XX-XXX-XXXX" className={INPUT_CLS} />
             </div>
-
             <div className="flex flex-col gap-1.5">
               <label className="text-xs font-medium text-gray-600">Plate Number *</label>
-              <input
-                type="text"
-                value={manualPlateNumber}
-                onChange={(e) => setManualPlateNumber(e.target.value)}
-                placeholder="e.g., ABC-1234"
-                className={INPUT_CLS}
-              />
+              <input type="text" value={manualPlateNumber} onChange={(e) => setManualPlateNumber(e.target.value)} placeholder="e.g., ABC-1234" className={INPUT_CLS} />
             </div>
-
             <div className="flex flex-col gap-1.5 col-span-2">
               <label className="text-xs font-medium text-gray-600">Vehicle Unit</label>
-              <input
-                type="text"
-                value={manualVehicleUnit}
-                onChange={(e) => setManualVehicleUnit(e.target.value)}
-                placeholder="e.g., Toyota Vios 2020"
-                className={INPUT_CLS}
-              />
+              <input type="text" value={manualVehicleUnit} onChange={(e) => setManualVehicleUnit(e.target.value)} placeholder="e.g., Toyota Vios 2020" className={INPUT_CLS} />
             </div>
           </div>
         )}
@@ -340,42 +342,26 @@ export default function AddJobOrderForm() {
       {/* Card 2: Service & Schedule */}
       <div className="bg-white border border-gray-200 rounded-xl p-5 space-y-4">
         <h2 className="font-semibold text-sm text-gray-800">Service & Schedule</h2>
-
         <div className="grid grid-cols-2 gap-4">
           <div className="flex flex-col gap-1.5">
             <label className="text-xs font-medium text-red-600">Service *</label>
             <select
               value={selectedServiceId ?? ""}
-              onChange={(e) => {
-               const val = e.target.value;
-              // No parseInt! Just use the string or null if empty
-              setSelectedServiceId(val || null);
-              setError(null);
-              }}
+              onChange={(e) => { setSelectedServiceId(e.target.value || null); setError(null) }}
               disabled={loadingRefs}
               className={SELECT_CLS}
             >
-              <option value="">
-                {loadingRefs ? "Loading…" : services.length === 0 ? "No services found" : "— Select service —"}
-              </option>
-              {services.map((s) => (
-                <option key={s.id} value={s.id}>
-                  {s.name}
-                </option>
-              ))}
+              <option value="">{loadingRefs ? "Loading…" : services.length === 0 ? "No services found" : "— Select service —"}</option>
+              {services.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
             </select>
           </div>
-
           <div className="flex flex-col gap-1.5">
-            <label className="text-xs font-medium text-red-600">Scheduled Date *</label>
+            <label className="text-xs font-medium text-red-600">Scheduled Date & Time *</label>
             <input
-              type="date"
+              type="datetime-local"
               value={scheduledAt}
-              onChange={(e) => {
-                setScheduledAt(e.target.value)
-                setError(null)
-              }}
-              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-700 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+              onChange={(e) => { setScheduledAt(e.target.value); setError(null) }}
+              className={INPUT_CLS}
             />
           </div>
         </div>
@@ -403,12 +389,13 @@ export default function AddJobOrderForm() {
       </div>
 
       {/* Card 3: Team Assignment */}
-      <div className="bg-white border border-gray-200 rounded-xl p-5 space-y-4">
+      <div className="bg-white border border-gray-200 rounded-xl p-5 space-y-5">
         <div>
           <h2 className="font-semibold text-sm text-gray-800">Team Assignment</h2>
           <p className="text-xs text-gray-400 mt-0.5">Optional — can be assigned later.</p>
         </div>
 
+        {/* Head techs */}
         <div className="grid grid-cols-2 gap-4">
           <div className="flex flex-col gap-1.5">
             <label className="text-xs font-medium text-gray-600">Head Detailer</label>
@@ -421,13 +408,11 @@ export default function AddJobOrderForm() {
               <option value="">— None —</option>
               {headDetailers.map((t) => (
                 <option key={t.id} value={t.id}>
-                  {t.full_name}
-                  {t.active_jobs > 0 ? ` (${t.active_jobs} active)` : ""}
+                  {t.full_name}{t.active_jobs > 0 ? ` (${t.active_jobs} active)` : ""}
                 </option>
               ))}
             </select>
           </div>
-
           <div className="flex flex-col gap-1.5">
             <label className="text-xs font-medium text-gray-600">Head Installer</label>
             <select
@@ -439,12 +424,28 @@ export default function AddJobOrderForm() {
               <option value="">— None —</option>
               {headInstallers.map((t) => (
                 <option key={t.id} value={t.id}>
-                  {t.full_name}
-                  {t.active_jobs > 0 ? ` (${t.active_jobs} active)` : ""}
+                  {t.full_name}{t.active_jobs > 0 ? ` (${t.active_jobs} active)` : ""}
                 </option>
               ))}
             </select>
           </div>
+        </div>
+
+        <div className="grid grid-cols-2 gap-4">
+          <CrewCheckboxList
+            label="Detailers"
+            members={detailers}
+            selected={selectedDetailerIds}
+            onToggle={(id) => toggleCrew(id, selectedDetailerIds, setSelectedDetailerIds)}
+            loading={loadingRefs}
+          />
+          <CrewCheckboxList
+            label="Installers"
+            members={installers}
+            selected={selectedInstallerIds}
+            onToggle={(id) => toggleCrew(id, selectedInstallerIds, setSelectedInstallerIds)}
+            loading={loadingRefs}
+          />
         </div>
       </div>
 
@@ -466,9 +467,7 @@ export default function AddJobOrderForm() {
             onClick={handleSubmit}
             disabled={loading || success}
             className={`w-full py-3 text-sm font-semibold text-white rounded-xl transition-colors ${
-              loading || success
-                ? "bg-gray-400 cursor-not-allowed"
-                : "bg-gray-900 hover:bg-gray-800"
+              loading || success ? "bg-gray-400 cursor-not-allowed" : "bg-gray-900 hover:bg-gray-800"
             }`}
           >
             {loading ? "Creating…" : success ? "Created!" : "Create Job Order"}
