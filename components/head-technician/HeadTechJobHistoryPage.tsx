@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import {
-  ChevronLeft, CheckCircle2, Circle, ImagePlus,
+  ChevronLeft, CheckCircle2, Circle, ImagePlus, Video,
   ThumbsUp, AlertTriangle, Loader2, Info, RefreshCw, Play,
 } from "lucide-react";
 import { BottomNav } from "./components/BottomNav";
@@ -496,14 +496,27 @@ function StageCard({
       {!readOnly && (
         <div className="flex flex-col gap-2 pl-7">
           <div className="flex items-center gap-2">
-            {/* label wraps the input — direct user gesture, reliably opens camera on mobile */}
+            {/* Photo — accept image only so Android opens camera directly */}
             <label className={`flex items-center gap-1.5 text-xs font-medium text-gray-500 border border-gray-200 rounded-lg px-2.5 py-1.5 hover:bg-gray-50 transition-colors ${isUploading ? "opacity-40 pointer-events-none" : "cursor-pointer"}`}>
               {isUploading ? <Loader2 size={12} className="animate-spin" /> : <ImagePlus size={12} />}
-              {isUploading ? "Uploading…" : "Take Photo / Video"}
+              Photo
               <input
                 ref={(el) => { if (el) el.setAttribute("capture", "environment") }}
                 type="file"
-                accept="image/*,video/*"
+                accept="image/*"
+                className="hidden"
+                onChange={(e) => onFileChange(e.target.files)}
+              />
+            </label>
+
+            {/* Video — separate input so Android opens camera in video mode */}
+            <label className={`flex items-center gap-1.5 text-xs font-medium text-gray-500 border border-gray-200 rounded-lg px-2.5 py-1.5 hover:bg-gray-50 transition-colors ${isUploading ? "opacity-40 pointer-events-none" : "cursor-pointer"}`}>
+              <Video size={12} />
+              Video
+              <input
+                ref={(el) => { if (el) el.setAttribute("capture", "environment") }}
+                type="file"
+                accept="video/*"
                 className="hidden"
                 onChange={(e) => onFileChange(e.target.files)}
               />
