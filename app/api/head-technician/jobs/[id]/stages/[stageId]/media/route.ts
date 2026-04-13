@@ -71,3 +71,45 @@ export async function POST(
     return NextResponse.json({ error: msg }, { status: 500 })
   }
 }
+
+// DELETE /api/head-technician/jobs/[id]/stages/[stageId]/media
+// Body: { media_id: string }
+export async function DELETE(
+  request: Request,
+  { params }: { params: Promise<{ id: string; stageId: string }> }
+) {
+  try {
+    const { stageId } = await params
+    const { media_id } = await request.json()
+    if (!media_id) return NextResponse.json({ error: "media_id is required." }, { status: 400 })
+
+    const cookieStore = await cookies()
+    const supabase    = createClient(cookieStore)
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) return NextResponse.json({ error: "Unauthorized." }, { status: 401 })
+
+    const admin = createAdminClient()
+
+    const { data: row } = await admin
+      .from("stage_media")
+      .select("file_url")
+      .eq("id", media_id)
+      .eq("job_stage_progress_id", stageId)
+      .single()
+
+    if (row?.file_url) {
+      // Extract storage path from the public URL: everything after /stage-media/
+      const storagePath = row.file_url.split("/stage-media/")[1]
+      if (storagePath) {
+        await admin.storage.from("stage-media").remove([storagePath])
+      }
+    }
+
+    await admin.from("stage_media").delete().eq("id", media_id)
+
+    return NextResponse.json({ success: true })
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err)
+    return NextResponse.json({ error: msg }, { status: 500 })
+  }
+}
