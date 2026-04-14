@@ -81,7 +81,8 @@ export async function GET() {
       .select(`
         id, status, scheduled_at, created_at,
         customer:customer_record_id(full_name, plate_number, vehicle_unit),
-        service:service_id(name)
+        service:service_id(name),
+        customer_name, plate_number, vehicle_unit
       `)
       .in("id", jobIds)
       .not("status", "in", '("Released","Cancelled")')
@@ -123,9 +124,9 @@ export async function GET() {
       return {
         job_id:           `JO-${year}-${seq}`,
         raw_id:           j.id as string,       // UUID — matches detail route lookup
-        customer_name:    (j.customer as any)?.full_name   ?? "—",
-        plate_number:     (j.customer as any)?.plate_number ?? "—",
-        car_make:         (j.customer as any)?.vehicle_unit ?? "—",
+        customer_name:    (j.customer as any)?.full_name    ?? j.customer_name ?? "—",
+        plate_number:     (j.customer as any)?.plate_number ?? j.plate_number  ?? "—",
+        car_make:         (j.customer as any)?.vehicle_unit ?? j.vehicle_unit  ?? "—",
         car_color:        "",
         service:          (j.service as any)?.name          ?? "—",
         technician_name:  (member?.user_account as any)?.full_name ?? "Unassigned",

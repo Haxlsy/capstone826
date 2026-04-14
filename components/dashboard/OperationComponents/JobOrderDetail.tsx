@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react"
 import Link from "next/link"
-import { ArrowLeft, AlertTriangle, PackageCheck, ChevronDown, Users } from "lucide-react"
+import { ArrowLeft, PackageCheck, ChevronDown, Users } from "lucide-react"
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -94,13 +94,6 @@ export default function JobOrderDetail({ jobId }: { jobId: string }) {
   const [loading, setLoading]     = useState(true)
   const [error, setError]         = useState<string | null>(null)
 
-  // Rework modal state
-  const [reworkOpen, setReworkOpen]         = useState(false)
-  const [selectedStages, setSelectedStages] = useState<Set<string>>(new Set())
-  const [reworkNote, setReworkNote]         = useState("")
-  const [submitting, setSubmitting]         = useState(false)
-  const [reworkError, setReworkError]       = useState<string | null>(null)
-
   // Release confirmation
   const [releasing, setReleasing] = useState(false)
 
@@ -120,40 +113,6 @@ export default function JobOrderDetail({ jobId }: { jobId: string }) {
   }, [jobId])
 
   useEffect(() => { load() }, [load])
-
-  function toggleStage(stageId: string) {
-    setSelectedStages((prev) => {
-      const next = new Set(prev)
-      next.has(stageId) ? next.delete(stageId) : next.add(stageId)
-      return next
-    })
-  }
-
-  async function submitRework() {
-    if (!selectedStages.size || !reworkNote.trim()) return
-    setSubmitting(true)
-    setReworkError(null)
-    try {
-      const res  = await fetch(`/api/operations/job-orders/${jobId}/rework`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          stage_ids:           [...selectedStages],
-          rework_instructions: reworkNote.trim(),
-        }),
-      })
-      const json = await res.json()
-      if (!res.ok) throw new Error(json?.error ?? "Failed to flag rework")
-      setReworkOpen(false)
-      setSelectedStages(new Set())
-      setReworkNote("")
-      await load()
-    } catch (err: unknown) {
-      setReworkError(err instanceof Error ? err.message : String(err))
-    } finally {
-      setSubmitting(false)
-    }
-  }
 
   async function markReleased() {
     setReleasing(true)
@@ -193,7 +152,6 @@ export default function JobOrderDetail({ jobId }: { jobId: string }) {
   const prepStages  = job.stages.filter((s) => s.category === "preparation")
   const instStages  = job.stages.filter((s) => s.category === "installation")
   const canRelease  = job.status === "For Release"
-  const canRework   = ["Ongoing", "For Rework"].includes(job.status)
   const displayId   = `JO-${new Date(job.created_at).getFullYear()}-${job.id.slice(-4).toUpperCase()}`
 
   return (
@@ -216,15 +174,6 @@ export default function JobOrderDetail({ jobId }: { jobId: string }) {
             >
               <PackageCheck className="w-4 h-4" />
               {releasing ? "Releasing…" : "Mark as Released"}
-            </button>
-          )}
-          {canRework && (
-            <button
-              onClick={() => setReworkOpen(true)}
-              className="flex items-center gap-2 bg-orange-500 text-white text-sm font-semibold px-4 py-2 rounded-lg hover:bg-orange-600 transition-colors"
-            >
-              <AlertTriangle className="w-4 h-4" />
-              Flag for Rework
             </button>
           )}
         </div>
@@ -374,70 +323,6 @@ export default function JobOrderDetail({ jobId }: { jobId: string }) {
         </div>
       </div>
 
-      {/* Rework Modal */}
-      {reworkOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-          <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg p-6">
-            <div className="flex items-center gap-2 mb-4">
-              <AlertTriangle className="w-5 h-5 text-orange-500" />
-              <h3 className="text-base font-semibold text-gray-800">Flag Stages for Rework</h3>
-            </div>
-            <p className="text-sm text-gray-500 mb-4">
-              Select the stages that need to be redone and provide instructions for the technician.
-            </p>
-
-            {/* Stage selector */}
-            <div className="flex flex-col gap-2 mb-4 max-h-48 overflow-y-auto">
-              {job.stages
-                .filter((s) => s.status === "done" || s.status === "for_rework")
-                .map((s) => (
-                  <label key={s.id} className="flex items-center gap-3 p-2 rounded-lg hover:bg-gray-50 cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={selectedStages.has(s.id)}
-                      onChange={() => toggleStage(s.id)}
-                      className="w-4 h-4 rounded border-gray-300"
-                    />
-                    <span className="text-sm text-gray-700">{s.name}</span>
-                    <span className="text-xs text-gray-400 capitalize ml-auto">{s.category}</span>
-                  </label>
-                ))}
-              {job.stages.filter((s) => s.status === "done" || s.status === "for_rework").length === 0 && (
-                <p className="text-sm text-gray-400 text-center py-4">No completed stages to flag.</p>
-              )}
-            </div>
-
-            {/* Instructions */}
-            <textarea
-              value={reworkNote}
-              onChange={(e) => setReworkNote(e.target.value)}
-              placeholder="Describe what needs to be redone…"
-              rows={3}
-              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-orange-400 mb-3 resize-none"
-            />
-
-            {reworkError && (
-              <p className="text-xs text-red-500 mb-3">{reworkError}</p>
-            )}
-
-            <div className="flex gap-3">
-              <button
-                onClick={() => { setReworkOpen(false); setSelectedStages(new Set()); setReworkNote("") }}
-                className="flex-1 py-2 text-sm font-medium text-gray-600 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={submitRework}
-                disabled={submitting || !selectedStages.size || !reworkNote.trim()}
-                className="flex-1 py-2 text-sm font-semibold text-white bg-orange-500 rounded-lg hover:bg-orange-600 disabled:opacity-50 transition-colors"
-              >
-                {submitting ? "Flagging…" : "Flag for Rework"}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   )
 }

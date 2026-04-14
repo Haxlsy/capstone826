@@ -79,6 +79,13 @@ export default function HeadTechJobHistoryPage({ jobId }: { jobId: string }) {
   const [approving, setApproving]       = useState(false);
   const [approved, setApproved]         = useState(false);
 
+  // Rework state (head_installer only)
+  const [reworkOpen, setReworkOpen]         = useState(false);
+  const [selectedRework, setSelectedRework] = useState<Set<string>>(new Set());
+  const [reworkNote, setReworkNote]         = useState("");
+  const [submittingRework, setSubmittingRework] = useState(false);
+  const [reworkError, setReworkError]       = useState<string | null>(null);
+
   // ── Load ──────────────────────────────────────────────────────────────────
 
   useEffect(() => {
@@ -262,6 +269,41 @@ export default function HeadTechJobHistoryPage({ jobId }: { jobId: string }) {
     setRemovingId(null);
   }
 
+  function toggleReworkStage(id: string) {
+    setSelectedRework((prev) => {
+      const next = new Set(prev);
+      next.has(id) ? next.delete(id) : next.add(id);
+      return next;
+    });
+  }
+
+  async function handleFlagRework() {
+    if (!selectedRework.size || !reworkNote.trim()) return;
+    setSubmittingRework(true);
+    setReworkError(null);
+    try {
+      const res  = await fetch(`/api/head-technician/jobs/${jobId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action:               "flag_rework",
+          stage_ids:            [...selectedRework],
+          rework_instructions:  reworkNote.trim(),
+        }),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json?.error ?? "Failed to flag rework");
+      setReworkOpen(false);
+      setSelectedRework(new Set());
+      setReworkNote("");
+      await load();
+    } catch (err: unknown) {
+      setReworkError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setSubmittingRework(false);
+    }
+  }
+
   async function handleApprove() {
     setApproving(true);
     try {
@@ -291,8 +333,6 @@ export default function HeadTechJobHistoryPage({ jobId }: { jobId: string }) {
       <p className="text-sm text-gray-400 mt-20">Job not found.</p>
     </main>
   );
-
-  const approveLabel = isInstaller ? "Approve & Mark for Release" : "Approve Preparation";
 
   // ── Render ────────────────────────────────────────────────────────────────
 
@@ -437,23 +477,63 @@ export default function HeadTechJobHistoryPage({ jobId }: { jobId: string }) {
           )}
         </section>
 
-        {/* ── Approve action ── */}
-        {!approved && myStages.length > 0 && allDone && (
+        {/* ── Installer quality-check actions (Flag for Rework + Approve) ── */}
+        {isInstaller && !approved && myStages.length > 0 && allDone && (
           <div className="space-y-2 pt-1">
             {showApprove ? (
               <div className="bg-white rounded-2xl p-4 space-y-3 border border-emerald-100 shadow-[0_2px_12px_-4px_rgba(0,0,0,0.06)]">
-                <p className="text-sm font-semibold text-gray-900">
-                  {isInstaller ? "Final Quality Check — Approve" : "Approve Preparation"}
-                </p>
-                {!isInstaller && (
-                  <textarea
-                    value={handoffNotes}
-                    onChange={(e) => setHandoffNotes(e.target.value)}
-                    placeholder="Optional handoff notes for the Installation team…"
-                    rows={3}
-                    className="w-full text-sm border border-gray-200 rounded-xl px-3.5 py-3 resize-none focus:outline-none focus:ring-2 focus:ring-gray-200 bg-gray-50 text-gray-800 placeholder-gray-400 transition"
-                  />
-                )}
+                <p className="text-sm font-semibold text-gray-900">Final Quality Check — Approve</p>
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => setShowApprove(false)}
+                    className="flex-1 text-sm font-semibold text-gray-600 border border-gray-200 rounded-xl py-3 hover:bg-gray-50 transition-colors"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={handleApprove}
+                    disabled={approving}
+                    className="flex-1 flex items-center justify-center gap-2 text-sm font-semibold text-white bg-emerald-600 rounded-xl py-3 hover:bg-emerald-700 active:scale-[0.98] transition-all disabled:opacity-50"
+                  >
+                    {approving ? <Loader2 size={14} className="animate-spin" /> : <ThumbsUp size={14} />}
+                    Confirm
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div className="flex gap-2">
+                <button
+                  onClick={() => setReworkOpen(true)}
+                  className="flex-1 flex items-center justify-center gap-2 text-sm font-semibold text-white bg-orange-500 rounded-2xl py-3.5 hover:bg-orange-600 active:scale-[0.98] transition-all"
+                >
+                  <AlertTriangle size={15} />
+                  Flag for Rework
+                </button>
+                <button
+                  onClick={() => setShowApprove(true)}
+                  className="flex-1 flex items-center justify-center gap-2 text-sm font-semibold text-white bg-emerald-600 rounded-2xl py-3.5 hover:bg-emerald-700 active:scale-[0.98] transition-all"
+                >
+                  <ThumbsUp size={15} />
+                  Approve
+                </button>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* ── Head detailer approve action ── */}
+        {!isInstaller && !approved && myStages.length > 0 && allDone && (
+          <div className="space-y-2 pt-1">
+            {showApprove ? (
+              <div className="bg-white rounded-2xl p-4 space-y-3 border border-emerald-100 shadow-[0_2px_12px_-4px_rgba(0,0,0,0.06)]">
+                <p className="text-sm font-semibold text-gray-900">Approve Preparation</p>
+                <textarea
+                  value={handoffNotes}
+                  onChange={(e) => setHandoffNotes(e.target.value)}
+                  placeholder="Optional handoff notes for the Installation team…"
+                  rows={3}
+                  className="w-full text-sm border border-gray-200 rounded-xl px-3.5 py-3 resize-none focus:outline-none focus:ring-2 focus:ring-gray-200 bg-gray-50 text-gray-800 placeholder-gray-400 transition"
+                />
                 <div className="flex gap-2">
                   <button
                     onClick={() => setShowApprove(false)}
@@ -477,7 +557,7 @@ export default function HeadTechJobHistoryPage({ jobId }: { jobId: string }) {
                 className="w-full flex items-center justify-center gap-2 text-sm font-semibold text-white bg-emerald-600 rounded-2xl py-3.5 hover:bg-emerald-700 active:scale-[0.98] transition-all"
               >
                 <ThumbsUp size={15} />
-                {approveLabel}
+                Approve Preparation
               </button>
             )}
           </div>
@@ -499,6 +579,76 @@ export default function HeadTechJobHistoryPage({ jobId }: { jobId: string }) {
         )}
 
       </main>
+
+      {/* ── Flag for Rework modal (head_installer only) ── */}
+      {reworkOpen && job && (
+        <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 p-4 sm:items-center">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-md p-5 space-y-4">
+            <div className="flex items-center gap-2">
+              <AlertTriangle size={18} className="text-orange-500" />
+              <h3 className="text-sm font-semibold text-gray-900">Flag Installation Stages for Rework</h3>
+            </div>
+            <p className="text-xs text-gray-500">
+              Select the installation stages that need to be redone. They will be reverted to In Progress with your instructions.
+            </p>
+
+            {/* Stage checkboxes — only done installation stages */}
+            <div className="flex flex-col gap-1 max-h-48 overflow-y-auto">
+              {myStages
+                .filter((s) => s.status === "done")
+                .map((s) => (
+                  <label
+                    key={s.id}
+                    className="flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-gray-50 cursor-pointer"
+                  >
+                    <input
+                      type="checkbox"
+                      checked={selectedRework.has(s.id)}
+                      onChange={() => toggleReworkStage(s.id)}
+                      className="w-4 h-4 accent-orange-500"
+                    />
+                    <span className="text-sm text-gray-700 flex-1">{s.order}. {s.name}</span>
+                  </label>
+                ))}
+              {myStages.filter((s) => s.status === "done").length === 0 && (
+                <p className="text-xs text-gray-400 text-center py-4">No completed stages to flag.</p>
+              )}
+            </div>
+
+            {/* Instructions */}
+            <textarea
+              value={reworkNote}
+              onChange={(e) => setReworkNote(e.target.value)}
+              placeholder="Describe what needs to be redone…"
+              rows={3}
+              className="w-full text-sm border border-gray-200 rounded-xl px-3.5 py-3 resize-none focus:outline-none focus:ring-2 focus:ring-orange-300 bg-gray-50 text-gray-800 placeholder-gray-400 transition"
+            />
+
+            {reworkError && (
+              <p className="text-xs text-red-500">{reworkError}</p>
+            )}
+
+            <div className="flex gap-2">
+              <button
+                onClick={() => { setReworkOpen(false); setSelectedRework(new Set()); setReworkNote(""); setReworkError(null); }}
+                className="flex-1 text-sm font-semibold text-gray-600 border border-gray-200 rounded-xl py-3 hover:bg-gray-50 transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleFlagRework}
+                disabled={submittingRework || !selectedRework.size || !reworkNote.trim()}
+                className="flex-1 flex items-center justify-center gap-2 text-sm font-semibold text-white bg-orange-500 rounded-xl py-3 hover:bg-orange-600 active:scale-[0.98] transition-all disabled:opacity-50"
+              >
+                {submittingRework
+                  ? <Loader2 size={14} className="animate-spin" />
+                  : <AlertTriangle size={14} />}
+                {submittingRework ? "Flagging…" : "Flag for Rework"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Full-screen media preview */}
       {preview && (
@@ -601,8 +751,8 @@ function StageCard({
         </div>
       </div>
 
-      {/* Rework instructions */}
-      {rework && stage.rework_instructions && (
+      {/* Rework instructions — shown for for_rework status OR in_progress with instructions */}
+      {(rework || (!done && stage.rework_instructions)) && stage.rework_instructions && (
         <div className="mx-4 mb-3 flex gap-2 bg-orange-100 rounded-xl px-3 py-2.5">
           <AlertTriangle size={13} className="text-orange-500 mt-0.5 shrink-0" />
           <p className="text-xs text-orange-700 leading-snug">

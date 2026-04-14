@@ -64,20 +64,53 @@ export async function POST(request: Request) {
       }
     }
 
+    // ── Resolve customer record ───────────────────────────────────────────────
+    // Always link via customer_record_id. For manual entries, reuse an existing
+    // record matched by plate number, or create a new one.
+    let resolvedCustomerRecordId: string | null = customer_record_id ?? null
+
+    if (!resolvedCustomerRecordId) {
+      // Try to find an existing record by plate number
+      if (plate_number?.trim()) {
+        const { data: existing } = await admin
+          .from("customer_record")
+          .select("id")
+          .eq("plate_number", plate_number.trim())
+          .maybeSingle()
+
+        if (existing) {
+          resolvedCustomerRecordId = existing.id
+        }
+      }
+
+      // No existing record found — create one
+      if (!resolvedCustomerRecordId) {
+        const { data: newCustomer, error: custErr } = await admin
+          .from("customer_record")
+          .insert({
+            full_name:      customer_name?.trim()    ?? null,
+            contact_number: contact_number?.trim()   ?? null,
+            plate_number:   plate_number?.trim()     ?? null,
+            vehicle_unit:   vehicle_unit?.trim()     ?? null,
+          })
+          .select("id")
+          .single()
+
+        if (custErr) {
+          console.error("[add-job-order] customer_record insert error:", custErr.message)
+          return NextResponse.json({ error: custErr.message }, { status: 500 })
+        }
+
+        resolvedCustomerRecordId = newCustomer.id
+      }
+    }
+
     const payload: Record<string, unknown> = {
       service_id,
       scheduled_at:           scheduled_at ?? null,
       expected_completion_at,
       status:                 "Pending",
-    }
-
-    if (customer_record_id) {
-      payload.customer_record_id = customer_record_id
-    } else {
-      payload.customer_name   = customer_name?.trim() ?? null
-      payload.contact_number  = contact_number?.trim() ?? null
-      payload.plate_number    = plate_number?.trim() ?? null
-      payload.vehicle_unit    = vehicle_unit?.trim() ?? null
+      customer_record_id:     resolvedCustomerRecordId,
     }
 
     console.log("[add-job-order] step: insert job_order, payload:", JSON.stringify(payload))
