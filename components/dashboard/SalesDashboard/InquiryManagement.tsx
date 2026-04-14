@@ -308,14 +308,27 @@ export default function InquiryManagement() {
 
             <hr className="border-gray-100" />
 
-            {/* PSID */}
-            <div className="space-y-2">
-              <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Messenger Identity</p>
-              <div className="bg-gray-50 border border-gray-100 rounded-xl px-4 py-3 flex items-center gap-3">
-                <Hash className="w-4 h-4 text-gray-400 shrink-0" />
-                <div>
-                  <p className="text-[10px] text-gray-400">Page-Scoped ID</p>
-                  <p className="text-sm font-mono font-semibold text-gray-700">{selected.psid}</p>
+            {/* Escalation details */}
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Escalation Date</p>
+                <div className="bg-gray-50 border border-gray-100 rounded-xl px-4 py-3 flex items-center gap-3 h-[58px]">
+                  <Clock className="w-4 h-4 text-gray-400 shrink-0" />
+                  <div>
+                    <p className="text-[10px] text-gray-400">Flagged At</p>
+                    <p className="text-sm font-semibold text-gray-700 whitespace-nowrap">{selected.escalationDate}</p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Messenger Identity</p>
+                <div className="bg-gray-50 border border-gray-100 rounded-xl px-4 py-3 flex items-center gap-3 h-[58px]">
+                  <Hash className="w-4 h-4 text-gray-400 shrink-0" />
+                  <div>
+                    <p className="text-[10px] text-gray-400">Page-Scoped ID</p>
+                    <p className="text-sm font-mono font-semibold text-gray-700 truncate">{selected.psid}</p>
+                  </div>
                 </div>
               </div>
             </div>
@@ -330,26 +343,29 @@ export default function InquiryManagement() {
               </div>
             </div>
 
-            {/* Last message */}
-            {selected.lastMessage && (
-              <div className="space-y-2">
-                <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Last Message</p>
-                <div className="bg-blue-50 border border-blue-100 rounded-xl px-4 py-3">
-                  <p className="text-sm text-gray-700 leading-relaxed">{selected.lastMessage}</p>
-                </div>
-              </div>
-            )}
-
             {/* Actions */}
             <div className="mt-auto pt-4 flex flex-col gap-3">
               {selected.type === "Booking" && selected.status === "open" && (
-                <button
-                  onClick={() => openRecordModal(selected)}
-                  className="w-full py-2.5 rounded-xl bg-gray-900 text-white text-sm font-semibold hover:bg-gray-800 transition-colors flex items-center justify-center gap-2"
-                >
-                  <ArrowRightLeft className="w-4 h-4" />
-                  Record Customer Details
-                </button>
+                <div>
+                  <button
+                    onClick={() => openRecordModal(selected)}
+                    disabled={
+                      !selected.extractedName || 
+                      !selected.extractedContact || 
+                      !selected.extractedPlate || 
+                      !selected.extractedVehicle
+                    }
+                    className="w-full py-2.5 rounded-xl bg-gray-900 text-white text-sm font-semibold hover:bg-gray-800 transition-colors flex items-center justify-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-gray-900"
+                  >
+                    <ArrowRightLeft className="w-4 h-4" />
+                    Record Customer Details
+                  </button>
+                  {(!selected.extractedName || !selected.extractedContact || !selected.extractedPlate || !selected.extractedVehicle) && (
+                    <p className="text-[10px] text-gray-400 text-center mt-2 px-4">
+                      AI fields must be populated before recording details.
+                    </p>
+                  )}
+                </div>
               )}
 
               {selected.status === "recorded" && (

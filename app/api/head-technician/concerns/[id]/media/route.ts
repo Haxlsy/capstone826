@@ -56,8 +56,8 @@ export async function POST(
         concern_id:      concernId,
         media_type:      isPhoto ? "photo" : "video",
         file_url:        publicUrl,
+        shareable_link:  publicUrl,
         file_size_bytes: file.size,
-        uploaded_by_id:  user.id,
       })
       .select("id, file_url, media_type")
       .single()

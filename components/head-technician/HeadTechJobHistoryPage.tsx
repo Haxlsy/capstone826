@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import {
   ChevronLeft, CheckCircle2, Circle, ImagePlus, Video,
-  ThumbsUp, AlertTriangle, Loader2, Info, RefreshCw, Play, X, Users, ChevronDown,
+  ThumbsUp, AlertTriangle, Loader2, Info, RefreshCw, Play, X, Users, ChevronDown, Clock,
 } from "lucide-react";
 import { BottomNav } from "./components/BottomNav";
 
@@ -41,6 +41,7 @@ interface JobDetail {
   scheduled_start: string;
   status:          string;
   handoff_notes:   string | null;
+  preparation_finished: boolean;
   detailers:       string[];
   installers:      string[];
   timeline:        TimelineEntry[];
@@ -129,9 +130,12 @@ export default function HeadTechJobHistoryPage({ jobId }: { jobId: string }) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action: "start_job" }),
       });
-      if (res.ok) {
-        setJob((prev) => prev ? { ...prev, status: "Ongoing" } : prev);
+      if (!res.ok) {
+        const json = await res.json();
+        alert(json.error ?? "Failed to start job.");
+        return;
       }
+      setJob((prev) => prev ? { ...prev, status: "Ongoing" } : prev);
     } catch {}
     setStartingJob(false);
   }
@@ -386,17 +390,26 @@ export default function HeadTechJobHistoryPage({ jobId }: { jobId: string }) {
 
         {/* ── Start Job button ── */}
         {job.status === "Pending" && (
-          <button
-            onClick={handleStartJob}
-            disabled={startingJob}
-            className="w-full flex items-center justify-center gap-2 text-sm font-semibold text-white bg-gray-900 rounded-2xl py-3.5 hover:bg-gray-800 active:scale-[0.98] transition-all disabled:opacity-50"
-          >
-            {startingJob
-              ? <Loader2 size={15} className="animate-spin" />
-              : <Play size={15} />
-            }
-            {startingJob ? "Starting…" : "Start Job"}
-          </button>
+          <div className="space-y-2">
+            <button
+              onClick={handleStartJob}
+              disabled={startingJob || isInstaller}
+              className={`w-full flex items-center justify-center gap-2 text-sm font-semibold text-white rounded-2xl py-3.5 transition-all disabled:opacity-50 ${
+                isInstaller ? "bg-gray-300 cursor-not-allowed" : "bg-gray-900 hover:bg-gray-800 active:scale-[0.98]"
+              }`}
+            >
+              {startingJob
+                ? <Loader2 size={15} className="animate-spin" />
+                : isInstaller ? <Clock size={15} /> : <Play size={15} />
+              }
+              {startingJob ? "Starting…" : isInstaller ? "Waiting for Preparation" : "Start Job"}
+            </button>
+            {isInstaller && (
+              <p className="text-[10px] text-gray-400 text-center px-6">
+                Only the Head Detailer can start the job. Please wait for preparation to begin.
+              </p>
+            )}
+          </div>
         )}
 
         {/* ── Handoff notes (head_installer only) ── */}
@@ -463,7 +476,7 @@ export default function HeadTechJobHistoryPage({ jobId }: { jobId: string }) {
               <StageCard
                 key={stage.id}
                 stage={stage}
-                readOnly={approved}
+                readOnly={approved || (isInstaller && !job.preparation_finished) || job.status === "Pending"}
                 isMarking={markingId === stage.id}
                 isUploading={uploadingId === stage.id}
                 removingId={removingId}
@@ -482,7 +495,7 @@ export default function HeadTechJobHistoryPage({ jobId }: { jobId: string }) {
           <div className="space-y-2 pt-1">
             {showApprove ? (
               <div className="bg-white rounded-2xl p-4 space-y-3 border border-emerald-100 shadow-[0_2px_12px_-4px_rgba(0,0,0,0.06)]">
-                <p className="text-sm font-semibold text-gray-900">Final Quality Check — Approve</p>
+                <p className="text-sm font-semibold text-gray-900">Final Quality Check — Finish Job</p>
                 <div className="flex gap-2">
                   <button
                     onClick={() => setShowApprove(false)}
@@ -514,7 +527,7 @@ export default function HeadTechJobHistoryPage({ jobId }: { jobId: string }) {
                   className="flex-1 flex items-center justify-center gap-2 text-sm font-semibold text-white bg-emerald-600 rounded-2xl py-3.5 hover:bg-emerald-700 active:scale-[0.98] transition-all"
                 >
                   <ThumbsUp size={15} />
-                  Approve
+                  Finish Job
                 </button>
               </div>
             )}

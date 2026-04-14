@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect, useCallback } from "react"
-import { UserCheck, UserX, Users, Search, Plus, X, Wrench } from "lucide-react"
+import { UserCheck, UserX, Users, Search, Plus, X, Wrench, Pencil, Trash2 } from "lucide-react"
 
 interface ActiveJob {
   job_id:   string
@@ -63,6 +63,14 @@ export default function TechnicianAvailability() {
   const [adding, setAdding]         = useState(false)
   const [addError, setAddError]     = useState<string | null>(null)
 
+  // Edit technician modal
+  const [editOpen, setEditOpen]       = useState(false)
+  const [editingTech, setEditingTech] = useState<Technician | null>(null)
+  const [editName, setEditName]       = useState("")
+  const [editRole, setEditRole]       = useState<Technician["role"]>("detailer")
+  const [updating, setUpdating]       = useState(false)
+  const [editError, setEditError]     = useState<string | null>(null)
+
   const load = useCallback(async () => {
     setLoading(true)
     setFetchError(null)
@@ -119,6 +127,44 @@ export default function TechnicianAvailability() {
       setAddError(err instanceof Error ? err.message : String(err))
     } finally {
       setAdding(false)
+    }
+  }
+
+  async function updateTechnician() {
+    if (!editingTech || !editName.trim()) return
+    setUpdating(true)
+    setEditError(null)
+    try {
+      const res  = await fetch("/api/operations/technician-availability", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: editingTech.id, full_name: editName.trim(), role: editRole }),
+      })
+      const json = await res.json()
+      if (!res.ok) throw new Error(json?.error ?? "Failed to update technician")
+      setTechnicians((prev) => prev.map((t) => t.id === editingTech.id ? { ...t, full_name: editName.trim(), role: editRole } : t))
+      setEditOpen(false)
+      setEditingTech(null)
+    } catch (err: unknown) {
+      setEditError(err instanceof Error ? err.message : String(err))
+    } finally {
+      setUpdating(false)
+    }
+  }
+
+  async function archiveTechnician(tech: Technician) {
+    if (!confirm(`Are you sure you want to archive "${tech.full_name}"? This will remove them from active assignment.`)) return
+    try {
+      const res  = await fetch("/api/operations/technician-availability", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: tech.id, is_archived: true }),
+      })
+      const json = await res.json()
+      if (!res.ok) throw new Error(json?.error ?? "Failed to archive technician")
+      setTechnicians((prev) => prev.filter((t) => t.id !== tech.id))
+    } catch (err: unknown) {
+      alert(err instanceof Error ? err.message : String(err))
     }
   }
 
@@ -268,6 +314,32 @@ export default function TechnicianAvailability() {
                           </div>
                         )}
                       </div>
+
+                      <div className="flex items-center gap-1 group/actions">
+                        <button
+                          onClick={() => {
+                            setEditingTech(tech)
+                            setEditName(tech.full_name)
+                            setEditRole(tech.role)
+                            setEditOpen(true)
+                            setEditError(null)
+                          }}
+                          disabled={onJob}
+                          title={onJob ? "Cannot edit while on an active job" : "Edit details"}
+                          className="p-2 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-all disabled:opacity-0 disabled:pointer-events-none"
+                        >
+                          <Pencil className="w-4 h-4" />
+                        </button>
+                        <button
+                          onClick={() => archiveTechnician(tech)}
+                          disabled={onJob}
+                          title={onJob ? "Cannot archive while on an active job" : "Archive technician"}
+                          className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-all disabled:opacity-0 disabled:pointer-events-none"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </div>
+
                       <button
                         onClick={() => toggle(tech)}
                         disabled={onJob}
@@ -351,6 +423,71 @@ export default function TechnicianAvailability() {
                 className="flex-1 py-2 text-sm font-semibold text-white bg-gray-900 rounded-lg hover:bg-gray-800 disabled:opacity-50 transition-colors"
               >
                 {adding ? "Adding…" : "Add"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Edit Technician Modal */}
+      {editOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm p-6">
+            <div className="flex items-center justify-between mb-5">
+              <h3 className="text-base font-semibold text-gray-800">Edit Technician</h3>
+              <button
+                onClick={() => {
+                  setEditOpen(false)
+                  setEditingTech(null)
+                }}
+                className="text-gray-400 hover:text-gray-600"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="space-y-4">
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1">Full Name</label>
+                <input
+                  type="text"
+                  value={editName}
+                  onChange={(e) => setEditName(e.target.value)}
+                  placeholder="e.g. Juan Dela Cruz"
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1">Role</label>
+                <select
+                  value={editRole}
+                  onChange={(e) => setEditRole(e.target.value as Technician["role"])}
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                >
+                  <option value="detailer">Detailer</option>
+                  <option value="installer">Installer</option>
+                </select>
+              </div>
+            </div>
+
+            {editError && <p className="text-xs text-red-500 mt-3">{editError}</p>}
+
+            <div className="flex gap-3 mt-5">
+              <button
+                onClick={() => {
+                  setEditOpen(false)
+                  setEditingTech(null)
+                }}
+                className="flex-1 py-2 text-sm font-medium text-gray-600 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={updateTechnician}
+                disabled={updating || !editName.trim()}
+                className="flex-1 py-2 text-sm font-semibold text-white bg-gray-900 rounded-lg hover:bg-gray-800 disabled:opacity-50 transition-colors"
+              >
+                {updating ? "Updating…" : "Save Changes"}
               </button>
             </div>
           </div>

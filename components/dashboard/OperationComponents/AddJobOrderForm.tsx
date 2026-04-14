@@ -44,17 +44,20 @@ function CrewCheckboxList({
   selected,
   onToggle,
   loading,
+  required,
 }: {
-  label:    string
-  members:  CrewMember[]
-  selected: Set<string>
-  onToggle: (id: string) => void
-  loading:  boolean
+  label:     string
+  members:   CrewMember[]
+  selected:  Set<string>
+  onToggle:  (id: string) => void
+  loading:   boolean
+  required?: boolean
 }) {
   return (
     <div className="flex flex-col gap-1.5">
       <label className="text-xs font-medium text-gray-600">
         {label}
+        {required && <span className="text-red-500 ml-0.5">*</span>}
         {selected.size > 0 && (
           <span className="ml-1.5 text-blue-600 font-semibold">({selected.size} selected)</span>
         )}
@@ -206,8 +209,12 @@ export default function AddJobOrderForm() {
       if (!manualContactNumber.trim())  { setError("Please enter contact number."); return }
       if (!manualPlateNumber.trim())    { setError("Please enter plate number."); return }
     }
-    if (!selectedServiceId) { setError("Please select a service."); return }
-    if (!scheduledAt)        { setError("Please set a scheduled date."); return }
+    if (!selectedServiceId)        { setError("Please select a service."); return }
+    if (!scheduledAt)              { setError("Please set a scheduled date."); return }
+    if (!selectedHeadDetailerId)   { setError("Please select a Head Detailer."); return }
+    if (!selectedHeadInstallerId)  { setError("Please select a Head Installer."); return }
+    if (selectedDetailerIds.size === 0)  { setError("Please assign at least one Detailer."); return }
+    if (selectedInstallerIds.size === 0) { setError("Please assign at least one Installer."); return }
 
     setLoading(true)
     try {
@@ -286,7 +293,7 @@ export default function AddJobOrderForm() {
           <div className="flex flex-col gap-4">
             <div className="flex flex-col gap-1.5">
               <div className="flex items-center justify-between">
-                <label className="text-xs font-medium text-red-600">Customer *</label>
+                <label className="text-xs font-medium text-gray-600">Customer <span className="text-red-500 ml-0.5">*</span></label>
                 <button
                   type="button"
                   onClick={() => { setUseManualCustomer(true); setSelectedCustomerId(null); setError(null) }}
@@ -336,11 +343,11 @@ export default function AddJobOrderForm() {
               <input type="text" value={manualCustomerName} onChange={(e) => setManualCustomerName(e.target.value)} placeholder="e.g., Juan dela Cruz" className={INPUT_CLS} />
             </div>
             <div className="flex flex-col gap-1.5">
-              <label className="text-xs font-medium text-gray-600">Contact Number *</label>
+              <label className="text-xs font-medium text-gray-600">Contact Number <span className="text-red-500 ml-0.5">*</span></label>
               <input type="tel" value={manualContactNumber} onChange={(e) => setManualContactNumber(e.target.value)} placeholder="e.g., 09XX-XXX-XXXX" className={INPUT_CLS} />
             </div>
             <div className="flex flex-col gap-1.5">
-              <label className="text-xs font-medium text-gray-600">Plate Number *</label>
+              <label className="text-xs font-medium text-gray-600">Plate Number <span className="text-red-500 ml-0.5">*</span></label>
               <input type="text" value={manualPlateNumber} onChange={(e) => setManualPlateNumber(e.target.value)} placeholder="e.g., ABC-1234" className={INPUT_CLS} />
             </div>
             <div className="flex flex-col gap-1.5 col-span-2">
@@ -356,7 +363,7 @@ export default function AddJobOrderForm() {
         <h2 className="font-semibold text-sm text-gray-800">Service & Schedule</h2>
         <div className="grid grid-cols-2 gap-4">
           <div className="flex flex-col gap-1.5">
-            <label className="text-xs font-medium text-red-600">Service *</label>
+            <label className="text-xs font-medium text-gray-600">Service <span className="text-red-500 ml-0.5">*</span> </label>
             <select
               value={selectedServiceId ?? ""}
               onChange={(e) => { setSelectedServiceId(e.target.value || null); setError(null) }}
@@ -368,7 +375,7 @@ export default function AddJobOrderForm() {
             </select>
           </div>
           <div className="flex flex-col gap-1.5">
-            <label className="text-xs font-medium text-red-600">Scheduled Date & Time *</label>
+            <label className="text-xs font-medium text-gray-600">Scheduled Date & Time <span className="text-red-500 ml-0.5">*</span></label>
             <input
               type="datetime-local"
               value={scheduledAt}
@@ -404,20 +411,20 @@ export default function AddJobOrderForm() {
       <div className="bg-white border border-gray-200 rounded-xl p-5 space-y-5">
         <div>
           <h2 className="font-semibold text-sm text-gray-800">Team Assignment</h2>
-          <p className="text-xs text-gray-400 mt-0.5">Optional — can be assigned later.</p>
+          <p className="text-xs text-gray-400 mt-0.5">All team fields are required.</p>
         </div>
 
         {/* Head techs */}
         <div className="grid grid-cols-2 gap-4">
           <div className="flex flex-col gap-1.5">
-            <label className="text-xs font-medium text-gray-600">Head Detailer</label>
+            <label className="text-xs font-medium text-gray-600">Head Detailer <span className="text-red-500">*</span></label>
             <select
               value={selectedHeadDetailerId ?? ""}
-              onChange={(e) => setSelectedHeadDetailerId(e.target.value || null)}
+              onChange={(e) => { setSelectedHeadDetailerId(e.target.value || null); setError(null) }}
               disabled={loadingRefs}
               className={SELECT_CLS}
             >
-              <option value="">— None —</option>
+              <option value="">— Select head detailer —</option>
               {headDetailers.map((t) => (
                 <option key={t.id} value={t.id}>
                   {t.full_name}{t.active_jobs > 0 ? ` (${t.active_jobs} active)` : ""}
@@ -426,14 +433,14 @@ export default function AddJobOrderForm() {
             </select>
           </div>
           <div className="flex flex-col gap-1.5">
-            <label className="text-xs font-medium text-gray-600">Head Installer</label>
+            <label className="text-xs font-medium text-gray-600">Head Installer <span className="text-red-500">*</span></label>
             <select
               value={selectedHeadInstallerId ?? ""}
-              onChange={(e) => setSelectedHeadInstallerId(e.target.value || null)}
+              onChange={(e) => { setSelectedHeadInstallerId(e.target.value || null); setError(null) }}
               disabled={loadingRefs}
               className={SELECT_CLS}
             >
-              <option value="">— None —</option>
+              <option value="">— Select head installer —</option>
               {headInstallers.map((t) => (
                 <option key={t.id} value={t.id}>
                   {t.full_name}{t.active_jobs > 0 ? ` (${t.active_jobs} active)` : ""}
@@ -446,6 +453,7 @@ export default function AddJobOrderForm() {
         <div className="grid grid-cols-2 gap-4">
           <CrewCheckboxList
             label="Detailers"
+            required
             members={detailers}
             selected={selectedDetailerIds}
             onToggle={(id) => toggleCrew(id, selectedDetailerIds, setSelectedDetailerIds)}
@@ -453,6 +461,7 @@ export default function AddJobOrderForm() {
           />
           <CrewCheckboxList
             label="Installers"
+            required
             members={installers}
             selected={selectedInstallerIds}
             onToggle={(id) => toggleCrew(id, selectedInstallerIds, setSelectedInstallerIds)}

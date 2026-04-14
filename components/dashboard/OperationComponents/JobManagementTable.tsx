@@ -223,10 +223,6 @@ export default function JobManagementTable() {
               className="w-full pl-9 pr-4 py-2 text-sm border border-gray-200 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
             />
           </div>
-          <button className="flex items-center gap-2 text-sm text-gray-600 border border-gray-200 rounded-lg px-3 py-2 bg-white hover:bg-gray-50 transition-colors">
-            <Filter className="w-4 h-4" />
-            Filter
-          </button>
         </div>
 
         {/* Tabs */}

@@ -226,14 +226,25 @@ export default function HeadTechConcernsPage() {
       const concernId = json.id as string
 
       // Step 2: upload each media file sequentially
+      const uploadErrors: string[] = []
       for (const file of mediaFiles) {
         const form = new FormData()
         form.append("file", file)
-        await fetch(`/api/head-technician/concerns/${concernId}/media`, {
-          method: "POST",
-          body:   form,
-        })
-        // Media failures are silent — concern is already submitted
+        try {
+          const uploadRes  = await fetch(`/api/head-technician/concerns/${concernId}/media`, {
+            method: "POST",
+            body:   form,
+          })
+          const uploadJson = await uploadRes.json()
+          if (!uploadRes.ok) uploadErrors.push(uploadJson?.error ?? `Failed to upload ${file.name}`)
+        } catch {
+          uploadErrors.push(`Failed to upload ${file.name}`)
+        }
+      }
+
+      if (uploadErrors.length > 0) {
+        // Concern was saved but media failed — inform the user
+        setFormError(`Concern submitted, but ${uploadErrors.length} file(s) failed to upload: ${uploadErrors.join("; ")}`)
       }
 
       // Reset form
