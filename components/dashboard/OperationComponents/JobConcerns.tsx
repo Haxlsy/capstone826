@@ -142,7 +142,7 @@ export default function JobConcerns() {
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-gray-100 bg-gray-50">
-                {["Job Order", "Technician", "Title", "Description", "Attach.", "Submitted", "Status", ""].map((h) => (
+                {["Technician", "Title", "Description", "Attach.", "Submitted", "Status", ""].map((h) => (
                   <th key={h} className="px-4 py-3 text-left text-[11px] font-semibold text-gray-400 uppercase tracking-wide">
                     {h}
                   </th>
@@ -152,19 +152,19 @@ export default function JobConcerns() {
             <tbody>
               {loading ? (
                 <tr>
-                  <td colSpan={8} className="px-4 py-10 text-center text-sm text-gray-400">
+                  <td colSpan={7} className="px-4 py-10 text-center text-sm text-gray-400">
                     Loading concerns…
                   </td>
                 </tr>
               ) : fetchError ? (
                 <tr>
-                  <td colSpan={8} className="px-4 py-10 text-center text-sm text-red-500">
+                  <td colSpan={7} className="px-4 py-10 text-center text-sm text-red-500">
                     {fetchError}
                   </td>
                 </tr>
               ) : paginated.length === 0 ? (
                 <tr>
-                  <td colSpan={8} className="px-4 py-10 text-center text-sm text-gray-400">
+                  <td colSpan={7} className="px-4 py-10 text-center text-sm text-gray-400">
                     No concerns found.
                   </td>
                 </tr>
@@ -176,9 +176,6 @@ export default function JobConcerns() {
                       idx === paginated.length - 1 ? "border-b-0" : ""
                     }`}
                   >
-                    <td className="px-4 py-3.5">
-                      <span className="text-xs font-mono text-gray-500">{r.jobId}</span>
-                    </td>
                     <td className="px-4 py-3.5">
                       <div className="flex items-center gap-2">
                         <div className={`w-7 h-7 rounded-full text-white text-xs font-bold flex items-center justify-center shrink-0 ${avatarColor(r.submitterName)}`}>
