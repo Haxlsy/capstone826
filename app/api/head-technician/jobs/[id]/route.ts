@@ -97,6 +97,7 @@ export async function GET(
         scheduled_start: fmtDate(j.scheduled_at),
         status:          j.status,
         handoff_notes:   handoffNotes,
+        preparation_finished: prepStages.length > 0 && prepStages.every((s: any) => s.status === "done"),
         detailers,
         installers,
         timeline: (history ?? []).map((h: any) => ({
@@ -146,6 +147,17 @@ export async function PATCH(
     const admin = createAdminClient()
 
     if (action === "start_job") {
+      // Role check: Only head_detailer can start the job
+      const { data: profile } = await admin
+        .from("user_account")
+        .select("role")
+        .eq("id", user.id)
+        .single()
+
+      if ((profile as any)?.role !== "head_detailer") {
+        return NextResponse.json({ error: "Unauthorized: Only the Head Detailer can start the job." }, { status: 403 })
+      }
+
       await admin
         .from("job_order")
         .update({ status: "Ongoing", actual_start_at: new Date().toISOString() })
