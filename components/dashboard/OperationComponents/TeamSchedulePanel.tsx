@@ -27,12 +27,6 @@ function fmtDateTime(iso: string | null): string {
   })
 }
 
-function fmtDate(iso: string | null): string {
-  if (!iso) return "—"
-  return new Date(iso).toLocaleDateString("en-US", {
-    month: "short", day: "numeric", year: "numeric",
-  })
-}
 
 function StatusBadge({ status }: { status: string }) {
   const map: Record<string, string> = {
@@ -58,38 +52,31 @@ function TimelineRow({
   const hasStarted = !!actualStartAt
 
   return (
-    <div className="mt-3 grid grid-cols-3 gap-2 text-xs">
-      {/* Scheduled */}
-      <div className="flex flex-col gap-0.5">
-        <span className="text-gray-400 font-medium uppercase tracking-wide" style={{ fontSize: "10px" }}>
+    <div className="mt-3 pt-3 border-t border-gray-50 space-y-1.5 text-xs">
+      <div className="flex items-center justify-between gap-2">
+        <span className="flex items-center gap-1.5 text-gray-400 shrink-0">
+          <CalendarClock className="w-3 h-3" />
           Scheduled
         </span>
-        <div className="flex items-center gap-1 text-gray-600">
-          <CalendarClock className="w-3 h-3 shrink-0 text-gray-400" />
-          <span>{fmtDate(scheduledAt)}</span>
-        </div>
+        <span className="text-gray-700 font-medium text-right">{fmtDateTime(scheduledAt)}</span>
       </div>
-
-      {/* Actual Start */}
-      <div className="flex flex-col gap-0.5">
-        <span className="text-gray-400 font-medium uppercase tracking-wide" style={{ fontSize: "10px" }}>
+      <div className="flex items-center justify-between gap-2">
+        <span className="flex items-center gap-1.5 text-gray-400 shrink-0">
+          <Clock className="w-3 h-3" />
           Started
         </span>
-        <div className={`flex items-center gap-1 ${hasStarted ? "text-blue-600" : "text-gray-400 italic"}`}>
-          <Clock className="w-3 h-3 shrink-0" />
-          <span>{hasStarted ? fmtDateTime(actualStartAt) : "Not started yet"}</span>
-        </div>
-      </div>
-
-      {/* Expected End */}
-      <div className="flex flex-col gap-0.5">
-        <span className="text-gray-400 font-medium uppercase tracking-wide" style={{ fontSize: "10px" }}>
-          Expected End
+        <span className={`text-right ${hasStarted ? "text-blue-600 font-medium" : "italic text-gray-400"}`}>
+          {hasStarted ? fmtDateTime(actualStartAt) : "Not started yet"}
         </span>
-        <div className={`flex items-center gap-1 ${expectedEndAt ? "text-gray-600" : "text-gray-400 italic"}`}>
-          <CheckCircle2 className="w-3 h-3 shrink-0 text-gray-400" />
-          <span>{expectedEndAt ? fmtDateTime(expectedEndAt) : "—"}</span>
-        </div>
+      </div>
+      <div className="flex items-center justify-between gap-2">
+        <span className="flex items-center gap-1.5 text-gray-400 shrink-0">
+          <CheckCircle2 className="w-3 h-3" />
+          Est. End
+        </span>
+        <span className={`text-right ${expectedEndAt ? "text-gray-700" : "italic text-gray-400"}`}>
+          {expectedEndAt ? fmtDateTime(expectedEndAt) : "—"}
+        </span>
       </div>
     </div>
   )

@@ -122,7 +122,7 @@ export default function TechnicianAvailability() {
     }
   }
 
-  const onJobCount       = technicians.filter((t) => t.active_job !== null).length
+  const onJobCount       = technicians.filter((t) => !!t.active_job).length
   const availableCount   = technicians.filter((t) => t.is_available && !t.active_job).length
   const unavailableCount = technicians.length - availableCount - onJobCount
 
@@ -244,7 +244,7 @@ export default function TechnicianAvailability() {
               </div>
               <div className="divide-y divide-gray-50">
                 {members.map((tech) => {
-                  const onJob = tech.active_job !== null
+                  const onJob = !!tech.active_job
                   return (
                     <div key={tech.id} className={`flex items-center gap-4 px-5 py-3.5 ${onJob ? "bg-orange-50/40" : ""}`}>
                       <div className={`w-9 h-9 rounded-full flex items-center justify-center text-xs font-bold shrink-0 ${AVATAR_COLORS[colorIdx(tech.id)]}`}>
@@ -256,7 +256,7 @@ export default function TechnicianAvailability() {
                           <div className="flex items-center gap-1.5 mt-0.5">
                             <Wrench className="w-3 h-3 text-orange-500 shrink-0" />
                             <span className="text-xs text-orange-600 font-medium truncate">
-                              On Job — {tech.active_job!.customer}
+                              On Job — {tech.active_job?.customer}
                             </span>
                           </div>
                         ) : (

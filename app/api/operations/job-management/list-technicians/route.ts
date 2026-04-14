@@ -18,12 +18,18 @@ export async function GET() {
 
     const headIds = (heads ?? []).map((h: any) => h.id)
 
-    // crew query is independent — run in parallel with activeTeam
-    const [{ data: activeTeam }, { data: crew, error: crewError }] = await Promise.all([
+    // All three queries are independent — run in parallel
+    const [
+      { data: activeTeam },
+      { data: crew, error: crewError },
+      { data: crewAssignments },
+    ] = await Promise.all([
+      // Head tech active job count
       supabase
         .from("job_order_team")
         .select("user_account_id, job_order:job_order_id(status)")
         .in("user_account_id", headIds),
+      // Crew roster
       supabase
         .from("technician")
         .select("id, full_name, role, is_available")
@@ -31,16 +37,31 @@ export async function GET() {
         .eq("is_archived", false)
         .order("role")
         .order("full_name"),
+      // Crew active job assignments — to detect double-booking
+      supabase
+        .from("job_order_team")
+        .select("technician_id, job_order:job_order_id(status)")
+        .not("technician_id", "is", null),
     ])
 
     if (crewError) return NextResponse.json({ error: crewError.message }, { status: 500 })
 
+    // Head tech: count active jobs
     const jobCountMap = new Map<string, number>()
     for (const t of activeTeam ?? []) {
       const job = t.job_order as any
       if (job && ["Pending", "Ongoing", "For Rework", "Delayed"].includes(job.status)) {
         const id = t.user_account_id as string
         jobCountMap.set(id, (jobCountMap.get(id) ?? 0) + 1)
+      }
+    }
+
+    // Crew: build set of technician IDs currently on an active job
+    const onJobCrewIds = new Set<string>()
+    for (const a of crewAssignments ?? []) {
+      const job = a.job_order as any
+      if (job && ["Pending", "Ongoing", "For Rework", "Delayed"].includes(job.status)) {
+        if (a.technician_id) onJobCrewIds.add(a.technician_id as string)
       }
     }
 
@@ -58,6 +79,7 @@ export async function GET() {
       role:         c.role as "detailer" | "installer",
       source:       "technician" as const,
       is_available: c.is_available as boolean,
+      on_job:       onJobCrewIds.has(c.id),   // true = already assigned to an active job
     }))
 
     return NextResponse.json({ technicians, crew_members })
