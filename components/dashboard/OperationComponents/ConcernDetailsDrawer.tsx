@@ -78,16 +78,10 @@ export default function ConcernDetailsDrawer({ record, onClose, onResolve }: Con
         {record && (
           <>
             <div className="flex-1 overflow-y-auto px-6 py-5 space-y-5">
-              <div className="grid grid-cols-2 gap-x-6">
-                <div>
-                  <p className="text-xs text-gray-400 mb-0.5">Job Order</p>
-                  <p className="text-sm font-semibold text-gray-800 font-mono">{record.jobId}</p>
-                </div>
-                <div>
-                  <p className="text-xs text-gray-400 mb-0.5">Submitted By</p>
-                  <p className="text-sm font-semibold text-gray-800">{record.submitterName}</p>
-                  <p className="text-xs text-gray-400 capitalize">{record.submitterRole.replace("_", " ")}</p>
-                </div>
+              <div>
+                <p className="text-xs text-gray-400 mb-0.5">Submitted By</p>
+                <p className="text-sm font-semibold text-gray-800">{record.submitterName}</p>
+                <p className="text-xs text-gray-400 capitalize">{record.submitterRole.replace("_", " ")}</p>
               </div>
 
               <div>
@@ -140,7 +134,7 @@ export default function ConcernDetailsDrawer({ record, onClose, onResolve }: Con
               <div>
                 <p className="text-xs text-gray-400 mb-1.5">Response Note</p>
                 {isResolved ? (
-                  <div className="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm text-gray-600 bg-gray-50 min-h-[90px]">
+                  <div className="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm text-gray-600 bg-gray-50 min-h-[22.5]">
                     {record.response_note ?? "—"}
                   </div>
                 ) : (
