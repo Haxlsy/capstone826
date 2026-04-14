@@ -42,8 +42,8 @@ export function BottomNav({ active = "jobs" }: BottomNavProps) {
   }
 
   return (
-    <div className="fixed bottom-0 left-0 right-0 z-50 px-4 pb-5 pt-2 pointer-events-none">
-      <nav className="pointer-events-auto bg-white/95 backdrop-blur-md rounded-2xl shadow-2xl shadow-black/12 border border-gray-200/60 px-3 py-2.5 flex items-center justify-around">
+    <div className="fixed bottom-0 left-0 right-0 z-50 bg-white border-t border-gray-100 shadow-[0_-4px_24px_-8px_rgba(0,0,0,0.08)]">
+      <nav className="flex items-center justify-around px-2 py-1 max-w-md mx-auto">
         {NAV_ITEMS.map((item) => {
           const isActive = item.id === active;
           const Icon = item.icon;
@@ -53,10 +53,10 @@ export function BottomNav({ active = "jobs" }: BottomNavProps) {
               <button
                 key={item.id}
                 onClick={() => handlePress(item)}
-                className="flex flex-col items-center gap-1 px-3 py-1.5 rounded-xl text-red-400 hover:bg-red-50 hover:text-red-500 transition-all duration-200"
+                className="flex flex-col items-center gap-1 px-4 py-2.5 rounded-xl text-red-400 hover:text-red-500 hover:bg-red-50 transition-all duration-150"
               >
                 <Icon size={20} strokeWidth={1.8} />
-                <span className="text-[10px] font-medium tracking-wide">{item.label}</span>
+                <span className="text-[10px] font-medium">{item.label}</span>
               </button>
             );
           }
@@ -65,19 +65,23 @@ export function BottomNav({ active = "jobs" }: BottomNavProps) {
             <button
               key={item.id}
               onClick={() => handlePress(item)}
-              className={`relative flex flex-col items-center gap-1 px-4 py-1.5 rounded-xl transition-all duration-200 ${
+              className={`relative flex flex-col items-center gap-1 px-4 py-2.5 rounded-xl transition-all duration-150 ${
                 isActive
-                  ? "bg-gray-900 text-white shadow-sm"
-                  : "text-gray-400 hover:text-gray-600 hover:bg-gray-100"
+                  ? "text-gray-900"
+                  : "text-gray-400 hover:text-gray-600 hover:bg-gray-50"
               }`}
             >
               <Icon
                 size={20}
-                strokeWidth={isActive ? 2 : 1.8}
+                strokeWidth={isActive ? 2.2 : 1.8}
               />
-              <span className="text-[10px] font-semibold tracking-wide">
+              <span className={`text-[10px] font-semibold ${isActive ? "text-gray-900" : "text-gray-400"}`}>
                 {item.label}
               </span>
+              {/* Active indicator dot */}
+              {isActive && (
+                <span className="absolute bottom-1 w-1 h-1 rounded-full bg-gray-900" />
+              )}
             </button>
           );
         })}
