@@ -1,11 +1,16 @@
 import { NextResponse } from "next/server"
 import { createAdminClient } from "@/lib/supabase/admin"
 
-export async function GET() {
+// GET /api/operations/job-management/list-job-orders
+// ?released=1  → only Released jobs  (Job Order Records)
+// (default)    → all non-Released jobs (Job Management)
+export async function GET(request: Request) {
   try {
     const supabase = createAdminClient()
+    const { searchParams } = new URL(request.url)
+    const releasedOnly = searchParams.get("released") === "1"
 
-    const { data: jobs, error } = await supabase
+    let query = supabase
       .from("job_order")
       .select(
         `id, status, scheduled_at, actual_start_at, expected_completion_at, created_at,
@@ -14,6 +19,14 @@ export async function GET() {
          customer_name, contact_number, plate_number, vehicle_unit`
       )
       .order("created_at", { ascending: false })
+
+    if (releasedOnly) {
+      query = query.eq("status", "Released")
+    } else {
+      query = query.neq("status", "Released")
+    }
+
+    const { data: jobs, error } = await query
 
     if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 

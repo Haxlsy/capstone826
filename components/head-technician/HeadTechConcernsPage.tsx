@@ -11,84 +11,153 @@ import {
   Send,
   X,
   MessageSquareText,
+  AlertCircle,
+  ImagePlus,
+  Video,
+  Loader2,
+  Play,
 } from "lucide-react"
 import { BottomNav } from "./components/BottomNav"
 
 // ── Types ─────────────────────────────────────────────────────────────────────
-type Concern = {
-  id: string
-  title: string
-  description: string
-  status: "Pending" | "Resolved"
-  response_note: string | null
-  submitted_at: string
-  media: { url: string; type: string }[]
-}
+type ConcernMedia = { id: string; url: string; type: string }
 
-// ── Status styles ─────────────────────────────────────────────────────────────
-const STATUS_STYLES: Record<string, string> = {
-  Pending:  "bg-amber-100 text-amber-700",
-  Resolved: "bg-emerald-100 text-emerald-700",
+type Concern = {
+  id:            string
+  title:         string
+  description:   string
+  status:        "Pending" | "Resolved"
+  response_note: string | null
+  submitted_at:  string
+  media:         ConcernMedia[]
 }
 
 // ── Expandable concern card ───────────────────────────────────────────────────
 function ConcernCard({ concern }: { concern: Concern }) {
-  const [open, setOpen] = useState(false)
+  const [open, setOpen]       = useState(false)
+  const [preview, setPreview] = useState<{ url: string; type: string } | null>(null)
+  const isPending = concern.status === "Pending"
 
   return (
-    <div className="bg-white rounded-2xl overflow-hidden border border-gray-100">
-      {/* Header row — always visible */}
-      <button
-        onClick={() => setOpen((v) => !v)}
-        className="w-full flex items-start gap-3 px-4 py-4 text-left"
-      >
-        <div className="mt-0.5 shrink-0">
-          {concern.status === "Resolved" ? (
-            <CheckCircle2 size={18} className="text-emerald-500" />
-          ) : (
-            <Clock size={18} className="text-amber-500" />
-          )}
-        </div>
-
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center justify-between gap-2">
-            <p className="text-sm font-semibold text-gray-900 truncate">{concern.title}</p>
-            <span className={`shrink-0 text-[11px] px-2.5 py-0.5 rounded-full font-medium ${STATUS_STYLES[concern.status] ?? "bg-gray-100 text-gray-600"}`}>
-              {concern.status}
-            </span>
+    <>
+      <div className={`bg-white rounded-2xl overflow-hidden border transition-colors duration-150 ${
+        open ? "border-gray-200 shadow-[0_2px_12px_-4px_rgba(0,0,0,0.06)]" : "border-gray-100"
+      }`}>
+        {/* Header row — always visible */}
+        <button
+          onClick={() => setOpen((v) => !v)}
+          className="w-full flex items-start gap-3 px-4 py-4 text-left"
+        >
+          <div className="mt-0.5 shrink-0">
+            {isPending
+              ? <Clock size={17} className="text-amber-500" />
+              : <CheckCircle2 size={17} className="text-emerald-500" />
+            }
           </div>
-          <p className="text-xs text-gray-400 mt-0.5">{concern.submitted_at}</p>
-        </div>
 
-        <div className="shrink-0 text-gray-300 mt-0.5">
-          {open ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
-        </div>
-      </button>
-
-      {/* Expanded detail */}
-      {open && (
-        <div className="px-4 pb-4 space-y-3 border-t border-gray-50">
-          <p className="text-sm text-gray-600 leading-relaxed pt-3">{concern.description}</p>
-
-          {concern.media.length > 0 && (
-            <div className="flex items-center gap-1.5 text-xs text-gray-400">
-              <Paperclip size={12} />
-              <span>{concern.media.length} attachment{concern.media.length !== 1 ? "s" : ""}</span>
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center justify-between gap-2">
+              <p className="text-sm font-semibold text-gray-900 truncate">{concern.title}</p>
+              <span className={`shrink-0 text-[11px] px-2.5 py-0.5 rounded-full font-semibold ${
+                isPending
+                  ? "bg-amber-50 text-amber-600"
+                  : "bg-emerald-50 text-emerald-600"
+              }`}>
+                {concern.status}
+              </span>
             </div>
-          )}
+            <p className="text-[11px] text-gray-400 mt-0.5 font-medium">{concern.submitted_at}</p>
+          </div>
 
-          {concern.response_note && (
-            <div className="bg-blue-50 border border-blue-100 rounded-xl p-3">
-              <div className="flex items-center gap-1.5 mb-1.5">
-                <MessageSquareText size={13} className="text-blue-500" />
-                <span className="text-xs font-semibold text-blue-600">Operations Response</span>
+          <div className="shrink-0 text-gray-300 mt-0.5">
+            {open ? <ChevronUp size={15} /> : <ChevronDown size={15} />}
+          </div>
+        </button>
+
+        {/* Expanded detail */}
+        {open && (
+          <div className="px-4 pb-4 space-y-3 border-t border-gray-50 pt-3">
+            <p className="text-sm text-gray-600 leading-relaxed">{concern.description}</p>
+
+            {/* Media thumbnails */}
+            {concern.media.length > 0 && (
+              <div>
+                <p className="text-[11px] font-semibold text-gray-400 uppercase tracking-wide mb-2">
+                  Attachments
+                </p>
+                <div className="flex flex-wrap gap-2">
+                  {concern.media.map((m) =>
+                    m.type === "video" ? (
+                      <button
+                        key={m.id}
+                        onClick={() => setPreview({ url: m.url, type: m.type })}
+                        className="w-16 h-16 rounded-xl bg-gray-100 flex items-center justify-center border border-gray-200"
+                      >
+                        <Play size={20} className="text-gray-500" />
+                      </button>
+                    ) : (
+                      <button
+                        key={m.id}
+                        onClick={() => setPreview({ url: m.url, type: m.type })}
+                        className="w-16 h-16 rounded-xl overflow-hidden border border-gray-200"
+                      >
+                        <img
+                          src={m.url}
+                          alt=""
+                          className="w-full h-full object-cover"
+                          onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = "none" }}
+                        />
+                      </button>
+                    )
+                  )}
+                </div>
               </div>
-              <p className="text-sm text-blue-800 leading-relaxed">{concern.response_note}</p>
-            </div>
+            )}
+
+            {concern.response_note && (
+              <div className="bg-blue-50 border border-blue-100 rounded-xl p-3 space-y-1.5">
+                <div className="flex items-center gap-1.5">
+                  <MessageSquareText size={13} className="text-blue-500" />
+                  <span className="text-xs font-semibold text-blue-600">Operations Response</span>
+                </div>
+                <p className="text-sm text-blue-800 leading-relaxed">{concern.response_note}</p>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* Full-screen media preview */}
+      {preview && (
+        <div
+          className="fixed inset-0 z-50 bg-black/95 flex items-center justify-center"
+          onClick={() => setPreview(null)}
+        >
+          <button
+            className="absolute top-5 right-5 text-white bg-white/10 hover:bg-white/20 rounded-full p-2.5"
+            onClick={() => setPreview(null)}
+          >
+            <X size={20} />
+          </button>
+          {preview.type === "video" ? (
+            <video
+              src={preview.url}
+              controls
+              autoPlay
+              className="max-w-full max-h-full rounded-lg"
+              onClick={(e) => e.stopPropagation()}
+            />
+          ) : (
+            <img
+              src={preview.url}
+              alt=""
+              className="max-w-full max-h-full object-contain rounded-lg"
+              onClick={(e) => e.stopPropagation()}
+            />
           )}
         </div>
       )}
-    </div>
+    </>
   )
 }
 
@@ -97,16 +166,17 @@ export default function HeadTechConcernsPage() {
   const [concerns, setConcerns]   = useState<Concern[]>([])
   const [loading, setLoading]     = useState(true)
 
-  // Form state
   const [title, setTitle]             = useState("")
   const [description, setDescription] = useState("")
-  const [mediaFile, setMediaFile]     = useState<File | null>(null)
+  const [mediaFiles, setMediaFiles]   = useState<File[]>([])
   const [submitting, setSubmitting]   = useState(false)
   const [formError, setFormError]     = useState<string | null>(null)
   const [submitted, setSubmitted]     = useState(false)
-  const fileInputRef = useRef<HTMLInputElement>(null)
 
-  // Load own concerns
+  const photoInputRef    = useRef<HTMLInputElement>(null)
+  const videoInputRef    = useRef<HTMLInputElement>(null)
+  const attachInputRef   = useRef<HTMLInputElement>(null)
+
   useEffect(() => {
     async function load() {
       setLoading(true)
@@ -121,9 +191,21 @@ export default function HeadTechConcernsPage() {
       }
     }
     load()
-  }, [submitted])  // re-fetch after a successful submit
+  }, [submitted])
 
-  async function handleSubmit(e: React.FormEvent) {
+  function addFiles(incoming: FileList | null) {
+    if (!incoming) return
+    const next = Array.from(incoming).filter(
+      (f) => f.type.startsWith("image/") || f.type.startsWith("video/")
+    )
+    setMediaFiles((prev) => [...prev, ...next])
+  }
+
+  function removeFile(idx: number) {
+    setMediaFiles((prev) => prev.filter((_, i) => i !== idx))
+  }
+
+  async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault()
     setFormError(null)
 
@@ -132,6 +214,7 @@ export default function HeadTechConcernsPage() {
 
     setSubmitting(true)
     try {
+      // Step 1: create the concern record
       const res  = await fetch("/api/head-technician/concerns", {
         method:  "POST",
         headers: { "Content-Type": "application/json" },
@@ -140,11 +223,23 @@ export default function HeadTechConcernsPage() {
       const json = await res.json()
       if (!res.ok) { setFormError(json.error ?? "Submission failed."); return }
 
-      // Reset form and trigger re-fetch
+      const concernId = json.id as string
+
+      // Step 2: upload each media file sequentially
+      for (const file of mediaFiles) {
+        const form = new FormData()
+        form.append("file", file)
+        await fetch(`/api/head-technician/concerns/${concernId}/media`, {
+          method: "POST",
+          body:   form,
+        })
+        // Media failures are silent — concern is already submitted
+      }
+
+      // Reset form
       setTitle("")
       setDescription("")
-      setMediaFile(null)
-      if (fileInputRef.current) fileInputRef.current.value = ""
+      setMediaFiles([])
       setSubmitted((v) => !v)
     } catch {
       setFormError("Network error. Please try again.")
@@ -158,132 +253,198 @@ export default function HeadTechConcernsPage() {
 
   return (
     <>
-      <main className="px-4 py-5 max-w-md mx-auto pb-28 space-y-6">
+      <main className="px-4 pt-6 pb-28 max-w-md mx-auto space-y-5">
 
-        {/* ── Page header ────────────────────────────────────────────── */}
+        {/* ── Page header ─────────────────────────────────────────── */}
         <div className="flex items-center gap-3">
-          <div className="w-9 h-9 rounded-xl bg-amber-50 flex items-center justify-center">
-            <TriangleAlert size={18} className="text-amber-500" />
+          <div className="w-9 h-9 rounded-xl bg-amber-50 flex items-center justify-center shrink-0">
+            <TriangleAlert size={17} className="text-amber-500" />
           </div>
           <div>
-            <h1 className="text-base font-bold text-gray-900 leading-tight">Concerns</h1>
-            <p className="text-xs text-gray-400">Report issues to Operations</p>
+            <h1 className="text-xl font-bold text-gray-900 leading-tight tracking-tight">Concerns</h1>
+            <p className="text-xs text-gray-400 font-medium mt-0.5">Report issues to Operations</p>
           </div>
         </div>
 
-        {/* ── Submit form ─────────────────────────────────────────────── */}
-        <div className="bg-white rounded-2xl border border-gray-100 p-4 space-y-3">
-          <p className="text-xs font-semibold text-gray-500 uppercase tracking-widest">
-            New Concern
+        {/* ── Stat pills ─────────────────────────────────────────── */}
+        {!loading && concerns.length > 0 && (
+          <div className="grid grid-cols-2 gap-2">
+            <div className="bg-amber-50 rounded-2xl px-3 py-3 text-center">
+              <p className="text-xl font-bold text-amber-600 leading-none">{pendingCount}</p>
+              <p className="text-[11px] font-medium text-amber-500 mt-1">Pending</p>
+            </div>
+            <div className="bg-emerald-50 rounded-2xl px-3 py-3 text-center">
+              <p className="text-xl font-bold text-emerald-600 leading-none">{resolvedCount}</p>
+              <p className="text-[11px] font-medium text-emerald-500 mt-1">Resolved</p>
+            </div>
+          </div>
+        )}
+
+        {/* ── Submit form ──────────────────────────────────────────── */}
+        <div className="bg-white rounded-2xl border border-gray-100 shadow-[0_2px_12px_-4px_rgba(0,0,0,0.06)] p-4 space-y-4">
+          <p className="text-xs font-semibold text-gray-400 uppercase tracking-widest">
+            Submit New Concern
           </p>
 
           <form onSubmit={handleSubmit} className="space-y-3">
             {/* Title */}
-            <div>
-              <label className="block text-xs font-medium text-gray-600 mb-1">
-                Title <span className="text-red-500">*</span>
+            <div className="space-y-1.5">
+              <label className="block text-xs font-semibold text-gray-600">
+                Title <span className="text-red-400">*</span>
               </label>
               <input
                 type="text"
                 value={title}
                 onChange={(e) => { setTitle(e.target.value); setFormError(null) }}
                 placeholder="e.g. Equipment not working"
-                className="w-full text-sm border border-gray-200 rounded-xl px-3 py-2.5 bg-gray-50 text-gray-800 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-amber-400 focus:border-transparent transition"
+                className="w-full text-sm border border-gray-200 rounded-xl px-3.5 py-3 bg-gray-50 text-gray-800 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-gray-300 focus:border-transparent transition"
               />
             </div>
 
             {/* Description */}
-            <div>
-              <label className="block text-xs font-medium text-gray-600 mb-1">
-                Description <span className="text-red-500">*</span>
+            <div className="space-y-1.5">
+              <label className="block text-xs font-semibold text-gray-600">
+                Description <span className="text-red-400">*</span>
               </label>
               <textarea
                 value={description}
                 onChange={(e) => { setDescription(e.target.value); setFormError(null) }}
-                placeholder="Describe the issue in detail..."
+                placeholder="Describe the issue in detail…"
                 rows={4}
-                className="w-full text-sm border border-gray-200 rounded-xl px-3 py-2.5 bg-gray-50 text-gray-800 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-amber-400 focus:border-transparent transition resize-none"
+                className="w-full text-sm border border-gray-200 rounded-xl px-3.5 py-3 bg-gray-50 text-gray-800 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-gray-300 focus:border-transparent transition resize-none"
               />
             </div>
 
-            {/* Optional media */}
-            <div>
-              <label className="block text-xs font-medium text-gray-600 mb-1">
-                Attachment <span className="text-gray-400 font-normal">(optional)</span>
+            {/* Media attachments */}
+            <div className="space-y-2">
+              <label className="block text-xs font-semibold text-gray-600">
+                Attachments <span className="text-gray-400 font-normal">(optional)</span>
               </label>
-              {mediaFile ? (
-                <div className="flex items-center gap-2 bg-gray-50 border border-gray-200 rounded-xl px-3 py-2.5">
-                  <Paperclip size={14} className="text-gray-400 shrink-0" />
-                  <span className="text-xs text-gray-700 truncate flex-1">{mediaFile.name}</span>
-                  <button
-                    type="button"
-                    onClick={() => { setMediaFile(null); if (fileInputRef.current) fileInputRef.current.value = "" }}
-                    className="shrink-0 text-gray-400 hover:text-gray-600"
-                  >
-                    <X size={14} />
-                  </button>
+
+              {/* File thumbnails */}
+              {mediaFiles.length > 0 && (
+                <div className="flex flex-wrap gap-2">
+                  {mediaFiles.map((f, idx) => {
+                    const isVideo = f.type.startsWith("video/")
+                    const url     = URL.createObjectURL(f)
+                    return (
+                      <div key={idx} className="relative w-16 h-16">
+                        {isVideo ? (
+                          <div className="w-16 h-16 rounded-xl bg-gray-200 flex items-center justify-center border border-gray-200">
+                            <Play size={18} className="text-gray-500" />
+                          </div>
+                        ) : (
+                          <img
+                            src={url}
+                            alt=""
+                            className="w-16 h-16 rounded-xl object-cover border border-gray-200"
+                          />
+                        )}
+                        <button
+                          type="button"
+                          onClick={() => removeFile(idx)}
+                          className="absolute -top-1.5 -right-1.5 w-5 h-5 bg-gray-900 rounded-full flex items-center justify-center shadow"
+                        >
+                          <X size={9} className="text-white" />
+                        </button>
+                      </div>
+                    )
+                  })}
                 </div>
-              ) : (
-                <button
-                  type="button"
-                  onClick={() => fileInputRef.current?.click()}
-                  className="w-full flex items-center gap-2 border border-dashed border-gray-200 rounded-xl px-3 py-2.5 text-xs text-gray-400 hover:border-gray-300 hover:text-gray-500 transition"
-                >
-                  <Paperclip size={14} />
-                  Attach photo or video
-                </button>
               )}
-              <input
-                ref={fileInputRef}
-                type="file"
-                accept="image/*,video/*"
-                className="hidden"
-                onChange={(e) => setMediaFile(e.target.files?.[0] ?? null)}
-              />
+
+              {/* Capture + attach buttons */}
+              <div className="flex gap-2">
+                {/* Take photo — opens camera directly */}
+                <label className="flex-1 flex items-center justify-center gap-1.5 text-xs font-semibold border border-gray-200 rounded-xl py-2.5 text-gray-600 hover:bg-gray-50 cursor-pointer transition-colors">
+                  <ImagePlus size={13} />
+                  Photo
+                  <input
+                    ref={photoInputRef}
+                    type="file"
+                    accept="image/*"
+                    capture="environment"
+                    multiple
+                    className="hidden"
+                    onChange={(e) => addFiles(e.target.files)}
+                  />
+                </label>
+
+                {/* Record video — opens camera for video */}
+                <label className="flex-1 flex items-center justify-center gap-1.5 text-xs font-semibold border border-gray-200 rounded-xl py-2.5 text-gray-600 hover:bg-gray-50 cursor-pointer transition-colors">
+                  <Video size={13} />
+                  Video
+                  <input
+                    ref={videoInputRef}
+                    type="file"
+                    accept="video/*"
+                    capture="environment"
+                    className="hidden"
+                    onChange={(e) => addFiles(e.target.files)}
+                  />
+                </label>
+
+                {/* Attach from gallery/files */}
+                <label className="flex-1 flex items-center justify-center gap-1.5 text-xs font-semibold border border-gray-200 rounded-xl py-2.5 text-gray-600 hover:bg-gray-50 cursor-pointer transition-colors">
+                  <Paperclip size={13} />
+                  Attach
+                  <input
+                    ref={attachInputRef}
+                    type="file"
+                    accept="image/*,video/*"
+                    multiple
+                    className="hidden"
+                    onChange={(e) => addFiles(e.target.files)}
+                  />
+                </label>
+              </div>
             </div>
 
+            {/* Error message */}
             {formError && (
-              <p className="text-xs text-red-500">{formError}</p>
+              <div className="flex items-center gap-2 bg-red-50 border border-red-100 rounded-xl px-3 py-2.5">
+                <AlertCircle size={13} className="text-red-400 shrink-0" />
+                <p className="text-xs text-red-500">{formError}</p>
+              </div>
             )}
 
             <button
               type="submit"
               disabled={submitting}
-              className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl bg-gray-900 text-white text-sm font-semibold hover:bg-gray-800 active:scale-[0.98] transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+              className="w-full flex items-center justify-center gap-2 py-3 rounded-xl bg-gray-900 text-white text-sm font-semibold hover:bg-gray-800 active:scale-[0.98] transition-all disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              {submitting ? "Submitting…" : "Submit to Operations"}
-              {!submitting && <Send size={14} />}
+              {submitting
+                ? <><Loader2 size={14} className="animate-spin" /> Submitting…</>
+                : <><Send size={14} /> Submit to Operations</>
+              }
             </button>
           </form>
         </div>
 
-        {/* ── Stat pills ─────────────────────────────────────────────── */}
-        {!loading && concerns.length > 0 && (
-          <div className="flex gap-2">
-            <div className="flex-1 bg-amber-50 rounded-xl px-3 py-2.5 text-center">
-              <p className="text-lg font-bold text-amber-600">{pendingCount}</p>
-              <p className="text-[11px] text-amber-500 font-medium">Pending</p>
-            </div>
-            <div className="flex-1 bg-emerald-50 rounded-xl px-3 py-2.5 text-center">
-              <p className="text-lg font-bold text-emerald-600">{resolvedCount}</p>
-              <p className="text-[11px] text-emerald-500 font-medium">Resolved</p>
-            </div>
-          </div>
-        )}
-
-        {/* ── Concerns list ──────────────────────────────────────────── */}
-        <div className="space-y-2">
-          <p className="text-xs font-semibold text-gray-500 uppercase tracking-widest px-1">
+        {/* ── Concerns list ──────────────────────────────────────── */}
+        <div className="space-y-2.5">
+          <p className="text-xs font-semibold text-gray-400 uppercase tracking-widest px-0.5">
             My Concerns
           </p>
 
           {loading && (
-            <p className="text-sm text-gray-400 text-center py-8">Loading…</p>
+            <div className="space-y-2">
+              {[1, 2].map((i) => (
+                <div key={i} className="bg-white rounded-2xl border border-gray-100 p-4 animate-pulse space-y-2">
+                  <div className="flex justify-between">
+                    <div className="h-3 w-32 bg-gray-100 rounded-full" />
+                    <div className="h-5 w-16 bg-gray-100 rounded-full" />
+                  </div>
+                  <div className="h-2.5 w-20 bg-gray-100 rounded-full" />
+                </div>
+              ))}
+            </div>
           )}
 
           {!loading && concerns.length === 0 && (
-            <div className="bg-white rounded-2xl border border-gray-100 px-4 py-8 text-center">
-              <p className="text-sm text-gray-400">No concerns submitted yet.</p>
+            <div className="bg-white rounded-2xl border border-gray-100 px-4 py-12 text-center space-y-1">
+              <p className="text-sm font-medium text-gray-500">No concerns yet</p>
+              <p className="text-xs text-gray-400">Use the form above to report an issue.</p>
             </div>
           )}
 

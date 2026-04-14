@@ -28,7 +28,7 @@ export async function GET(
     // Team members
     const { data: team } = await supabase
       .from("job_order_team")
-      .select("role_in_job, user_account:user_account_id(id, full_name)")
+      .select("role_in_job, user_account:user_account_id(id, full_name), technician:technician_id(id, full_name)")
       .eq("job_order_id", id)
 
     const { data: history } = await supabase
@@ -48,8 +48,14 @@ export async function GET(
       .order("service_stage_id")
 
     const j = job as any
-    const headDetailer = (team ?? []).find((t: any) => t.role_in_job === "head_detailer")
+    const headDetailer  = (team ?? []).find((t: any) => t.role_in_job === "head_detailer")
     const headInstaller = (team ?? []).find((t: any) => t.role_in_job === "head_installer")
+    const detailers     = (team ?? [])
+      .filter((t: any) => t.role_in_job === "detailer")
+      .map((t: any) => ({ id: (t.technician as any)?.id ?? "", name: (t.technician as any)?.full_name ?? "Unknown" }))
+    const installers    = (team ?? [])
+      .filter((t: any) => t.role_in_job === "installer")
+      .map((t: any) => ({ id: (t.technician as any)?.id ?? "", name: (t.technician as any)?.full_name ?? "Unknown" }))
 
     return NextResponse.json({
       job: {
@@ -61,6 +67,8 @@ export async function GET(
         service:                 j.service?.name ?? "—",
         head_detailer:           (headDetailer?.user_account as any) ?? null,
         head_installer:          (headInstaller?.user_account as any) ?? null,
+        detailers,
+        installers,
         status:                  j.status,
         scheduled_at:            j.scheduled_at,
         actual_start_at:         j.actual_start_at,

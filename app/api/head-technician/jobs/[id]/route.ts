@@ -49,7 +49,7 @@ export async function GET(
 
     const { data: team } = await admin
       .from("job_order_team")
-      .select("role_in_job, user_account:user_account_id(id, full_name)")
+      .select("role_in_job, user_account:user_account_id(id, full_name), technician:technician_id(id, full_name)")
       .eq("job_order_id", id)
 
     const { data: history } = await admin
@@ -72,7 +72,13 @@ export async function GET(
     const j = job as any
     const leaderRole  = role === "head_installer" ? "head_installer" : "head_detailer"
     const leader      = (team ?? []).find((t: any) => t.role_in_job === leaderRole)
-    const hdEntry     = (team ?? []).find((t: any) => t.role_in_job === "head_detailer")
+
+    const detailers  = (team ?? [])
+      .filter((t: any) => t.role_in_job === "detailer")
+      .map((t: any) => (t.technician as any)?.full_name ?? "Unknown")
+    const installers = (team ?? [])
+      .filter((t: any) => t.role_in_job === "installer")
+      .map((t: any) => (t.technician as any)?.full_name ?? "Unknown")
 
     // Handoff notes come from the last completed prep stage
     const prepStages  = (stages ?? []).filter((s: any) => (s.stage as any)?.category === "preparation")
@@ -91,6 +97,8 @@ export async function GET(
         scheduled_start: fmtDate(j.scheduled_at),
         status:          j.status,
         handoff_notes:   handoffNotes,
+        detailers,
+        installers,
         timeline: (history ?? []).map((h: any) => ({
           status:     h.status,
           changed_at: fmtDate(h.created_at),
@@ -120,7 +128,7 @@ export async function GET(
 }
 
 // ── PATCH — stage actions ─────────────────────────────────────────────────────
-// action: "mark_stage_done" | "approve" | "flag_rework" (not used — Operations only)
+// action: "start_job" | "mark_stage_done" | "approve" | "flag_rework"
 export async function PATCH(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
@@ -128,7 +136,7 @@ export async function PATCH(
   try {
     const { id: jobId } = await params
     const body          = await request.json()
-    const { action, stage_id, handoff_notes, media_url, media_type } = body
+    const { action, stage_id, handoff_notes, media_url, media_type, stage_ids, rework_instructions } = body
 
     const cookieStore = await cookies()
     const supabase    = createClient(cookieStore)
@@ -212,6 +220,66 @@ export async function PATCH(
             .update({ handoff_notes })
             .eq("id", lastPrep.id)
         }
+      }
+
+      return NextResponse.json({ success: true })
+    }
+
+    if (action === "flag_rework") {
+      if (!Array.isArray(stage_ids) || stage_ids.length === 0) {
+        return NextResponse.json({ error: "stage_ids is required." }, { status: 400 })
+      }
+      if (!rework_instructions?.trim()) {
+        return NextResponse.json({ error: "rework_instructions is required." }, { status: 400 })
+      }
+
+      // Revert selected installation stages to in_progress with rework instructions
+      const { error: stageErr } = await admin
+        .from("job_stage_progress")
+        .update({
+          status:               "in_progress",
+          rework_instructions:  rework_instructions.trim(),
+          completed_at:         null,
+          completed_by_id:      null,
+        })
+        .in("id", stage_ids)
+        .eq("job_order_id", jobId)
+
+      if (stageErr) return NextResponse.json({ error: stageErr.message }, { status: 500 })
+
+      // Update job status to For Rework
+      const { error: jobErr } = await admin
+        .from("job_order")
+        .update({ status: "For Rework" })
+        .eq("id", jobId)
+
+      if (jobErr) return NextResponse.json({ error: jobErr.message }, { status: 500 })
+
+      // Log the status change
+      await admin.from("job_order_history").insert({
+        job_order_id:  jobId,
+        status:        "For Rework",
+        changed_by_id: user.id,
+      })
+
+      // Notify the head_detailer so they are aware installation needs rework
+      const { data: team } = await admin
+        .from("job_order_team")
+        .select("user_account_id, role_in_job")
+        .eq("job_order_id", jobId)
+        .eq("role_in_job", "head_detailer")
+
+      const notifRows = (team ?? [])
+        .filter((t: any) => t.user_account_id)
+        .map((t: any) => ({
+          user_id:      t.user_account_id,
+          type:         "rework",
+          message:      `Installation stage(s) have been flagged for rework. Instructions: ${rework_instructions.trim()}`,
+          job_order_id: jobId,
+        }))
+
+      if (notifRows.length > 0) {
+        await admin.from("notification").insert(notifRows)
       }
 
       return NextResponse.json({ success: true })

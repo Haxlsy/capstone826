@@ -69,7 +69,6 @@ export async function POST(request: Request) {
 
     if (!title?.trim())         return NextResponse.json({ error: "Title is required." },         { status: 400 })
     if (!description?.trim())   return NextResponse.json({ error: "Description is required." },   { status: 400 })
-    if (!job_order_id?.trim())  return NextResponse.json({ error: "job_order_id is required." },  { status: 400 })
 
     const admin = createAdminClient()
 
@@ -78,7 +77,7 @@ export async function POST(request: Request) {
       .insert({
         title:           title.trim(),
         description:     description.trim(),
-        job_order_id:    job_order_id.trim(),
+        ...(job_order_id?.trim() ? { job_order_id: job_order_id.trim() } : {}),
         submitted_by_id: user.id,
         status:          "Pending",
         submitted_at:    new Date().toISOString(),

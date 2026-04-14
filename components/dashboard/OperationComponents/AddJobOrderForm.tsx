@@ -32,6 +32,7 @@ interface CrewMember {
   full_name:    string
   role:         "detailer" | "installer"
   is_available: boolean
+  on_job:       boolean
 }
 
 const INPUT_CLS  = "w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-700 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
@@ -65,20 +66,28 @@ function CrewCheckboxList({
       ) : (
         <div className="border border-gray-200 rounded-lg divide-y divide-gray-50 max-h-40 overflow-y-auto">
           {members.map((c) => (
-            <label key={c.id} className="flex items-center gap-3 px-3 py-2.5 hover:bg-gray-50 cursor-pointer">
+            <label
+              key={c.id}
+              className={`flex items-center gap-3 px-3 py-2.5 ${c.on_job ? "bg-orange-50/60 cursor-not-allowed" : "hover:bg-gray-50 cursor-pointer"}`}
+            >
               <input
                 type="checkbox"
                 checked={selected.has(c.id)}
-                onChange={() => onToggle(c.id)}
-                className="w-4 h-4 rounded border-gray-300"
+                onChange={() => !c.on_job && onToggle(c.id)}
+                disabled={c.on_job}
+                className="w-4 h-4 rounded border-gray-300 disabled:opacity-40"
               />
               <div className="flex-1 min-w-0">
-                <p className="text-sm text-gray-700 truncate">{c.full_name}</p>
+                <p className={`text-sm truncate ${c.on_job ? "text-gray-400" : "text-gray-700"}`}>{c.full_name}</p>
               </div>
               <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded-full ${
-                c.is_available ? "bg-green-50 text-green-600" : "bg-gray-100 text-gray-400"
+                c.on_job
+                  ? "bg-orange-100 text-orange-600"
+                  : c.is_available
+                    ? "bg-green-50 text-green-600"
+                    : "bg-gray-100 text-gray-400"
               }`}>
-                {c.is_available ? "Available" : "Busy"}
+                {c.on_job ? "On Job" : c.is_available ? "Available" : "Busy"}
               </span>
             </label>
           ))}
@@ -160,6 +169,9 @@ export default function AddJobOrderForm() {
   const installers     = crewMembers.filter((c) => c.role === "installer")
 
   function toggleCrew(id: string, set: Set<string>, setter: (s: Set<string>) => void) {
+    // Guard: never toggle a crew member who is currently on an active job
+    const member = crewMembers.find((c) => c.id === id)
+    if (member?.on_job) return
     const next = new Set(set)
     next.has(id) ? next.delete(id) : next.add(id)
     setter(next)

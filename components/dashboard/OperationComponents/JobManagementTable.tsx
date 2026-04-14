@@ -23,8 +23,8 @@ interface JobOrder {
   status:       JobStatus
 }
 
-type TabType = "All" | "Pending" | "Ongoing" | "For Rework" | "For Release" | "Delayed" | "Released"
-const TABS: TabType[] = ["All", "Pending", "Ongoing", "For Rework", "For Release", "Delayed", "Released"]
+type TabType = "All" | "Pending" | "Ongoing" | "For Rework" | "For Release" | "Delayed" | "Cancelled"
+const TABS: TabType[] = ["All", "Pending", "Ongoing", "For Rework", "For Release", "Delayed", "Cancelled"]
 
 function fmtDate(iso: string | null | undefined): string {
   if (!iso) return "—"

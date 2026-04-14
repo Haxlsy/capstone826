@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { Wrench, SlidersHorizontal } from "lucide-react"
+import { Wrench, SlidersHorizontal, X } from "lucide-react"
 import { HeadTechJob, Status } from "./components/types"
 import { HeadTechJobCard } from "./components/HeadTechJobCard"
 import { BottomNav } from "./components/BottomNav"
@@ -17,12 +17,11 @@ const STATUS_OPTIONS: Status[] = [
 ]
 
 export default function HeadTechnicianPage() {
-  const [jobs, setJobs]                   = useState<HeadTechJob[]>([])
-  const [loading, setLoading]             = useState(true)
-  const [statusFilter, setStatusFilter]   = useState("all")
-  const [showFilters, setShowFilters]     = useState(false)
+  const [jobs, setJobs] = useState<HeadTechJob[]>([])
+  const [loading, setLoading] = useState(true)
+  const [statusFilter, setStatusFilter] = useState("all")
+  const [showFilters, setShowFilters] = useState(false)
 
-  // Read display name from localStorage
   const [displayName, setDisplayName] = useState<string>("")
   useEffect(() => {
     try {
@@ -31,14 +30,14 @@ export default function HeadTechnicianPage() {
         const parsed = JSON.parse(stored)
         setDisplayName(parsed?.full_name ?? parsed?.username ?? "")
       }
-    } catch {}
+    } catch { }
   }, [])
 
   useEffect(() => {
     async function load() {
       setLoading(true)
       try {
-        const res  = await fetch("/api/head-technician/jobs")
+        const res = await fetch("/api/head-technician/jobs")
         const json = await res.json()
         if (res.ok) setJobs(json.jobs ?? [])
       } catch {
@@ -55,21 +54,22 @@ export default function HeadTechnicianPage() {
     return true
   })
 
-  const ongoingCount  = jobs.filter((j) => j.status === "Ongoing").length
-  const reworkCount   = jobs.filter((j) => j.status === "For Rework").length
+  const ongoingCount = jobs.filter((j) => j.status === "Ongoing").length
+  const reworkCount = jobs.filter((j) => j.status === "For Rework").length
+  const isFiltered = statusFilter !== "all"
 
   return (
     <>
-      <main className="px-4 pt-5 pb-28 max-w-md mx-auto space-y-5">
+      <main className="px-4 pt-6 pb-28 max-w-md mx-auto space-y-5">
 
         {/* ── Header ──────────────────────────────────────────────── */}
         <div className="flex items-start justify-between">
           <div>
-            <div className="flex items-center gap-2 mb-0.5">
-              <div className="w-7 h-7 rounded-lg bg-gray-900 flex items-center justify-center">
-                <Wrench size={14} className="text-white" />
+            <div className="flex items-center gap-2 mb-1">
+              <div className="w-6 h-6 rounded-md bg-gray-900 flex items-center justify-center">
+                <Wrench size={12} className="text-white" />
               </div>
-              <span className="text-[11px] font-semibold text-gray-400 uppercase tracking-widest">
+              <span className="text-[10px] font-semibold text-gray-400 uppercase tracking-[0.12em]">
                 826 Auto Care
               </span>
             </div>
@@ -77,69 +77,80 @@ export default function HeadTechnicianPage() {
               {displayName ? `Hi, ${displayName.split(" ")[0]}` : "Active Jobs"}
             </h1>
             {displayName && (
-              <p className="text-xs text-gray-400 mt-0.5">Your assigned jobs</p>
+              <p className="text-xs text-gray-400 mt-0.5 font-medium">Your assigned jobs today</p>
             )}
           </div>
 
           <button
             onClick={() => setShowFilters((v) => !v)}
-            className={`p-2.5 rounded-xl border transition-all ${
-              showFilters || statusFilter !== "all"
+            className={`relative p-2.5 rounded-xl border transition-all duration-200 ${showFilters || isFiltered
                 ? "bg-gray-900 border-gray-900 text-white"
-                : "bg-white border-gray-200 text-gray-500"
-            }`}
+                : "bg-white border-gray-200 text-gray-500 hover:border-gray-300"
+              }`}
           >
             <SlidersHorizontal size={16} />
+            {isFiltered && (
+              <span className="absolute -top-1 -right-1 w-2 h-2 bg-blue-500 rounded-full" />
+            )}
           </button>
         </div>
 
         {/* ── Stat pills ──────────────────────────────────────────── */}
         {!loading && jobs.length > 0 && (
-          <div className="flex gap-2">
-            <div className="flex-1 bg-blue-50 rounded-xl px-3 py-2.5 text-center">
-              <p className="text-lg font-bold text-blue-600">{ongoingCount}</p>
-              <p className="text-[11px] text-blue-400 font-medium">Ongoing</p>
-            </div>
-            <div className="flex-1 bg-orange-50 rounded-xl px-3 py-2.5 text-center">
-              <p className="text-lg font-bold text-orange-500">{reworkCount}</p>
-              <p className="text-[11px] text-orange-400 font-medium">For Rework</p>
-            </div>
-            <div className="flex-1 bg-gray-50 rounded-xl px-3 py-2.5 text-center">
-              <p className="text-lg font-bold text-gray-700">{jobs.length}</p>
-              <p className="text-[11px] text-gray-400 font-medium">Total</p>
-            </div>
+          <div className="grid grid-cols-3 gap-2">
+            <StatPill
+              value={ongoingCount}
+              label="Ongoing"
+              colorClass="text-blue-600"
+              bgClass="bg-blue-50"
+              subColorClass="text-blue-400"
+            />
+            <StatPill
+              value={reworkCount}
+              label="Rework"
+              colorClass="text-orange-500"
+              bgClass="bg-orange-50"
+              subColorClass="text-orange-400"
+            />
+            <StatPill
+              value={jobs.length}
+              label="Total"
+              colorClass="text-gray-700"
+              bgClass="bg-gray-50"
+              subColorClass="text-gray-400"
+            />
           </div>
         )}
 
-        {/* ── Filter row (collapsible) ─────────────────────────────── */}
+        {/* ── Filter panel (collapsible) ──────────────────────────── */}
         {showFilters && (
-          <div className="bg-white rounded-2xl border border-gray-100 p-3">
-            <p className="text-[11px] font-semibold text-gray-400 uppercase tracking-widest mb-2">
-              Filter by Status
-            </p>
-            <div className="flex flex-wrap gap-2">
-              <button
-                onClick={() => setStatusFilter("all")}
-                className={`text-xs px-3 py-1.5 rounded-full font-medium transition-all ${
-                  statusFilter === "all"
-                    ? "bg-gray-900 text-white"
-                    : "bg-gray-100 text-gray-500 hover:bg-gray-200"
-                }`}
-              >
-                All
-              </button>
-              {STATUS_OPTIONS.map((s) => (
+          <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4 space-y-3">
+            <div className="flex items-center justify-between">
+              <p className="text-[11px] font-semibold text-gray-400 uppercase tracking-widest">
+                Filter by Status
+              </p>
+              {isFiltered && (
                 <button
-                  key={s}
-                  onClick={() => setStatusFilter(s)}
-                  className={`text-xs px-3 py-1.5 rounded-full font-medium transition-all ${
-                    statusFilter === s
-                      ? "bg-gray-900 text-white"
-                      : "bg-gray-100 text-gray-500 hover:bg-gray-200"
-                  }`}
+                  onClick={() => setStatusFilter("all")}
+                  className="flex items-center gap-1 text-[11px] font-medium text-gray-400 hover:text-gray-600 transition-colors"
                 >
-                  {s}
+                  <X size={12} /> Clear
                 </button>
+              )}
+            </div>
+            <div className="flex flex-wrap gap-1.5">
+              <FilterChip
+                label="All"
+                active={statusFilter === "all"}
+                onClick={() => setStatusFilter("all")}
+              />
+              {STATUS_OPTIONS.map((s) => (
+                <FilterChip
+                  key={s}
+                  label={s}
+                  active={statusFilter === s}
+                  onClick={() => setStatusFilter(s)}
+                />
               ))}
             </div>
           </div>
@@ -149,14 +160,14 @@ export default function HeadTechnicianPage() {
         <div className="space-y-3">
           {loading && (
             <div className="space-y-3">
-              {[1, 2].map((i) => (
+              {[1, 2, 3].map((i) => (
                 <div key={i} className="bg-white rounded-2xl border border-gray-100 p-4 animate-pulse space-y-3">
                   <div className="flex justify-between items-center">
-                    <div className="h-3 w-24 bg-gray-100 rounded" />
+                    <div className="h-3 w-20 bg-gray-100 rounded-full" />
                     <div className="h-5 w-16 bg-gray-100 rounded-full" />
                   </div>
-                  <div className="h-4 w-40 bg-gray-100 rounded" />
-                  <div className="h-3 w-32 bg-gray-100 rounded" />
+                  <div className="h-4 w-36 bg-gray-100 rounded-full" />
+                  <div className="h-3 w-28 bg-gray-100 rounded-full" />
                   <div className="h-2 w-full bg-gray-100 rounded-full" />
                 </div>
               ))}
@@ -168,8 +179,13 @@ export default function HeadTechnicianPage() {
           ))}
 
           {!loading && filteredJobs.length === 0 && (
-            <div className="bg-white rounded-2xl border border-gray-100 px-4 py-10 text-center">
-              <p className="text-sm text-gray-400">No jobs found.</p>
+            <div className="bg-white rounded-2xl border border-gray-100 px-4 py-12 text-center space-y-1.5">
+              <p className="text-sm font-medium text-gray-500">No jobs found</p>
+              {isFiltered && (
+                <p className="text-xs text-gray-400">
+                  Try clearing the filter to see all jobs.
+                </p>
+              )}
             </div>
           )}
         </div>
@@ -177,5 +193,35 @@ export default function HeadTechnicianPage() {
 
       <BottomNav active="jobs" />
     </>
+  )
+}
+
+// ── Sub-components ─────────────────────────────────────────────────────────────
+
+function StatPill({
+  value, label, colorClass, bgClass, subColorClass
+}: {
+  value: number; label: string
+  colorClass: string; bgClass: string; subColorClass: string
+}) {
+  return (
+    <div className={`${bgClass} rounded-2xl px-3 py-3 text-center`}>
+      <p className={`text-xl font-bold ${colorClass} leading-none`}>{value}</p>
+      <p className={`text-[11px] font-medium mt-1 ${subColorClass}`}>{label}</p>
+    </div>
+  )
+}
+
+function FilterChip({ label, active, onClick }: { label: string; active: boolean; onClick: () => void }) {
+  return (
+    <button
+      onClick={onClick}
+      className={`text-xs px-3 py-1.5 rounded-full font-medium transition-all duration-150 ${active
+          ? "bg-gray-900 text-white"
+          : "bg-gray-100 text-gray-500 hover:bg-gray-200"
+        }`}
+    >
+      {label}
+    </button>
   )
 }
