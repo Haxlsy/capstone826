@@ -2,23 +2,23 @@ import { NextResponse } from "next/server"
 import { createAdminClient } from "@/lib/supabase/admin"
 
 // GET /api/operations/team-schedule
-// Returns all Ongoing jobs with their full assigned team.
+// Returns Pending + Ongoing jobs with their full assigned team and schedule times.
 // Used by the Operations Dashboard TeamSchedulePanel.
 export async function GET() {
   try {
     const supabase = createAdminClient()
 
-    // 1. Fetch all Ongoing jobs
+    // 1. Fetch Pending + Ongoing jobs with schedule fields
     const { data: jobs, error } = await supabase
       .from("job_order")
       .select(
-        `id, status, actual_start_at, created_at,
+        `id, status, scheduled_at, actual_start_at, expected_completion_at, created_at,
          customer:customer_record_id(full_name),
          service:service_id(name),
          customer_name`
       )
-      .eq("status", "Ongoing")
-      .order("actual_start_at", { ascending: false })
+      .in("status", ["Pending", "Ongoing"])
+      .order("scheduled_at", { ascending: true })
 
     if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
@@ -64,11 +64,14 @@ export async function GET() {
         head_detailer: null, head_installer: null, detailers: [], installers: [],
       }
       return {
-        job_id:          j.id,
-        display_id:      `JO-${new Date(j.created_at).getFullYear()}-${j.id.slice(-4).toUpperCase()}`,
-        customer:        (j.customer as any)?.full_name ?? j.customer_name ?? "—",
-        service:         (j.service  as any)?.name ?? "—",
-        actual_start_at: j.actual_start_at,
+        job_id:                  j.id,
+        display_id:              `JO-${new Date(j.created_at).getFullYear()}-${j.id.slice(-4).toUpperCase()}`,
+        customer:                (j.customer as any)?.full_name ?? j.customer_name ?? "—",
+        service:                 (j.service  as any)?.name ?? "—",
+        status:                  j.status,
+        scheduled_at:            j.scheduled_at,
+        actual_start_at:         j.actual_start_at,
+        expected_completion_at:  j.expected_completion_at,
         ...team,
       }
     })

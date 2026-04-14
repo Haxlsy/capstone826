@@ -5,11 +5,11 @@ export async function GET() {
   try {
     const supabase = createAdminClient()
 
-    // All job orders
+    // All job orders with schedule fields
     const { data: jobs, error } = await supabase
       .from("job_order")
       .select(
-        `id, status, scheduled_at, created_at,
+        `id, status, scheduled_at, actual_start_at, expected_completion_at, created_at,
          customer:customer_record_id(full_name),
          service:service_id(name)`
       )
@@ -17,7 +17,24 @@ export async function GET() {
 
     if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
-    const rows = jobs ?? []
+    const rows   = jobs ?? []
+    const jobIds = rows.map((j: any) => j.id)
+
+    // Head detailer + head installer for calendar tooltip enrichment
+    const { data: teamRows } = await supabase
+      .from("job_order_team")
+      .select("job_order_id, role_in_job, user_account:user_account_id(full_name)")
+      .in("job_order_id", jobIds)
+      .in("role_in_job", ["head_detailer", "head_installer"])
+
+    const teamMap = new Map<string, { head_detailer: string | null; head_installer: string | null }>()
+    for (const t of teamRows ?? []) {
+      const entry = teamMap.get(t.job_order_id) ?? { head_detailer: null, head_installer: null }
+      const name  = (t.user_account as any)?.full_name ?? null
+      if (t.role_in_job === "head_detailer")  entry.head_detailer  = name
+      if (t.role_in_job === "head_installer") entry.head_installer = name
+      teamMap.set(t.job_order_id, entry)
+    }
 
     // Status counts
     const STATUS_KEYS = ["Pending", "Ongoing", "For Rework", "For Release", "Released", "Delayed", "Cancelled"]
@@ -42,16 +59,23 @@ export async function GET() {
       created_at: r.created_at,
     }))
 
-    // Calendar jobs
+    // Calendar jobs — enriched with timing + team
     const calendar_jobs = rows
       .filter((r: any) => r.scheduled_at)
-      .map((r: any) => ({
-        id:           r.id,
-        scheduled_at: r.scheduled_at,
-        status:       r.status,
-        customer:     r.customer?.full_name ?? "Manual Entry",
-        service:      r.service?.name ?? "—",
-      }))
+      .map((r: any) => {
+        const team = teamMap.get(r.id) ?? { head_detailer: null, head_installer: null }
+        return {
+          id:                     r.id,
+          scheduled_at:           r.scheduled_at,
+          actual_start_at:        r.actual_start_at,
+          expected_completion_at: r.expected_completion_at,
+          status:                 r.status,
+          customer:               r.customer?.full_name ?? "Manual Entry",
+          service:                r.service?.name ?? "—",
+          head_detailer:          team.head_detailer,
+          head_installer:         team.head_installer,
+        }
+      })
 
     return NextResponse.json({
       status_counts,

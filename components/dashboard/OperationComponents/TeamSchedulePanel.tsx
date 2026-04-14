@@ -2,26 +2,97 @@
 
 import { useState, useEffect, useCallback } from "react"
 import Link from "next/link"
-import { Users, Clock, RefreshCw } from "lucide-react"
+import { Users, Clock, RefreshCw, CalendarClock, CheckCircle2, AlertCircle } from "lucide-react"
 
 interface TeamEntry {
-  job_id:          string
-  display_id:      string
-  customer:        string
-  service:         string
-  actual_start_at: string | null
-  head_detailer:   string | null
-  head_installer:  string | null
-  detailers:       string[]
-  installers:      string[]
+  job_id:                 string
+  display_id:             string
+  customer:               string
+  service:                string
+  status:                 string
+  scheduled_at:           string | null
+  actual_start_at:        string | null
+  expected_completion_at: string | null
+  head_detailer:          string | null
+  head_installer:         string | null
+  detailers:              string[]
+  installers:             string[]
 }
 
-function fmtTime(iso: string | null): string {
+function fmtDateTime(iso: string | null): string {
   if (!iso) return "—"
   return new Date(iso).toLocaleString("en-US", {
     month: "short", day: "numeric",
-    hour: "numeric", minute: "2-digit",
+    hour: "numeric", minute: "2-digit", hour12: true,
   })
+}
+
+function fmtDate(iso: string | null): string {
+  if (!iso) return "—"
+  return new Date(iso).toLocaleDateString("en-US", {
+    month: "short", day: "numeric", year: "numeric",
+  })
+}
+
+function StatusBadge({ status }: { status: string }) {
+  const map: Record<string, string> = {
+    Ongoing: "bg-blue-100 text-blue-700",
+    Pending: "bg-amber-100 text-amber-700",
+  }
+  return (
+    <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${map[status] ?? "bg-gray-100 text-gray-600"}`}>
+      {status}
+    </span>
+  )
+}
+
+function TimelineRow({
+  scheduledAt,
+  actualStartAt,
+  expectedEndAt,
+}: {
+  scheduledAt:   string | null
+  actualStartAt: string | null
+  expectedEndAt: string | null
+}) {
+  const hasStarted = !!actualStartAt
+
+  return (
+    <div className="mt-3 grid grid-cols-3 gap-2 text-xs">
+      {/* Scheduled */}
+      <div className="flex flex-col gap-0.5">
+        <span className="text-gray-400 font-medium uppercase tracking-wide" style={{ fontSize: "10px" }}>
+          Scheduled
+        </span>
+        <div className="flex items-center gap-1 text-gray-600">
+          <CalendarClock className="w-3 h-3 shrink-0 text-gray-400" />
+          <span>{fmtDate(scheduledAt)}</span>
+        </div>
+      </div>
+
+      {/* Actual Start */}
+      <div className="flex flex-col gap-0.5">
+        <span className="text-gray-400 font-medium uppercase tracking-wide" style={{ fontSize: "10px" }}>
+          Started
+        </span>
+        <div className={`flex items-center gap-1 ${hasStarted ? "text-blue-600" : "text-gray-400 italic"}`}>
+          <Clock className="w-3 h-3 shrink-0" />
+          <span>{hasStarted ? fmtDateTime(actualStartAt) : "Not started yet"}</span>
+        </div>
+      </div>
+
+      {/* Expected End */}
+      <div className="flex flex-col gap-0.5">
+        <span className="text-gray-400 font-medium uppercase tracking-wide" style={{ fontSize: "10px" }}>
+          Expected End
+        </span>
+        <div className={`flex items-center gap-1 ${expectedEndAt ? "text-gray-600" : "text-gray-400 italic"}`}>
+          <CheckCircle2 className="w-3 h-3 shrink-0 text-gray-400" />
+          <span>{expectedEndAt ? fmtDateTime(expectedEndAt) : "—"}</span>
+        </div>
+      </div>
+    </div>
+  )
 }
 
 function CrewList({ names }: { names: string[] }) {
@@ -48,9 +119,9 @@ function CrewList({ names }: { names: string[] }) {
 }
 
 export default function TeamSchedulePanel() {
-  const [teams, setTeams]       = useState<TeamEntry[]>([])
-  const [loading, setLoading]   = useState(true)
-  const [error, setError]       = useState<string | null>(null)
+  const [teams, setTeams]     = useState<TeamEntry[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError]     = useState<string | null>(null)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -69,17 +140,29 @@ export default function TeamSchedulePanel() {
 
   useEffect(() => { load() }, [load])
 
+  const ongoingCount = teams.filter((t) => t.status === "Ongoing").length
+  const pendingCount = teams.filter((t) => t.status === "Pending").length
+
   return (
     <div className="bg-white rounded-xl border border-gray-100">
       {/* Header */}
-      <div className="flex items-center justify-between px-5 py-4 border-b border-gray-50">
+      <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
         <div className="flex items-center gap-2">
           <Users className="w-4 h-4 text-gray-500" />
-          <span className="text-sm font-semibold text-gray-800">Live Team Activity</span>
+          <span className="text-sm font-semibold text-gray-800">Technician Team Schedule</span>
           {!loading && (
-            <span className="ml-1 text-xs font-medium px-2 py-0.5 rounded-full bg-blue-50 text-blue-600">
-              {teams.length} ongoing
-            </span>
+            <div className="flex items-center gap-1.5 ml-1">
+              {ongoingCount > 0 && (
+                <span className="text-xs font-medium px-2 py-0.5 rounded-full bg-blue-50 text-blue-600">
+                  {ongoingCount} ongoing
+                </span>
+              )}
+              {pendingCount > 0 && (
+                <span className="text-xs font-medium px-2 py-0.5 rounded-full bg-amber-50 text-amber-600">
+                  {pendingCount} pending
+                </span>
+              )}
+            </div>
           )}
         </div>
         <button
@@ -97,14 +180,17 @@ export default function TeamSchedulePanel() {
         {loading ? (
           <div className="py-10 text-center text-sm text-gray-400">Loading…</div>
         ) : error ? (
-          <div className="py-10 text-center text-sm text-red-500">{error}</div>
+          <div className="py-10 text-center text-sm text-red-500">
+            <AlertCircle className="w-4 h-4 inline-block mr-1" />
+            {error}
+          </div>
         ) : teams.length === 0 ? (
-          <div className="py-10 text-center text-sm text-gray-400">No ongoing jobs right now.</div>
+          <div className="py-10 text-center text-sm text-gray-400">No active or upcoming jobs.</div>
         ) : (
           teams.map((t) => (
             <div key={t.job_id} className="px-5 py-4 hover:bg-gray-50/50 transition-colors">
               {/* Job title row */}
-              <div className="flex items-start justify-between gap-3 mb-3">
+              <div className="flex items-start justify-between gap-3 mb-2">
                 <div className="min-w-0">
                   <Link
                     href={`/dashboard/job-management/${t.job_id}`}
@@ -114,25 +200,26 @@ export default function TeamSchedulePanel() {
                   </Link>
                   <p className="text-xs text-gray-400 mt-0.5">{t.service}</p>
                 </div>
-                <div className="flex items-center gap-1 shrink-0 text-xs text-gray-400">
-                  <Clock className="w-3 h-3" />
-                  {fmtTime(t.actual_start_at)}
-                </div>
+                <StatusBadge status={t.status} />
               </div>
 
-              {/* Team grid */}
+              {/* Head Detailer / Head Installer */}
               <div className="grid grid-cols-2 gap-x-6 gap-y-2 text-xs">
                 <div>
                   <p className="text-gray-400 mb-1 font-medium uppercase tracking-wide" style={{ fontSize: "10px" }}>
                     Head Detailer
                   </p>
-                  <span className="text-gray-700 font-medium">{t.head_detailer ?? "—"}</span>
+                  <span className={`font-medium ${t.head_detailer ? "text-gray-700" : "text-gray-400 italic"}`}>
+                    {t.head_detailer ?? "Unassigned"}
+                  </span>
                 </div>
                 <div>
                   <p className="text-gray-400 mb-1 font-medium uppercase tracking-wide" style={{ fontSize: "10px" }}>
                     Head Installer
                   </p>
-                  <span className="text-gray-700 font-medium">{t.head_installer ?? "—"}</span>
+                  <span className={`font-medium ${t.head_installer ? "text-gray-700" : "text-gray-400 italic"}`}>
+                    {t.head_installer ?? "Unassigned"}
+                  </span>
                 </div>
                 {t.detailers.length > 0 && (
                   <div>
@@ -152,8 +239,15 @@ export default function TeamSchedulePanel() {
                 )}
               </div>
 
+              {/* Timeline row: Scheduled → Started → Expected End */}
+              <TimelineRow
+                scheduledAt={t.scheduled_at}
+                actualStartAt={t.actual_start_at}
+                expectedEndAt={t.expected_completion_at}
+              />
+
               {/* Job ID link */}
-              <div className="mt-2.5">
+              <div className="mt-3">
                 <Link
                   href={`/dashboard/job-management/${t.job_id}`}
                   className="text-xs font-mono text-gray-400 hover:text-blue-500 transition-colors"
