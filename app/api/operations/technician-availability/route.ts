@@ -72,19 +72,30 @@ export async function GET() {
   }
 }
 
-// PATCH — toggle a technician's availability
+// PATCH — update a technician's details (availability, name, role, or archive)
 export async function PATCH(request: Request) {
   try {
-    const { id, is_available } = await request.json()
+    const { id, is_available, full_name, role, is_archived } = await request.json()
 
-    if (!id || typeof is_available !== "boolean") {
-      return NextResponse.json({ error: "id and is_available (boolean) are required." }, { status: 400 })
+    if (!id) {
+      return NextResponse.json({ error: "id is required." }, { status: 400 })
     }
 
     const supabase = createAdminClient()
+    const updates: any = {}
+
+    if (typeof is_available === "boolean") updates.is_available = is_available
+    if (typeof is_archived  === "boolean") updates.is_archived  = is_archived
+    if (full_name?.trim())                updates.full_name    = full_name.trim()
+    if (role === "detailer" || role === "installer") updates.role = role
+
+    if (Object.keys(updates).length === 0) {
+      return NextResponse.json({ error: "No valid fields provided for update." }, { status: 400 })
+    }
+
     const { error } = await supabase
       .from("technician")
-      .update({ is_available })
+      .update(updates)
       .eq("id", id)
 
     if (error) return NextResponse.json({ error: error.message }, { status: 500 })
