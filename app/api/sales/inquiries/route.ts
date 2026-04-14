@@ -8,7 +8,9 @@ export async function GET(request: Request) {
     const status = searchParams.get("status") ?? "all"
 
     const supabase = createAdminClient()
-    let query = supabase
+    
+    // Attempt to fetch all columns first
+    let { data, error } = await supabase
       .from("inquiry")
       .select(
         `id, messenger_name, psid, inquiry_type, status,
@@ -19,10 +21,21 @@ export async function GET(request: Request) {
       )
       .order("escalated_at", { ascending: false })
 
-    if (type   !== "all") query = query.eq("inquiry_type", type)
-    if (status !== "all") query = query.eq("status", status)
+    // Fallback if columns are missing (e.g. migration not applied)
+    if (error && error.message.includes("column")) {
+      console.warn("⚠️ Falling back to basic inquiry selection due to missing columns.");
+      const fallback = await supabase
+        .from("inquiry")
+        .select(
+          `id, messenger_name, psid, inquiry_type, status,
+           escalated_at, resolved_at,
+           resolver:resolved_by_id(full_name)`
+        )
+        .order("escalated_at", { ascending: false })
+      data  = fallback.data
+      error = fallback.error
+    }
 
-    const { data, error } = await query
     if (error) return NextResponse.json({ error: error.message }, { status: 500 })
     return NextResponse.json({ inquiries: data ?? [] })
   } catch (err: unknown) {
