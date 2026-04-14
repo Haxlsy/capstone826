@@ -10,7 +10,10 @@ export async function GET(request: Request) {
     const supabase = createAdminClient()
     
     // Attempt to fetch all columns first
-    let { data, error } = await supabase
+    let data: any[] | null = null
+    let error: any = null
+
+    const result = await supabase
       .from("inquiry")
       .select(
         `id, messenger_name, psid, inquiry_type, status,
@@ -21,8 +24,11 @@ export async function GET(request: Request) {
       )
       .order("escalated_at", { ascending: false })
 
+    data = result.data
+    error = result.error
+
     // Fallback if columns are missing (e.g. migration not applied)
-    if (error && error.message.includes("column")) {
+    if (error && (error as any).message?.includes("column")) {
       console.warn("⚠️ Falling back to basic inquiry selection due to missing columns.");
       const fallback = await supabase
         .from("inquiry")
