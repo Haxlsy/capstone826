@@ -1,24 +1,27 @@
-import { cookies } from "next/headers"
-import { createClient } from "@/lib/supabase/server"
+import { createAdminClient } from "@/lib/supabase/admin"
 import AdminDashboard from "@/components/AdminSide/AdminDashboard"
 import { ActivityItem } from "@/components/AdminSide/RecentActivity"
 
 export default async function AdminPage() {
-  const cookieStore = await cookies()
-  const supabase = createClient(cookieStore)
+  const supabase = createAdminClient()
 
-  // Total non-archived accounts (excluding super_admin and admin roles)
+  // Total non-archived accounts (including all roles)
   const { count: totalAccounts } = await supabase
     .from("user_account")
     .select("*", { count: "exact", head: true })
     .eq("is_archived", false)
-    .neq("role", "admin")
-    .neq("role", "super_admin")
 
   // Active (non-archived) services
   const { count: activeServices } = await supabase
     .from("service")
     .select("*", { count: "exact", head: true })
+    .eq("is_archived", false)
+
+  // Active (non-archived) reports/inquiries
+  const { count: totalReports } = await supabase
+    .from("inquiry_record")
+    .select("*", { count: "exact", head: true })
+    .eq("inquiry_type", "Report")
     .eq("is_archived", false)
 
   // Recent activity: latest 5 account creations + latest 5 service creations
@@ -85,7 +88,7 @@ export default async function AdminPage() {
     <AdminDashboard
       totalAccounts={totalAccounts ?? 0}
       activeServices={activeServices ?? 0}
-      reportsGenerated={0}
+      reportsGenerated={totalReports ?? 0}
       recentActivity={recentActivity}
     />
   )
