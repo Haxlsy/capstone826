@@ -8,11 +8,10 @@ import {
 export type JobStatus =
   | "Pending"
   | "Ongoing"
-  | "Quality Check"
-  | "Completed"
-  | "Delayed"
+  | "For Rework"
+  | "For Release"
   | "Released"
-  | "Cancelled"
+  | "Delayed"
 
 export interface StatusOption {
   label: JobStatus
@@ -27,7 +26,7 @@ export interface StatusOption {
 export const STATUS_OPTIONS: StatusOption[] = [
   {
     label: "Pending",
-    db: "pending",
+    db: "Pending",
     icon: <Clock className="w-4 h-4" />,
     ring: "ring-amber-200",
     bg: "bg-amber-50 hover:bg-amber-100",
@@ -36,7 +35,7 @@ export const STATUS_OPTIONS: StatusOption[] = [
   },
   {
     label: "Ongoing",
-    db: "ongoing",
+    db: "Ongoing",
     icon: <PlayCircle className="w-4 h-4" />,
     ring: "ring-blue-200",
     bg: "bg-blue-50 hover:bg-blue-100",
@@ -44,35 +43,26 @@ export const STATUS_OPTIONS: StatusOption[] = [
     iconBg: "bg-blue-100",
   },
   {
-    label: "Quality Check",
-    db: "quality_check",
-    icon: <ClipboardCheck className="w-4 h-4" />,
+    label: "For Rework",
+    db: "For Rework",
+    icon: <AlertTriangle className="w-4 h-4" />,
     ring: "ring-orange-200",
     bg: "bg-orange-50 hover:bg-orange-100",
     text: "text-orange-700",
     iconBg: "bg-orange-100",
   },
   {
-    label: "Completed",
-    db: "completed",
-    icon: <CheckCircle2 className="w-4 h-4" />,
-    ring: "ring-green-200",
-    bg: "bg-green-50 hover:bg-green-100",
-    text: "text-green-700",
-    iconBg: "bg-green-100",
-  },
-  {
-    label: "Delayed",
-    db: "delayed",
-    icon: <AlertTriangle className="w-4 h-4" />,
-    ring: "ring-red-200",
-    bg: "bg-red-50 hover:bg-red-100",
-    text: "text-red-700",
-    iconBg: "bg-red-100",
+    label: "For Release",
+    db: "For Release",
+    icon: <ClipboardCheck className="w-4 h-4" />,
+    ring: "ring-emerald-200",
+    bg: "bg-emerald-50 hover:bg-emerald-100",
+    text: "text-emerald-700",
+    iconBg: "bg-emerald-100",
   },
   {
     label: "Released",
-    db: "released",
+    db: "Released",
     icon: <PackageCheck className="w-4 h-4" />,
     ring: "ring-teal-200",
     bg: "bg-teal-50 hover:bg-teal-100",
@@ -80,24 +70,23 @@ export const STATUS_OPTIONS: StatusOption[] = [
     iconBg: "bg-teal-100",
   },
   {
-    label: "Cancelled",
-    db: "cancelled",
-    icon: <XCircle className="w-4 h-4" />,
-    ring: "ring-gray-200",
-    bg: "bg-gray-50 hover:bg-gray-100",
-    text: "text-gray-600",
-    iconBg: "bg-gray-100",
+    label: "Delayed",
+    db: "Delayed",
+    icon: <AlertTriangle className="w-4 h-4" />,
+    ring: "ring-red-200",
+    bg: "bg-red-50 hover:bg-red-100",
+    text: "text-red-700",
+    iconBg: "bg-red-100",
   },
 ]
 
-export const STATUS_BADGE_MAP: Record<JobStatus, string> = {
+export const STATUS_BADGE_MAP: Record<string, string> = {
   Pending:        "bg-amber-100 text-amber-700",
   Ongoing:        "bg-blue-100 text-blue-700",
-  "Quality Check":"bg-orange-100 text-orange-700",
-  Completed:      "bg-green-100 text-green-700",
-  Delayed:        "bg-red-100 text-red-700",
+  "For Rework":   "bg-orange-100 text-orange-700",
+  "For Release":  "bg-emerald-100 text-emerald-700",
   Released:       "bg-teal-100 text-teal-700",
-  Cancelled:      "bg-gray-100 text-gray-500",
+  Delayed:        "bg-red-100 text-red-700",
 }
 
 interface Props {
@@ -124,7 +113,7 @@ export default function StatusPickerModal({ jobId, customerName, currentStatus, 
           <h2 className="text-base font-bold text-gray-800 mt-0.5">{customerName}</h2>
           <p className="text-xs text-gray-400 mt-0.5">
             Current status:{" "}
-            <span className={`font-semibold ${STATUS_BADGE_MAP[currentStatus].split(" ")[1]}`}>
+            <span className={`font-semibold ${(STATUS_BADGE_MAP[currentStatus] || "bg-gray-100 text-gray-500").split(" ")[1]}`}>
               {currentStatus}
             </span>
           </p>
