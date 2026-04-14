@@ -36,12 +36,22 @@ export async function GET() {
       teamMap.set(t.job_order_id, entry)
     }
 
-    // Status counts
-    const STATUS_KEYS = ["Pending", "Ongoing", "For Rework", "For Release", "Released", "Delayed", "Cancelled"]
-    const status_counts: Record<string, number> = Object.fromEntries(STATUS_KEYS.map((k) => [k, 0]))
+    // Status counts — keys normalised to snake_case to match the frontend STATUS_CONFIG keys
+    const STATUS_LABEL_TO_KEY: Record<string, string> = {
+      "Pending":    "pending",
+      "Ongoing":    "ongoing",
+      "For Rework": "for_rework",
+      "For Release":"for_release",
+      "Released":   "released",
+      "Delayed":    "delayed",
+      "Cancelled":  "cancelled",
+    }
+    const status_counts: Record<string, number> = Object.fromEntries(
+      Object.values(STATUS_LABEL_TO_KEY).map((k) => [k, 0])
+    )
     for (const row of rows) {
-      const s = row.status as string
-      if (s in status_counts) status_counts[s]++
+      const key = STATUS_LABEL_TO_KEY[row.status as string]
+      if (key) status_counts[key]++
     }
 
     // Open concern count

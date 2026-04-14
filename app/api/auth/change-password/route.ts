@@ -16,17 +16,19 @@ export async function POST(request: Request) {
     }
 
     const cookieStore = await cookies()
-    const supabase = createClient(cookieStore)
+    const supabase    = createClient(cookieStore)
 
-    // Get current user
+    // Get current user from their session
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) {
       return NextResponse.json({ error: "Unauthorized." }, { status: 401 })
     }
 
-    // Verify current password by re-signing in
-    const { error: verifyError } = await supabase.auth.signInWithPassword({
-      email: user.email!,
+    // Verify current password using the admin client (persistSession: false)
+    // so the verification does NOT touch or overwrite the user's session cookies.
+    const admin = createAdminClient()
+    const { error: verifyError } = await admin.auth.signInWithPassword({
+      email:    user.email!,
       password: currentPassword,
     })
 
@@ -34,8 +36,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Current password is incorrect." }, { status: 400 })
     }
 
-    // Update password via admin client
-    const admin = createAdminClient()
+    // Update password
     const { error: updateError } = await admin.auth.admin.updateUserById(user.id, {
       password: newPassword,
     })

@@ -2,6 +2,7 @@
 
 import Link from "next/link"
 import { usePathname, useRouter } from "next/navigation"
+import { useEffect, useState } from "react"
 import {
   LayoutDashboard,
   ClipboardList,
@@ -16,7 +17,7 @@ import {
 const navItems = [
   { label: "Dashboard",               href: "/dashboard/operations",               icon: LayoutDashboard },
   { label: "Job Management",          href: "/dashboard/job-management",           icon: ClipboardList },
-  { label: "Concerns",                href: "/dashboard/concerns",                 icon: AlertTriangle, badge: 3 },
+  { label: "Concerns",                href: "/dashboard/concerns",                 icon: AlertTriangle, showBadge: true },
   { label: "Job Order Records",       href: "/dashboard/job-order-records",        icon: Archive },
   { label: "Technician Availability", href: "/dashboard/technician-availability",  icon: UserCheck },
   { label: "Service Management",      href: "/dashboard/services",                 icon: Wrench },
@@ -24,7 +25,22 @@ const navItems = [
 
 export default function OperationsSidebar() {
   const pathname = usePathname()
-  const router = useRouter()
+  const router   = useRouter()
+  const [pendingConcerns, setPendingConcerns] = useState(0)
+
+  useEffect(() => {
+    async function fetchPendingCount() {
+      try {
+        const res  = await fetch("/api/operations/job-concerns")
+        const json = await res.json()
+        if (res.ok) {
+          const count = (json.concerns ?? []).filter((c: { status: string }) => c.status === "Pending").length
+          setPendingConcerns(count)
+        }
+      } catch {}
+    }
+    fetchPendingCount()
+  }, [pathname]) // re-fetch whenever the user navigates (e.g. after resolving a concern)
 
   async function handleLogout() {
     try {
@@ -46,8 +62,9 @@ export default function OperationsSidebar() {
 
       {/* Nav */}
       <nav className="flex-1 py-4 px-3 space-y-0.5">
-        {navItems.map(({ label, href, icon: Icon, badge }) => {
-          const active = pathname === href || pathname.startsWith(href + "/")
+        {navItems.map(({ label, href, icon: Icon, showBadge }) => {
+          const active      = pathname === href || pathname.startsWith(href + "/")
+          const badgeCount  = showBadge ? pendingConcerns : 0
           return (
             <Link
               key={href}
@@ -60,9 +77,9 @@ export default function OperationsSidebar() {
             >
               <Icon className="w-4 h-4 shrink-0" />
               <span className="flex-1">{label}</span>
-              {badge !== undefined && (
+              {showBadge && badgeCount > 0 && (
                 <span className="w-5 h-5 bg-red-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center shrink-0">
-                  {badge}
+                  {badgeCount > 99 ? "99+" : badgeCount}
                 </span>
               )}
             </Link>

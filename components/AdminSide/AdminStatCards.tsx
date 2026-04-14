@@ -19,12 +19,6 @@ const cardConfig = [
     subLabel: "Services currently offered",
     icon: Wrench,
   },
-  {
-    key: "reportsGenerated" as const,
-    label: "Reports Generated",
-    subLabel: "This month",
-    icon: FileText,
-  },
 ]
 
 export default function AdminStatCards({

@@ -269,7 +269,7 @@ export default function JobCalendarView() {
     <div className="bg-white rounded-xl border border-gray-100 p-5 flex flex-col gap-4">
       {/* Header */}
       <div className="flex items-center justify-between">
-        <h2 className="text-sm font-semibold text-gray-800">Technician Team Schedule</h2>
+        <h2 className="text-sm font-semibold text-gray-800">Calendar</h2>
         <div className="flex items-center gap-2">
           <button
             onClick={prevMonth}
