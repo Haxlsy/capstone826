@@ -2,10 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react"
 import Link from "next/link"
-import {
-  ArrowLeft, CheckCircle2, Clock, AlertTriangle,
-  RefreshCw, PackageCheck, XCircle, ChevronDown,
-} from "lucide-react"
+import { ArrowLeft, AlertTriangle, PackageCheck, ChevronDown, Users } from "lucide-react"
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -38,6 +35,11 @@ interface TeamMember {
   full_name: string
 }
 
+interface CrewMember {
+  id:   string
+  name: string
+}
+
 interface JobDetail {
   id:                     string
   customer_name:          string
@@ -47,6 +49,8 @@ interface JobDetail {
   service:                string
   head_detailer:          TeamMember | null
   head_installer:         TeamMember | null
+  detailers:              CrewMember[]
+  installers:             CrewMember[]
   status:                 string
   scheduled_at:           string | null
   actual_start_at:        string | null
@@ -256,14 +260,8 @@ export default function JobOrderDetail({ jobId }: { jobId: string }) {
             <p className="text-xs text-gray-400 uppercase tracking-wide mb-0.5">Scheduled</p>
             <p className="font-medium text-gray-700">{fmtDate(job.scheduled_at)}</p>
           </div>
-          <div>
-            <p className="text-xs text-gray-400 uppercase tracking-wide mb-0.5">Head Detailer</p>
-            <p className="font-medium text-gray-700">{job.head_detailer?.full_name ?? "Unassigned"}</p>
-          </div>
-          <div>
-            <p className="text-xs text-gray-400 uppercase tracking-wide mb-0.5">Head Installer</p>
-            <p className="font-medium text-gray-700">{job.head_installer?.full_name ?? "Unassigned"}</p>
-          </div>
+          <CrewCell label="Head Detailer" lead={job.head_detailer?.full_name ?? "Unassigned"} crew={job.detailers} />
+          <CrewCell label="Head Installer" lead={job.head_installer?.full_name ?? "Unassigned"} crew={job.installers} />
           <div>
             <p className="text-xs text-gray-400 uppercase tracking-wide mb-0.5">Started</p>
             <p className="font-medium text-gray-700">{fmtDate(job.actual_start_at)}</p>
@@ -438,6 +436,53 @@ export default function JobOrderDetail({ jobId }: { jobId: string }) {
               </button>
             </div>
           </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ── CrewCell ──────────────────────────────────────────────────────────────────
+// Shows lead name + collapsible crew list (collapsed when ≥ 2 members).
+
+function CrewCell({ label, lead, crew }: { label: string; lead: string; crew: { id: string; name: string }[] }) {
+  const [open, setOpen] = useState(false)
+  const collapsible = crew.length >= 2
+
+  return (
+    <div>
+      <p className="text-xs text-gray-400 uppercase tracking-wide mb-0.5">{label}</p>
+      <p className="font-medium text-gray-700">{lead}</p>
+      {crew.length > 0 && (
+        <div className="mt-1">
+          {collapsible ? (
+            <>
+              <button
+                onClick={() => setOpen((v) => !v)}
+                className="flex items-center gap-1 text-xs text-gray-400 hover:text-gray-600 transition-colors"
+              >
+                <Users size={11} />
+                {crew.length} crew members
+                <ChevronDown size={11} className={`transition-transform ${open ? "rotate-180" : ""}`} />
+              </button>
+              {open && (
+                <ul className="mt-1 space-y-0.5 pl-1">
+                  {crew.map((m) => (
+                    <li key={m.id} className="text-xs text-gray-600">{m.name}</li>
+                  ))}
+                </ul>
+              )}
+            </>
+          ) : (
+            <ul className="space-y-0.5 pl-1">
+              {crew.map((m) => (
+                <li key={m.id} className="text-xs text-gray-500 flex items-center gap-1">
+                  <Users size={10} className="text-gray-300" />
+                  {m.name}
+                </li>
+              ))}
+            </ul>
+          )}
         </div>
       )}
     </div>

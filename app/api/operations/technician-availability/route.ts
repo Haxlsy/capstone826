@@ -1,20 +1,72 @@
 import { NextResponse } from "next/server"
 import { createAdminClient } from "@/lib/supabase/admin"
 
-// GET — list all technicians (detailers/installers) with availability
+// GET — list all technicians (detailers/installers) with availability.
+// Each technician also gets an `active_job` field when they are assigned
+// to an Ongoing job (i.e. the head tech has already started that job).
 export async function GET() {
   try {
     const supabase = createAdminClient()
 
-    const { data, error } = await supabase
-      .from("technician")
-      .select("id, full_name, role, is_available, is_archived")
-      .eq("is_archived", false)
-      .order("role")
-      .order("full_name")
+    const [{ data, error }, { data: assignments }] = await Promise.all([
+      supabase
+        .from("technician")
+        .select("id, full_name, role, is_available, is_archived")
+        .eq("is_archived", false)
+        .order("role")
+        .order("full_name"),
+      // All crew assignments for non-archived technicians
+      supabase
+        .from("job_order_team")
+        .select("technician_id, job_order_id")
+        .not("technician_id", "is", null),
+    ])
 
     if (error) return NextResponse.json({ error: error.message }, { status: 500 })
-    return NextResponse.json({ technicians: data ?? [] })
+
+    // Find job_ids that these technicians are assigned to, then check which are Ongoing
+    const assignedJobIds = [...new Set((assignments ?? []).map((a: any) => a.job_order_id as string))]
+
+    let ongoingMap = new Map<string, { job_id: string; customer: string; service: string }>()
+
+    if (assignedJobIds.length > 0) {
+      const { data: ongoingJobs } = await supabase
+        .from("job_order")
+        .select(
+          `id, status, customer_name,
+           customer:customer_record_id(full_name),
+           service:service_id(name)`
+        )
+        .in("id", assignedJobIds)
+        .eq("status", "Ongoing")
+
+      // Build technicianId → job info map
+      const jobInfoMap = new Map<string, { job_id: string; customer: string; service: string }>()
+      for (const j of ongoingJobs ?? []) {
+        jobInfoMap.set(j.id, {
+          job_id:   j.id,
+          customer: (j.customer as any)?.full_name ?? (j as any).customer_name ?? "—",
+          service:  (j.service  as any)?.name ?? "—",
+        })
+      }
+
+      for (const a of assignments ?? []) {
+        const jobInfo = jobInfoMap.get(a.job_order_id)
+        if (jobInfo && a.technician_id) {
+          ongoingMap.set(a.technician_id, jobInfo)
+        }
+      }
+    }
+
+    const technicians = (data ?? []).map((t: any) => ({
+      id:           t.id,
+      full_name:    t.full_name,
+      role:         t.role,
+      is_available: t.is_available,
+      active_job:   ongoingMap.get(t.id) ?? null,
+    }))
+
+    return NextResponse.json({ technicians })
   } catch (err: any) {
     return NextResponse.json({ error: err?.message ?? String(err) }, { status: 500 })
   }

@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import {
   ChevronLeft, CheckCircle2, Circle, ImagePlus, Video,
-  ThumbsUp, AlertTriangle, Loader2, Info, RefreshCw, Play, X,
+  ThumbsUp, AlertTriangle, Loader2, Info, RefreshCw, Play, X, Users, ChevronDown,
 } from "lucide-react";
 import { BottomNav } from "./components/BottomNav";
 
@@ -41,6 +41,8 @@ interface JobDetail {
   scheduled_start: string;
   status:          string;
   handoff_notes:   string | null;
+  detailers:       string[];
+  installers:      string[];
   timeline:        TimelineEntry[];
   stages:          StageDoc[];
 }
@@ -341,6 +343,12 @@ export default function HeadTechJobHistoryPage({ jobId }: { jobId: string }) {
           <Row label="Vehicle"   value={`${job.plate_number}${job.car_make ? ` — ${job.car_make}` : ""}`} />
           <Row label="Service"   value={job.service} accent="orange" />
           <Row label="Scheduled" value={job.scheduled_start} />
+          {!isInstaller && job.detailers.length > 0 && (
+            <CrewRow label="Detailers" members={job.detailers} />
+          )}
+          {isInstaller && job.installers.length > 0 && (
+            <CrewRow label="Installers" members={job.installers} />
+          )}
         </div>
 
         {/* Start Job — shown only when Pending */}
@@ -716,6 +724,43 @@ function Row({ label, value, accent }: { label: string; value: string; accent?: 
       <span className={`font-medium text-right ${accent === "orange" ? "text-orange-500" : "text-gray-800"}`}>
         {value}
       </span>
+    </div>
+  );
+}
+
+// ── CrewRow ───────────────────────────────────────────────────────────────────
+// Inline row in the job info card. Collapses the list when there are 2+ members.
+
+function CrewRow({ label, members }: { label: string; members: string[] }) {
+  const [open, setOpen] = useState(false);
+  const collapsible = members.length >= 2;
+
+  return (
+    <div className="flex justify-between items-start gap-4">
+      <span className="text-gray-400 shrink-0">{label}</span>
+      <div className="text-right">
+        {collapsible ? (
+          <>
+            <button
+              onClick={() => setOpen((v) => !v)}
+              className="flex items-center gap-1 text-sm font-medium text-gray-800 ml-auto"
+            >
+              <Users size={12} className="text-gray-400" />
+              {members.length} members
+              <ChevronDown size={12} className={`text-gray-400 transition-transform ${open ? "rotate-180" : ""}`} />
+            </button>
+            {open && (
+              <ul className="mt-1 space-y-0.5">
+                {members.map((name, i) => (
+                  <li key={i} className="text-xs text-gray-500">{name}</li>
+                ))}
+              </ul>
+            )}
+          </>
+        ) : (
+          <span className="font-medium text-gray-800">{members[0]}</span>
+        )}
+      </div>
     </div>
   );
 }

@@ -1,13 +1,20 @@
 "use client"
 
 import { useState, useEffect, useCallback } from "react"
-import { UserCheck, UserX, Users, Search, Plus, X } from "lucide-react"
+import { UserCheck, UserX, Users, Search, Plus, X, Wrench } from "lucide-react"
+
+interface ActiveJob {
+  job_id:   string
+  customer: string
+  service:  string
+}
 
 interface Technician {
   id:           string
   full_name:    string
   role:         "detailer" | "installer"
   is_available: boolean
+  active_job:   ActiveJob | null
 }
 
 const ROLE_LABEL: Record<Technician["role"], string> = {
@@ -115,8 +122,9 @@ export default function TechnicianAvailability() {
     }
   }
 
-  const availableCount   = technicians.filter((t) => t.is_available).length
-  const unavailableCount = technicians.length - availableCount
+  const onJobCount       = technicians.filter((t) => t.active_job !== null).length
+  const availableCount   = technicians.filter((t) => t.is_available && !t.active_job).length
+  const unavailableCount = technicians.length - availableCount - onJobCount
 
   const filtered = technicians.filter((t) => {
     const matchSearch = t.full_name.toLowerCase().includes(search.toLowerCase())
@@ -150,7 +158,7 @@ export default function TechnicianAvailability() {
       </div>
 
       {/* Stat cards */}
-      <div className="grid grid-cols-3 gap-4">
+      <div className="grid grid-cols-4 gap-4">
         <div className="bg-white rounded-xl border border-gray-100 p-4 flex items-center gap-4">
           <div className="w-10 h-10 rounded-xl bg-gray-50 flex items-center justify-center shrink-0">
             <Users className="w-5 h-5 text-gray-500" />
@@ -167,6 +175,15 @@ export default function TechnicianAvailability() {
           <div>
             <p className="text-2xl font-bold text-green-600">{availableCount}</p>
             <p className="text-xs text-gray-400 mt-0.5">Available</p>
+          </div>
+        </div>
+        <div className="bg-white rounded-xl border border-gray-100 p-4 flex items-center gap-4">
+          <div className="w-10 h-10 rounded-xl bg-orange-50 flex items-center justify-center shrink-0">
+            <Wrench className="w-5 h-5 text-orange-500" />
+          </div>
+          <div>
+            <p className="text-2xl font-bold text-orange-500">{onJobCount}</p>
+            <p className="text-xs text-gray-400 mt-0.5">On Job</p>
           </div>
         </div>
         <div className="bg-white rounded-xl border border-gray-100 p-4 flex items-center gap-4">
@@ -217,36 +234,59 @@ export default function TechnicianAvailability() {
                   {ROLE_LABEL[role as Technician["role"]]}
                 </span>
                 <span className="text-xs text-gray-400">
-                  {members.filter((m) => m.is_available).length}/{members.length} available
+                  {members.filter((m) => m.active_job).length > 0 && (
+                    <span className="text-orange-500 font-medium">
+                      {members.filter((m) => m.active_job).length} on job ·{" "}
+                    </span>
+                  )}
+                  {members.filter((m) => m.is_available && !m.active_job).length}/{members.length} available
                 </span>
               </div>
               <div className="divide-y divide-gray-50">
-                {members.map((tech) => (
-                  <div key={tech.id} className="flex items-center gap-4 px-5 py-3.5">
-                    <div className={`w-9 h-9 rounded-full flex items-center justify-center text-xs font-bold shrink-0 ${AVATAR_COLORS[colorIdx(tech.id)]}`}>
-                      {initials(tech.full_name)}
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium text-gray-800 truncate">{tech.full_name}</p>
-                      <div className="flex items-center gap-1.5 mt-0.5">
-                        <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${tech.is_available ? "bg-green-400" : "bg-gray-300"}`} />
-                        <span className="text-xs text-gray-400">
-                          {tech.is_available ? "Available" : "Unavailable"}
-                        </span>
+                {members.map((tech) => {
+                  const onJob = tech.active_job !== null
+                  return (
+                    <div key={tech.id} className={`flex items-center gap-4 px-5 py-3.5 ${onJob ? "bg-orange-50/40" : ""}`}>
+                      <div className={`w-9 h-9 rounded-full flex items-center justify-center text-xs font-bold shrink-0 ${AVATAR_COLORS[colorIdx(tech.id)]}`}>
+                        {initials(tech.full_name)}
                       </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium text-gray-800 truncate">{tech.full_name}</p>
+                        {onJob ? (
+                          <div className="flex items-center gap-1.5 mt-0.5">
+                            <Wrench className="w-3 h-3 text-orange-500 shrink-0" />
+                            <span className="text-xs text-orange-600 font-medium truncate">
+                              On Job — {tech.active_job!.customer}
+                            </span>
+                          </div>
+                        ) : (
+                          <div className="flex items-center gap-1.5 mt-0.5">
+                            <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${tech.is_available ? "bg-green-400" : "bg-gray-300"}`} />
+                            <span className="text-xs text-gray-400">
+                              {tech.is_available ? "Available" : "Unavailable"}
+                            </span>
+                          </div>
+                        )}
+                      </div>
+                      <button
+                        onClick={() => toggle(tech)}
+                        disabled={onJob}
+                        title={onJob ? "Cannot change availability while on an active job" : undefined}
+                        className={`relative inline-flex h-6 w-11 shrink-0 rounded-full border-2 border-transparent transition-colors duration-200 focus:outline-none ${
+                          onJob
+                            ? "bg-orange-300 cursor-not-allowed opacity-70"
+                            : tech.is_available
+                              ? "bg-green-400 cursor-pointer"
+                              : "bg-gray-200 cursor-pointer"
+                        }`}
+                        role="switch"
+                        aria-checked={tech.is_available}
+                      >
+                        <span className={`pointer-events-none inline-block h-5 w-5 rounded-full bg-white shadow-sm transition-transform duration-200 ${tech.is_available || onJob ? "translate-x-5" : "translate-x-0"}`} />
+                      </button>
                     </div>
-                    <button
-                      onClick={() => toggle(tech)}
-                      className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 focus:outline-none ${
-                        tech.is_available ? "bg-green-400" : "bg-gray-200"
-                      }`}
-                      role="switch"
-                      aria-checked={tech.is_available}
-                    >
-                      <span className={`pointer-events-none inline-block h-5 w-5 rounded-full bg-white shadow-sm transition-transform duration-200 ${tech.is_available ? "translate-x-5" : "translate-x-0"}`} />
-                    </button>
-                  </div>
-                ))}
+                  )
+                })}
               </div>
             </div>
           ))}

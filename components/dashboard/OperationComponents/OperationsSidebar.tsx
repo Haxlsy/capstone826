@@ -8,6 +8,7 @@ import {
   AlertTriangle,
   Archive,
   UserCheck,
+  Wrench,
   Settings,
   LogOut,
 } from "lucide-react"
@@ -18,6 +19,7 @@ const navItems = [
   { label: "Concerns",                href: "/dashboard/concerns",                 icon: AlertTriangle, badge: 3 },
   { label: "Job Order Records",       href: "/dashboard/job-order-records",        icon: Archive },
   { label: "Technician Availability", href: "/dashboard/technician-availability",  icon: UserCheck },
+  { label: "Service Management",      href: "/dashboard/services",                 icon: Wrench },
 ]
 
 export default function OperationsSidebar() {

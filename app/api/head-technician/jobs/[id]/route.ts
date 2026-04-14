@@ -49,7 +49,7 @@ export async function GET(
 
     const { data: team } = await admin
       .from("job_order_team")
-      .select("role_in_job, user_account:user_account_id(id, full_name)")
+      .select("role_in_job, user_account:user_account_id(id, full_name), technician:technician_id(id, full_name)")
       .eq("job_order_id", id)
 
     const { data: history } = await admin
@@ -72,7 +72,13 @@ export async function GET(
     const j = job as any
     const leaderRole  = role === "head_installer" ? "head_installer" : "head_detailer"
     const leader      = (team ?? []).find((t: any) => t.role_in_job === leaderRole)
-    const hdEntry     = (team ?? []).find((t: any) => t.role_in_job === "head_detailer")
+
+    const detailers  = (team ?? [])
+      .filter((t: any) => t.role_in_job === "detailer")
+      .map((t: any) => (t.technician as any)?.full_name ?? "Unknown")
+    const installers = (team ?? [])
+      .filter((t: any) => t.role_in_job === "installer")
+      .map((t: any) => (t.technician as any)?.full_name ?? "Unknown")
 
     // Handoff notes come from the last completed prep stage
     const prepStages  = (stages ?? []).filter((s: any) => (s.stage as any)?.category === "preparation")
@@ -91,6 +97,8 @@ export async function GET(
         scheduled_start: fmtDate(j.scheduled_at),
         status:          j.status,
         handoff_notes:   handoffNotes,
+        detailers,
+        installers,
         timeline: (history ?? []).map((h: any) => ({
           status:     h.status,
           changed_at: fmtDate(h.created_at),
