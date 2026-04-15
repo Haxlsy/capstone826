@@ -87,6 +87,13 @@ export default function HeadTechJobHistoryPage({ jobId }: { jobId: string }) {
   const [submittingRework, setSubmittingRework] = useState(false);
   const [reworkError, setReworkError]       = useState<string | null>(null);
 
+  // Rework state (head_detailer — flag preparation for rework)
+  const [prepReworkOpen, setPrepReworkOpen]         = useState(false);
+  const [selectedPrepRework, setSelectedPrepRework] = useState<Set<string>>(new Set());
+  const [prepReworkNote, setPrepReworkNote]         = useState("");
+  const [submittingPrepRework, setSubmittingPrepRework] = useState(false);
+  const [prepReworkError, setPrepReworkError]       = useState<string | null>(null);
+
   // ── Load ──────────────────────────────────────────────────────────────────
 
   useEffect(() => {
@@ -137,7 +144,7 @@ export default function HeadTechJobHistoryPage({ jobId }: { jobId: string }) {
       }
       setJob((prev) => prev ? { ...prev, status: "Ongoing" } : prev);
     } catch {}
-    setStartingJob(false);
+    finally { setStartingJob(false); }
   }
 
   async function markDone(stage: StageDoc) {
@@ -281,6 +288,41 @@ export default function HeadTechJobHistoryPage({ jobId }: { jobId: string }) {
     });
   }
 
+  function togglePrepReworkStage(id: string) {
+    setSelectedPrepRework((prev) => {
+      const next = new Set(prev);
+      next.has(id) ? next.delete(id) : next.add(id);
+      return next;
+    });
+  }
+
+  async function handleFlagPrepRework() {
+    if (!selectedPrepRework.size || !prepReworkNote.trim()) return;
+    setSubmittingPrepRework(true);
+    setPrepReworkError(null);
+    try {
+      const res  = await fetch(`/api/head-technician/jobs/${jobId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action:               "flag_prep_rework",
+          stage_ids:            [...selectedPrepRework],
+          rework_instructions:  prepReworkNote.trim(),
+        }),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json?.error ?? "Failed to flag rework");
+      setPrepReworkOpen(false);
+      setSelectedPrepRework(new Set());
+      setPrepReworkNote("");
+      await load();
+    } catch (err: unknown) {
+      setPrepReworkError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setSubmittingPrepRework(false);
+    }
+  }
+
   async function handleFlagRework() {
     if (!selectedRework.size || !reworkNote.trim()) return;
     setSubmittingRework(true);
@@ -311,17 +353,20 @@ export default function HeadTechJobHistoryPage({ jobId }: { jobId: string }) {
   async function handleApprove() {
     setApproving(true);
     try {
-      const res = await fetch(`/api/head-technician/jobs/${jobId}`, {
+      const res  = await fetch(`/api/head-technician/jobs/${jobId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action: "approve", handoff_notes: handoffNotes }),
       });
-      if (res.ok) {
-        setApproved(true);
-        setShowApprove(false);
-      }
-    } catch {}
-    setApproving(false);
+      const json = await res.json();
+      if (!res.ok) throw new Error(json?.error ?? "Failed to approve.");
+      setApproved(true);
+      setShowApprove(false);
+    } catch (err: unknown) {
+      alert(err instanceof Error ? err.message : "Failed to approve.");
+    } finally {
+      setApproving(false);
+    }
   }
 
   // ── Render states ─────────────────────────────────────────────────────────
@@ -534,7 +579,7 @@ export default function HeadTechJobHistoryPage({ jobId }: { jobId: string }) {
           </div>
         )}
 
-        {/* ── Head detailer approve action ── */}
+        {/* ── Head detailer quality-check actions (Flag for Rework + Approve) ── */}
         {!isInstaller && !approved && myStages.length > 0 && allDone && (
           <div className="space-y-2 pt-1">
             {showApprove ? (
@@ -549,12 +594,14 @@ export default function HeadTechJobHistoryPage({ jobId }: { jobId: string }) {
                 />
                 <div className="flex gap-2">
                   <button
+                    type="button"
                     onClick={() => setShowApprove(false)}
                     className="flex-1 text-sm font-semibold text-gray-600 border border-gray-200 rounded-xl py-3 hover:bg-gray-50 transition-colors"
                   >
                     Cancel
                   </button>
                   <button
+                    type="button"
                     onClick={handleApprove}
                     disabled={approving}
                     className="flex-1 flex items-center justify-center gap-2 text-sm font-semibold text-white bg-emerald-600 rounded-xl py-3 hover:bg-emerald-700 active:scale-[0.98] transition-all disabled:opacity-50"
@@ -565,13 +612,24 @@ export default function HeadTechJobHistoryPage({ jobId }: { jobId: string }) {
                 </div>
               </div>
             ) : (
-              <button
-                onClick={() => setShowApprove(true)}
-                className="w-full flex items-center justify-center gap-2 text-sm font-semibold text-white bg-emerald-600 rounded-2xl py-3.5 hover:bg-emerald-700 active:scale-[0.98] transition-all"
-              >
-                <ThumbsUp size={15} />
-                Approve Preparation
-              </button>
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => setPrepReworkOpen(true)}
+                  className="flex-1 flex items-center justify-center gap-2 text-sm font-semibold text-white bg-orange-500 rounded-2xl py-3.5 hover:bg-orange-600 active:scale-[0.98] transition-all"
+                >
+                  <AlertTriangle size={15} />
+                  Flag for Rework
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setShowApprove(true)}
+                  className="flex-1 flex items-center justify-center gap-2 text-sm font-semibold text-white bg-emerald-600 rounded-2xl py-3.5 hover:bg-emerald-700 active:scale-[0.98] transition-all"
+                >
+                  <ThumbsUp size={15} />
+                  Approve Preparation
+                </button>
+              </div>
             )}
           </div>
         )}
@@ -643,12 +701,14 @@ export default function HeadTechJobHistoryPage({ jobId }: { jobId: string }) {
 
             <div className="flex gap-2">
               <button
+                type="button"
                 onClick={() => { setReworkOpen(false); setSelectedRework(new Set()); setReworkNote(""); setReworkError(null); }}
                 className="flex-1 text-sm font-semibold text-gray-600 border border-gray-200 rounded-xl py-3 hover:bg-gray-50 transition-colors"
               >
                 Cancel
               </button>
               <button
+                type="button"
                 onClick={handleFlagRework}
                 disabled={submittingRework || !selectedRework.size || !reworkNote.trim()}
                 className="flex-1 flex items-center justify-center gap-2 text-sm font-semibold text-white bg-orange-500 rounded-xl py-3 hover:bg-orange-600 active:scale-[0.98] transition-all disabled:opacity-50"
@@ -663,6 +723,78 @@ export default function HeadTechJobHistoryPage({ jobId }: { jobId: string }) {
         </div>
       )}
 
+      {/* ── Flag Preparation for Rework modal (head_detailer only) ── */}
+      {prepReworkOpen && job && (
+        <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 p-4 sm:items-center">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-md p-5 space-y-4">
+            <div className="flex items-center gap-2">
+              <AlertTriangle size={18} className="text-orange-500" />
+              <h3 className="text-sm font-semibold text-gray-900">Flag Preparation Stages for Rework</h3>
+            </div>
+            <p className="text-xs text-gray-500">
+              Select the preparation stages that need to be redone. They will be reverted to In Progress with your instructions.
+            </p>
+
+            {/* Stage checkboxes — only done preparation stages */}
+            <div className="flex flex-col gap-1 max-h-48 overflow-y-auto">
+              {myStages
+                .filter((s) => s.status === "done")
+                .map((s) => (
+                  <label
+                    key={s.id}
+                    className="flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-gray-50 cursor-pointer"
+                  >
+                    <input
+                      type="checkbox"
+                      checked={selectedPrepRework.has(s.id)}
+                      onChange={() => togglePrepReworkStage(s.id)}
+                      className="w-4 h-4 accent-orange-500"
+                    />
+                    <span className="text-sm text-gray-700 flex-1">{s.order}. {s.name}</span>
+                  </label>
+                ))}
+              {myStages.filter((s) => s.status === "done").length === 0 && (
+                <p className="text-xs text-gray-400 text-center py-4">No completed stages to flag.</p>
+              )}
+            </div>
+
+            {/* Instructions */}
+            <textarea
+              value={prepReworkNote}
+              onChange={(e) => setPrepReworkNote(e.target.value)}
+              placeholder="Describe what needs to be redone…"
+              rows={3}
+              className="w-full text-sm border border-gray-200 rounded-xl px-3.5 py-3 resize-none focus:outline-none focus:ring-2 focus:ring-orange-300 bg-gray-50 text-gray-800 placeholder-gray-400 transition"
+            />
+
+            {prepReworkError && (
+              <p className="text-xs text-red-500">{prepReworkError}</p>
+            )}
+
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={() => { setPrepReworkOpen(false); setSelectedPrepRework(new Set()); setPrepReworkNote(""); setPrepReworkError(null); }}
+                className="flex-1 text-sm font-semibold text-gray-600 border border-gray-200 rounded-xl py-3 hover:bg-gray-50 transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleFlagPrepRework}
+                disabled={submittingPrepRework || !selectedPrepRework.size || !prepReworkNote.trim()}
+                className="flex-1 flex items-center justify-center gap-2 text-sm font-semibold text-white bg-orange-500 rounded-xl py-3 hover:bg-orange-600 active:scale-[0.98] transition-all disabled:opacity-50"
+              >
+                {submittingPrepRework
+                  ? <Loader2 size={14} className="animate-spin" />
+                  : <AlertTriangle size={14} />}
+                {submittingPrepRework ? "Flagging…" : "Flag for Rework"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Full-screen media preview */}
       {preview && (
         <div
@@ -670,6 +802,8 @@ export default function HeadTechJobHistoryPage({ jobId }: { jobId: string }) {
           onClick={() => setPreview(null)}
         >
           <button
+            type="button"
+            aria-label="Close preview"
             className="absolute top-5 right-5 text-white bg-white/10 hover:bg-white/20 rounded-full p-2.5 transition-colors"
             onClick={() => setPreview(null)}
           >
