@@ -1,31 +1,30 @@
 import AdminStatCards from "./AdminStatCards"
-import RecentActivity, { ActivityItem } from "./RecentActivity"
 import AuditLog from "./AuditLog"
 
 interface AdminDashboardProps {
   totalAccounts: number
-  activeServices: number
-  reportsGenerated: number
-  recentActivity: ActivityItem[]
 }
 
-export default function AdminDashboard({
-  totalAccounts,
-  activeServices,
-  reportsGenerated,
-  recentActivity,
-}: AdminDashboardProps) {
+export default function AdminDashboard({ totalAccounts }: AdminDashboardProps) {
+  const today = new Date().toLocaleDateString("en-US", {
+    weekday: "long",
+    year: "numeric",
+    month: "long",
+    day: "numeric",
+  })
+
   return (
-    <div className="flex-1 overflow-y-auto p-6 space-y-5">
+    <div className="flex-1 overflow-y-auto p-6 space-y-6">
+      {/* Page header */}
       <div>
-        <h1 className="text-xl font-bold text-gray-800">Dashboard</h1>
+        <h1 className="text-2xl font-bold text-gray-900">Dashboard</h1>
+        <p className="text-sm text-gray-400 mt-0.5">{today}</p>
       </div>
-      <AdminStatCards
-        totalAccounts={totalAccounts}
-        activeServices={activeServices}
-        reportsGenerated={reportsGenerated}
-      />
-      <RecentActivity items={recentActivity} />
+
+      {/* Stat cards */}
+      <AdminStatCards totalAccounts={totalAccounts} />
+
+      {/* Audit trail */}
       <AuditLog />
     </div>
   )
