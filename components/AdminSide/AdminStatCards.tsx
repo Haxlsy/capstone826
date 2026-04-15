@@ -17,24 +17,6 @@ const cardConfig = [
     color: "text-blue-600",
     bg: "bg-blue-50",
   },
-  {
-    key: "activeServices" as const,
-    label: "Active Services",
-    subLabel: "Services currently offered",
-    icon: Wrench,
-    href: "/dashboard/admin/services",
-    color: "text-orange-600",
-    bg: "bg-orange-50",
-  },
-  {
-    key: "reportsGenerated" as const,
-    label: "Total Reports",
-    subLabel: "Customer reported concerns",
-    icon: FileText,
-    href: "/dashboard/admin/reports/job-orders",
-    color: "text-purple-600",
-    bg: "bg-purple-50",
-  },
 ]
 
 export default function AdminStatCards({

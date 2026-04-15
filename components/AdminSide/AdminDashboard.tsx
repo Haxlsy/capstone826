@@ -1,5 +1,6 @@
 import AdminStatCards from "./AdminStatCards"
 import RecentActivity, { ActivityItem } from "./RecentActivity"
+import AuditLog from "./AuditLog"
 
 interface AdminDashboardProps {
   totalAccounts: number
@@ -25,6 +26,7 @@ export default function AdminDashboard({
         reportsGenerated={reportsGenerated}
       />
       <RecentActivity items={recentActivity} />
+      <AuditLog />
     </div>
   )
 }
