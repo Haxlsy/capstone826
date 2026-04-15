@@ -89,6 +89,7 @@ function ConcernCard({ concern }: { concern: Concern }) {
                   {concern.media.map((m) =>
                     m.type === "video" ? (
                       <button
+                      aria-label="Preview video attachment"
                         key={m.id}
                         onClick={() => setPreview({ url: m.url, type: m.type })}
                         className="w-16 h-16 rounded-xl bg-gray-100 flex items-center justify-center border border-gray-200"
@@ -97,6 +98,7 @@ function ConcernCard({ concern }: { concern: Concern }) {
                       </button>
                     ) : (
                       <button
+                      aria-label=" Preview photo attachment"
                         key={m.id}
                         onClick={() => setPreview({ url: m.url, type: m.type })}
                         className="w-16 h-16 rounded-xl overflow-hidden border border-gray-200"
@@ -134,6 +136,7 @@ function ConcernCard({ concern }: { concern: Concern }) {
           onClick={() => setPreview(null)}
         >
           <button
+            aria-label=" Close media preview"
             className="absolute top-5 right-5 text-white bg-white/10 hover:bg-white/20 rounded-full p-2.5"
             onClick={() => setPreview(null)}
           >
@@ -352,6 +355,7 @@ export default function HeadTechConcernsPage() {
                           />
                         )}
                         <button
+                          aria-label="Remove attachment"
                           type="button"
                           onClick={() => removeFile(idx)}
                           className="absolute -top-1.5 -right-1.5 w-5 h-5 bg-gray-900 rounded-full flex items-center justify-center shadow"

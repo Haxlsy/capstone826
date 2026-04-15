@@ -233,6 +233,7 @@ export default function JobConcerns() {
           <div className="flex items-center gap-2 text-sm text-gray-500">
             <span>Show Results:</span>
             <select
+              aria-label="Select number of concerns to show per page"
               value={pageSize}
               onChange={(e) => { setPageSize(Number(e.target.value)); setCurrentPage(1) }}
               className="border border-gray-200 rounded-lg px-2 py-1 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
@@ -244,6 +245,7 @@ export default function JobConcerns() {
           </div>
           <div className="flex items-center gap-1">
             <button
+              aria-label="Previous page"
               onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
               disabled={currentPage === 1}
               className="w-8 h-8 flex items-center justify-center rounded-md text-gray-500 hover:bg-gray-100 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
@@ -262,6 +264,7 @@ export default function JobConcerns() {
               </button>
             ))}
             <button
+              aria-label="Next Page"
               onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
               disabled={currentPage === totalPages}
               className="w-8 h-8 flex items-center justify-center rounded-md text-gray-500 hover:bg-gray-100 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
