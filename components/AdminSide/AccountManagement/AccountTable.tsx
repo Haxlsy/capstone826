@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useRef, useState } from "react"
-import { Search, Filter, MoreHorizontal, ChevronLeft, ChevronRight } from "lucide-react"
+import { Search, Filter, MoreHorizontal, ChevronLeft, ChevronRight, KeyRound, Copy, Check } from "lucide-react"
 import AddAccountModal from "./AddAccountModal"
 
 type UserRole = "operations" | "sales" | "head_detailer" | "head_installer"
@@ -55,6 +55,12 @@ export default function AccountTable() {
   const [actionMenu, setActionMenu] = useState<string | null>(null)
   const [addModalOpen, setAddModalOpen] = useState(false)
   const [editingAccount, setEditingAccount] = useState<Account | null>(null)
+
+  // Reset password
+  const [resetTarget, setResetTarget] = useState<{ id: string; name: string } | null>(null)
+  const [resetting, setResetting] = useState(false)
+  const [resetResult, setResetResult] = useState<string | null>(null)
+  const [copied, setCopied] = useState(false)
 
   const filterRef = useRef<HTMLDivElement>(null)
   const actionRef = useRef<HTMLDivElement>(null)
@@ -128,6 +134,36 @@ export default function AccountTable() {
       console.error("[AccountTable] archive toggle failed:", json.error)
     }
     fetchAccounts()
+  }
+
+  async function handleResetPassword() {
+    if (!resetTarget) return
+    setResetting(true)
+    try {
+      const res = await fetch("/api/admin/reset-password", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ userId: resetTarget.id }),
+      })
+      const json = await res.json()
+      if (!res.ok) {
+        alert(json.error ?? "Failed to reset password.")
+      } else {
+        setResetResult(json.password)
+        setResetTarget(null)
+      }
+    } catch {
+      alert("Network error. Please try again.")
+    } finally {
+      setResetting(false)
+    }
+  }
+
+  function handleCopy() {
+    if (!resetResult) return
+    navigator.clipboard.writeText(resetResult)
+    setCopied(true)
+    setTimeout(() => setCopied(false), 2000)
   }
 
   const totalPages = Math.max(1, Math.ceil(totalCount / pageSize))
@@ -258,6 +294,76 @@ export default function AccountTable() {
         editAccount={editingAccount ?? undefined}
       />
 
+      {/* ── Confirmation modal ─────────────────────────────────── */}
+      {resetTarget && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm p-6 mx-4">
+            <div className="flex items-center justify-center w-12 h-12 rounded-full bg-amber-50 mx-auto mb-4">
+              <KeyRound className="w-6 h-6 text-amber-500" />
+            </div>
+            <h3 className="text-base font-semibold text-gray-900 text-center">Reset Password</h3>
+            <p className="text-sm text-gray-500 text-center mt-2">
+              A new temporary password will be generated for{" "}
+              <span className="font-medium text-gray-700">{resetTarget.name}</span>.
+              Share it with them directly.
+            </p>
+            <div className="flex gap-3 mt-6">
+              <button
+                type="button"
+                onClick={() => setResetTarget(null)}
+                disabled={resetting}
+                className="flex-1 py-2 text-sm font-medium border border-gray-200 text-gray-600 rounded-xl hover:bg-gray-50 transition-colors disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleResetPassword}
+                disabled={resetting}
+                className="flex-1 py-2 text-sm font-medium bg-amber-500 text-white rounded-xl hover:bg-amber-600 transition-colors disabled:opacity-50"
+              >
+                {resetting ? "Resetting…" : "Reset"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Result modal ────────────────────────────────────────── */}
+      {resetResult && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm p-6 mx-4">
+            <div className="flex items-center justify-center w-12 h-12 rounded-full bg-green-50 mx-auto mb-4">
+              <KeyRound className="w-6 h-6 text-green-500" />
+            </div>
+            <h3 className="text-base font-semibold text-gray-900 text-center">Password Reset</h3>
+            <p className="text-sm text-gray-500 text-center mt-1">
+              Copy this password and give it to the user. It won&apos;t be shown again.
+            </p>
+            <div className="flex items-center gap-2 mt-4 bg-gray-50 border border-gray-200 rounded-xl px-4 py-3">
+              <span className="flex-1 font-mono text-sm text-gray-800 tracking-wider select-all">
+                {resetResult}
+              </span>
+              <button
+                type="button"
+                onClick={handleCopy}
+                className="shrink-0 p-1.5 rounded-lg text-gray-400 hover:text-gray-600 hover:bg-gray-200 transition-colors"
+                aria-label="Copy password"
+              >
+                {copied ? <Check className="w-4 h-4 text-green-500" /> : <Copy className="w-4 h-4" />}
+              </button>
+            </div>
+            <button
+              type="button"
+              onClick={() => { setResetResult(null); setCopied(false) }}
+              className="mt-4 w-full py-2 text-sm font-medium bg-gray-900 text-white rounded-xl hover:bg-gray-700 transition-colors"
+            >
+              Done
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Table */}
       <div className="bg-white rounded-xl border border-gray-100 overflow-hidden">
         <table className="w-full text-sm">
@@ -269,6 +375,7 @@ export default function AccountTable() {
                   checked={allSelected}
                   onChange={toggleSelectAll}
                   className="rounded border-gray-300"
+                  aria-label="Select all accounts"
                 />
               </th>
               <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">
@@ -313,6 +420,7 @@ export default function AccountTable() {
                 >
                   <td className="px-4 py-3.5">
                     <input
+                      aria-label="Select account"
                       type="checkbox"
                       checked={selected.has(account.id)}
                       onChange={() => toggleSelect(account.id)}
@@ -357,6 +465,7 @@ export default function AccountTable() {
                   <td className="px-4 py-3.5 relative">
                     <div ref={actionMenu === account.id ? actionRef : null}>
                       <button
+                        aria-label="Open menu for account options"
                         onClick={() =>
                           setActionMenu((prev) =>
                             prev === account.id ? null : account.id
@@ -368,12 +477,19 @@ export default function AccountTable() {
                       </button>
 
                       {actionMenu === account.id && (
-                        <div className="absolute right-4 top-full mt-1 w-36 bg-white border border-gray-100 rounded-xl shadow-lg z-10 py-1">
+                        <div className="absolute right-4 top-full mt-1 w-44 bg-white border border-gray-100 rounded-xl shadow-lg z-10 py-1">
                           <button
                             onClick={() => { setActionMenu(null); setEditingAccount(account) }}
                             className="w-full text-left text-sm px-3.5 py-2 text-gray-700 hover:bg-gray-50 transition-colors"
                           >
                             Edit
+                          </button>
+                          <button
+                            onClick={() => { setActionMenu(null); setResetTarget({ id: account.id, name: account.full_name }) }}
+                            className="flex items-center gap-2 w-full text-left text-sm px-3.5 py-2 text-amber-600 hover:bg-amber-50 transition-colors"
+                          >
+                            <KeyRound className="w-3.5 h-3.5" />
+                            Reset Password
                           </button>
                           <button
                             onClick={() => handleArchiveToggle(account)}
@@ -400,6 +516,7 @@ export default function AccountTable() {
           <div className="flex items-center gap-2 text-sm text-gray-500">
             <span>Show Results:</span>
             <select
+              aria-label="Select number of accounts to show per page"
               value={pageSize}
               onChange={(e) => setPageSize(Number(e.target.value))}
               className="border border-gray-200 rounded-lg px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-blue-100"
@@ -414,6 +531,7 @@ export default function AccountTable() {
 
           <div className="flex items-center gap-1">
             <button
+              aria-label="Go to previous page"
               onClick={() => setPage((p) => Math.max(1, p - 1))}
               disabled={page === 1}
               className="p-1.5 rounded-lg text-gray-400 hover:bg-gray-100 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
@@ -449,6 +567,7 @@ export default function AccountTable() {
               )}
 
             <button
+              aria-label="Go to next page"
               onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
               disabled={page === totalPages}
               className="p-1.5 rounded-lg text-gray-400 hover:bg-gray-100 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"

@@ -52,7 +52,6 @@ const EMPTY_FORM = {
   fullName: "",
   username: "",
   password: "",
-  confirmPassword: "",
   role: "operations" as UserRole,
 }
 
@@ -71,7 +70,6 @@ export default function AddAccountModal({
     role: (mode === "admin" ? "admin" : "operations") as UserRole,
   })
   const [showPassword, setShowPassword] = useState(false)
-  const [showConfirm, setShowConfirm] = useState(false)
   const [errors, setErrors] = useState<Partial<typeof EMPTY_FORM>>({})
   const [submitting, setSubmitting] = useState(false)
   const [serverError, setServerError] = useState("")
@@ -82,15 +80,13 @@ export default function AddAccountModal({
       setErrors({})
       setServerError("")
       setShowPassword(false)
-      setShowConfirm(false)
 
       if (editAccount) {
         setForm({
-          fullName:        editAccount.full_name,
-          username:        editAccount.username,
-          password:        "",
-          confirmPassword: "",
-          role:            editAccount.role,
+          fullName: editAccount.full_name,
+          username: editAccount.username,
+          password: "",
+          role:     editAccount.role,
         })
       } else {
         setForm({
@@ -104,13 +100,10 @@ export default function AddAccountModal({
   // Auto-generate username and password from full name (new accounts only)
   useEffect(() => {
     if (!isEdit) {
-      const generatedUsername = generateUsername(form.fullName)
-      const generatedPassword = generatePassword(form.fullName)
       setForm((prev) => ({
         ...prev,
-        username:        generatedUsername,
-        password:        generatedPassword,
-        confirmPassword: generatedPassword,
+        username: generateUsername(form.fullName),
+        password: generatePassword(form.fullName),
       }))
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -125,13 +118,10 @@ export default function AddAccountModal({
   function validate() {
     const e: Partial<typeof EMPTY_FORM> = {}
     if (!form.fullName.trim()) e.fullName = "Full name is required."
-    if (!isEdit && !form.username.trim()) e.username = "Username is required."
     if (!isEdit) {
+      if (!form.username.trim()) e.username = "Username is required."
       if (!form.password) e.password = "Password is required."
       else if (form.password.length < 8) e.password = "Password must be at least 8 characters."
-    } else if (form.password) {
-      if (form.password.length < 8) e.password = "Password must be at least 8 characters."
-      if (form.password !== form.confirmPassword) e.confirmPassword = "Passwords do not match."
     }
     return e
   }
@@ -159,7 +149,6 @@ export default function AddAccountModal({
             userId:   editAccount!.id,
             fullName: form.fullName.trim(),
             role:     form.role,
-            ...(form.password ? { password: form.password } : {}),
           }),
         })
       } else {
@@ -218,6 +207,7 @@ export default function AddAccountModal({
             {isEdit ? "Edit Account" : mode === "admin" ? "Add Admin Account" : "Add New Account"}
           </h2>
           <button
+            aria-label="Close modal"
             onClick={onClose}
             className="p-1.5 rounded-lg text-gray-400 hover:bg-gray-100 hover:text-gray-600 transition-colors"
           >
@@ -278,45 +268,20 @@ export default function AddAccountModal({
             {errors.username && <p className="text-xs text-red-500">{errors.username}</p>}
           </div>
 
-          {/* Password */}
-          <div className="space-y-1.5">
-            <label className="block text-sm font-medium text-gray-700">
-              Password{" "}
-              {!isEdit && <span className="text-red-500">*</span>}
-              {isEdit && <span className="text-gray-400 font-normal"> (leave blank to keep current)</span>}
-            </label>
-            {!isEdit ? (
-              <>
-                <div className="relative">
-                  <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400 pointer-events-none" />
-                  <input
-                    type={showPassword ? "text" : "password"}
-                    value={form.password}
-                    readOnly
-                    className="w-full pl-9 pr-10 py-2.5 text-sm border border-gray-200 rounded-lg bg-gray-50 text-gray-500 cursor-not-allowed font-mono"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setShowPassword((v) => !v)}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
-                  >
-                    {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                  </button>
-                </div>
-                <p className="text-xs text-blue-500">
-                  Auto-generated from full name: <span className="font-mono">{form.password || "—"}</span>
-                </p>
-              </>
-            ) : (
+          {/* Password — new accounts only */}
+          {!isEdit && (
+            <div className="space-y-1.5">
+              <label className="block text-sm font-medium text-gray-700">
+                Password <span className="text-red-500">*</span>
+              </label>
               <div className="relative">
+                <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400 pointer-events-none" />
                 <input
                   type={showPassword ? "text" : "password"}
                   value={form.password}
-                  onChange={(e) => setField("password", e.target.value)}
-                  className={`w-full px-3 py-2.5 pr-10 text-sm border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-100 focus:border-blue-400 transition-colors ${
-                    errors.password ? "border-red-400 bg-red-50" : "border-gray-200"
-                  }`}
-                  placeholder=""
+                  readOnly
+                  aria-label="Auto-generated password"
+                  className="w-full pl-9 pr-10 py-2.5 text-sm border border-gray-200 rounded-lg bg-gray-50 text-gray-500 cursor-not-allowed font-mono"
                 />
                 <button
                   type="button"
@@ -326,33 +291,10 @@ export default function AddAccountModal({
                   {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                 </button>
               </div>
-            )}
-            {errors.password && <p className="text-xs text-red-500">{errors.password}</p>}
-          </div>
-
-          {/* Confirm Password — edit mode only */}
-          {isEdit && (
-            <div className="space-y-1.5">
-              <label className="block text-sm font-medium text-gray-700">Confirm Password</label>
-              <div className="relative">
-                <input
-                  type={showConfirm ? "text" : "password"}
-                  value={form.confirmPassword}
-                  onChange={(e) => setField("confirmPassword", e.target.value)}
-                  className={`w-full px-3 py-2.5 pr-10 text-sm border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-100 focus:border-blue-400 transition-colors ${
-                    errors.confirmPassword ? "border-red-400 bg-red-50" : "border-gray-200"
-                  }`}
-                  placeholder=""
-                />
-                <button
-                  type="button"
-                  onClick={() => setShowConfirm((v) => !v)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
-                >
-                  {showConfirm ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                </button>
-              </div>
-              {errors.confirmPassword && <p className="text-xs text-red-500">{errors.confirmPassword}</p>}
+              <p className="text-xs text-blue-500">
+                Auto-generated from full name: <span className="font-mono">{form.password || "—"}</span>
+              </p>
+              {errors.password && <p className="text-xs text-red-500">{errors.password}</p>}
             </div>
           )}
 
@@ -362,7 +304,6 @@ export default function AddAccountModal({
               Role <span className="text-red-500">*</span>
             </label>
             {mode === "admin" ? (
-              /* Admin mode — role is fixed, just display it */
               <div className="w-full px-3 py-2.5 text-sm border border-gray-200 rounded-lg bg-gray-50 text-gray-500 cursor-not-allowed">
                 Admin
               </div>
@@ -370,6 +311,7 @@ export default function AddAccountModal({
               <select
                 value={form.role}
                 onChange={(e) => setField("role", e.target.value)}
+                aria-label="Role"
                 className="w-full px-3 py-2.5 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-100 focus:border-blue-400 bg-white transition-colors"
               >
                 {roleOptions.map(({ value, label }) => (
@@ -380,6 +322,15 @@ export default function AddAccountModal({
               </select>
             )}
           </div>
+
+          {/* Edit mode hint */}
+          {isEdit && (
+            <div className="flex items-start gap-2.5 bg-amber-50 border border-amber-100 rounded-lg px-4 py-3">
+              <p className="text-xs text-amber-700">
+                To reset this account&apos;s password, use the <span className="font-semibold">Reset Password</span> option from the account menu.
+              </p>
+            </div>
+          )}
         </form>
 
         {/* Footer */}
