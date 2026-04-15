@@ -176,6 +176,7 @@ export default function CustomerRecords() {
                         </div>
                         {isEditing ? (
                           <input
+                            aria-label="Full name"
                             className={`${EDIT_INPUT} w-40`}
                             value={editDraft.fullName ?? ""}
                             onChange={(e) => setEditDraft((d) => ({ ...d, fullName: e.target.value }))}
@@ -195,6 +196,7 @@ export default function CustomerRecords() {
                     <td className="px-5 py-4">
                       {isEditing ? (
                         <input
+                          aria-label="Vehicle unit"
                           className={`${EDIT_INPUT} w-36`}
                           value={editDraft.vehicleUnit ?? ""}
                           onChange={(e) => setEditDraft((d) => ({ ...d, vehicleUnit: e.target.value }))}
@@ -208,6 +210,7 @@ export default function CustomerRecords() {
                     <td className="px-5 py-4">
                       {isEditing ? (
                         <input
+                          aria-label="Plate number"
                           className={`${EDIT_INPUT} w-28`}
                           value={editDraft.plateNumber ?? ""}
                           onChange={(e) => setEditDraft((d) => ({ ...d, plateNumber: e.target.value }))}
@@ -224,6 +227,7 @@ export default function CustomerRecords() {
                     <td className="px-5 py-4">
                       {isEditing ? (
                         <input
+                          aria-label="Contact number"
                           className={`${EDIT_INPUT} w-36`}
                           value={editDraft.contactNumber ?? ""}
                           onChange={(e) => setEditDraft((d) => ({ ...d, contactNumber: e.target.value }))}

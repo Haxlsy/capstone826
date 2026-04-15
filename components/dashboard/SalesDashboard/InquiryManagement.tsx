@@ -407,7 +407,9 @@ export default function InquiryManagement() {
           <div className="bg-white rounded-2xl shadow-xl w-full max-w-md p-6">
             <div className="flex items-center justify-between mb-5">
               <h3 className="text-base font-semibold text-gray-800">Record Customer Details</h3>
-              <button onClick={() => setRecordOpen(false)} className="text-gray-400 hover:text-gray-600">
+              <button 
+              aria-label="Record Button"
+              onClick={() => setRecordOpen(false)} className="text-gray-400 hover:text-gray-600">
                 <X className="w-5 h-5" />
               </button>
             </div>

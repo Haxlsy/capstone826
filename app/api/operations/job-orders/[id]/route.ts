@@ -88,6 +88,8 @@ export async function GET(
           rework_instructions:  s.rework_instructions,
           handoff_notes:        s.handoff_notes,
           completed_at:         s.completed_at,
+          messenger_sent:       (s as any).messenger_sent ?? null,
+          messenger_sent_at:    (s as any).messenger_sent_at ?? null,
           media:                s.media ?? [],
         })),
       },

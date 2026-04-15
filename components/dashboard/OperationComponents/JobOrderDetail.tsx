@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react"
 import Link from "next/link"
-import { ArrowLeft, PackageCheck, ChevronDown, Users } from "lucide-react"
+import { ArrowLeft, PackageCheck, ChevronDown, Users, RefreshCw, CheckCircle2, XCircle, Clock } from "lucide-react"
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -21,6 +21,8 @@ interface Stage {
   rework_instructions: string | null
   handoff_notes:       string | null
   completed_at:        string | null
+  messenger_sent:      boolean | null   // null = not attempted, true = sent, false = failed
+  messenger_sent_at:   string | null
   media:               StageMedia[]
 }
 
@@ -97,6 +99,11 @@ export default function JobOrderDetail({ jobId }: { jobId: string }) {
   // Release confirmation
   const [releasing, setReleasing] = useState(false)
 
+  // Resend state: tracks which stage is currently being resent
+  const [resendingId, setResendingId] = useState<string | null>(null)
+  // Per-stage optimistic send status override after a resend attempt
+  const [resendStatus, setResendStatus] = useState<Record<string, boolean | null>>({})
+
   const load = useCallback(async () => {
     setLoading(true)
     setError(null)
@@ -129,6 +136,27 @@ export default function JobOrderDetail({ jobId }: { jobId: string }) {
       setError(err instanceof Error ? err.message : String(err))
     } finally {
       setReleasing(false)
+    }
+  }
+
+  async function resendStage(stageId: string) {
+    setResendingId(stageId)
+    try {
+      const res  = await fetch(`/api/operations/job-orders/${jobId}/resend-stage`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ stage_id: stageId }),
+      })
+      const json = await res.json()
+      setResendStatus((prev) => ({ ...prev, [stageId]: res.ok ? true : false }))
+      if (!res.ok) {
+        // Keep the failed indicator — the API already persisted it
+        console.warn("Resend failed:", json?.error)
+      }
+    } catch {
+      setResendStatus((prev) => ({ ...prev, [stageId]: false }))
+    } finally {
+      setResendingId(null)
     }
   }
 
@@ -261,6 +289,31 @@ export default function JobOrderDetail({ jobId }: { jobId: string }) {
                           )}
                         </div>
 
+                        {/* Messenger send status indicator (done stages only) */}
+                        {stage.status === "done" && (
+                          <div className="flex items-center gap-2 mt-1.5 flex-wrap">
+                            <SendIndicator
+                              sent={resendStatus[stage.id] !== undefined ? resendStatus[stage.id] : stage.messenger_sent}
+                              sentAt={stage.messenger_sent_at}
+                            />
+                            {/* Show Resend button when send failed or not yet attempted */}
+                            {(resendStatus[stage.id] !== undefined ? resendStatus[stage.id] : stage.messenger_sent) !== true && (
+                              <button
+                                type="button"
+                                title="Resend stage update to customer via Messenger"
+                                onClick={() => resendStage(stage.id)}
+                                disabled={resendingId === stage.id}
+                                className="flex items-center gap-1 text-xs font-medium text-blue-600 hover:text-blue-800 disabled:opacity-50 transition-colors"
+                              >
+                                <RefreshCw
+                                  className={`w-3 h-3 ${resendingId === stage.id ? "animate-spin" : ""}`}
+                                />
+                                {resendingId === stage.id ? "Resending…" : "Resend stage update"}
+                              </button>
+                            )}
+                          </div>
+                        )}
+
                         {stage.rework_instructions && (
                           <p className="text-xs text-orange-600 mt-1">
                             Rework: {stage.rework_instructions}
@@ -324,6 +377,37 @@ export default function JobOrderDetail({ jobId }: { jobId: string }) {
       </div>
 
     </div>
+  )
+}
+
+// ── SendIndicator ─────────────────────────────────────────────────────────────
+// Shows whether the AI/Messenger stage update was sent to the customer.
+//   null  → not yet attempted
+//   true  → sent successfully
+//   false → send failed
+
+function SendIndicator({ sent, sentAt }: { sent: boolean | null; sentAt: string | null }) {
+  if (sent === true) {
+    return (
+      <span className="inline-flex items-center gap-1 text-[11px] font-medium text-green-700 bg-green-50 border border-green-200 rounded-full px-2 py-0.5">
+        <CheckCircle2 className="w-3 h-3" />
+        Update sent{sentAt ? ` · ${fmtDate(sentAt)}` : ""}
+      </span>
+    )
+  }
+  if (sent === false) {
+    return (
+      <span className="inline-flex items-center gap-1 text-[11px] font-medium text-red-700 bg-red-50 border border-red-200 rounded-full px-2 py-0.5">
+        <XCircle className="w-3 h-3" />
+        Update failed{sentAt ? ` · ${fmtDate(sentAt)}` : ""}
+      </span>
+    )
+  }
+  return (
+    <span className="inline-flex items-center gap-1 text-[11px] font-medium text-red-500 bg-gray-50 border border-gray-200 rounded-full px-2 py-0.5">
+      <Clock className="w-3 h-3" />
+      Update not sent
+    </span>
   )
 }
 

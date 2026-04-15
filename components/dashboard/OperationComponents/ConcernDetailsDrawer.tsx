@@ -68,6 +68,7 @@ export default function ConcernDetailsDrawer({ record, onClose, onResolve }: Con
         <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100 shrink-0">
           <h2 className="text-base font-bold text-gray-800">Concern Details</h2>
           <button
+            aria-label="Close concern details"
             onClick={onClose}
             className="w-7 h-7 flex items-center justify-center rounded-md text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors"
           >
