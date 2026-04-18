@@ -16,13 +16,15 @@ export async function POST() {
     // Log the logout event after sign-out (fire-and-forget)
     if (user) {
       const admin = createAdminClient()
-      admin
-        .from("user_account")
-        .select("full_name, role")
-        .eq("id", user.id)
-        .single()
-        .then(({ data: profile }) => {
-          if (profile) {
+      Promise.resolve(
+        admin
+          .from("user_account")
+          .select("full_name, role")
+          .eq("id", user.id)
+          .single()
+      ).then(({ data: profile }) => {
+        if (profile) {
+          Promise.resolve(
             admin.from("audit_log").insert({
               user_id:   user.id,
               user_name: profile.full_name,
@@ -30,10 +32,10 @@ export async function POST() {
               category:  "auth",
               action:    "Logged out",
               target:    "",
-            }).then(() => {}).catch(() => {})
-          }
-        })
-        .catch(() => {})
+            })
+          ).catch(() => {})
+        }
+      }).catch(() => {})
     }
 
     return NextResponse.json({ success: true })
