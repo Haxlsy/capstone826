@@ -65,7 +65,7 @@ function CrewCheckboxList({
       {loading ? (
         <p className="text-xs text-gray-400 py-2">Loading…</p>
       ) : members.length === 0 ? (
-        <p className="text-xs text-gray-400 py-2">No {label.toLowerCase()} added yet.</p>
+        <p className="text-xs text-gray-400 py-2">No available {label.toLowerCase()} at the moment.</p>
       ) : (
         <div className="border border-gray-200 rounded-lg divide-y divide-gray-50 max-h-40 overflow-y-auto">
           {members.map((c) => (
@@ -168,8 +168,8 @@ export default function AddJobOrderForm() {
 
   const headDetailers  = headTechs.filter((t) => t.role === "head_detailer")
   const headInstallers = headTechs.filter((t) => t.role === "head_installer")
-  const detailers      = crewMembers.filter((c) => c.role === "detailer")
-  const installers     = crewMembers.filter((c) => c.role === "installer")
+  const detailers      = crewMembers.filter((c) => c.role === "detailer"  && c.is_available && !c.on_job)
+  const installers     = crewMembers.filter((c) => c.role === "installer" && c.is_available && !c.on_job)
 
   function toggleCrew(id: string, set: Set<string>, setter: (s: Set<string>) => void) {
     // Guard: never toggle a crew member who is currently on an active job
