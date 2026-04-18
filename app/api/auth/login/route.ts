@@ -47,14 +47,16 @@ export async function POST(request: Request) {
   }
 
   // Log the login event (fire-and-forget — don't block the response)
-  admin.from("audit_log").insert({
-    user_id:   data.user.id,
-    user_name: profile.full_name,
-    role:      profile.role,
-    category:  "auth",
-    action:    "Logged in",
-    target:    "",
-  }).then(() => {}).catch(() => {})
+  Promise.resolve(
+    admin.from("audit_log").insert({
+      user_id:   data.user.id,
+      user_name: profile.full_name,
+      role:      profile.role,
+      category:  "auth",
+      action:    "Logged in",
+      target:    "",
+    })
+  ).catch(() => {})
 
   return NextResponse.json({ user: profile })
 }
