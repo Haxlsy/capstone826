@@ -41,18 +41,18 @@ export async function POST(request: Request) {
 
     // Audit log (fire-and-forget)
     if (profile) {
-      admin
-        .from("audit_log")
-        .insert({
-          user_id:   userId,
-          user_name: profile.full_name,
-          role:      profile.role,
-          category:  "account",
-          action:    "Password reset",
-          target:    profile.full_name,
-        })
-        .then(() => {})
-        .catch(() => {})
+      Promise.resolve(
+        admin
+          .from("audit_log")
+          .insert({
+            user_id:   userId,
+            user_name: profile.full_name,
+            role:      profile.role,
+            category:  "account",
+            action:    "Password reset",
+            target:    profile.full_name,
+          })
+      ).catch(() => {})
     }
 
     return NextResponse.json({ password: newPassword })
