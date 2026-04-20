@@ -23,7 +23,10 @@ export async function GET(
       .eq("id", id)
       .single()
 
-    if (error || !job) return NextResponse.json({ error: "Not found." }, { status: 404 })
+    if (error || !job) {
+      console.error("[job-orders detail] query failed — id:", id, "error:", error?.message, "code:", error?.code)
+      return NextResponse.json({ error: error?.message ?? "Not found." }, { status: 404 })
+    }
 
     // Team members
     const { data: team } = await supabase
