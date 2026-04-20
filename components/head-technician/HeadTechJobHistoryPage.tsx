@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useRouter } from "next/navigation";
 import {
   ChevronLeft, CheckCircle2, Circle, ImagePlus, Video,
@@ -63,8 +63,9 @@ const STATUS_BADGE: Record<string, string> = {
 export default function HeadTechJobHistoryPage({ jobId }: { jobId: string }) {
   const router = useRouter();
 
-  const [job, setJob]         = useState<JobDetail | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [job, setJob]           = useState<JobDetail | null>(null);
+  const [loading, setLoading]   = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [userRole, setUserRole] = useState<string>("");
 
   const [uploadingId, setUploadingId] = useState<string | null>(null);
@@ -74,6 +75,8 @@ export default function HeadTechJobHistoryPage({ jobId }: { jobId: string }) {
 
   const [markingId, setMarkingId] = useState<string | null>(null);
   const [startingJob, setStartingJob] = useState(false);
+  const [rejectionAlert, setRejectionAlert] = useState<{ message: string } | null>(null);
+  const [cameraStage, setCameraStage]       = useState<StageDoc | null>(null);
 
   const [showApprove, setShowApprove]   = useState(false);
   const [handoffNotes, setHandoffNotes] = useState("");
@@ -105,12 +108,21 @@ export default function HeadTechJobHistoryPage({ jobId }: { jobId: string }) {
 
   const load = useCallback(async () => {
     setLoading(true);
+    setLoadError(null);
     try {
       const res  = await fetch(`/api/head-technician/jobs/${jobId}`);
       const json = await res.json();
-      if (res.ok && json.job) setJob(json.job);
-    } catch {}
-    finally { setLoading(false); }
+      if (!res.ok) {
+        setLoadError(json?.error ?? `HTTP ${res.status}`);
+        return;
+      }
+      if (json.job) setJob(json.job);
+      else setLoadError("No job data returned.");
+    } catch (err: unknown) {
+      setLoadError(err instanceof Error ? err.message : "Network error");
+    } finally {
+      setLoading(false);
+    }
   }, [jobId]);
 
   useEffect(() => { load(); }, [load]);
@@ -197,6 +209,37 @@ export default function HeadTechJobHistoryPage({ jobId }: { jobId: string }) {
         };
       });
 
+      // Validate photos with AI before uploading
+      if (isPhoto) {
+        try {
+          const validateForm = new FormData();
+          validateForm.append("file", file);
+          const validateRes  = await fetch("/api/ai/image-handler", { method: "POST", body: validateForm });
+          const validateJson = await validateRes.json();
+
+          if (!validateJson.approved) {
+            URL.revokeObjectURL(localUrl);
+            setJob((prev) => {
+              if (!prev) return prev;
+              return {
+                ...prev,
+                stages: prev.stages.map((s) =>
+                  s.id === stage.id
+                    ? { ...s, media: s.media.filter((m) => m.id !== tmpId) }
+                    : s
+                ),
+              };
+            });
+            setRejectionAlert({
+              message: validateJson.message ?? "This image is not acceptable. Please retake the photo.",
+            });
+            continue;
+          }
+        } catch {
+          // Validation error — fail open and proceed with upload
+        }
+      }
+
       try {
         const form = new FormData();
         form.append("file", file);
@@ -255,6 +298,13 @@ export default function HeadTechJobHistoryPage({ jobId }: { jobId: string }) {
     }
 
     setUploadingId(null);
+  }
+
+  function handleCameraCapture(stage: StageDoc, file: File) {
+    setCameraStage(null);
+    const dt = new DataTransfer();
+    dt.items.add(file);
+    handleFileChange(stage, dt.files);
   }
 
   async function removeMedia(stage: StageDoc, mediaId: string) {
@@ -370,8 +420,14 @@ export default function HeadTechJobHistoryPage({ jobId }: { jobId: string }) {
   );
 
   if (!job) return (
-    <main className="px-4 py-6 max-w-md mx-auto text-center">
-      <p className="text-sm text-gray-400 mt-20">Job not found.</p>
+    <main className="px-4 py-6 max-w-md mx-auto text-center space-y-3 mt-20">
+      <p className="text-sm text-red-500">{loadError ?? "Job not found."}</p>
+      <button
+        onClick={() => router.back()}
+        className="text-xs text-gray-400 underline"
+      >
+        Go back
+      </button>
     </main>
   );
 
@@ -522,6 +578,7 @@ export default function HeadTechJobHistoryPage({ jobId }: { jobId: string }) {
                 onFileChange={(files) => handleFileChange(stage, files)}
                 onRemoveMedia={(mediaId) => removeMedia(stage, mediaId)}
                 onPreview={(url, type) => setPreview({ url, type })}
+                onCameraOpen={() => setCameraStage(stage)}
               />
             ))
           )}
@@ -832,6 +889,39 @@ export default function HeadTechJobHistoryPage({ jobId }: { jobId: string }) {
         </div>
       )}
 
+      {/* Image rejection alert */}
+      {rejectionAlert && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-6">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm p-5 space-y-4">
+            <div className="flex items-start gap-3">
+              <div className="w-10 h-10 bg-red-100 rounded-full flex items-center justify-center shrink-0">
+                <AlertTriangle size={20} className="text-red-500" />
+              </div>
+              <div>
+                <h3 className="text-sm font-semibold text-gray-900">Image Not Accepted</h3>
+                <p className="text-xs text-gray-400 mt-0.5">Please retake your photo</p>
+              </div>
+            </div>
+            <p className="text-sm text-gray-700 leading-snug">{rejectionAlert.message}</p>
+            <button
+              type="button"
+              onClick={() => setRejectionAlert(null)}
+              className="w-full text-sm font-semibold text-white bg-gray-900 rounded-xl py-3 hover:bg-gray-800 active:scale-[0.98] transition-all"
+            >
+              OK, Retake Photo
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Rear-camera capture modal */}
+      {cameraStage && (
+        <CameraModal
+          onCapture={(file: File) => handleCameraCapture(cameraStage, file)}
+          onClose={() => setCameraStage(null)}
+        />
+      )}
+
       <BottomNav active="jobs" />
     </>
   );
@@ -851,7 +941,7 @@ function SectionLabel({ children }: { children: React.ReactNode }) {
 
 function StageCard({
   stage, readOnly, isMarking, isUploading, removingId, uploadError,
-  onMarkDone, onFileChange, onRemoveMedia, onPreview,
+  onMarkDone, onFileChange, onRemoveMedia, onPreview, onCameraOpen,
 }: {
   stage:         StageDoc;
   readOnly:      boolean;
@@ -863,6 +953,7 @@ function StageCard({
   onFileChange:  (files: FileList | null) => void;
   onRemoveMedia: (mediaId: string) => void;
   onPreview:     (url: string, type: string) => void;
+  onCameraOpen?: () => void;
 }) {
   const done       = stage.status === "done";
   const rework     = stage.status === "for_rework";
@@ -973,23 +1064,20 @@ function StageCard({
             <p className="text-[11px] text-orange-500">Media locked — stage is flagged for rework.</p>
           )}
           <div className="flex items-center gap-2">
-            {/* Photo */}
-            <label className={`flex-1 flex items-center justify-center gap-1.5 text-xs font-semibold border rounded-xl py-2.5 transition-colors ${
-              isUploading || photoFull || done || rework
-                ? "opacity-40 pointer-events-none text-gray-400 border-gray-200 bg-gray-50"
-                : "text-gray-600 border-gray-200 hover:bg-gray-50 cursor-pointer bg-white"
-            }`}>
+            {/* Photo — opens locked rear-camera UI */}
+            <button
+              type="button"
+              onClick={onCameraOpen}
+              disabled={isUploading || photoFull || done || rework}
+              className={`flex-1 flex items-center justify-center gap-1.5 text-xs font-semibold border rounded-xl py-2.5 transition-colors ${
+                isUploading || photoFull || done || rework
+                  ? "opacity-40 cursor-not-allowed text-gray-400 border-gray-200 bg-gray-50"
+                  : "text-gray-600 border-gray-200 hover:bg-gray-50 cursor-pointer bg-white"
+              }`}
+            >
               <ImagePlus size={13} />
               Photo {photoCount > 0 && `(${photoCount}/5)`}
-              <input
-                ref={(el) => { if (el) el.setAttribute("capture", "environment") }}
-                type="file"
-                accept="image/*"
-                className="hidden"
-                onChange={(e) => onFileChange(e.target.files)}
-                disabled={done || rework}
-              />
-            </label>
+            </button>
 
             {/* Video */}
             <label className={`flex-1 flex items-center justify-center gap-1.5 text-xs font-semibold border rounded-xl py-2.5 transition-colors ${
@@ -1000,9 +1088,9 @@ function StageCard({
               <Video size={13} />
               Video {videoFull ? "(1/1)" : ""}
               <input
-                ref={(el) => { if (el) el.setAttribute("capture", "environment") }}
                 type="file"
                 accept="video/*"
+                capture="environment"
                 className="hidden"
                 onChange={(e) => onFileChange(e.target.files)}
                 disabled={done || rework}
@@ -1013,7 +1101,7 @@ function StageCard({
             {!done && (
               <button
                 onClick={onMarkDone}
-                disabled={isMarking || stage.media.length === 0}
+                disabled={isMarking || isUploading || stage.media.length === 0}
                 className="flex-1 flex items-center justify-center gap-1.5 text-xs font-semibold text-white bg-gray-900 rounded-xl py-2.5 hover:bg-gray-700 active:scale-[0.98] transition-all disabled:opacity-40 disabled:cursor-not-allowed"
               >
                 {isMarking ? <Loader2 size={12} className="animate-spin" /> : <CheckCircle2 size={12} />}
@@ -1036,6 +1124,109 @@ function InfoRow({ label, value, accent }: { label: string; value: string; accen
       <span className={`text-sm font-semibold text-right ${accent === "orange" ? "text-orange-500" : "text-gray-800"}`}>
         {value}
       </span>
+    </div>
+  );
+}
+
+// ── CameraModal ───────────────────────────────────────────────────────────────
+
+function CameraModal({ onCapture, onClose }: { onCapture: (file: File) => void; onClose: () => void }) {
+  const videoRef  = useRef<HTMLVideoElement>(null);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const streamRef = useRef<MediaStream | null>(null);
+  const [camError, setCamError] = useState<string | null>(null);
+  const [ready, setReady]       = useState(false);
+
+  useEffect(() => {
+    if (!navigator.mediaDevices?.getUserMedia) {
+      setCamError("Camera API unavailable — this requires a secure connection (HTTPS). Use the button below to pick a photo instead.");
+      return;
+    }
+    let active = true;
+    navigator.mediaDevices
+      .getUserMedia({ video: { facingMode: { exact: "environment" } } })
+      .then((stream) => {
+        if (!active) { stream.getTracks().forEach((t: MediaStreamTrack) => t.stop()); return; }
+        streamRef.current = stream;
+        if (videoRef.current) {
+          videoRef.current.srcObject = stream;
+          videoRef.current.play();
+          setReady(true);
+        }
+      })
+      .catch(() => { if (active) setCamError("Could not access the back camera. Please allow camera permissions and try again."); });
+    return () => {
+      active = false;
+      streamRef.current?.getTracks().forEach((t: MediaStreamTrack) => t.stop());
+    };
+  }, []);
+
+  function close() {
+    streamRef.current?.getTracks().forEach((t: MediaStreamTrack) => t.stop());
+    onClose();
+  }
+
+  function capture() {
+    if (!videoRef.current || !canvasRef.current || !ready) return;
+    const video  = videoRef.current;
+    const canvas = canvasRef.current;
+    canvas.width  = video.videoWidth;
+    canvas.height = video.videoHeight;
+    canvas.getContext("2d")?.drawImage(video, 0, 0);
+    canvas.toBlob((blob: Blob | null) => {
+      if (!blob) return;
+      streamRef.current?.getTracks().forEach((t: MediaStreamTrack) => t.stop());
+      onCapture(new File([blob], `photo-${Date.now()}.jpg`, { type: "image/jpeg" }));
+    }, "image/jpeg", 0.92);
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 bg-black flex flex-col">
+      <div className="flex items-center justify-between px-4 py-3">
+        <button type="button" onClick={close} className="text-white p-1">
+          <X size={22} />
+        </button>
+        <p className="text-white text-xs font-semibold tracking-wide uppercase">Back Camera</p>
+        <div className="w-8" />
+      </div>
+
+      {camError ? (
+        <div className="flex-1 flex flex-col items-center justify-center px-8 gap-6">
+          <p className="text-white text-sm text-center leading-relaxed">{camError}</p>
+          <label className="px-6 py-3 bg-white/20 hover:bg-white/30 rounded-xl text-white text-sm font-semibold cursor-pointer transition-colors">
+            Choose Photo Instead
+            <input
+              type="file"
+              accept="image/*"
+              capture="environment"
+              className="hidden"
+              onChange={(e) => {
+                const file = e.target.files?.[0];
+                if (file) { streamRef.current?.getTracks().forEach((t: MediaStreamTrack) => t.stop()); onCapture(file); }
+              }}
+            />
+          </label>
+        </div>
+      ) : (
+        <video
+          ref={videoRef}
+          className="flex-1 w-full object-cover"
+          playsInline
+          muted
+        />
+      )}
+
+      <canvas ref={canvasRef} className="hidden" />
+
+      <div className="flex justify-center items-center py-8 bg-black">
+        <button
+          type="button"
+          onClick={capture}
+          disabled={!ready}
+          aria-label="Capture photo"
+          className="w-16 h-16 rounded-full border-4 border-white bg-white/20 hover:bg-white/30 active:scale-95 transition-all disabled:opacity-40"
+        />
+      </div>
     </div>
   );
 }
