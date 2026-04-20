@@ -18,17 +18,22 @@ export async function GET() {
 
     const headIds = (heads ?? []).map((h: any) => h.id)
 
-    // All three queries are independent — run in parallel
+    const ACTIVE_STATUSES = ["Pending", "Ongoing", "For Rework", "Delayed"]
+
+    // Fetch active job IDs first, then fan out — avoids unreliable FK join syntax
+    const { data: activeJobs } = await supabase
+      .from("job_order")
+      .select("id")
+      .in("status", ACTIVE_STATUSES)
+
+    const activeJobIds = (activeJobs ?? []).map((j: any) => j.id as string)
+
+    // All remaining queries are independent — run in parallel
     const [
-      { data: activeTeam },
       { data: crew, error: crewError },
-      { data: crewAssignments },
+      { data: headTeamRows },
+      { data: crewTeamRows },
     ] = await Promise.all([
-      // Head tech active job count
-      supabase
-        .from("job_order_team")
-        .select("user_account_id, job_order:job_order_id(status)")
-        .in("user_account_id", headIds),
       // Crew roster
       supabase
         .from("technician")
@@ -37,32 +42,40 @@ export async function GET() {
         .eq("is_archived", false)
         .order("role")
         .order("full_name"),
-      // Crew active job assignments — to detect double-booking
-      supabase
-        .from("job_order_team")
-        .select("technician_id, job_order:job_order_id(status)")
-        .not("technician_id", "is", null),
+      // Head tech assignments on active jobs
+      activeJobIds.length > 0
+        ? supabase
+            .from("job_order_team")
+            .select("user_account_id")
+            .in("job_order_id", activeJobIds)
+            .in("user_account_id", headIds)
+        : Promise.resolve({ data: [] }),
+      // Crew assignments on active jobs
+      activeJobIds.length > 0
+        ? supabase
+            .from("job_order_team")
+            .select("technician_id")
+            .in("job_order_id", activeJobIds)
+            .not("technician_id", "is", null)
+        : Promise.resolve({ data: [] }),
     ])
 
-    if (crewError) return NextResponse.json({ error: crewError.message }, { status: 500 })
+    if (crewError) {
+      console.error("[list-technicians] crew query failed:", crewError.message)
+      return NextResponse.json({ error: crewError.message }, { status: 500 })
+    }
 
     // Head tech: count active jobs
     const jobCountMap = new Map<string, number>()
-    for (const t of activeTeam ?? []) {
-      const job = t.job_order as any
-      if (job && ["Pending", "Ongoing", "For Rework", "Delayed"].includes(job.status)) {
-        const id = t.user_account_id as string
-        jobCountMap.set(id, (jobCountMap.get(id) ?? 0) + 1)
-      }
+    for (const t of headTeamRows ?? []) {
+      const id = t.user_account_id as string
+      jobCountMap.set(id, (jobCountMap.get(id) ?? 0) + 1)
     }
 
     // Crew: build set of technician IDs currently on an active job
     const onJobCrewIds = new Set<string>()
-    for (const a of crewAssignments ?? []) {
-      const job = a.job_order as any
-      if (job && ["Pending", "Ongoing", "For Rework", "Delayed"].includes(job.status)) {
-        if (a.technician_id) onJobCrewIds.add(a.technician_id as string)
-      }
+    for (const a of crewTeamRows ?? []) {
+      if (a.technician_id) onJobCrewIds.add(a.technician_id as string)
     }
 
     const technicians = (heads ?? []).map((h: any) => ({
