@@ -1,8 +1,8 @@
 "use client"
 
 import {
-  Clock, PlayCircle, ClipboardCheck, CheckCircle2,
-  AlertTriangle, PackageCheck, XCircle,
+  Clock, PlayCircle, ClipboardCheck,
+  AlertTriangle, PackageCheck,
 } from "lucide-react"
 
 export type JobStatus =
@@ -80,6 +80,15 @@ export const STATUS_OPTIONS: StatusOption[] = [
   },
 ]
 
+export const ALLOWED_NEXT: Record<JobStatus, JobStatus[]> = {
+  "Pending":    ["Ongoing", "Delayed"],
+  "Ongoing":    ["For Rework", "For Release", "Delayed"],
+  "For Rework": ["Ongoing", "For Release", "Delayed"],
+  "For Release":["Released"],
+  "Released":   [],
+  "Delayed":    ["Ongoing", "For Release"],
+}
+
 export const STATUS_BADGE_MAP: Record<string, string> = {
   Pending:        "bg-amber-100 text-amber-700",
   Ongoing:        "bg-blue-100 text-blue-700",
@@ -122,17 +131,19 @@ export default function StatusPickerModal({ jobId, customerName, currentStatus, 
         {/* Options */}
         <div className="px-4 py-3 flex flex-col gap-2">
           <p className="text-xs text-gray-400 font-medium uppercase tracking-wide mb-1">
-            Select new status
+            Select next status
           </p>
           {STATUS_OPTIONS.map((opt) => {
-            const isCurrent = opt.label === currentStatus
+            const isCurrent  = opt.label === currentStatus
+            const isAllowed  = ALLOWED_NEXT[currentStatus]?.includes(opt.label) ?? false
+            const isDisabled = isCurrent || !isAllowed
             return (
               <button
                 key={opt.db}
-                onClick={() => !isCurrent && onSelect(opt)}
-                disabled={isCurrent}
+                onClick={() => isAllowed && onSelect(opt)}
+                disabled={isDisabled}
                 className={`flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all ring-1 ${opt.ring} ${opt.bg} ${opt.text} ${
-                  isCurrent ? "opacity-40 cursor-not-allowed" : "cursor-pointer"
+                  isDisabled ? "opacity-30 cursor-not-allowed" : "cursor-pointer"
                 }`}
               >
                 <span className={`flex items-center justify-center w-7 h-7 rounded-lg ${opt.iconBg}`}>
@@ -140,9 +151,7 @@ export default function StatusPickerModal({ jobId, customerName, currentStatus, 
                 </span>
                 <span className="flex-1 text-left">{opt.label}</span>
                 {isCurrent && (
-                  <span className="text-[10px] font-semibold uppercase tracking-wide opacity-60">
-                    Current
-                  </span>
+                  <span className="text-[10px] font-semibold uppercase tracking-wide opacity-60">Current</span>
                 )}
               </button>
             )

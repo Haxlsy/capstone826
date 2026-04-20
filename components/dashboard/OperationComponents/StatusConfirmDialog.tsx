@@ -1,32 +1,36 @@
 "use client"
 
+import { useState } from "react"
 import { Loader2 } from "lucide-react"
 import type { StatusOption } from "./StatusPickerModal"
 
+const MAX_REASON = 300
+
 interface Props {
   customerName: string
-  target: StatusOption
-  error: string | null
-  updating: boolean
-  onConfirm: () => void
-  onBack: () => void
-  count?: number // when bulk updating multiple jobs
+  target:       StatusOption
+  error:        string | null
+  updating:     boolean
+  onConfirm:    (reason: string) => void
+  onBack:       () => void
+  count?:       number
 }
 
 export default function StatusConfirmDialog({ customerName, target, error, updating, onConfirm, onBack, count }: Props) {
-  const isBulk = count !== undefined && count > 1
+  const [reason, setReason] = useState("")
+  const isBulk  = count !== undefined && count > 1
   const subject = isBulk ? `${count} selected jobs` : customerName
+
   return (
     <div
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm"
       onClick={() => !updating && onBack()}
     >
       <div
-        className="bg-white rounded-2xl shadow-2xl w-full max-w-xs mx-4 overflow-hidden"
+        className="bg-white rounded-2xl shadow-2xl w-full max-w-sm mx-4 overflow-hidden"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="px-5 pt-5 pb-4 text-center">
-          {/* Status icon */}
           <div className={`mx-auto w-12 h-12 rounded-full flex items-center justify-center mb-3 ${target.iconBg}`}>
             <span className={target.text}>{target.icon}</span>
           </div>
@@ -36,17 +40,30 @@ export default function StatusConfirmDialog({ customerName, target, error, updat
             Update <span className="font-semibold text-gray-700">{subject}</span> to
           </p>
 
-          <span
-            className={`inline-flex items-center gap-1.5 mt-2 px-3 py-1 rounded-full text-sm font-semibold ring-1 ${target.ring} ${target.iconBg} ${target.text}`}
-          >
+          <span className={`inline-flex items-center gap-1.5 mt-2 px-3 py-1 rounded-full text-sm font-semibold ring-1 ${target.ring} ${target.iconBg} ${target.text}`}>
             {target.icon}
             {target.label}
           </span>
-
-          {error && (
-            <p className="mt-3 text-xs text-red-500 bg-red-50 rounded-lg px-3 py-2">{error}</p>
-          )}
         </div>
+
+        {/* Reason */}
+        <div className="px-5 pb-3">
+          <label className="text-xs font-medium text-gray-600">
+            Reason <span className="text-gray-400 font-normal">(optional)</span>
+          </label>
+          <textarea
+            value={reason}
+            onChange={(e) => setReason(e.target.value.slice(0, MAX_REASON))}
+            rows={3}
+            placeholder="Describe the reason for this status change…"
+            className="mt-1.5 w-full border border-gray-200 rounded-xl px-3 py-2 text-sm text-gray-700 resize-none focus:outline-none focus:ring-2 focus:ring-blue-500"
+          />
+          <p className="text-[10px] text-gray-400 text-right mt-0.5">{reason.length}/{MAX_REASON}</p>
+        </div>
+
+        {error && (
+          <p className="mx-5 mb-3 text-xs text-red-500 bg-red-50 rounded-lg px-3 py-2">{error}</p>
+        )}
 
         <div className="flex gap-2 px-5 pb-5">
           <button
@@ -57,19 +74,13 @@ export default function StatusConfirmDialog({ customerName, target, error, updat
             Back
           </button>
           <button
-            onClick={onConfirm}
+            onClick={() => onConfirm(reason.trim())}
             disabled={updating}
             className={`flex-1 py-2 text-sm font-semibold text-white rounded-xl transition-colors disabled:opacity-60 flex items-center justify-center gap-1.5 ${
-              target.db === "cancelled" ? "bg-gray-700 hover:bg-gray-800" :
-              target.db === "delayed"   ? "bg-red-500 hover:bg-red-600" :
-              "bg-gray-900 hover:bg-gray-800"
+              target.db === "Delayed" ? "bg-red-500 hover:bg-red-600" : "bg-gray-900 hover:bg-gray-800"
             }`}
           >
-            {updating ? (
-              <><Loader2 className="w-4 h-4 animate-spin" /> Updating…</>
-            ) : (
-              "Confirm"
-            )}
+            {updating ? <><Loader2 className="w-4 h-4 animate-spin" /> Updating…</> : "Confirm"}
           </button>
         </div>
       </div>
