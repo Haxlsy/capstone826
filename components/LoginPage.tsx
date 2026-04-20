@@ -55,7 +55,7 @@ export default function LoginPage() {
 
       try {
         localStorage.setItem("826_user", JSON.stringify(data.user))
-      } catch {}
+      } catch { }
 
       const roleRoutes: Record<string, string> = {
         super_admin: "/dashboard/admin",
@@ -78,443 +78,337 @@ export default function LoginPage() {
   return (
     <>
       <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=Rajdhani:wght@600;700&family=DM+Sans:opsz,wght@9..40,300;9..40,400;9..40,500&display=swap');
+        @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=Rajdhani:wght@600;700&display=swap');
 
         *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
-        /* ─────────────────────────────────────────
-           ROOT — animated gradient background
-        ───────────────────────────────────────── */
-        .login-root {
+        :root {
+          --teal-primary: #00d2be;
+          --teal-secondary: #00a896;
+          --bg-base: #f0f4f7;
+          --card-bg: rgba(255, 255, 255, 0.82);
+          --text-main: #111;
+          --text-muted: #555;
+        }
+
+        body {
+          font-family: 'Outfit', sans-serif;
+          background: var(--bg-base);
+          color: var(--text-main);
+          overflow-x: hidden;
+        }
+
+        .login-page {
           min-height: 100vh;
+          width: 100%;
           display: flex;
+          flex-direction: column;
           align-items: center;
           justify-content: center;
-          font-family: 'DM Sans', sans-serif;
           position: relative;
-          overflow: hidden;
-          /* base colour */
-          background: #dfe4e8;
+          padding: 20px;
         }
 
-        /* The big moving teal light — single pseudo-like div */
-        .bg-light {
-          position: absolute;
-          inset: 0;
-          background:
-            radial-gradient(ellipse 70% 60% at 0% 50%, rgba(0,210,190,0.62) 0%, transparent 65%),
-            radial-gradient(ellipse 55% 55% at 100% 55%, rgba(0,200,180,0.50) 0%, transparent 60%),
-            radial-gradient(ellipse 40% 40% at 50% 100%, rgba(0,190,170,0.28) 0%, transparent 60%);
-          animation: bgShift 8s ease-in-out infinite alternate;
-          will-change: background-position, opacity;
-          pointer-events: none;
-          z-index: 0;
-        }
-
-        @keyframes bgShift {
-          0% {
-            background:
-              radial-gradient(ellipse 70% 60% at 0% 50%, rgba(0,210,190,0.62) 0%, transparent 65%),
-              radial-gradient(ellipse 55% 55% at 100% 55%, rgba(0,200,180,0.50) 0%, transparent 60%),
-              radial-gradient(ellipse 40% 40% at 50% 100%, rgba(0,190,170,0.28) 0%, transparent 60%);
-          }
-          25% {
-            background:
-              radial-gradient(ellipse 75% 65% at 5% 40%, rgba(0,218,200,0.68) 0%, transparent 65%),
-              radial-gradient(ellipse 50% 50% at 95% 60%, rgba(0,190,175,0.42) 0%, transparent 60%),
-              radial-gradient(ellipse 45% 45% at 55% 95%, rgba(0,200,185,0.32) 0%, transparent 60%);
-          }
-          50% {
-            background:
-              radial-gradient(ellipse 65% 70% at 2% 60%, rgba(0,200,185,0.55) 0%, transparent 65%),
-              radial-gradient(ellipse 60% 58% at 98% 45%, rgba(0,215,195,0.55) 0%, transparent 60%),
-              radial-gradient(ellipse 38% 38% at 45% 98%, rgba(0,180,165,0.25) 0%, transparent 60%);
-          }
-          75% {
-            background:
-              radial-gradient(ellipse 72% 62% at -2% 55%, rgba(0,222,202,0.65) 0%, transparent 65%),
-              radial-gradient(ellipse 52% 52% at 102% 50%, rgba(0,205,188,0.48) 0%, transparent 60%),
-              radial-gradient(ellipse 42% 42% at 52% 102%, rgba(0,195,178,0.30) 0%, transparent 60%);
-          }
-          100% {
-            background:
-              radial-gradient(ellipse 68% 58% at 3% 45%, rgba(0,208,188,0.58) 0%, transparent 65%),
-              radial-gradient(ellipse 58% 56% at 97% 58%, rgba(0,212,192,0.52) 0%, transparent 60%),
-              radial-gradient(ellipse 36% 36% at 48% 96%, rgba(0,185,168,0.26) 0%, transparent 60%);
-          }
-        }
-
-        /* Dot pattern top-right */
-        .dots {
-          position: absolute;
-          pointer-events: none;
-          z-index: 1;
-          opacity: 0.45;
-          background-image: radial-gradient(circle, #009e8e 1.4px, transparent 1.4px);
-          background-size: 13px 13px;
-        }
-        .dots-tr { top: 8px; right: 36px; width: 180px; height: 140px; }
-        .dots-br { bottom: 8px; right: 8px; width: 160px; height: 110px; }
-
-        /* ─────────────────────────────────────────
-           BRAND BAR
-        ───────────────────────────────────────── */
-        .brand-bar {
+        /* Flare Lights */
+        .flare-container {
           position: fixed;
-          top: 0; left: 0; right: 0;
-          z-index: 50;
+          inset: 0;
+          z-index: 0;
+          pointer-events: none;
+        }
+        .flare {
+          position: absolute;
+          border-radius: 50%;
+          filter: blur(100px);
+          opacity: 0.45;
+        }
+        .flare-1 {
+          width: min(80vw, 800px);
+          height: min(80vw, 800px);
+          background: radial-gradient(circle, var(--teal-primary) 0%, transparent 70%);
+          top: -10%; left: -5%;
+          animation: drift 20s infinite alternate ease-in-out;
+        }
+        .flare-2 {
+          width: min(70vw, 700px);
+          height: min(70vw, 700px);
+          background: radial-gradient(circle, #0096ff 0%, transparent 70%);
+          bottom: -15%; right: -5%;
+          animation: drift 25s infinite alternate-reverse ease-in-out;
+        }
+        @keyframes drift {
+          0% { transform: translate(0, 0) scale(1); }
+          100% { transform: translate(40px, 20px) scale(1.05); }
+        }
+
+        /* Dots */
+        .dot-pattern {
+          position: absolute;
+          width: 200px;
+          height: 150px;
+          background-image: radial-gradient(var(--teal-primary) 1.5px, transparent 1.5px);
+          background-size: 15px 15px;
+          opacity: 0.25;
+          z-index: 1;
+        }
+        .dot-tr { top: 20px; right: 20px; }
+        .dot-bl { bottom: 20px; left: 20px; }
+
+        /* Branding Header */
+        .branding-header {
+          position: fixed;
+          top: 40px;
+          left: 50px;
           display: flex;
           align-items: center;
-          gap: 14px;
-          padding: 16px 32px;
+          gap: 20px;
+          z-index: 100;
         }
-        /* Logo image — replace src with /assets/826-logo.png */
-        .brand-logo {
-          height: 36px;   /* bigger than before */
-          width: auto;
-          object-fit: contain;
-        }
-        .brand-divider {
-          width: 1px;
-          height: 20px;
-          background: rgba(0,0,0,0.20);
-        }
-        .brand-text {
-          font-size: 14px;
-          font-weight: 400;
-          color: rgba(0,0,0,0.52);
-          letter-spacing: 0.04em;
-        }
+        .logo-img { height: 64px; width: auto; filter: drop-shadow(0 4px 12px rgba(0,0,0,0.12)); }
+        .logo-divider { width: 2px; height: 40px; background: rgba(0,0,0,0.12); }
+        .branding-text { font-size: 22px; font-weight: 600; color: #000; letter-spacing: -0.5px; }
 
-        /* ─────────────────────────────────────────
-           CARD WRAPPER  (handles overflow:visible)
-        ───────────────────────────────────────── */
-        .card-wrapper {
-          position: relative;
-          z-index: 10;
-          width: min(980px, 94vw);
-          /* Extra left padding so car can bleed left */
-          padding-left: 0;
-        }
-
-        /* The white card itself */
-        .card {
-          display: flex;
-          min-height: 420px;
-          background: rgba(255,255,255,0.78);
-          border: 1px solid rgba(255,255,255,1);
-          border-radius: 28px;
-          backdrop-filter: blur(32px);
-          -webkit-backdrop-filter: blur(32px);
-          overflow: visible;          /* ← allow car to bleed out */
-          box-shadow:
-            0 10px 50px rgba(0,0,0,0.10),
-            0 2px 10px rgba(0,0,0,0.06);
-          /* push content right so left side is free for car */
-          padding-left: 360px;        /* reserve space for car column */
-        }
-
-        /* ─────────────────────────────────────────
-           CAR — absolutely positioned, bleeds above card
-        ───────────────────────────────────────── */
-        .car-col {
-          position: absolute;
-          left: -10px;                /* slight bleed to the left of card */
-          bottom: 0;
-          width: 400px;
-          z-index: 20;
-          pointer-events: none;
-        }
-        /* Rounded rect bg behind the car photo */
-        .car-photo-wrap {
+        /* Main Card */
+        .login-card {
           width: 100%;
-          border-radius: 22px;
+          max-width: 1080px;
+          display: grid;
+          grid-template-columns: 1.2fr 1fr;
+          background: var(--card-bg);
+          backdrop-filter: blur(40px);
+          -webkit-backdrop-filter: blur(40px);
+          border-radius: 48px;
+          box-shadow: 0 32px 100px -20px rgba(0, 0, 0, 0.15);
           overflow: hidden;
-          box-shadow: 0 8px 32px rgba(0,0,0,0.14);
-          /* rises above card top */
-          margin-bottom: 0;
+          z-index: 10;
+          border: 1px solid rgba(255, 255, 255, 0.8);
           position: relative;
-          top: -30px;                 /* bleeds upward out of card */
-        }
-        .car-photo-wrap img {
-          display: block;
-          width: 100%;
-          height: 420px;
-          object-fit: cover;
-          object-position: center 30%;
         }
 
-        /* ─────────────────────────────────────────
-           FORM PANEL
-        ───────────────────────────────────────── */
-        .form-panel {
-          flex: 1;
+        /* Left Side: Car Image */
+        .image-side {
+          padding: 24px;
+          display: flex;
+        }
+        .car-image-container {
+          width: auto;
+          height: 100%;
+          min-height: 620px;
+          max-height: 800px
+          border-radius: 40px;
+          overflow: hidden;
+          position: relative;
+          background: transparent;
+        }
+        .car-image-container img {
+          width: auto;
+          height: 100%;
+          object-fit: contain;
+          object-position: 0% center; /* Align to the car side of the image */
+          transform: scale(1.0); /* Slight zoom to focus on the car */
+        }
+
+        /* Right Side: Form */
+        .form-side {
+          padding: 64px 64px 64px 40px;
           display: flex;
           flex-direction: column;
           justify-content: center;
-          padding: 52px 52px 52px 32px;
         }
 
-        .form-title {
-          font-family: 'Rajdhani', sans-serif;
-          font-size: 42px;
-          font-weight: 700;
-          color: #111;
-          line-height: 1.0;
-          letter-spacing: 0.01em;
-          margin-bottom: 6px;
-        }
-        .form-sub {
-          font-size: 13.5px;
-          color: rgba(0,0,0,0.42);
-          margin-bottom: 4px;
-          font-weight: 300;
-        }
-        .title-rule {
-          width: 100%;
-          height: 1.5px;
-          background: linear-gradient(90deg, #00c8b8 0%, rgba(0,200,184,0.08) 100%);
-          margin-bottom: 26px;
-          margin-top: 8px;
-        }
+        .form-header { margin-bottom: 32px; }
+        .welcome-title { font-family: 'Rajdhani', sans-serif; font-size: 48px; font-weight: 700; color: #111; line-height: 1; margin-bottom: 8px; }
+        .credentials-text { font-size: 16px; color: var(--text-muted); margin-bottom: 16px; }
+        .title-underline { width: 100%; height: 2px; background: var(--teal-primary); opacity: 0.6; }
 
-        .field-label {
-          display: block;
-          font-size: 12px;
-          font-weight: 500;
-          color: rgba(0,0,0,0.56);
-          margin-bottom: 8px;
-        }
-        .input-wrap { position: relative; }
-        .input-icon {
-          position: absolute;
-          left: 15px;
-          top: 50%;
-          transform: translateY(-50%);
-          color: rgba(0,0,0,0.24);
-          width: 15px;
-          height: 15px;
-          pointer-events: none;
-        }
-        .field-input {
+        .input-group { margin-bottom: 24px; }
+        .input-label { display: block; font-size: 14px; font-weight: 600; color: #444; margin-bottom: 10px; }
+        .input-box-wrapper { position: relative; }
+        .box-icon { position: absolute; left: 20px; top: 50%; transform: translateY(-50%); color: #999; }
+        .login-input {
           width: 100%;
-          padding: 12px 14px 12px 42px;
-          background: rgba(255,255,255,0.9);
-          border: 1.5px solid rgba(0,0,0,0.10);
-          border-radius: 999px;
-          color: #111;
-          font-size: 13.5px;
-          font-family: 'DM Sans', sans-serif;
+          padding: 16px 20px 16px 56px;
+          background: #fff;
+          border: 1.5px solid transparent;
+          border-radius: 20px;
+          font-size: 16px;
+          color: #000;
+          transition: all 0.3s;
+          box-shadow: 0 4px 12px rgba(0,0,0,0.02), inset 0 2px 4px rgba(0,0,0,0.01);
+        }
+        .login-input:focus {
           outline: none;
-          transition: border-color 0.2s, box-shadow 0.2s;
+          border-color: var(--teal-primary);
+          box-shadow: 0 8px 24px rgba(0, 210, 190, 0.12);
+          transform: translateY(-1px);
         }
-        .field-input::placeholder { color: rgba(0,0,0,0.24); }
-        .field-input:focus {
-          border-color: #00c8b8;
-          box-shadow: 0 0 0 3px rgba(0,200,184,0.12);
-        }
-        .field-input.error { border-color: #e05555; }
+        .login-input.has-error { border-color: #ff4d4f; }
 
-        .eye-btn {
+        .pass-toggle {
           position: absolute;
-          right: 14px;
+          right: 20px;
           top: 50%;
           transform: translateY(-50%);
           background: none;
           border: none;
+          color: #bbb;
           cursor: pointer;
-          color: rgba(0,0,0,0.28);
           display: flex;
           align-items: center;
-          transition: color 0.15s;
-          padding: 2px;
         }
-        .eye-btn:hover { color: rgba(0,0,0,0.58); }
+        .pass-toggle:hover { color: var(--teal-secondary); }
 
-        .field-error { font-size: 11px; color: #e05555; margin-top: 5px; padding-left: 6px; }
-        .field-group { margin-bottom: 18px; }
+        .forgot-password { display: block; text-align: right; margin-top: 10px; font-size: 14px; color: #00897b; text-decoration: none; font-weight: 600; }
+        .forgot-password:hover { color: var(--teal-primary); text-decoration: underline; }
 
-        .forgot-row {
-          display: flex;
-          align-items: center;
-          justify-content: space-between;
-          margin-bottom: 8px;
-        }
-        .forgot-btn {
-          background: none; border: none;
-          font-size: 11.5px; color: #00a896;
-          cursor: pointer; font-family: 'DM Sans', sans-serif;
-          font-weight: 500; padding: 0;
-          transition: color 0.15s;
-        }
-        .forgot-btn:hover { color: #007a6e; }
-
-        .server-error { font-size: 12px; color: #e05555; margin-bottom: 12px; }
-
-        /* Login button — left aligned, pill shaped */
-        .submit-btn {
-          display: inline-flex;
-          align-items: center;
-          gap: 8px;
-          padding: 13px 38px;
-          border-radius: 999px;
-          border: none;
-          background: linear-gradient(135deg, #00d4be 0%, #00a896 100%);
+        .login-submit-btn {
+          width: 150px;
+          padding: 16px;
+          margin-top: 24px;
+          background: linear-gradient(135deg, var(--teal-primary), var(--teal-secondary));
           color: #fff;
-          font-family: 'DM Sans', sans-serif;
-          font-size: 15px;
-          font-weight: 600;
+          border: none;
+          border-radius: 24px;
+          font-size: 18px;
+          font-weight: 700;
           cursor: pointer;
-          transition: opacity 0.2s, transform 0.15s, box-shadow 0.2s;
-          box-shadow: 0 4px 22px rgba(0,200,184,0.38);
-          margin-top: 10px;
+          transition: all 0.3s;
+          box-shadow: 0 10px 20px rgba(0, 210, 190, 0.3);
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          gap: 10px;
         }
-        .submit-btn:hover:not(:disabled) {
-          opacity: 0.88;
-          box-shadow: 0 6px 30px rgba(0,200,184,0.46);
-          transform: translateY(-1px);
+        .login-submit-btn:hover:not(:disabled) {
+          transform: translateY(-3px);
+          box-shadow: 0 15px 30px rgba(0, 210, 190, 0.4);
         }
-        .submit-btn:active:not(:disabled) { transform: scale(0.97); }
-        .submit-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+        .login-submit-btn:disabled { opacity: 0.6; cursor: not-allowed; transform: none; }
 
-        /* ─────────────────────────────────────────
-           WORKSHOP BADGE
-        ───────────────────────────────────────── */
-        .workshop-badge {
+        .error-hint { color: #f43f5e; font-size: 13px; margin-top: 8px; font-weight: 600; }
+
+        /* Status Badge */
+        .status-badge {
           position: fixed;
-          bottom: 16px; right: 16px;
-          display: flex; align-items: center; gap: 8px;
-          background: rgba(255,255,255,0.82);
-          border: 1px solid rgba(0,0,0,0.09);
+          bottom: 24px; right: 24px;
+          background: rgba(255, 255, 255, 0.85);
+          backdrop-filter: blur(8px);
+          padding: 8px 16px;
           border-radius: 999px;
-          padding: 6px 14px;
-          backdrop-filter: blur(10px);
-          z-index: 50;
-          box-shadow: 0 2px 10px rgba(0,0,0,0.08);
+          display: flex;
+          align-items: center;
+          gap: 10px;
+          box-shadow: 0 4px 12px rgba(0,0,0,0.05);
+          z-index: 100;
+          border: 1px solid rgba(0,0,0,0.05);
         }
-        .badge-dot {
-          width: 7px; height: 7px; border-radius: 50%;
-          background: #00c8b8;
-          animation: pulse 2s ease-in-out infinite;
-          flex-shrink: 0;
-        }
-        @keyframes pulse {
-          0%,100% { opacity: 1; transform: scale(1); }
-          50% { opacity: 0.38; transform: scale(0.76); }
-        }
-        .badge-text {
-          font-size: 11px; font-weight: 500;
-          letter-spacing: 0.12em; color: rgba(0,0,0,0.44);
-          text-transform: uppercase;
-        }
+        .status-pulse { width: 8px; height: 8px; background: var(--teal-primary); border-radius: 50%; animation: pulse-anim 2s infinite; }
+        @keyframes pulse-anim { 0%, 100% { opacity: 1; transform: scale(1); } 50% { opacity: 0.3; transform: scale(0.8); } }
+        .status-text { font-size: 11px; font-weight: 700; color: #777; text-transform: uppercase; letter-spacing: 0.05em; }
 
-        @media (max-width: 700px) {
-          .car-col { display: none; }
-          .card { padding-left: 0; }
-          .form-panel { padding: 40px 28px; }
+        @media (max-width: 1024px) {
+          .login-card { grid-template-columns: 1fr; max-width: 500px; }
+          .image-side { display: none; }
+          .form-side { padding: 48px; }
+          .branding-header { top: 20px; left: 20px; }
+          .status-badge { bottom: 16px; right: 16px; }
         }
       `}</style>
 
-      <div className="login-root">
-        {/* Animated background light */}
-        <div className="bg-light" />
-
-        {/* Dot patterns */}
-        <div className="dots dots-tr" />
-        <div className="dots dots-br" />
-
-        {/* Brand bar */}
-        <div className="brand-bar">
-          {/* ↓ Replace with your actual asset path */}
-          <img src="/assets/826-logo.png" alt="826" className="brand-logo" />
-          <div className="brand-divider" />
-          <span className="brand-text">Auto Aesthetic &amp; Protection</span>
+      <div className="login-page">
+        {/* Background Lights */}
+        <div className="flare-container">
+          <div className="flare flare-1" />
+          <div className="flare flare-2" />
         </div>
 
-        {/* Card wrapper — overflow visible so car bleeds */}
-        <div className="card-wrapper">
+        {/* Dots */}
+        <div className="dot-pattern dot-tr" />
+        <div className="dot-pattern dot-bl" />
 
-          {/* Car — absolutely positioned, overlaps card */}
-          <div className="car-col">
-            <div className="car-photo-wrap">
-              {/* ↓ Replace with your actual asset path */}
-              <img src="/assets/car-hero.png" alt="826 Featured Vehicle" />
-            </div>
+        {/* Logo Header */}
+        <div className="branding-header">
+          <img src="/assets/826-logo.png" alt="826 Logo" className="logo-img" />
+          <div className="logo-divider" />
+          <span className="branding-text">Auto Aesthetic & Protection</span>
+        </div>
+        <div className="image-side">
+          <div className="car-image-container">
+            <img src="/assets/car-hero.png" alt="826 Featured Car" />
           </div>
+        </div>
+        {/* Interaction Card */}
+        <div className="login-card">
+          {/* Left Column: Display Image */}
 
-          {/* White card */}
-          <div className="card">
-            <div className="form-panel">
-              <h1 className="form-title">WELCOME BACK!</h1>
-              <p className="form-sub">Please enter your credentials.</p>
-              <div className="title-rule" />
 
-              <form onSubmit={handleSubmit} noValidate>
-                {/* Username */}
-                <div className="field-group">
-                  <label className="field-label">Username</label>
-                  <div className="input-wrap">
-                    <User className="input-icon" />
-                    <input
-                      type="text"
-                      value={username}
-                      onChange={(e) => {
-                        setUsername(e.target.value)
-                        if (errors.username) setErrors((prev) => ({ ...prev, username: undefined }))
-                      }}
-                      placeholder="Username"
-                      className={`field-input${errors.username ? " error" : ""}`}
-                    />
-                  </div>
-                  {errors.username && <p className="field-error">{errors.username}</p>}
-                </div>
-
-                {/* Password */}
-                <div className="field-group">
-                  <div className="forgot-row">
-                    <label className="field-label" style={{ marginBottom: 0 }}>Password</label>
-                    <button type="button" className="forgot-btn">Forgot password?</button>
-                  </div>
-                  <div className="input-wrap" style={{ marginTop: 8 }}>
-                    <Lock className="input-icon" />
-                    <input
-                      type={showPassword ? "text" : "password"}
-                      value={password}
-                      onChange={(e) => {
-                        setPassword(e.target.value)
-                        if (errors.password) setErrors((prev) => ({ ...prev, password: undefined }))
-                      }}
-                      placeholder="Password"
-                      className={`field-input${errors.password ? " error" : ""}`}
-                      style={{ paddingRight: 42 }}
-                    />
-                    <button
-                      type="button"
-                      className="eye-btn"
-                      onClick={() => setShowPassword((v) => !v)}
-                      aria-label={showPassword ? "Hide password" : "Show password"}
-                    >
-                      {showPassword ? <EyeOff size={15} /> : <Eye size={15} />}
-                    </button>
-                  </div>
-                  {errors.password && <p className="field-error">{errors.password}</p>}
-                </div>
-
-                {serverError && <p className="server-error">{serverError}</p>}
-
-                {/* Left-aligned login button */}
-                <button type="submit" disabled={isLoading} className="submit-btn">
-                  {isLoading ? "Signing in…" : <><span>Login</span><LogIn size={15} /></>}
-                </button>
-              </form>
+          {/* Right Column: Auth Form */}
+          <div className="form-side">
+            <div className="form-header">
+              <h1 className="welcome-title">WELCOME BACK!</h1>
+              <p className="credentials-text">Please enter your credentials.</p>
+              <div className="title-underline" />
             </div>
+
+            <form onSubmit={handleSubmit} noValidate>
+              <div className="input-group">
+                <label className="input-label">Username</label>
+                <div className="input-box-wrapper">
+                  <User className="box-icon" size={20} />
+                  <input
+                    type="text"
+                    value={username}
+                    onChange={(e) => {
+                      setUsername(e.target.value)
+                      if (errors.username) setErrors((prev) => ({ ...prev, username: undefined }))
+                    }}
+                    placeholder="Username"
+                    className={`login-input ${errors.username ? "has-error" : ""}`}
+                  />
+                </div>
+                {errors.username && <p className="error-hint">{errors.username}</p>}
+              </div>
+
+              <div className="input-group">
+                <label className="input-label">Password</label>
+                <div className="input-box-wrapper">
+                  <Lock className="box-icon" size={20} />
+                  <input
+                    type={showPassword ? "text" : "password"}
+                    value={password}
+                    onChange={(e) => {
+                      setPassword(e.target.value)
+                      if (errors.password) setErrors((prev) => ({ ...prev, password: undefined }))
+                    }}
+                    placeholder="Password"
+                    className={`login-input ${errors.password ? "has-error" : ""}`}
+                  />
+                  <button
+                    type="button"
+                    className="pass-toggle"
+                    onClick={() => setShowPassword(!showPassword)}
+                    aria-label={showPassword ? "Hide password" : "Show password"}
+                  >
+                    {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                  </button>
+                </div>
+                <a href="#" className="forgot-password">Forgot password?</a>
+                {errors.password && <p className="error-hint">{errors.password}</p>}
+              </div>
+
+              {serverError && <p className="error-hint" style={{ marginBottom: '15px' }}>{serverError}</p>}
+
+              <button type="submit" disabled={isLoading} className="login-submit-btn">
+                {isLoading ? "..." : <><span>Login</span><LogIn size={20} /></>}
+              </button>
+            </form>
           </div>
         </div>
 
-        {/* Workshop badge */}
-        <div className="workshop-badge">
-          <div className="badge-dot" />
-          <span className="badge-text">Workshop Alpha · 826 HQ</span>
+        {/* Status Badge */}
+        <div className="status-badge">
+          <div className="status-pulse" />
+          <span className="status-text">Workshop Alpha · 826 HQ</span>
         </div>
       </div>
     </>
