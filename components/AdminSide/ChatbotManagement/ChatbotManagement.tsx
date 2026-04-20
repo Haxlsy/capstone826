@@ -1,9 +1,10 @@
 "use client"
 
 import { useState } from "react"
-import { Bot, BookOpen, Save, Plus, Pencil, Trash2, X, Check, ChevronDown, ChevronUp } from "lucide-react"
+import { Bot, BookOpen, Save, Plus, Pencil, Trash2, X, Check, ChevronDown, ChevronUp, Car } from "lucide-react"
+import VehicleStatusTemplate from "./VehicleStatusTemplate"
 
-type Tab = "instructions" | "knowledge_base"
+type Tab = "instructions" | "knowledge_base" | "vehicle_template"
 
 type KBCategory = "Service" | "Pricing" | "Hours" | "FAQ" | "Other"
 
@@ -88,6 +89,7 @@ export default function ChatbotManagement() {
   const [expandedId, setExpandedId] = useState<string | null>(null)
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null)
 
+
   function handleInstructionsChange(val: string) {
     setInstructions(val)
     setInstructionsDirty(true)
@@ -163,6 +165,12 @@ export default function ChatbotManagement() {
           icon={<BookOpen className="w-4 h-4" />}
           label="Knowledge Base"
         />
+        <TabButton
+          active={activeTab === "vehicle_template"}
+          onClick={() => setActiveTab("vehicle_template")}
+          icon={<Car className="w-4 h-4" />}
+          label="Vehicle Status Template"
+        />
       </div>
 
       {/* Instructions Tab */}
@@ -204,6 +212,9 @@ export default function ChatbotManagement() {
           </div>
         </div>
       )}
+
+      {/* Vehicle Status Template Tab */}
+      {activeTab === "vehicle_template" && <VehicleStatusTemplate />}
 
       {/* Knowledge Base Tab */}
       {activeTab === "knowledge_base" && (
