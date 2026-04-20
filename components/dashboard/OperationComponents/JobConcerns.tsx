@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect, useCallback } from "react"
-import { Search, Filter, Paperclip, ChevronLeft, ChevronRight } from "lucide-react"
+import { Search, Paperclip, ChevronLeft, ChevronRight } from "lucide-react"
 import ConcernDetailsDrawer, { type ConcernRecord } from "./ConcernDetailsDrawer"
 
 type FilterType = "All" | "Pending" | "Resolved"
@@ -111,16 +111,12 @@ export default function JobConcerns() {
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
             <input
               type="text"
-              placeholder="Search by job, technician, or title..."
+              placeholder="Search by technician or title..."
               value={searchQuery}
               onChange={(e) => changeSearch(e.target.value)}
               className="w-full pl-9 pr-4 py-2 text-sm border border-gray-200 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
             />
           </div>
-          <button className="flex items-center gap-2 text-sm text-gray-600 border border-gray-200 rounded-lg px-3 py-2 bg-white hover:bg-gray-50 transition-colors">
-            <Filter className="w-4 h-4" />
-            Filter
-          </button>
           <div className="flex-1" />
           <div className="flex items-center gap-1">
             {FILTERS.map((f) => (
@@ -172,7 +168,9 @@ export default function JobConcerns() {
                 paginated.map((r, idx) => (
                   <tr
                     key={r.id}
-                    className={`border-b border-gray-50 hover:bg-gray-50/50 transition-colors ${
+                    onClick={() => setSelected(r)}
+                    title="Click to view concern details"
+                    className={`border-b border-gray-50 hover:bg-blue-50/30 transition-colors cursor-pointer ${
                       idx === paginated.length - 1 ? "border-b-0" : ""
                     }`}
                   >
@@ -214,12 +212,7 @@ export default function JobConcerns() {
                       )}
                     </td>
                     <td className="px-4 py-3.5">
-                      <button
-                        onClick={() => setSelected(r)}
-                        className="text-blue-500 hover:text-blue-700 text-sm font-medium transition-colors"
-                      >
-                        View
-                      </button>
+                      <span className="text-[11px] text-gray-300 font-medium whitespace-nowrap">View details →</span>
                     </td>
                   </tr>
                 ))
