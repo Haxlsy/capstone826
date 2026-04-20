@@ -1,7 +1,7 @@
 "use client"
 
-import { useState, useEffect, useCallback } from "react"
-import { UserCheck, UserX, Users, Search, Plus, X, Wrench, Pencil, Trash2 } from "lucide-react"
+import { useState, useEffect, useCallback, useRef } from "react"
+import { UserCheck, UserX, Users, Search, Plus, X, Wrench, Pencil, Trash2, Filter } from "lucide-react"
 
 interface ActiveJob {
   job_id:   string
@@ -71,6 +71,23 @@ export default function TechnicianAvailability() {
   const [updating, setUpdating]       = useState(false)
   const [editError, setEditError]     = useState<string | null>(null)
 
+  // Delete confirm dialog
+  const [deleteTarget, setDeleteTarget] = useState<Technician | null>(null)
+  const [deleting, setDeleting]         = useState(false)
+  const [deleteError, setDeleteError]   = useState<string | null>(null)
+
+  // Filter dropdown
+  const [filterOpen, setFilterOpen] = useState(false)
+  const filterRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    function handleClick(e: MouseEvent) {
+      if (filterRef.current && !filterRef.current.contains(e.target as Node)) setFilterOpen(false)
+    }
+    document.addEventListener("mousedown", handleClick)
+    return () => document.removeEventListener("mousedown", handleClick)
+  }, [])
+
   const load = useCallback(async () => {
     setLoading(true)
     setFetchError(null)
@@ -109,6 +126,13 @@ export default function TechnicianAvailability() {
 
   async function addTechnician() {
     if (!newName.trim()) return
+    const duplicate = technicians.some(
+      (t) => t.role === newRole && t.full_name.toLowerCase() === newName.trim().toLowerCase()
+    )
+    if (duplicate) {
+      setAddError(`A ${ROLE_LABEL[newRole].toLowerCase()} named "${newName.trim()}" already exists.`)
+      return
+    }
     setAdding(true)
     setAddError(null)
     try {
@@ -152,19 +176,24 @@ export default function TechnicianAvailability() {
     }
   }
 
-  async function archiveTechnician(tech: Technician) {
-    if (!confirm(`Are you sure you want to archive "${tech.full_name}"? This will remove them from active assignment.`)) return
+  async function confirmDelete() {
+    if (!deleteTarget) return
+    setDeleting(true)
+    setDeleteError(null)
     try {
       const res  = await fetch("/api/operations/technician-availability", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id: tech.id, is_archived: true }),
+        body: JSON.stringify({ id: deleteTarget.id, is_archived: true }),
       })
       const json = await res.json()
-      if (!res.ok) throw new Error(json?.error ?? "Failed to archive technician")
-      setTechnicians((prev) => prev.filter((t) => t.id !== tech.id))
+      if (!res.ok) throw new Error(json?.error ?? "Failed to delete technician")
+      setTechnicians((prev) => prev.filter((t) => t.id !== deleteTarget.id))
+      setDeleteTarget(null)
     } catch (err: unknown) {
-      alert(err instanceof Error ? err.message : String(err))
+      setDeleteError(err instanceof Error ? err.message : String(err))
+    } finally {
+      setDeleting(false)
     }
   }
 
@@ -255,15 +284,35 @@ export default function TechnicianAvailability() {
             className="w-full pl-9 pr-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-100 focus:border-blue-400 transition-colors"
           />
         </div>
-        <select
-          value={filterRole}
-          onChange={(e) => setFilterRole(e.target.value as Technician["role"] | "all")}
-          className="px-3 py-2 text-sm border border-gray-200 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-blue-100 focus:border-blue-400 transition-colors"
-        >
-          <option value="all">All Roles</option>
-          <option value="detailer">Detailer</option>
-          <option value="installer">Installer</option>
-        </select>
+        <div className="relative" ref={filterRef}>
+          <button
+            onClick={() => setFilterOpen((v) => !v)}
+            className={`flex items-center gap-2 px-4 py-2 text-sm border rounded-lg font-medium transition-colors ${
+              filterRole !== "all"
+                ? "border-blue-400 bg-blue-50 text-blue-600"
+                : "border-gray-200 bg-white text-gray-600 hover:bg-gray-50"
+            }`}
+          >
+            <Filter className="w-4 h-4" />
+            {filterRole === "all" ? "Filter" : ROLE_LABEL[filterRole]}
+          </button>
+          {filterOpen && (
+            <div className="absolute top-full left-0 mt-1.5 w-40 bg-white border border-gray-100 rounded-xl shadow-lg z-10 p-2 space-y-0.5">
+              <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide px-2 py-1">Role</p>
+              {(["all", "detailer", "installer"] as const).map((r) => (
+                <button
+                  key={r}
+                  onClick={() => { setFilterRole(r); setFilterOpen(false) }}
+                  className={`w-full text-left text-sm px-2.5 py-1.5 rounded-lg transition-colors ${
+                    filterRole === r ? "bg-blue-50 text-blue-600 font-medium" : "text-gray-600 hover:bg-gray-50"
+                  }`}
+                >
+                  {r === "all" ? "All Roles" : ROLE_LABEL[r]}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
       </div>
 
       {/* Content */}
@@ -331,9 +380,9 @@ export default function TechnicianAvailability() {
                           <Pencil className="w-4 h-4" />
                         </button>
                         <button
-                          onClick={() => archiveTechnician(tech)}
+                          onClick={() => { setDeleteTarget(tech); setDeleteError(null) }}
                           disabled={onJob}
-                          title={onJob ? "Cannot archive while on an active job" : "Archive technician"}
+                          title={onJob ? "Cannot delete while on an active job" : "Delete technician"}
                           className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-all disabled:opacity-0 disabled:pointer-events-none"
                         >
                           <Trash2 className="w-4 h-4" />
@@ -423,6 +472,44 @@ export default function TechnicianAvailability() {
                 className="flex-1 py-2 text-sm font-semibold text-white bg-gray-900 rounded-lg hover:bg-gray-800 disabled:opacity-50 transition-colors"
               >
                 {adding ? "Adding…" : "Add"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Delete Confirm Dialog */}
+      {deleteTarget && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm overflow-hidden">
+            <div className="px-5 pt-5 pb-4 text-center">
+              <div className="mx-auto w-12 h-12 rounded-full bg-red-100 flex items-center justify-center mb-3">
+                <Trash2 className="w-5 h-5 text-red-500" />
+              </div>
+              <h2 className="text-base font-bold text-gray-800">Delete Technician</h2>
+              <p className="text-sm text-gray-500 mt-1.5">
+                Are you sure you want to delete{" "}
+                <span className="font-semibold text-gray-700">{deleteTarget.full_name}</span>?
+                This will remove them from active assignment.
+              </p>
+            </div>
+            {deleteError && (
+              <p className="mx-5 mb-3 text-xs text-red-500 bg-red-50 rounded-lg px-3 py-2">{deleteError}</p>
+            )}
+            <div className="flex gap-2 px-5 pb-5">
+              <button
+                onClick={() => { setDeleteTarget(null); setDeleteError(null) }}
+                disabled={deleting}
+                className="flex-1 py-2 text-sm font-medium text-gray-600 bg-gray-100 hover:bg-gray-200 rounded-xl transition-colors disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={confirmDelete}
+                disabled={deleting}
+                className="flex-1 py-2 text-sm font-semibold text-white bg-red-500 hover:bg-red-600 rounded-xl transition-colors disabled:opacity-60"
+              >
+                {deleting ? "Deleting…" : "Delete"}
               </button>
             </div>
           </div>
