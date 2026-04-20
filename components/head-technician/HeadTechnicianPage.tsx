@@ -10,10 +10,7 @@ const STATUS_OPTIONS: Status[] = [
   "Pending",
   "Ongoing",
   "For Rework",
-  "For Release",
   "Delayed",
-  "Cancelled",
-  "Released",
 ]
 
 export default function HeadTechnicianPage() {
@@ -99,6 +96,13 @@ export default function HeadTechnicianPage() {
         {!loading && jobs.length > 0 && (
           <div className="grid grid-cols-3 gap-2">
             <StatPill
+              value={jobs.length}
+              label="Total"
+              colorClass="text-gray-700"
+              bgClass="bg-gray-50"
+              subColorClass="text-gray-400"
+            />
+            <StatPill
               value={ongoingCount}
               label="Ongoing"
               colorClass="text-blue-600"
@@ -111,13 +115,6 @@ export default function HeadTechnicianPage() {
               colorClass="text-orange-500"
               bgClass="bg-orange-50"
               subColorClass="text-orange-400"
-            />
-            <StatPill
-              value={jobs.length}
-              label="Total"
-              colorClass="text-gray-700"
-              bgClass="bg-gray-50"
-              subColorClass="text-gray-400"
             />
           </div>
         )}
