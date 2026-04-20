@@ -6,10 +6,12 @@ import { createAdminClient } from "@/lib/supabase/admin"
 export async function GET(request: Request) {
   try {
     const { searchParams } = new URL(request.url)
-    const search    = searchParams.get("search")?.trim() ?? ""
-    const status    = searchParams.get("status") ?? "all"   // "all" | "active" | "archived"
-    const page      = Math.max(1, parseInt(searchParams.get("page")  ?? "1", 10))
-    const pageSize  = Math.max(1, parseInt(searchParams.get("limit") ?? "15", 10))
+    const search      = searchParams.get("search")?.trim() ?? ""
+    const status      = searchParams.get("status") ?? "all"
+    const page        = Math.max(1, parseInt(searchParams.get("page")  ?? "1", 10))
+    const pageSize    = Math.max(1, parseInt(searchParams.get("limit") ?? "15", 10))
+    const durationMin = searchParams.get("durationMin") ? parseInt(searchParams.get("durationMin")!, 10) : null
+    const durationMax = searchParams.get("durationMax") ? parseInt(searchParams.get("durationMax")!, 10) : null
 
     const supabase = createAdminClient()
 
@@ -32,6 +34,8 @@ export async function GET(request: Request) {
     if (search) query = query.ilike("name", `%${search}%`)
     if (status === "active")   query = query.eq("is_archived", false)
     if (status === "archived") query = query.eq("is_archived", true)
+    if (durationMin !== null) query = query.gte("estimated_duration_mins", durationMin)
+    if (durationMax !== null) query = query.lte("estimated_duration_mins", durationMax)
 
     const from = (page - 1) * pageSize
     query = query.range(from, from + pageSize - 1)

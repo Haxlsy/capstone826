@@ -109,6 +109,7 @@ export async function PATCH(
     const body = await request.json()
     const {
       status,
+      reason,
       head_detailer_id,
       head_installer_id,
       scheduled_at,
@@ -174,6 +175,7 @@ export async function PATCH(
         job_order_id:  id,
         status:        newStatus,
         changed_by_id: user.id,
+        ...(reason?.trim() ? { reason: reason.trim() } : {}),
       })
     }
 

@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useRef, useState } from "react"
-import { Search, Filter, MoreHorizontal, ChevronLeft, ChevronRight, KeyRound, Copy, Check } from "lucide-react"
+import { Search, Filter, MoreHorizontal, ChevronLeft, ChevronRight, KeyRound, Copy, Check, Pencil, ArchiveRestore } from "lucide-react"
 import AddAccountModal from "./AddAccountModal"
 
 type UserRole = "operations" | "sales" | "head_detailer" | "head_installer"
@@ -480,8 +480,9 @@ export default function AccountTable() {
                         <div className="absolute right-4 top-full mt-1 w-44 bg-white border border-gray-100 rounded-xl shadow-lg z-10 py-1">
                           <button
                             onClick={() => { setActionMenu(null); setEditingAccount(account) }}
-                            className="w-full text-left text-sm px-3.5 py-2 text-gray-700 hover:bg-gray-50 transition-colors"
+                            className="flex items-center gap-2 w-full text-left text-sm px-3.5 py-2 text-blue-600 hover:bg-blue-50 transition-colors"
                           >
+                            <Pencil className="w-3.5 h-3.5" />
                             Edit
                           </button>
                           <button
@@ -493,12 +494,13 @@ export default function AccountTable() {
                           </button>
                           <button
                             onClick={() => handleArchiveToggle(account)}
-                            className={`w-full text-left text-sm px-3.5 py-2 transition-colors ${
+                            className={`flex items-center gap-2 w-full text-left text-sm px-3.5 py-2 transition-colors ${
                               account.is_archived
-                                ? "text-green-600 hover:bg-green-50"
+                                ? "text-emerald-600 hover:bg-emerald-50"
                                 : "text-red-500 hover:bg-red-50"
                             }`}
                           >
+                            {account.is_archived && <ArchiveRestore className="w-3.5 h-3.5" />}
                             {account.is_archived ? "Unarchive" : "Archive"}
                           </button>
                         </div>

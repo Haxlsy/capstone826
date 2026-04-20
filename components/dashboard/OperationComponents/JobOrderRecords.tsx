@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useEffect, useCallback } from "react"
+import { useRouter } from "next/navigation"
 import { Search, ChevronLeft, ChevronRight, FileText, FileSpreadsheet, CheckCircle2 } from "lucide-react"
 
 interface JobRecord {
@@ -33,6 +34,7 @@ function fmtDateTime(iso: string | null | undefined): string {
 }
 
 export default function JobOrderRecords() {
+  const router = useRouter()
   const [records, setRecords]       = useState<JobRecord[]>([])
   const [loading, setLoading]       = useState(true)
   const [fetchError, setFetchError] = useState<string | null>(null)
@@ -98,12 +100,51 @@ export default function JobOrderRecords() {
 
   const filtered = records.filter((r) => {
     const q = searchQuery.toLowerCase()
-    if (q && !r.customer.toLowerCase().includes(q) && !r.displayId.toLowerCase().includes(q) && !r.plate.toLowerCase().includes(q)) return false
+    if (q && ![r.customer, r.displayId, r.plate, r.vehicle, r.service, r.head_detailer, r.head_installer]
+      .some((f) => f.toLowerCase().includes(q))) return false
     if (serviceFilter !== "All" && r.service !== serviceFilter) return false
     if (startDate && new Date(r.created_at) < new Date(startDate)) return false
     if (endDate   && new Date(r.created_at) > new Date(endDate))   return false
     return true
   })
+
+  function exportCSV() {
+    const headers = ["Job Order ID","Customer","Plate","Vehicle","Service","Head Detailer","Head Installer","Scheduled","Created"]
+    const rows = filtered.map((r) => [
+      r.displayId, r.customer, r.plate, r.vehicle, r.service,
+      r.head_detailer, r.head_installer,
+      r.scheduled_at ? fmtDate(r.scheduled_at) : "—",
+      fmtDate(r.created_at),
+    ])
+    const csv = [headers, ...rows].map((row) => row.map((c) => `"${String(c).replace(/"/g, '""')}"`).join(",")).join("\n")
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" })
+    const url  = URL.createObjectURL(blob)
+    const a    = document.createElement("a")
+    a.href = url; a.download = "job-order-records.csv"; a.click()
+    URL.revokeObjectURL(url)
+  }
+
+  function exportPDF() {
+    const rows = filtered.map((r) => `
+      <tr>
+        <td>${r.displayId}</td><td>${r.customer}</td><td>${r.plate}</td>
+        <td>${r.vehicle}</td><td>${r.service}</td>
+        <td>${r.head_detailer}</td><td>${r.head_installer}</td>
+        <td>${r.scheduled_at ? fmtDate(r.scheduled_at) : "—"}</td>
+        <td>${fmtDate(r.created_at)}</td>
+      </tr>`).join("")
+    const html = `<html><head><title>Job Order Records</title>
+      <style>body{font-family:sans-serif;font-size:12px}table{width:100%;border-collapse:collapse}
+      th,td{border:1px solid #ddd;padding:6px 8px;text-align:left}th{background:#f5f5f5;font-weight:600}</style>
+      </head><body><h2>Job Order Records</h2>
+      <table><thead><tr><th>Job ID</th><th>Customer</th><th>Plate</th><th>Vehicle</th>
+      <th>Service</th><th>Head Detailer</th><th>Head Installer</th><th>Scheduled</th><th>Created</th>
+      </tr></thead><tbody>${rows}</tbody></table></body></html>`
+    const blob = new Blob([html], { type: "text/html;charset=utf-8;" })
+    const url  = URL.createObjectURL(blob)
+    const win  = window.open(url, "_blank")
+    if (win) win.addEventListener("load", () => { win.print(); URL.revokeObjectURL(url) })
+  }
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize))
   const paginated  = filtered.slice((currentPage - 1) * pageSize, currentPage * pageSize)
@@ -160,17 +201,17 @@ export default function JobOrderRecords() {
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
           <input
             type="text"
-            placeholder="Search by customer, plate, or Job ID…"
+            placeholder="Search by customer, plate, vehicle, service, technician, or Job ID…"
             value={searchQuery}
             onChange={(e) => { setSearchQuery(e.target.value); setCurrentPage(1) }}
             className="w-full pl-9 pr-4 py-2 text-sm border border-gray-200 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
           />
         </div>
         <div className="flex items-center gap-2">
-          <button className="border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-600 flex items-center gap-2 hover:bg-gray-50 transition-colors bg-white">
+          <button onClick={exportPDF} className="border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-600 flex items-center gap-2 hover:bg-gray-50 transition-colors bg-white">
             <FileText className="w-4 h-4" /> Export PDF
           </button>
-          <button className="border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-600 flex items-center gap-2 hover:bg-gray-50 transition-colors bg-white">
+          <button onClick={exportCSV} className="border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-600 flex items-center gap-2 hover:bg-gray-50 transition-colors bg-white">
             <FileSpreadsheet className="w-4 h-4" /> Export Excel
           </button>
         </div>
@@ -204,7 +245,8 @@ export default function JobOrderRecords() {
             ) : paginated.map((r, idx) => (
               <tr
                 key={r.id}
-                className={`border-b border-gray-50 hover:bg-gray-50/50 transition-colors ${idx === paginated.length - 1 ? "border-b-0" : ""}`}
+                onClick={() => router.push(`/dashboard/job-management/${r.id}`)}
+                className={`border-b border-gray-50 hover:bg-blue-50/40 cursor-pointer transition-colors ${idx === paginated.length - 1 ? "border-b-0" : ""}`}
               >
                 <td className="px-4 py-3.5">
                   <span className="text-xs font-mono text-gray-500">{r.displayId}</span>

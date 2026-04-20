@@ -17,6 +17,7 @@ export async function POST(request: Request) {
       // Manual fields (when no Messenger booking)
       customer_name,
       contact_number,
+      email,
       plate_number,
       vehicle_unit,
     } = body
@@ -90,6 +91,7 @@ export async function POST(request: Request) {
           .insert({
             full_name:      customer_name?.trim()    ?? null,
             contact_number: contact_number?.trim()   ?? null,
+            email:          email?.trim()            ?? null,
             plate_number:   plate_number?.trim()     ?? null,
             vehicle_unit:   vehicle_unit?.trim()     ?? null,
           })

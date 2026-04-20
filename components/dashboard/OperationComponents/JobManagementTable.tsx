@@ -1,8 +1,9 @@
 "use client"
 
-import { useState, useEffect, useCallback, useMemo } from "react"
+import { useState, useEffect, useCallback, useMemo, useRef } from "react"
 import Link from "next/link"
-import { Search, Filter, ChevronRight } from "lucide-react"
+import { useRouter } from "next/navigation"
+import { Search, ChevronRight, Filter, X } from "lucide-react"
 import StatusPickerModal, {
   type JobStatus,
   type StatusOption,
@@ -12,15 +13,17 @@ import StatusConfirmDialog from "./StatusConfirmDialog"
 import BulkStatusButton from "./BulkStatusButton"
 
 interface JobOrder {
-  id:           string   // UUID — used for API calls and links
-  displayId:    string   // e.g. "JO-2026-abc"
-  customer:     string
-  plate:        string
-  vehicle:      string
-  service:      string
-  headDetailer: string
-  scheduled:    string
-  status:       JobStatus
+  id:            string
+  displayId:     string
+  customer:      string
+  plate:         string
+  vehicle:       string
+  service:       string
+  headDetailer:  string
+  headInstaller: string
+  scheduled:     string
+  scheduledRaw:  string   // ISO — used for date-range filtering
+  status:        JobStatus
 }
 
 type TabType = "All" | "Pending" | "Ongoing" | "For Rework" | "For Release" | "Delayed" | "Cancelled"
@@ -32,6 +35,7 @@ function fmtDate(iso: string | null | undefined): string {
 }
 
 export default function JobManagementTable() {
+  const router = useRouter()
   const [activeTab, setActiveTab]     = useState<TabType>("All")
   const [searchQuery, setSearchQuery] = useState("")
   const [jobOrders, setJobOrders]     = useState<JobOrder[]>([])
@@ -55,6 +59,23 @@ export default function JobManagementTable() {
   // Bulk picker state
   const [bulkPickerOpen, setBulkPickerOpen] = useState(false)
 
+  // Filter state
+  const [filterOpen,       setFilterOpen]       = useState(false)
+  const [filterService,    setFilterService]     = useState("")
+  const [filterTechnician, setFilterTechnician]  = useState("")
+  const [filterDateFrom,   setFilterDateFrom]    = useState("")
+  const [filterDateTo,     setFilterDateTo]      = useState("")
+  const filterRef = useRef<HTMLDivElement>(null)
+
+  const hasActiveFilter = !!(filterService || filterTechnician || filterDateFrom || filterDateTo)
+
+  function clearFilters() {
+    setFilterService("")
+    setFilterTechnician("")
+    setFilterDateFrom("")
+    setFilterDateTo("")
+  }
+
   const load = useCallback(async () => {
     setLoading(true)
     setFetchError(null)
@@ -70,8 +91,10 @@ export default function JobManagementTable() {
         plate:        r.plate_number  ?? "—",
         vehicle:      r.vehicle_unit  ?? "—",
         service:      r.service       ?? "—",
-        headDetailer: r.head_detailer ?? "Unassigned",
-        scheduled:    fmtDate(r.scheduled_at),
+        headDetailer:  r.head_detailer  ?? "Unassigned",
+        headInstaller: r.head_installer ?? "Unassigned",
+        scheduled:     fmtDate(r.scheduled_at),
+        scheduledRaw: r.scheduled_at  ?? "",
         status:       (r.status as JobStatus) ?? "Pending",
       }))
 
@@ -85,15 +108,38 @@ export default function JobManagementTable() {
 
   useEffect(() => { load() }, [load])
 
+  // Close filter panel on outside click
+  useEffect(() => {
+    function handleClick(e: MouseEvent) {
+      if (filterRef.current && !filterRef.current.contains(e.target as Node)) {
+        setFilterOpen(false)
+      }
+    }
+    document.addEventListener("mousedown", handleClick)
+    return () => document.removeEventListener("mousedown", handleClick)
+  }, [])
+
+  // Unique values for filter dropdowns
+  const uniqueServices    = useMemo(() => [...new Set(jobOrders.map((j) => j.service).filter((s) => s !== "—"))].sort(), [jobOrders])
+  const uniqueTechnicians = useMemo(() => [...new Set(jobOrders.map((j) => j.headDetailer).filter((t) => t !== "Unassigned"))].sort(), [jobOrders])
+
   const filtered = useMemo(() => jobOrders.filter((job) => {
     const matchesTab    = activeTab === "All" || job.status === activeTab
     const q             = searchQuery.toLowerCase()
     const matchesSearch = q === "" ||
       job.customer.toLowerCase().includes(q) ||
       job.displayId.toLowerCase().includes(q) ||
-      job.plate.toLowerCase().includes(q)
-    return matchesTab && matchesSearch
-  }), [jobOrders, activeTab, searchQuery])
+      job.plate.toLowerCase().includes(q) ||
+      job.vehicle.toLowerCase().includes(q) ||
+      job.service.toLowerCase().includes(q) ||
+      job.headDetailer.toLowerCase().includes(q)
+    const matchesService     = !filterService    || job.service === filterService
+    const matchesTechnician  = !filterTechnician || job.headDetailer === filterTechnician
+    const jobDate            = job.scheduledRaw ? job.scheduledRaw.slice(0, 10) : ""
+    const matchesDateFrom    = !filterDateFrom   || jobDate >= filterDateFrom
+    const matchesDateTo      = !filterDateTo     || jobDate <= filterDateTo
+    return matchesTab && matchesSearch && matchesService && matchesTechnician && matchesDateFrom && matchesDateTo
+  }), [jobOrders, activeTab, searchQuery, filterService, filterTechnician, filterDateFrom, filterDateTo])
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize))
   const paginated  = filtered.slice((currentPage - 1) * pageSize, currentPage * pageSize)
@@ -149,7 +195,7 @@ export default function JobManagementTable() {
     setUpdateError(null)
   }
 
-  async function confirmUpdate() {
+  async function confirmUpdate(reason: string) {
     if (!confirmTarget) return
     setUpdating(true)
     setUpdateError(null)
@@ -161,7 +207,7 @@ export default function JobManagementTable() {
             fetch(`/api/operations/job-orders/${id}`, {
               method: "PATCH",
               headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ status: confirmTarget.db }),
+              body: JSON.stringify({ status: confirmTarget.db, reason }),
             })
           )
         )
@@ -174,7 +220,7 @@ export default function JobManagementTable() {
         const res  = await fetch(`/api/operations/job-orders/${pickerJob.id}`, {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ status: confirmTarget.db }),
+          body: JSON.stringify({ status: confirmTarget.db, reason }),
         })
         const json = await res.json()
         if (!res.ok) throw new Error(json?.error ?? "Failed to update status")
@@ -213,15 +259,99 @@ export default function JobManagementTable() {
 
         {/* Search + Filter */}
         <div className="flex items-center gap-3">
-          <div className="relative flex-1 max-w-xs">
+          <div className="relative flex-1 max-w-sm">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
             <input
               type="text"
-              placeholder="Search by customer, plate, or Job ID…"
+              placeholder="Search by customer, plate, vehicle, service, technician, or Job ID…"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               className="w-full pl-9 pr-4 py-2 text-sm border border-gray-200 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
             />
+          </div>
+
+          {/* Filter button */}
+          <div className="relative" ref={filterRef}>
+            <button
+              onClick={() => setFilterOpen((v) => !v)}
+              className={`flex items-center gap-2 px-4 py-2 text-sm border rounded-lg font-medium transition-colors ${
+                hasActiveFilter
+                  ? "border-blue-400 bg-blue-50 text-blue-600"
+                  : "border-gray-200 bg-white text-gray-600 hover:bg-gray-50"
+              }`}
+            >
+              <Filter className="w-4 h-4" />
+              Filter
+              {hasActiveFilter && (
+                <span className="w-4 h-4 bg-blue-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center">
+                  {[filterService, filterTechnician, filterDateFrom, filterDateTo].filter(Boolean).length}
+                </span>
+              )}
+            </button>
+
+            {filterOpen && (
+              <div className="absolute top-full left-0 mt-1.5 w-64 bg-white border border-gray-100 rounded-xl shadow-lg z-20 p-4 space-y-4">
+                {/* Service */}
+                <div>
+                  <p className="text-xs font-semibold text-gray-500 mb-1.5 uppercase tracking-wide">Service</p>
+                  <select
+                    value={filterService}
+                    onChange={(e) => setFilterService(e.target.value)}
+                    className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm text-gray-700 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  >
+                    <option value="">All Services</option>
+                    {uniqueServices.map((s) => <option key={s} value={s}>{s}</option>)}
+                  </select>
+                </div>
+
+                {/* Head Technician */}
+                <div>
+                  <p className="text-xs font-semibold text-gray-500 mb-1.5 uppercase tracking-wide">Head Technician</p>
+                  <select
+                    value={filterTechnician}
+                    onChange={(e) => setFilterTechnician(e.target.value)}
+                    className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm text-gray-700 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  >
+                    <option value="">All Technicians</option>
+                    {uniqueTechnicians.map((t) => <option key={t} value={t}>{t}</option>)}
+                  </select>
+                </div>
+
+                {/* Date range */}
+                <div>
+                  <p className="text-xs font-semibold text-gray-500 mb-1.5 uppercase tracking-wide">Scheduled Date</p>
+                  <div className="flex flex-col gap-1.5">
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs text-gray-400 w-6 shrink-0">From</span>
+                      <input
+                        type="date"
+                        value={filterDateFrom}
+                        onChange={(e) => setFilterDateFrom(e.target.value)}
+                        className="flex-1 border border-gray-200 rounded-lg px-2 py-1.5 text-xs text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      />
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs text-gray-400 w-6 shrink-0">To</span>
+                      <input
+                        type="date"
+                        value={filterDateTo}
+                        onChange={(e) => setFilterDateTo(e.target.value)}
+                        className="flex-1 border border-gray-200 rounded-lg px-2 py-1.5 text-xs text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                {hasActiveFilter && (
+                  <button
+                    onClick={clearFilters}
+                    className="flex items-center gap-1.5 w-full justify-center text-xs text-gray-400 hover:text-red-500 transition-colors pt-1"
+                  >
+                    <X className="w-3 h-3" /> Clear all filters
+                  </button>
+                )}
+              </div>
+            )}
           </div>
         </div>
 
@@ -256,7 +386,7 @@ export default function JobManagementTable() {
                     onChange={toggleSelectAll}
                   />
                 </th>
-                {["Job Order ID", "Customer", "Vehicle", "Service", "Head Detailer", "Scheduled", "Status", ""].map((h) => (
+                {["Job Order ID", "Customer", "Vehicle", "Service", "Head Detailer", "Head Installer", "Scheduled", "Status", ""].map((h) => (
                   <th key={h} className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">
                     {h}
                   </th>
@@ -266,13 +396,13 @@ export default function JobManagementTable() {
             <tbody>
               {loading ? (
                 <tr>
-                  <td colSpan={9} className="px-4 py-10 text-center text-sm text-gray-400">
+                  <td colSpan={10} className="px-4 py-10 text-center text-sm text-gray-400">
                     Loading job orders…
                   </td>
                 </tr>
               ) : paginated.length === 0 ? (
                 <tr>
-                  <td colSpan={9} className="px-4 py-10 text-center text-sm text-gray-400">
+                  <td colSpan={10} className="px-4 py-10 text-center text-sm text-gray-400">
                     {fetchError ? `Error: ${fetchError}` : "No job orders found."}
                   </td>
                 </tr>
@@ -282,11 +412,13 @@ export default function JobManagementTable() {
                   return (
                     <tr
                       key={job.id}
-                      className={`border-b border-gray-50 transition-colors ${
+                      onClick={() => router.push(`/dashboard/job-management/${job.id}`)}
+                      title="Click to view job details"
+                      className={`border-b border-gray-50 transition-colors cursor-pointer ${
                         idx === paginated.length - 1 ? "border-b-0" : ""
-                      } ${isSelected ? "bg-blue-50/60" : "hover:bg-gray-50"}`}
+                      } ${isSelected ? "bg-blue-50/60" : "hover:bg-blue-50/30"}`}
                     >
-                      <td className="px-4 py-3">
+                      <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
                         <input
                           type="checkbox"
                           className="w-4 h-4 rounded border-gray-300 cursor-pointer"
@@ -313,12 +445,15 @@ export default function JobManagementTable() {
                         <span className="text-sm text-gray-700">{job.service}</span>
                       </td>
                       <td className="px-4 py-3">
-                        <span className="text-sm text-gray-700">{job.headDetailer}</span>
+                        <span className={`text-sm ${job.headDetailer === "Unassigned" ? "text-gray-400 italic" : "text-gray-700"}`}>{job.headDetailer}</span>
+                      </td>
+                      <td className="px-4 py-3">
+                        <span className={`text-sm ${job.headInstaller === "Unassigned" ? "text-gray-400 italic" : "text-gray-700"}`}>{job.headInstaller}</span>
                       </td>
                       <td className="px-4 py-3">
                         <span className="text-sm text-gray-500">{job.scheduled}</span>
                       </td>
-                      <td className="px-4 py-3">
+                      <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
                         <button
                           onClick={() => openSinglePicker(job)}
                           title="Click to update status"
@@ -329,13 +464,7 @@ export default function JobManagementTable() {
                         </button>
                       </td>
                       <td className="px-4 py-3">
-                        <Link
-                          href={`/dashboard/job-management/${job.id}`}
-                          className="text-gray-400 hover:text-blue-600 transition-colors text-xs font-medium"
-                          title="View details"
-                        >
-                          View →
-                        </Link>
+                        <span className="text-[11px] text-gray-300 font-medium whitespace-nowrap">View details →</span>
                       </td>
                     </tr>
                   )

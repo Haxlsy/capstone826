@@ -1,7 +1,7 @@
 "use client"
 
 import { useRouter } from "next/navigation"
-import { Car, Calendar, User, ChevronRight, Clock } from "lucide-react"
+import { Car, User, ChevronRight, Clock } from "lucide-react"
 import { HeadTechJob, STATUS_STYLES } from "./types"
 
 type HeadTechJobCardProps = {
@@ -44,19 +44,19 @@ export function HeadTechJobCard({ job }: HeadTechJobCardProps) {
         </div>
       </div>
 
-      {/* Customer name */}
+      {/* Vehicle info as main heading, customer as subheading */}
       <div>
-        <p className="font-bold text-gray-900 text-base leading-snug tracking-tight">
-          {job.customer_name}
-        </p>
-        <div className="flex items-center gap-1.5 mt-1">
-          <Car size={11} className="text-gray-400 shrink-0" />
-          <span className="text-xs text-gray-500 truncate">
+        <div className="flex items-center gap-1.5">
+          <Car size={13} className="text-gray-500 shrink-0" />
+          <p className="font-bold text-gray-900 text-base leading-snug tracking-tight truncate">
             {job.plate_number}
-            {job.car_make  ? ` · ${job.car_make}` : ""}
-            {job.car_color ? ` · ${job.car_color}` : ""}
-          </span>
+            {job.car_make ? ` · ${job.car_make}` : ""}
+          </p>
         </div>
+        {job.car_color && (
+          <p className="text-xs text-gray-400 mt-0.5 pl-0.5">{job.car_color}</p>
+        )}
+        <p className="text-xs font-medium text-gray-500 mt-1 pl-0.5">{job.customer_name}</p>
         {job.service && (
           <p className="text-xs font-semibold text-gray-700 mt-1 pl-0.5">{job.service}</p>
         )}

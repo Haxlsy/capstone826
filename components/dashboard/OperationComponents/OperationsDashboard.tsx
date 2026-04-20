@@ -3,8 +3,6 @@
 import StatusSummaryCards from "./StatusSummaryCards"
 import JobCalendarView from "./JobCalendarView"
 import QuickAccessPanel from "./QuickAccessPanel"
-import TeamSchedulePanel from "./TeamSchedulePanel"
-
 export default function OperationsDashboard() {
   return (
     <div className="flex-1 overflow-y-auto p-6 space-y-5">
@@ -17,7 +15,6 @@ export default function OperationsDashboard() {
         <JobCalendarView />
         <QuickAccessPanel />
       </div>
-      <TeamSchedulePanel />
     </div>
   )
 }

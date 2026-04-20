@@ -82,14 +82,14 @@ export default function HeadTechJobHistoryPage({ jobId }: { jobId: string }) {
 
   // Rework state (head_installer only)
   const [reworkOpen, setReworkOpen]         = useState(false);
-  const [selectedRework, setSelectedRework] = useState<Set<string>>(new Set());
+  const [selectedRework, setSelectedRework] = useState<string | null>(null);
   const [reworkNote, setReworkNote]         = useState("");
   const [submittingRework, setSubmittingRework] = useState(false);
   const [reworkError, setReworkError]       = useState<string | null>(null);
 
   // Rework state (head_detailer — flag preparation for rework)
   const [prepReworkOpen, setPrepReworkOpen]         = useState(false);
-  const [selectedPrepRework, setSelectedPrepRework] = useState<Set<string>>(new Set());
+  const [selectedPrepRework, setSelectedPrepRework] = useState<string | null>(null);
   const [prepReworkNote, setPrepReworkNote]         = useState("");
   const [submittingPrepRework, setSubmittingPrepRework] = useState(false);
   const [prepReworkError, setPrepReworkError]       = useState<string | null>(null);
@@ -281,23 +281,15 @@ export default function HeadTechJobHistoryPage({ jobId }: { jobId: string }) {
   }
 
   function toggleReworkStage(id: string) {
-    setSelectedRework((prev) => {
-      const next = new Set(prev);
-      next.has(id) ? next.delete(id) : next.add(id);
-      return next;
-    });
+    setSelectedRework((prev) => (prev === id ? null : id));
   }
 
   function togglePrepReworkStage(id: string) {
-    setSelectedPrepRework((prev) => {
-      const next = new Set(prev);
-      next.has(id) ? next.delete(id) : next.add(id);
-      return next;
-    });
+    setSelectedPrepRework((prev) => (prev === id ? null : id));
   }
 
   async function handleFlagPrepRework() {
-    if (!selectedPrepRework.size || !prepReworkNote.trim()) return;
+    if (!selectedPrepRework || !prepReworkNote.trim()) return;
     setSubmittingPrepRework(true);
     setPrepReworkError(null);
     try {
@@ -306,14 +298,14 @@ export default function HeadTechJobHistoryPage({ jobId }: { jobId: string }) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           action:               "flag_prep_rework",
-          stage_ids:            [...selectedPrepRework],
+          stage_ids:            [selectedPrepRework],
           rework_instructions:  prepReworkNote.trim(),
         }),
       });
       const json = await res.json();
       if (!res.ok) throw new Error(json?.error ?? "Failed to flag rework");
       setPrepReworkOpen(false);
-      setSelectedPrepRework(new Set());
+      setSelectedPrepRework(null);
       setPrepReworkNote("");
       await load();
     } catch (err: unknown) {
@@ -324,7 +316,7 @@ export default function HeadTechJobHistoryPage({ jobId }: { jobId: string }) {
   }
 
   async function handleFlagRework() {
-    if (!selectedRework.size || !reworkNote.trim()) return;
+    if (!selectedRework || !reworkNote.trim()) return;
     setSubmittingRework(true);
     setReworkError(null);
     try {
@@ -333,14 +325,14 @@ export default function HeadTechJobHistoryPage({ jobId }: { jobId: string }) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           action:               "flag_rework",
-          stage_ids:            [...selectedRework],
+          stage_ids:            [selectedRework],
           rework_instructions:  reworkNote.trim(),
         }),
       });
       const json = await res.json();
       if (!res.ok) throw new Error(json?.error ?? "Failed to flag rework");
       setReworkOpen(false);
-      setSelectedRework(new Set());
+      setSelectedRework(null);
       setReworkNote("");
       await load();
     } catch (err: unknown) {
@@ -663,7 +655,7 @@ export default function HeadTechJobHistoryPage({ jobId }: { jobId: string }) {
               Select the installation stages that need to be redone. They will be reverted to In Progress with your instructions.
             </p>
 
-            {/* Stage checkboxes — only done installation stages */}
+            {/* Stage radio buttons — only done installation stages */}
             <div className="flex flex-col gap-1 max-h-48 overflow-y-auto">
               {myStages
                 .filter((s) => s.status === "done")
@@ -673,8 +665,9 @@ export default function HeadTechJobHistoryPage({ jobId }: { jobId: string }) {
                     className="flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-gray-50 cursor-pointer"
                   >
                     <input
-                      type="checkbox"
-                      checked={selectedRework.has(s.id)}
+                      type="radio"
+                      name="rework-stage"
+                      checked={selectedRework === s.id}
                       onChange={() => toggleReworkStage(s.id)}
                       className="w-4 h-4 accent-orange-500"
                     />
@@ -687,13 +680,18 @@ export default function HeadTechJobHistoryPage({ jobId }: { jobId: string }) {
             </div>
 
             {/* Instructions */}
-            <textarea
-              value={reworkNote}
-              onChange={(e) => setReworkNote(e.target.value)}
-              placeholder="Describe what needs to be redone…"
-              rows={3}
-              className="w-full text-sm border border-gray-200 rounded-xl px-3.5 py-3 resize-none focus:outline-none focus:ring-2 focus:ring-orange-300 bg-gray-50 text-gray-800 placeholder-gray-400 transition"
-            />
+            <div>
+              <label className="block text-xs font-medium text-gray-600 mb-1.5">
+                Instructions <span className="text-red-500">*</span>
+              </label>
+              <textarea
+                value={reworkNote}
+                onChange={(e) => setReworkNote(e.target.value)}
+                placeholder="Describe what needs to be redone…"
+                rows={3}
+                className="w-full text-sm border border-gray-200 rounded-xl px-3.5 py-3 resize-none focus:outline-none focus:ring-2 focus:ring-orange-300 bg-gray-50 text-gray-800 placeholder-gray-400 transition"
+              />
+            </div>
 
             {reworkError && (
               <p className="text-xs text-red-500">{reworkError}</p>
@@ -702,7 +700,7 @@ export default function HeadTechJobHistoryPage({ jobId }: { jobId: string }) {
             <div className="flex gap-2">
               <button
                 type="button"
-                onClick={() => { setReworkOpen(false); setSelectedRework(new Set()); setReworkNote(""); setReworkError(null); }}
+                onClick={() => { setReworkOpen(false); setSelectedRework(null); setReworkNote(""); setReworkError(null); }}
                 className="flex-1 text-sm font-semibold text-gray-600 border border-gray-200 rounded-xl py-3 hover:bg-gray-50 transition-colors"
               >
                 Cancel
@@ -710,7 +708,7 @@ export default function HeadTechJobHistoryPage({ jobId }: { jobId: string }) {
               <button
                 type="button"
                 onClick={handleFlagRework}
-                disabled={submittingRework || !selectedRework.size || !reworkNote.trim()}
+                disabled={submittingRework || !selectedRework || !reworkNote.trim()}
                 className="flex-1 flex items-center justify-center gap-2 text-sm font-semibold text-white bg-orange-500 rounded-xl py-3 hover:bg-orange-600 active:scale-[0.98] transition-all disabled:opacity-50"
               >
                 {submittingRework
@@ -735,7 +733,7 @@ export default function HeadTechJobHistoryPage({ jobId }: { jobId: string }) {
               Select the preparation stages that need to be redone. They will be reverted to In Progress with your instructions.
             </p>
 
-            {/* Stage checkboxes — only done preparation stages */}
+            {/* Stage radio buttons — only done preparation stages */}
             <div className="flex flex-col gap-1 max-h-48 overflow-y-auto">
               {myStages
                 .filter((s) => s.status === "done")
@@ -745,8 +743,9 @@ export default function HeadTechJobHistoryPage({ jobId }: { jobId: string }) {
                     className="flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-gray-50 cursor-pointer"
                   >
                     <input
-                      type="checkbox"
-                      checked={selectedPrepRework.has(s.id)}
+                      type="radio"
+                      name="prep-rework-stage"
+                      checked={selectedPrepRework === s.id}
                       onChange={() => togglePrepReworkStage(s.id)}
                       className="w-4 h-4 accent-orange-500"
                     />
@@ -759,13 +758,18 @@ export default function HeadTechJobHistoryPage({ jobId }: { jobId: string }) {
             </div>
 
             {/* Instructions */}
-            <textarea
-              value={prepReworkNote}
-              onChange={(e) => setPrepReworkNote(e.target.value)}
-              placeholder="Describe what needs to be redone…"
-              rows={3}
-              className="w-full text-sm border border-gray-200 rounded-xl px-3.5 py-3 resize-none focus:outline-none focus:ring-2 focus:ring-orange-300 bg-gray-50 text-gray-800 placeholder-gray-400 transition"
-            />
+            <div>
+              <label className="block text-xs font-medium text-gray-600 mb-1.5">
+                Instructions <span className="text-red-500">*</span>
+              </label>
+              <textarea
+                value={prepReworkNote}
+                onChange={(e) => setPrepReworkNote(e.target.value)}
+                placeholder="Describe what needs to be redone…"
+                rows={3}
+                className="w-full text-sm border border-gray-200 rounded-xl px-3.5 py-3 resize-none focus:outline-none focus:ring-2 focus:ring-orange-300 bg-gray-50 text-gray-800 placeholder-gray-400 transition"
+              />
+            </div>
 
             {prepReworkError && (
               <p className="text-xs text-red-500">{prepReworkError}</p>
@@ -774,7 +778,7 @@ export default function HeadTechJobHistoryPage({ jobId }: { jobId: string }) {
             <div className="flex gap-2">
               <button
                 type="button"
-                onClick={() => { setPrepReworkOpen(false); setSelectedPrepRework(new Set()); setPrepReworkNote(""); setPrepReworkError(null); }}
+                onClick={() => { setPrepReworkOpen(false); setSelectedPrepRework(null); setPrepReworkNote(""); setPrepReworkError(null); }}
                 className="flex-1 text-sm font-semibold text-gray-600 border border-gray-200 rounded-xl py-3 hover:bg-gray-50 transition-colors"
               >
                 Cancel
@@ -782,7 +786,7 @@ export default function HeadTechJobHistoryPage({ jobId }: { jobId: string }) {
               <button
                 type="button"
                 onClick={handleFlagPrepRework}
-                disabled={submittingPrepRework || !selectedPrepRework.size || !prepReworkNote.trim()}
+                disabled={submittingPrepRework || !selectedPrepRework || !prepReworkNote.trim()}
                 className="flex-1 flex items-center justify-center gap-2 text-sm font-semibold text-white bg-orange-500 rounded-xl py-3 hover:bg-orange-600 active:scale-[0.98] transition-all disabled:opacity-50"
               >
                 {submittingPrepRework
@@ -962,13 +966,16 @@ function StageCard({
       {/* Actions */}
       {!readOnly && (
         <div className="px-4 pb-4 space-y-2">
-          {!done && stage.media.length === 0 && (
+          {!done && !rework && stage.media.length === 0 && (
             <p className="text-[11px] text-gray-400">Upload a photo or video before marking done.</p>
+          )}
+          {rework && (
+            <p className="text-[11px] text-orange-500">Media locked — stage is flagged for rework.</p>
           )}
           <div className="flex items-center gap-2">
             {/* Photo */}
             <label className={`flex-1 flex items-center justify-center gap-1.5 text-xs font-semibold border rounded-xl py-2.5 transition-colors ${
-              isUploading || photoFull
+              isUploading || photoFull || done || rework
                 ? "opacity-40 pointer-events-none text-gray-400 border-gray-200 bg-gray-50"
                 : "text-gray-600 border-gray-200 hover:bg-gray-50 cursor-pointer bg-white"
             }`}>
@@ -980,12 +987,13 @@ function StageCard({
                 accept="image/*"
                 className="hidden"
                 onChange={(e) => onFileChange(e.target.files)}
+                disabled={done || rework}
               />
             </label>
 
             {/* Video */}
             <label className={`flex-1 flex items-center justify-center gap-1.5 text-xs font-semibold border rounded-xl py-2.5 transition-colors ${
-              isUploading || videoFull
+              isUploading || videoFull || done || rework
                 ? "opacity-40 pointer-events-none text-gray-400 border-gray-200 bg-gray-50"
                 : "text-gray-600 border-gray-200 hover:bg-gray-50 cursor-pointer bg-white"
             }`}>
@@ -997,6 +1005,7 @@ function StageCard({
                 accept="video/*"
                 className="hidden"
                 onChange={(e) => onFileChange(e.target.files)}
+                disabled={done || rework}
               />
             </label>
 

@@ -20,9 +20,6 @@ function truncate(text: string | null, max = 48) {
   return text.length > max ? text.slice(0, max) + "..." : text
 }
 
-function formatPrice(amount: number) {
-  return "₱" + amount.toLocaleString("en-PH")
-}
 
 function formatDuration(mins: number | null) {
   if (!mins) return "—"
@@ -41,6 +38,8 @@ export default function ServiceTable() {
 
   const [search, setSearch]             = useState("")
   const [statusFilter, setStatusFilter] = useState<"all" | "active" | "archived">("all")
+  const [durationMin, setDurationMin]   = useState("")
+  const [durationMax, setDurationMax]   = useState("")
   const [filterOpen, setFilterOpen]     = useState(false)
 
   const [page, setPage]         = useState(1)
@@ -62,7 +61,7 @@ export default function ServiceTable() {
     return () => document.removeEventListener("mousedown", handleClick)
   }, [])
 
-  useEffect(() => { setPage(1) }, [search, statusFilter, pageSize])
+  useEffect(() => { setPage(1) }, [search, statusFilter, durationMin, durationMax, pageSize])
 
   const fetchServices = useCallback(async () => {
     setLoading(true)
@@ -74,6 +73,10 @@ export default function ServiceTable() {
         page:   String(page),
         limit:  String(pageSize),
       })
+      const minMins = durationMin ? String(Number(durationMin) * 24 * 60) : ""
+      const maxMins = durationMax ? String(Number(durationMax) * 24 * 60) : ""
+      if (minMins) params.set("durationMin", minMins)
+      if (maxMins) params.set("durationMax", maxMins)
       const res  = await fetch(`/api/operations/services?${params}`)
       const json = await res.json()
       if (!res.ok) throw new Error(json?.error ?? "Failed to load services")
@@ -84,7 +87,7 @@ export default function ServiceTable() {
     } finally {
       setLoading(false)
     }
-  }, [search, statusFilter, page, pageSize])
+  }, [search, statusFilter, durationMin, durationMax, page, pageSize])
 
   useEffect(() => { fetchServices() }, [fetchServices])
 
@@ -139,7 +142,7 @@ export default function ServiceTable() {
           <button
             onClick={() => setFilterOpen((v) => !v)}
             className={`flex items-center gap-2 px-4 py-2 text-sm border rounded-lg font-medium transition-colors ${
-              statusFilter !== "all"
+              statusFilter !== "all" || durationMin || durationMax
                 ? "border-blue-400 bg-blue-50 text-blue-600"
                 : "border-gray-200 bg-white text-gray-600 hover:bg-gray-50"
             }`}
@@ -149,21 +152,54 @@ export default function ServiceTable() {
           </button>
 
           {filterOpen && (
-            <div className="absolute top-full left-0 mt-1.5 w-44 bg-white border border-gray-100 rounded-xl shadow-lg z-10 p-3 space-y-1">
-              <p className="text-xs font-semibold text-gray-500 mb-2 uppercase tracking-wide">Status</p>
-              {(["all", "active", "archived"] as const).map((s) => (
-                <button
-                  key={s}
-                  onClick={() => { setStatusFilter(s); setFilterOpen(false) }}
-                  className={`w-full text-left text-sm px-2.5 py-1.5 rounded-lg transition-colors ${
-                    statusFilter === s
-                      ? "bg-blue-50 text-blue-600 font-medium"
-                      : "text-gray-600 hover:bg-gray-50"
-                  }`}
-                >
-                  {s === "all" ? "All Status" : s.charAt(0).toUpperCase() + s.slice(1)}
-                </button>
-              ))}
+            <div className="absolute top-full left-0 mt-1.5 w-56 bg-white border border-gray-100 rounded-xl shadow-lg z-10 p-3 space-y-3">
+              <div className="space-y-1">
+                <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Status</p>
+                {(["all", "active", "archived"] as const).map((s) => (
+                  <button
+                    key={s}
+                    onClick={() => setStatusFilter(s)}
+                    className={`w-full text-left text-sm px-2.5 py-1.5 rounded-lg transition-colors ${
+                      statusFilter === s
+                        ? "bg-blue-50 text-blue-600 font-medium"
+                        : "text-gray-600 hover:bg-gray-50"
+                    }`}
+                  >
+                    {s === "all" ? "All Status" : s.charAt(0).toUpperCase() + s.slice(1)}
+                  </button>
+                ))}
+              </div>
+
+              <div className="border-t border-gray-100 pt-2 space-y-2">
+                <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Duration (days)</p>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="number"
+                    min="1"
+                    placeholder="Min"
+                    value={durationMin}
+                    onChange={(e) => setDurationMin(e.target.value)}
+                    className="w-full px-2.5 py-1.5 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-100 focus:border-blue-400"
+                  />
+                  <span className="text-gray-400 text-xs shrink-0">to</span>
+                  <input
+                    type="number"
+                    min="1"
+                    placeholder="Max"
+                    value={durationMax}
+                    onChange={(e) => setDurationMax(e.target.value)}
+                    className="w-full px-2.5 py-1.5 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-100 focus:border-blue-400"
+                  />
+                </div>
+                {(durationMin || durationMax) && (
+                  <button
+                    onClick={() => { setDurationMin(""); setDurationMax("") }}
+                    className="text-xs text-gray-400 hover:text-gray-600 transition-colors"
+                  >
+                    Clear duration
+                  </button>
+                )}
+              </div>
             </div>
           )}
         </div>
