@@ -4,6 +4,8 @@ import { useState, useEffect, useRef } from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { CheckCircle2 } from "lucide-react"
+import ServiceOverridePanel from "./ServiceOverridePanel"
+import JobOrderConfirmDialog, { type JobOrderSummary } from "./JobOrderConfirmDialog"
 
 interface CustomerRecord {
   id:             string
@@ -15,8 +17,9 @@ interface CustomerRecord {
 }
 
 interface Service {
-  id:                     string
-  name:                   string
+  id:                      string
+  name:                    string
+  description:             string | null
   estimated_duration_mins: number
 }
 
@@ -114,19 +117,26 @@ export default function AddJobOrderForm() {
   const [selectedCustomerId,   setSelectedCustomerId]   = useState<string | null>(null)
   const [manualCustomerName,   setManualCustomerName]   = useState("")
   const [manualContactNumber,  setManualContactNumber]  = useState("")
+  const [manualEmail,          setManualEmail]          = useState("")
   const [manualPlateNumber,    setManualPlateNumber]    = useState("")
   const [manualVehicleUnit,    setManualVehicleUnit]    = useState("")
 
   const [selectedServiceId,       setSelectedServiceId]       = useState<string | null>(null)
+  const [packageServiceIds,       setPackageServiceIds]       = useState<string[]>([])
+  const [customServiceName,       setCustomServiceName]       = useState("")
+  const [customDurationMins,      setCustomDurationMins]      = useState<number | null>(null)
   const [selectedHeadDetailerId,  setSelectedHeadDetailerId]  = useState<string | null>(null)
   const [selectedHeadInstallerId, setSelectedHeadInstallerId] = useState<string | null>(null)
   const [selectedDetailerIds,     setSelectedDetailerIds]     = useState<Set<string>>(new Set())
   const [selectedInstallerIds,    setSelectedInstallerIds]    = useState<Set<string>>(new Set())
   const [scheduledAt, setScheduledAt] = useState("")
 
-  const [loading, setLoading] = useState(false)
-  const [error,   setError]   = useState<string | null>(null)
-  const [success, setSuccess] = useState(false)
+  const [loading,          setLoading]          = useState(false)
+  const [validationErrors, setValidationErrors] = useState<string[]>([])
+  const [apiError,         setApiError]         = useState<string | null>(null)
+  const [success,          setSuccess]          = useState(false)
+  const [showConfirm,      setShowConfirm]      = useState(false)
+  const [confirmSummary,   setConfirmSummary]   = useState<JobOrderSummary | null>(null)
 
   useEffect(() => {
     return () => { if (redirectTimer.current) clearTimeout(redirectTimer.current) }
@@ -152,7 +162,7 @@ export default function AddJobOrderForm() {
         setHeadTechs(tRes.technicians ?? [])
         setCrewMembers(tRes.crew_members ?? [])
       } catch {
-        setError("Failed to load form data. Please refresh.")
+        setApiError("Failed to load form data. Please refresh.")
       } finally {
         setLoadingRefs(false)
       }
@@ -165,6 +175,42 @@ export default function AddJobOrderForm() {
     : null
 
   const selectedService = services.find((s) => s.id === selectedServiceId) ?? null
+
+  function handleServiceChange(id: string | null) {
+    setSelectedServiceId(id)
+    setCustomServiceName(id ? (services.find((s) => s.id === id)?.name ?? "") : "")
+    setCustomDurationMins(null)
+    setPackageServiceIds([])
+    setValidationErrors([])
+  }
+
+  const PHONE_RE = /^(09|\+639)\d{9}$/
+
+  function validate(): string[] {
+    const errs: string[] = []
+    if (!useManualCustomer && !selectedCustomerId)
+      errs.push("Please select a customer.")
+    if (useManualCustomer) {
+      if (!manualCustomerName.trim())
+        errs.push("Customer name is required.")
+      const rawPhone = manualContactNumber.replace(/[\s\-]/g, "")
+      if (!rawPhone)
+        errs.push("Contact number is required.")
+      else if (!PHONE_RE.test(rawPhone))
+        errs.push("Contact number must be a valid PH mobile number (e.g., 09XX-XXX-XXXX).")
+      if (!manualPlateNumber.trim())
+        errs.push("Plate number is required.")
+      if (!manualVehicleUnit.trim())
+        errs.push("Vehicle unit is required.")
+    }
+    if (!selectedServiceId)              errs.push("Please select a service.")
+    if (!scheduledAt)                    errs.push("Please set a scheduled date and time.")
+    if (!selectedHeadDetailerId)         errs.push("Please select a Head Detailer.")
+    if (!selectedHeadInstallerId)        errs.push("Please select a Head Installer.")
+    if (selectedDetailerIds.size === 0)  errs.push("Please assign at least one Detailer.")
+    if (selectedInstallerIds.size === 0) errs.push("Please assign at least one Installer.")
+    return errs
+  }
 
   const headDetailers  = headTechs.filter((t) => t.role === "head_detailer")
   const headInstallers = headTechs.filter((t) => t.role === "head_installer")
@@ -198,44 +244,65 @@ export default function AddJobOrderForm() {
     })
   }
 
-  async function handleSubmit() {
-    setError(null)
+  function handleConfirmClick() {
+    setApiError(null)
+    const errs = validate()
+    if (errs.length > 0) { setValidationErrors(errs); return }
+    setValidationErrors([])
 
-    if (!useManualCustomer && !selectedCustomerId) {
-      setError("Please select a customer."); return
-    }
-    if (useManualCustomer) {
-      if (!manualCustomerName.trim())   { setError("Please enter customer name."); return }
-      if (!manualContactNumber.trim())  { setError("Please enter contact number."); return }
-      if (!manualPlateNumber.trim())    { setError("Please enter plate number."); return }
-    }
-    if (!selectedServiceId)        { setError("Please select a service."); return }
-    if (!scheduledAt)              { setError("Please set a scheduled date."); return }
-    if (!selectedHeadDetailerId)   { setError("Please select a Head Detailer."); return }
-    if (!selectedHeadInstallerId)  { setError("Please select a Head Installer."); return }
-    if (selectedDetailerIds.size === 0)  { setError("Please assign at least one Detailer."); return }
-    if (selectedInstallerIds.size === 0) { setError("Please assign at least one Installer."); return }
+    const effDuration = customDurationMins ?? (selectedService?.estimated_duration_mins ?? 0)
+    const pkgServices = services.filter((s) => packageServiceIds.includes(s.id))
+    const totalMins   = effDuration + pkgServices.reduce((sum, s) => sum + s.estimated_duration_mins, 0)
+    const dMins       = totalMins
+    const dLabel      = dMins <= 0 ? "—" : dMins >= 60
+      ? `${Math.round(dMins / 60)} hr${Math.round(dMins / 60) !== 1 ? "s" : ""}`
+      : `${dMins} min${dMins !== 1 ? "s" : ""}`
 
+    const summary: JobOrderSummary = {
+      customerName:    selectedCustomer?.full_name   ?? manualCustomerName.trim(),
+      contactNumber:   selectedCustomer?.contact_number ?? manualContactNumber.trim(),
+      email:           selectedCustomer?.email        ?? (manualEmail.trim() || null),
+      plateNumber:     selectedCustomer?.plate_number ?? manualPlateNumber.trim(),
+      vehicleUnit:     selectedCustomer?.vehicle_unit ?? manualVehicleUnit.trim(),
+      serviceName:     customServiceName || selectedService?.name || "—",
+      isOverridden:    !!customServiceName && customServiceName !== selectedService?.name,
+      packageServices: pkgServices.map((s) => s.name),
+      scheduledAt:     formatDate(scheduledAt),
+      expectedEnd:     scheduledAt && totalMins > 0 ? addMinutes(scheduledAt, totalMins) : formatDate(scheduledAt),
+      duration:        dLabel,
+      headDetailer:    headTechs.find((t) => t.id === selectedHeadDetailerId)?.full_name  ?? "—",
+      headInstaller:   headTechs.find((t) => t.id === selectedHeadInstallerId)?.full_name ?? "—",
+      detailers:       crewMembers.filter((c) => selectedDetailerIds.has(c.id)).map((c) => c.full_name),
+      installers:      crewMembers.filter((c) => selectedInstallerIds.has(c.id)).map((c) => c.full_name),
+    }
+    setConfirmSummary(summary)
+    setShowConfirm(true)
+  }
+
+  async function submitOrder() {
     setLoading(true)
+    setApiError(null)
     try {
       const payload: Record<string, unknown> = {
-        service_id:        selectedServiceId,
-        scheduled_at:      scheduledAt,
-        head_detailer_id:  selectedHeadDetailerId ?? null,
-        head_installer_id: selectedHeadInstallerId ?? null,
-        detailer_ids:      [...selectedDetailerIds],
-        installer_ids:     [...selectedInstallerIds],
+        service_id:           selectedServiceId,
+        scheduled_at:         scheduledAt,
+        head_detailer_id:     selectedHeadDetailerId ?? null,
+        head_installer_id:    selectedHeadInstallerId ?? null,
+        detailer_ids:         [...selectedDetailerIds],
+        installer_ids:        [...selectedInstallerIds],
+        custom_service_name:  customServiceName !== (selectedService?.name ?? "") ? customServiceName : null,
+        custom_duration_mins: customDurationMins,
+        package_service_ids:  packageServiceIds.length > 0 ? packageServiceIds : null,
       }
-
       if (!useManualCustomer) {
         payload.customer_record_id = selectedCustomerId
       } else {
         payload.customer_name   = manualCustomerName.trim()
         payload.contact_number  = manualContactNumber.trim()
+        payload.email           = manualEmail.trim() || null
         payload.plate_number    = manualPlateNumber.trim()
         payload.vehicle_unit    = manualVehicleUnit.trim() || null
       }
-
       const res  = await fetch("/api/operations/job-management/add-job-order", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -243,11 +310,12 @@ export default function AddJobOrderForm() {
       })
       const data = await res.json()
       if (!res.ok) throw new Error(data?.error ?? "Failed to create job order")
-
+      setShowConfirm(false)
       setSuccess(true)
       redirectTimer.current = setTimeout(() => router.push("/dashboard/job-management"), 1200)
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : String(err))
+      setShowConfirm(false)
+      setApiError(err instanceof Error ? err.message : String(err))
     } finally {
       setLoading(false)
     }
@@ -265,7 +333,9 @@ export default function AddJobOrderForm() {
     : scheduledAt ? formatDate(scheduledAt) : "—"
 
   return (
-    <div className="flex flex-col gap-5 max-w-3xl">
+    <>
+    <div className={`flex gap-6 items-start ${selectedService ? "max-w-5xl" : "max-w-3xl"}`}>
+    <div className="flex flex-col gap-5 flex-1 min-w-0">
       {/* Breadcrumb */}
       <div className="text-xs text-gray-400">
         <span>Job Management</span>
@@ -296,7 +366,7 @@ export default function AddJobOrderForm() {
                 <label className="text-xs font-medium text-gray-600">Customer <span className="text-red-500 ml-0.5">*</span></label>
                 <button
                   type="button"
-                  onClick={() => { setUseManualCustomer(true); setSelectedCustomerId(null); setError(null) }}
+                  onClick={() => { setUseManualCustomer(true); setSelectedCustomerId(null); setValidationErrors([]) }}
                   className="text-xs text-blue-600 hover:underline"
                 >
                   Enter manually
@@ -304,7 +374,7 @@ export default function AddJobOrderForm() {
               </div>
               <select
                 value={selectedCustomerId ?? ""}
-                onChange={(e) => { setSelectedCustomerId(e.target.value || null); setError(null) }}
+                onChange={(e) => { setSelectedCustomerId(e.target.value || null); setValidationErrors([]) }}
                 disabled={loadingRefs}
                 className={SELECT_CLS}
               >
@@ -334,7 +404,7 @@ export default function AddJobOrderForm() {
                 <label className="text-xs font-medium text-gray-600">Customer Name *</label>
                 <button
                   type="button"
-                  onClick={() => { setUseManualCustomer(false); setError(null) }}
+                  onClick={() => { setUseManualCustomer(false); setValidationErrors([]) }}
                   className="text-xs text-blue-600 hover:underline"
                 >
                   Select from records
@@ -351,7 +421,11 @@ export default function AddJobOrderForm() {
               <input type="text" value={manualPlateNumber} onChange={(e) => setManualPlateNumber(e.target.value)} placeholder="e.g., ABC-1234" className={INPUT_CLS} />
             </div>
             <div className="flex flex-col gap-1.5 col-span-2">
-              <label className="text-xs font-medium text-gray-600">Vehicle Unit</label>
+              <label className="text-xs font-medium text-gray-600">Email</label>
+              <input type="email" value={manualEmail} onChange={(e) => setManualEmail(e.target.value)} placeholder="e.g., juan@email.com" className={INPUT_CLS} />
+            </div>
+            <div className="flex flex-col gap-1.5 col-span-2">
+              <label className="text-xs font-medium text-gray-600">Vehicle Unit <span className="text-red-500 ml-0.5">*</span></label>
               <input type="text" value={manualVehicleUnit} onChange={(e) => setManualVehicleUnit(e.target.value)} placeholder="e.g., Toyota Vios 2020" className={INPUT_CLS} />
             </div>
           </div>
@@ -366,7 +440,7 @@ export default function AddJobOrderForm() {
             <label className="text-xs font-medium text-gray-600">Service <span className="text-red-500 ml-0.5">*</span> </label>
             <select
               value={selectedServiceId ?? ""}
-              onChange={(e) => { setSelectedServiceId(e.target.value || null); setError(null) }}
+              onChange={(e) => handleServiceChange(e.target.value || null)}
               disabled={loadingRefs}
               className={SELECT_CLS}
             >
@@ -379,7 +453,7 @@ export default function AddJobOrderForm() {
             <input
               type="datetime-local"
               value={scheduledAt}
-              onChange={(e) => { setScheduledAt(e.target.value); setError(null) }}
+              onChange={(e) => { setScheduledAt(e.target.value); setValidationErrors([]) }}
               className={INPUT_CLS}
             />
           </div>
@@ -420,7 +494,7 @@ export default function AddJobOrderForm() {
             <label className="text-xs font-medium text-gray-600">Head Detailer <span className="text-red-500">*</span></label>
             <select
               value={selectedHeadDetailerId ?? ""}
-              onChange={(e) => { setSelectedHeadDetailerId(e.target.value || null); setError(null) }}
+              onChange={(e) => { setSelectedHeadDetailerId(e.target.value || null); setValidationErrors([]) }}
               disabled={loadingRefs}
               className={SELECT_CLS}
             >
@@ -436,7 +510,7 @@ export default function AddJobOrderForm() {
             <label className="text-xs font-medium text-gray-600">Head Installer <span className="text-red-500">*</span></label>
             <select
               value={selectedHeadInstallerId ?? ""}
-              onChange={(e) => { setSelectedHeadInstallerId(e.target.value || null); setError(null) }}
+              onChange={(e) => { setSelectedHeadInstallerId(e.target.value || null); setValidationErrors([]) }}
               disabled={loadingRefs}
               className={SELECT_CLS}
             >
@@ -479,13 +553,23 @@ export default function AddJobOrderForm() {
           Cancel
         </Link>
         <div className="flex-1 flex flex-col gap-2">
-          {error && (
-            <p className="text-sm text-red-500 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
-              {error}
+          {validationErrors.length > 0 && (
+            <div className="bg-red-50 border border-red-200 rounded-lg px-4 py-3">
+              <p className="text-xs font-semibold text-red-600 mb-1.5">Please fix the following:</p>
+              <ul className="list-disc list-inside space-y-0.5">
+                {validationErrors.map((e, i) => (
+                  <li key={i} className="text-xs text-red-500">{e}</li>
+                ))}
+              </ul>
+            </div>
+          )}
+          {apiError && (
+            <p className="text-xs text-red-500 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
+              {apiError}
             </p>
           )}
           <button
-            onClick={handleSubmit}
+            onClick={handleConfirmClick}
             disabled={loading || success}
             className={`w-full py-3 text-sm font-semibold text-white rounded-xl transition-colors ${
               loading || success ? "bg-gray-400 cursor-not-allowed" : "bg-gray-900 hover:bg-gray-800"
@@ -496,5 +580,34 @@ export default function AddJobOrderForm() {
         </div>
       </div>
     </div>
+
+    {/* Service Override Panel — appears when a service is selected */}
+    {selectedService && (
+      <div className="sticky top-6">
+        <ServiceOverridePanel
+          primaryService={selectedService}
+          allServices={services}
+          packageServiceIds={packageServiceIds}
+          customName={customServiceName}
+          customDurationMins={customDurationMins}
+          onPackageChange={setPackageServiceIds}
+          onOverrideChange={(name, duration) => {
+            setCustomServiceName(name)
+            setCustomDurationMins(duration)
+          }}
+        />
+      </div>
+    )}
+    </div>
+
+    {showConfirm && confirmSummary && (
+      <JobOrderConfirmDialog
+        summary={confirmSummary}
+        submitting={loading}
+        onConfirm={submitOrder}
+        onBack={() => setShowConfirm(false)}
+      />
+    )}
+    </>
   )
 }
