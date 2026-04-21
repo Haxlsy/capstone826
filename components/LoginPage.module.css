@@ -1,0 +1,441 @@
+@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=Rajdhani:wght@600;700&display=swap');
+
+/* ── Variables ─────────────────────────────────────────────── */
+:root {
+  --teal: #00d2be;
+  --teal-dark: #00a896;
+  --bg: #eef2f5;
+}
+
+/* ── Page wrapper ──────────────────────────────────────────── */
+.page {
+  min-height: 100dvh;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 100px 60px 48px;
+  font-family: 'Outfit', sans-serif;
+  background: var(--bg);
+  position: relative;
+  overflow-x: hidden;
+}
+
+/* ── Flare blobs ───────────────────────────────────────────── */
+.flares {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+}
+
+.flare {
+  position: absolute;
+  opacity: 0.55;
+  background: var(--teal);
+  filter: blur(80px);
+}
+
+.flare1 {
+  width: clamp(320px, 65vw, 780px);
+  height: clamp(200px, 40vh, 500px);
+  /* organic blob — wide horizontal ellipse skewed top-left */
+  border-radius: 42% 58% 38% 62% / 55% 45% 55% 45%;
+  top: -10%;
+  left: -12%;
+  animation: drift1 5s infinite alternate ease-in-out;
+}
+
+.flare2 {
+  width: clamp(280px, 55vw, 700px);
+  height: clamp(180px, 38vh, 460px);
+  /* mirrored blob shape — bottom-right */
+  border-radius: 58% 42% 62% 38% / 45% 55% 45% 55%;
+  bottom: -10%;
+  right: -12%;
+  animation: drift2 10s infinite alternate-reverse ease-in-out;
+}
+
+/* ── Drift keyframes ───────────────────────────────────────── */
+@keyframes drift1 {
+  0%   { transform: translate(0, 0)         scale(1)    rotate(0deg);   }
+  50%  { transform: translate(24px, 16px)   scale(1.04) rotate(3deg);   }
+  100% { transform: translate(40px, 24px)   scale(1.06) rotate(-2deg);  }
+}
+@keyframes drift2 {
+  0%   { transform: translate(0, 0)          scale(1)    rotate(0deg);  }
+  50%  { transform: translate(-20px, -14px)  scale(1.03) rotate(-3deg); }
+  100% { transform: translate(-36px, -22px)  scale(1.05) rotate(2deg);  }
+}
+
+/* ── Dot accents ───────────────────────────────────────────── */
+.dotTR,
+.dotBL {
+  position: fixed;
+  width: 160px;
+  height: 120px;
+  background-image: radial-gradient(var(--teal) 1.5px, transparent 1.5px);
+  background-size: 14px 14px;
+  opacity: 0.2;
+  pointer-events: none;
+  z-index: 1;
+}
+.dotTR { top: 16px; right: 16px; }
+.dotBL { bottom: 16px; left: 16px; }
+
+/* ── Branding header ───────────────────────────────────────── */
+.brand {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 72px;
+  display: flex;
+  align-items: center;
+  padding: 0 36px;
+  gap: 14px;
+  z-index: 100;
+  background: rgba(238, 242, 245, 0.75);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border-bottom: 1px solid rgba(0, 0, 0, 0.05);
+}
+
+.brandLogo {
+  height: 80px;
+  width: auto;
+  filter: drop-shadow(0 2px 6px rgba(0, 0, 0, 0.1));
+}
+
+.brandDivider {
+  width: 1.5px;
+  height: 30px;
+  background: rgba(0, 0, 0, 0.14);
+  border-radius: 999px;
+}
+
+.brandName {
+  font-size: 17px;
+  font-weight: 600;
+  color: #111;
+  letter-spacing: -0.3px;
+  font-family: 'Outfit', sans-serif;
+}
+
+/* ── Card ──────────────────────────────────────────────────── */
+/*
+  The card is a transparent layout grid — it holds the two
+  columns together but has no visual of its own.
+  The formSide owns the glass-card visuals.
+  The imageSide holds the absolutely-positioned photo that
+  overflows the card boundary.
+*/
+.card {
+  position: relative;
+  z-index: 10;
+  width: 100%;
+  max-width: 1060px;
+  display: grid;
+  grid-template-columns: 1.2fr 1fr;
+  min-height: 560px;
+  overflow: visible;          /* let the photo bleed outside */
+  background: transparent;
+}
+
+/* ── Left — image panel ────────────────────────────────────── */
+.imageSide {
+  position: relative;
+}
+
+.imageWrap {
+  position: absolute;
+  border-radius: 32px;
+  overflow: hidden;
+  z-index: 2;
+  inset: -5px -200px -5px -44px;
+}
+
+.imageWrap img {
+  width: 100%;
+  height: 100%;
+  object-fit: fit;
+  object-position: center;
+  display: block;
+}
+
+/* ── Right — form panel (owns the glass-card look) ─────────── */
+.formSide {
+  position: relative;
+  z-index: 1;
+  padding: 56px 56px 56px;  /* left padding clears the 100px image overlap */
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  background: rgba(255, 255, 255, 0.84);
+  backdrop-filter: blur(40px);
+  -webkit-backdrop-filter: blur(40px);
+  border-radius: 36px;
+  border: 1px solid rgba(255, 255, 255, 0.9);
+  box-shadow: 0 32px 80px -20px rgba(0, 0, 0, 0.15);
+}
+
+/* ── Form header ───────────────────────────────────────────── */
+.formHeader {
+  margin-bottom: 28px;
+}
+
+.title {
+  font-family: 'Rajdhani', sans-serif;
+  font-size: 44px;
+  font-weight: 700;
+  color: #111;
+  line-height: 1;
+  margin-bottom: 6px;
+}
+
+.subtitle {
+  font-size: 15px;
+  color: #666;
+  margin-bottom: 12px;
+}
+
+.underline {
+  height: 2px;
+  background: var(--teal);
+  opacity: 0.55;
+  border-radius: 999px;
+}
+
+/* ── Field groups ──────────────────────────────────────────── */
+.field {
+  margin-bottom: 20px;
+}
+
+.label {
+  display: block;
+  font-size: 13px;
+  font-weight: 600;
+  color: #444;
+  margin-bottom: 8px;
+}
+
+.inputWrap {
+  position: relative;
+}
+
+.inputIcon {
+  position: absolute;
+  left: 18px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: #aaa;
+  display: flex;
+  align-items: center;
+  pointer-events: none;
+}
+
+.input {
+  width: 100%;
+  padding: 14px 18px 14px 50px;
+  background: #fff;
+  border: 1.5px solid #e5e7eb;
+  border-radius: 16px;
+  font-size: 15px;
+  font-family: 'Outfit', sans-serif;
+  color: #111;
+  transition: border-color 0.25s, box-shadow 0.25s, transform 0.2s;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.03);
+  -webkit-appearance: none;
+}
+
+.input:focus {
+  outline: none;
+  border-color: var(--teal);
+  box-shadow: 0 6px 20px rgba(0, 210, 190, 0.14);
+  transform: translateY(-1px);
+}
+
+.input.inputError {
+  border-color: #f43f5e;
+}
+
+.toggleBtn {
+  position: absolute;
+  right: 16px;
+  top: 50%;
+  transform: translateY(-50%);
+  background: none;
+  border: none;
+  color: #bbb;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  padding: 4px;
+  transition: color 0.2s;
+}
+.toggleBtn:hover { color: var(--teal-dark); }
+
+.errorText {
+  font-size: 12px;
+  font-weight: 600;
+  color: #f43f5e;
+  margin-top: 6px;
+}
+
+/* ── Forgot password ───────────────────────────────────────── */
+.forgotRow {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 8px;
+}
+
+.forgotLink {
+  font-size: 13px;
+  font-weight: 600;
+  color: #00897b;
+  text-decoration: none;
+  transition: color 0.2s;
+}
+.forgotLink:hover { color: var(--teal); text-decoration: underline; }
+
+/* ── Server error ──────────────────────────────────────────── */
+.serverError {
+  font-size: 13px;
+  font-weight: 600;
+  color: #f43f5e;
+  background: #fff1f3;
+  border: 1px solid #fecdd3;
+  border-radius: 10px;
+  padding: 10px 14px;
+  margin-bottom: 16px;
+}
+
+/* ── Login button ──────────────────────────────────────────── */
+.submitBtn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: 140px;
+  padding: 14px 20px;
+  margin: 20px auto 0;
+  background: linear-gradient(135deg, var(--teal), var(--teal-dark));
+  color: #fff;
+  border: none;
+  border-radius: 20px;
+  font-family: 'Outfit', sans-serif;
+  font-size: 17px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: transform 0.25s, box-shadow 0.25s, opacity 0.2s;
+  box-shadow: 0 8px 20px rgba(0, 210, 190, 0.32);
+}
+
+.submitBtn:hover:not(:disabled) {
+  transform: translateY(-2px);
+  box-shadow: 0 14px 28px rgba(0, 210, 190, 0.42);
+}
+
+.submitBtn:disabled {
+  opacity: 0.58;
+  cursor: not-allowed;
+  transform: none;
+}
+
+/* ── Status badge ──────────────────────────────────────────── */
+.badge {
+  position: fixed;
+  bottom: 20px;
+  right: 20px;
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: rgba(255, 255, 255, 0.88);
+  backdrop-filter: blur(8px);
+  padding: 7px 14px;
+  border-radius: 999px;
+  border: 1px solid rgba(0, 0, 0, 0.05);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.06);
+}
+
+.badgeDot {
+  width: 7px;
+  height: 7px;
+  background: var(--teal);
+  border-radius: 50%;
+  animation: pulse 2s infinite;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50%       { opacity: 0.3; transform: scale(0.75); }
+}
+
+.badgeText {
+  font-size: 11px;
+  font-weight: 700;
+  color: #888;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+/* ── Tablet (≤900px) ───────────────────────────────────────── */
+@media (max-width: 900px) {
+  .page     { padding: 88px 24px 40px; }
+  .card {
+    grid-template-columns: 1fr;
+    min-height: unset;
+  }
+  .imageSide { display: none; }
+  .formSide  { padding: 44px 40px; }
+  .brand     { padding: 0 20px; }
+  .brandName { font-size: 15px; }
+  .brandLogo { height: 38px; }
+}
+
+/* ── Mobile (≤480px) ───────────────────────────────────────── */
+@media (max-width: 480px) {
+  .page {
+    padding: 80px 14px 28px;
+    justify-content: flex-start;
+  }
+
+  .brand {
+    height: 60px;
+    padding: 0 16px;
+    gap: 10px;
+  }
+  .brandLogo    { height: 30px; }
+  .brandDivider { height: 22px; }
+  .brandName    { font-size: 13px; }
+
+  .formSide {
+    padding: 32px 22px 36px;
+    border-radius: 24px;
+  }
+
+  .formHeader  { margin-bottom: 22px; }
+  .title       { font-size: 34px; }
+  .subtitle    { font-size: 14px; }
+
+  .input {
+    padding: 13px 16px 13px 46px;
+    font-size: 16px;
+    border-radius: 14px;
+  }
+  .inputIcon { left: 14px; }
+
+  .submitBtn {
+    width: 100%;
+    border-radius: 14px;
+    font-size: 16px;
+    padding: 15px;
+    margin-top: 16px;
+  }
+
+  .badge  { display: none; }
+  .dotTR,
+  .dotBL  { display: none; }
+}
