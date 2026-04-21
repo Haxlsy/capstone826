@@ -9,7 +9,7 @@
 
 /* ── Page wrapper ──────────────────────────────────────────── */
 .page {
-  min-height: 100dvh;
+  height: 100dvh;
   width: 100%;
   display: flex;
   flex-direction: column;
@@ -19,7 +19,7 @@
   font-family: 'Outfit', sans-serif;
   background: var(--bg);
   position: relative;
-  overflow-x: hidden;
+  overflow: hidden;
 }
 
 /* ── Flare blobs ───────────────────────────────────────────── */
@@ -37,36 +37,91 @@
   filter: blur(80px);
 }
 
+/* flare1 — top-left corner, drifts along left edge */
 .flare1 {
   width: clamp(320px, 65vw, 780px);
   height: clamp(200px, 40vh, 500px);
-  /* organic blob — wide horizontal ellipse skewed top-left */
   border-radius: 42% 58% 38% 62% / 55% 45% 55% 45%;
-  top: -10%;
-  left: -12%;
-  animation: drift1 5s infinite alternate ease-in-out;
+  top: -15%;
+  left: -20%;
+  animation: drift1 22s infinite ease-in-out;
 }
 
+/* flare2 — bottom-right corner, drifts along right edge */
 .flare2 {
   width: clamp(280px, 55vw, 700px);
   height: clamp(180px, 38vh, 460px);
-  /* mirrored blob shape — bottom-right */
   border-radius: 58% 42% 62% 38% / 45% 55% 45% 55%;
+  bottom: -15%;
+  right: -18%;
+  animation: drift2 28s infinite ease-in-out;
+}
+
+/* flare3 — bottom-left corner */
+.flare3 {
+  width: clamp(160px, 28vw, 360px);
+  height: clamp(120px, 22vh, 280px);
+  border-radius: 62% 38% 46% 54% / 38% 62% 38% 62%;
+  opacity: 0.35;
   bottom: -10%;
-  right: -12%;
-  animation: drift2 10s infinite alternate-reverse ease-in-out;
+  left: -10%;
+  animation: drift3 18s infinite ease-in-out;
+}
+
+/* flare4 — top-right corner */
+.flare4 {
+  width: clamp(120px, 22vw, 300px);
+  height: clamp(100px, 18vh, 240px);
+  border-radius: 38% 62% 54% 46% / 62% 38% 62% 38%;
+  opacity: 0.3;
+  top: -8%;
+  right: -8%;
+  animation: drift4 32s infinite ease-in-out;
+}
+
+/* flare5 — mid left edge */
+.flare5 {
+  width: clamp(100px, 18vw, 240px);
+  height: clamp(80px, 14vh, 180px);
+  border-radius: 50% 50% 38% 62% / 46% 54% 46% 54%;
+  opacity: 0.25;
+  top: 40%;
+  left: -8%;
+  animation: drift5 24s infinite ease-in-out;
 }
 
 /* ── Drift keyframes ───────────────────────────────────────── */
 @keyframes drift1 {
-  0%   { transform: translate(0, 0)         scale(1)    rotate(0deg);   }
-  50%  { transform: translate(24px, 16px)   scale(1.04) rotate(3deg);   }
-  100% { transform: translate(40px, 24px)   scale(1.06) rotate(-2deg);  }
+  0%   { transform: translate(0,     0)      scale(1);    }
+  25%  { transform: translate(6vw,   18vh)   scale(1.04); }
+  50%  { transform: translate(2vw,   35vh)   scale(0.97); }
+  75%  { transform: translate(8vw,   15vh)   scale(1.03); }
+  100% { transform: translate(0,     0)      scale(1);    }
 }
 @keyframes drift2 {
-  0%   { transform: translate(0, 0)          scale(1)    rotate(0deg);  }
-  50%  { transform: translate(-20px, -14px)  scale(1.03) rotate(-3deg); }
-  100% { transform: translate(-36px, -22px)  scale(1.05) rotate(2deg);  }
+  0%   { transform: translate(0,      0)     scale(1);    }
+  25%  { transform: translate(-6vw,  -20vh)  scale(1.04); }
+  50%  { transform: translate(-2vw,  -38vh)  scale(0.96); }
+  75%  { transform: translate(-9vw,  -14vh)  scale(1.05); }
+  100% { transform: translate(0,      0)     scale(1);    }
+}
+@keyframes drift3 {
+  0%   { transform: translate(0,     0)      scale(1);    }
+  33%  { transform: translate(8vw,  -16vh)   scale(1.05); }
+  66%  { transform: translate(3vw,  -28vh)   scale(0.95); }
+  100% { transform: translate(0,     0)      scale(1);    }
+}
+@keyframes drift4 {
+  0%   { transform: translate(0,      0)     scale(1);    }
+  33%  { transform: translate(-7vw,  14vh)   scale(1.06); }
+  66%  { transform: translate(-3vw,  26vh)   scale(0.96); }
+  100% { transform: translate(0,      0)     scale(1);    }
+}
+@keyframes drift5 {
+  0%   { transform: translate(0,     0)      scale(1);    }
+  30%  { transform: translate(5vw,  -14vh)   scale(1.07); }
+  60%  { transform: translate(2vw,   14vh)   scale(0.94); }
+  100% { transform: translate(0,     0)      scale(1);    }
 }
 
 /* ── Dot accents ───────────────────────────────────────────── */
@@ -135,11 +190,11 @@
   position: relative;
   z-index: 10;
   width: 100%;
-  max-width: 1060px;
+  max-width: 1040px;
   display: grid;
-  grid-template-columns: 1.2fr 1fr;
-  min-height: 560px;
-  overflow: visible;          /* let the photo bleed outside */
+  grid-template-columns: 1fr 1.4fr;
+  min-height: 620px;
+  overflow: visible;
   background: transparent;
 }
 
@@ -150,10 +205,10 @@
 
 .imageWrap {
   position: absolute;
-  border-radius: 32px;
   overflow: hidden;
   z-index: 2;
-  inset: -5px -200px -5px -44px;
+  inset: -5px -230px -5px -50px;
+  pointer-events: none;
 }
 
 .imageWrap img {
@@ -168,10 +223,12 @@
 .formSide {
   position: relative;
   z-index: 1;
-  padding: 56px 56px 56px;  /* left padding clears the 100px image overlap */
+  padding: 30px 120px;
+  margin-left: 40px;
   display: flex;
   flex-direction: column;
   justify-content: center;
+  align-self: center;
   background: rgba(255, 255, 255, 0.84);
   backdrop-filter: blur(40px);
   -webkit-backdrop-filter: blur(40px);
@@ -182,22 +239,22 @@
 
 /* ── Form header ───────────────────────────────────────────── */
 .formHeader {
-  margin-bottom: 28px;
+  margin-bottom: 20px;
 }
 
 .title {
   font-family: 'Rajdhani', sans-serif;
-  font-size: 44px;
+  font-size: 36px;
   font-weight: 700;
   color: #111;
   line-height: 1;
-  margin-bottom: 6px;
+  margin-bottom: 4px;
 }
 
 .subtitle {
-  font-size: 15px;
+  font-size: 13px;
   color: #666;
-  margin-bottom: 12px;
+  margin-bottom: 10px;
 }
 
 .underline {
@@ -209,7 +266,7 @@
 
 /* ── Field groups ──────────────────────────────────────────── */
 .field {
-  margin-bottom: 20px;
+  margin-bottom: 14px;
 }
 
 .label {
@@ -233,7 +290,7 @@
   display: flex;
   align-items: center;
   pointer-events: none;
-  z-index: 1;
+  z-index: 3;
 }
 
 .input {
@@ -384,13 +441,47 @@
 
 /* ── Tablet (≤900px) ───────────────────────────────────────── */
 @media (max-width: 900px) {
-  .page     { padding: 88px 24px 40px; }
+  .page {
+    padding: 88px 24px 40px;
+    gap: 16px;
+  }
+
   .card {
     grid-template-columns: 1fr;
     min-height: unset;
+    gap: 0;
   }
-  .imageSide { display: none; }
-  .formSide  { padding: 44px 40px; }
+
+  /* Image sits above the form as a contained card */
+  .imageSide {
+    display: block;
+    height: 220px;
+    border-radius: 24px;
+    overflow: hidden;
+    margin-bottom: -12px; /* slight overlap into form */
+    z-index: 2;
+    position: relative;
+  }
+
+  .imageWrap {
+    position: relative;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    border-radius: 24px;
+  }
+
+  .imageWrap img {
+    object-fit: cover;
+  }
+
+  .formSide {
+    padding: 32px 36px 36px;
+    border-radius: 24px;
+    margin-left: 0;
+    align-self: auto;
+  }
+
   .brand     { padding: 0 20px; }
   .brandName { font-size: 15px; }
   .brandLogo { height: 38px; }
@@ -399,8 +490,10 @@
 /* ── Mobile (≤480px) ───────────────────────────────────────── */
 @media (max-width: 480px) {
   .page {
-    padding: 80px 14px 28px;
-    justify-content: flex-start;
+    height: 100dvh;
+    padding: 72px 14px 48px;
+    justify-content: center;
+    overflow: hidden;
   }
 
   .brand {
@@ -412,14 +505,18 @@
   .brandDivider { height: 22px; }
   .brandName    { font-size: 13px; }
 
+  /* Hide image on small phones — form takes full width */
+  .imageSide { display: none; }
+
   .formSide {
     padding: 32px 22px 36px;
     border-radius: 24px;
+    margin-left: 0;
   }
 
-  .formHeader  { margin-bottom: 22px; }
-  .title       { font-size: 34px; }
-  .subtitle    { font-size: 14px; }
+  .formHeader  { margin-bottom: 20px; }
+  .title       { font-size: 32px; }
+  .subtitle    { font-size: 13px; }
 
   .input {
     padding: 13px 16px 13px 46px;
@@ -436,7 +533,28 @@
     margin-top: 16px;
   }
 
-  .badge  { display: none; }
   .dotTR,
   .dotBL  { display: none; }
+
+  .badge {
+    bottom: 12px;
+    right: 50%;
+    transform: translateX(50%);
+    padding: 6px 16px;
+    gap: 6px;
+    white-space: nowrap;
+    width: max-content;
+    max-width: calc(100vw - 32px);
+  }
+
+  .badgeDot {
+    width: 6px;
+    height: 6px;
+    flex-shrink: 0;
+  }
+
+  .badgeText {
+    font-size: 8.5px;
+    letter-spacing: 0.04em;
+  }
 }

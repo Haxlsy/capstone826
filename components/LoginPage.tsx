@@ -65,11 +65,15 @@ export default function LoginPage() {
   }
 
   return (
+    <>
     <div className={styles.page}>
       {/* Background blobs */}
       <div className={styles.flares} aria-hidden>
         <div className={`${styles.flare} ${styles.flare1}`} />
         <div className={`${styles.flare} ${styles.flare2}`} />
+        <div className={`${styles.flare} ${styles.flare3}`} />
+        <div className={`${styles.flare} ${styles.flare4}`} />
+        <div className={`${styles.flare} ${styles.flare5}`} />
       </div>
 
       {/* Dot accents */}
@@ -89,7 +93,7 @@ export default function LoginPage() {
         {/* Left — car image */}
         <div className={styles.imageSide}>
           <div className={styles.imageWrap}>
-            <img src="/assets/car-hero.png" alt="826 Featured Car" />
+            <img src="/assets/car-hero-svg.svg" alt="826 Featured Car" />
           </div>
         </div>
 
@@ -160,11 +164,13 @@ export default function LoginPage() {
         </div>
       </div>
 
-      {/* Status badge */}
-      <div className={styles.badge}>
-        <div className={styles.badgeDot} />
-        <span className={styles.badgeText}>Workshop Alpha · 826 HQ</span>
-      </div>
     </div>
+
+    {/* Status badge — outside .page so fixed positioning isn't clipped by overflow-x: hidden */}
+    <div className={styles.badge}>
+      <div className={styles.badgeDot} />
+      <span className={styles.badgeText}>826 Auto Aesthetic &amp; Protection · Ortigas Extension</span>
+    </div>
+    </>
   )
 }
