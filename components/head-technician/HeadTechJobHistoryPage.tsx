@@ -76,7 +76,6 @@ export default function HeadTechJobHistoryPage({ jobId }: { jobId: string }) {
   const [markingId, setMarkingId] = useState<string | null>(null);
   const [startingJob, setStartingJob] = useState(false);
   const [rejectionAlert, setRejectionAlert] = useState<{ message: string } | null>(null);
-  const [cameraStage, setCameraStage]       = useState<StageDoc | null>(null);
 
   const [showApprove, setShowApprove]   = useState(false);
   const [handoffNotes, setHandoffNotes] = useState("");
@@ -298,13 +297,6 @@ export default function HeadTechJobHistoryPage({ jobId }: { jobId: string }) {
     }
 
     setUploadingId(null);
-  }
-
-  function handleCameraCapture(stage: StageDoc, file: File) {
-    setCameraStage(null);
-    const dt = new DataTransfer();
-    dt.items.add(file);
-    handleFileChange(stage, dt.files);
   }
 
   async function removeMedia(stage: StageDoc, mediaId: string) {
@@ -578,7 +570,6 @@ export default function HeadTechJobHistoryPage({ jobId }: { jobId: string }) {
                 onFileChange={(files) => handleFileChange(stage, files)}
                 onRemoveMedia={(mediaId) => removeMedia(stage, mediaId)}
                 onPreview={(url, type) => setPreview({ url, type })}
-                onCameraOpen={() => setCameraStage(stage)}
               />
             ))
           )}
@@ -914,13 +905,6 @@ export default function HeadTechJobHistoryPage({ jobId }: { jobId: string }) {
         </div>
       )}
 
-      {/* Rear-camera capture modal */}
-      {cameraStage && (
-        <CameraModal
-          onCapture={(file: File) => handleCameraCapture(cameraStage, file)}
-          onClose={() => setCameraStage(null)}
-        />
-      )}
 
       <BottomNav active="jobs" />
     </>
@@ -941,7 +925,7 @@ function SectionLabel({ children }: { children: React.ReactNode }) {
 
 function StageCard({
   stage, readOnly, isMarking, isUploading, removingId, uploadError,
-  onMarkDone, onFileChange, onRemoveMedia, onPreview, onCameraOpen,
+  onMarkDone, onFileChange, onRemoveMedia, onPreview,
 }: {
   stage:         StageDoc;
   readOnly:      boolean;
@@ -953,7 +937,6 @@ function StageCard({
   onFileChange:  (files: FileList | null) => void;
   onRemoveMedia: (mediaId: string) => void;
   onPreview:     (url: string, type: string) => void;
-  onCameraOpen?: () => void;
 }) {
   const done       = stage.status === "done";
   const rework     = stage.status === "for_rework";
@@ -1064,20 +1047,23 @@ function StageCard({
             <p className="text-[11px] text-orange-500">Media locked — stage is flagged for rework.</p>
           )}
           <div className="flex items-center gap-2">
-            {/* Photo — opens locked rear-camera UI */}
-            <button
-              type="button"
-              onClick={onCameraOpen}
-              disabled={isUploading || photoFull || done || rework}
-              className={`flex-1 flex items-center justify-center gap-1.5 text-xs font-semibold border rounded-xl py-2.5 transition-colors ${
-                isUploading || photoFull || done || rework
-                  ? "opacity-40 cursor-not-allowed text-gray-400 border-gray-200 bg-gray-50"
-                  : "text-gray-600 border-gray-200 hover:bg-gray-50 cursor-pointer bg-white"
-              }`}
-            >
+            {/* Photo — opens native camera */}
+            <label className={`flex-1 flex items-center justify-center gap-1.5 text-xs font-semibold border rounded-xl py-2.5 transition-colors ${
+              isUploading || photoFull || done || rework
+                ? "opacity-40 pointer-events-none text-gray-400 border-gray-200 bg-gray-50"
+                : "text-gray-600 border-gray-200 hover:bg-gray-50 cursor-pointer bg-white"
+            }`}>
               <ImagePlus size={13} />
               Photo {photoCount > 0 && `(${photoCount}/5)`}
-            </button>
+              <input
+                type="file"
+                accept="image/*"
+                capture="environment"
+                className="hidden"
+                disabled={isUploading || photoFull || done || rework}
+                onChange={(e) => onFileChange(e.target.files)}
+              />
+            </label>
 
             {/* Video */}
             <label className={`flex-1 flex items-center justify-center gap-1.5 text-xs font-semibold border rounded-xl py-2.5 transition-colors ${
@@ -1129,154 +1115,6 @@ function InfoRow({ label, value, accent }: { label: string; value: string; accen
 }
 
 // ── CameraModal ───────────────────────────────────────────────────────────────
-
-function CameraModal({ onCapture, onClose }: { onCapture: (file: File) => void; onClose: () => void }) {
-  const videoRef  = useRef<HTMLVideoElement>(null);
-  const canvasRef = useRef<HTMLCanvasElement>(null);
-  const streamRef = useRef<MediaStream | null>(null);
-  const [camError, setCamError]       = useState<string | null>(null);
-  const [ready, setReady]             = useState(false);
-  const [zoom, setZoom]               = useState(1);
-  const [minZoom, setMinZoom]         = useState(1);
-  const [maxZoom, setMaxZoom]         = useState(1);
-  const [zoomSupported, setZoomSupported] = useState(false);
-
-  useEffect(() => {
-    if (!navigator.mediaDevices?.getUserMedia) {
-      setCamError("Camera API unavailable — this requires a secure connection (HTTPS). Use the button below to pick a photo instead.");
-      return;
-    }
-    let active = true;
-    navigator.mediaDevices
-      .getUserMedia({ video: { facingMode: { exact: "environment" } } })
-      .then((stream) => {
-        if (!active) { stream.getTracks().forEach((t: MediaStreamTrack) => t.stop()); return; }
-        streamRef.current = stream;
-        if (videoRef.current) {
-          videoRef.current.srcObject = stream;
-          videoRef.current.play();
-          setReady(true);
-        }
-        // Check zoom capability
-        const track = stream.getVideoTracks()[0];
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const caps = (track as any).getCapabilities?.() as Record<string, { min?: number; max?: number; step?: number }> | undefined;
-        if (caps?.zoom) {
-          setZoomSupported(true);
-          setMinZoom(caps.zoom.min ?? 1);
-          setMaxZoom(caps.zoom.max ?? 5);
-          setZoom(caps.zoom.min ?? 1);
-        }
-      })
-      .catch(() => { if (active) setCamError("Could not access the back camera. Please allow camera permissions and try again."); });
-    return () => {
-      active = false;
-      streamRef.current?.getTracks().forEach((t: MediaStreamTrack) => t.stop());
-    };
-  }, []);
-
-  function applyZoom(value: number) {
-    const track = streamRef.current?.getVideoTracks()[0];
-    if (!track) return;
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    (track as any).applyConstraints?.({ advanced: [{ zoom: value }] });
-    setZoom(value);
-  }
-
-  function close() {
-    streamRef.current?.getTracks().forEach((t: MediaStreamTrack) => t.stop());
-    onClose();
-  }
-
-  function capture() {
-    if (!videoRef.current || !canvasRef.current || !ready) return;
-    const video  = videoRef.current;
-    const canvas = canvasRef.current;
-    canvas.width  = video.videoWidth;
-    canvas.height = video.videoHeight;
-    canvas.getContext("2d")?.drawImage(video, 0, 0);
-    canvas.toBlob((blob: Blob | null) => {
-      if (!blob) return;
-      streamRef.current?.getTracks().forEach((t: MediaStreamTrack) => t.stop());
-      onCapture(new File([blob], `photo-${Date.now()}.jpg`, { type: "image/jpeg" }));
-    }, "image/jpeg", 0.92);
-  }
-
-  return (
-    <div className="fixed inset-0 z-[200] bg-black flex flex-col">
-      <div className="flex items-center justify-between px-4 py-3">
-        <button type="button" onClick={close} className="text-white p-1">
-          <X size={22} />
-        </button>
-        <p className="text-white text-xs font-semibold tracking-wide uppercase">Back Camera</p>
-        <div className="w-8" />
-      </div>
-
-      {camError ? (
-        <div className="flex-1 flex flex-col items-center justify-center px-8 gap-6">
-          <p className="text-white text-sm text-center leading-relaxed">{camError}</p>
-          <label className="px-6 py-3 bg-white/20 hover:bg-white/30 rounded-xl text-white text-sm font-semibold cursor-pointer transition-colors">
-            Choose Photo Instead
-            <input
-              type="file"
-              accept="image/*"
-              capture="environment"
-              className="hidden"
-              onChange={(e) => {
-                const file = e.target.files?.[0];
-                if (file) { streamRef.current?.getTracks().forEach((t: MediaStreamTrack) => t.stop()); onCapture(file); }
-              }}
-            />
-          </label>
-        </div>
-      ) : (
-        <video
-          ref={videoRef}
-          className="flex-1 w-full object-cover"
-          playsInline
-          muted
-        />
-      )}
-
-      <canvas ref={canvasRef} className="hidden" />
-
-      <div className="flex flex-col items-center gap-4 py-6 bg-black">
-        {zoomSupported && (
-          <div className="flex items-center gap-3 w-64">
-            <button
-              type="button"
-              onClick={() => applyZoom(Math.max(minZoom, zoom - 0.5))}
-              className="text-white text-lg font-bold w-8 h-8 flex items-center justify-center rounded-full bg-white/20 active:bg-white/40"
-            >−</button>
-            <input
-              type="range"
-              min={minZoom}
-              max={maxZoom}
-              step={0.1}
-              value={zoom}
-              onChange={(e) => applyZoom(parseFloat(e.target.value))}
-              className="flex-1 accent-white"
-            />
-            <button
-              type="button"
-              onClick={() => applyZoom(Math.min(maxZoom, zoom + 0.5))}
-              className="text-white text-lg font-bold w-8 h-8 flex items-center justify-center rounded-full bg-white/20 active:bg-white/40"
-            >+</button>
-            <span className="text-white text-xs w-10 text-right">{zoom.toFixed(1)}×</span>
-          </div>
-        )}
-        <button
-          type="button"
-          onClick={capture}
-          disabled={!ready}
-          aria-label="Capture photo"
-          className="w-16 h-16 rounded-full border-4 border-white bg-white/20 hover:bg-white/30 active:scale-95 transition-all disabled:opacity-40"
-        />
-      </div>
-    </div>
-  );
-}
-
 // ── CrewRow ───────────────────────────────────────────────────────────────────
 
 function CrewRow({ label, members }: { label: string; members: string[] }) {
