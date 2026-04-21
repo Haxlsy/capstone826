@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { GoogleGenAI } from "@google/genai"
 
 const PROMPT = `You are an image validator for a professional automotive detailing and installation workshop. Technicians upload photos to document their work on customer vehicles. Bad photos hurt the company's reputation with customers.
+Be strict about rejecting selfies. A face photo with no vehicle is always REJECTED.
 
 APPROVE if the image shows ANY of the following:
 - A vehicle (car, truck, van, SUV, motorcycle, jeep, bus, etc.) at any angle or distance
@@ -13,7 +14,8 @@ APPROVE if the image shows ANY of the following:
 - A slightly dark or slightly blurry photo where the subject is identifiably vehicle-related
 
 REJECT if:
-- It is a selfie or portrait — a human face is the clear main subject and NO vehicle or automotive content is visible anywhere in the frame
+- It is a selfie or portrait — A human face is prominently visible and NO vehicle or automotive content 
+  exists anywhere in the frame — reject immediately, do not give benefit of doubt
 - It shows food, household objects, pets, random scenery, or everyday items with zero automotive context
 - The photo is completely pitch-black, pure white, or totally unrecognizable (zero visible content)
 - It is sexually explicit or offensive
@@ -30,15 +32,68 @@ Respond ONLY with valid JSON, no markdown, no extra text:
 {
   "approved": true or false,
   "category": one of ["vehicle", "vehicle_part", "workspace", "unrelated", "inappropriate"],
-  "reason": "One short phrase, max 8 words",
+  "reason": "One short phrase, max 8-20 words explain what they took a photo of, or why it was rejected  (e.g. 'selfie with no vehicle', 'car wheel being detailed', 'blurry photo of garage floor', 'photo of a cat', 'explicit content')",
   "message": "One or two friendly sentences. If rejected, instruct them to upload a clear photo of the vehicle they are working on."
 }`
+
+async function generateWithRetry(
+  ai: GoogleGenAI,
+  contents: Parameters<typeof ai.models.generateContent>[0]["contents"],
+  retries = 3
+) {
+  for (let attempt = 0; attempt < retries; attempt++) {
+    try {
+      const response = await ai.models.generateContent({
+        model: "gemini-2.5-flash",
+        contents,
+        config: {
+          temperature: 0,
+          maxOutputTokens: 1024,
+        },
+      })
+      return response
+    } catch (err: unknown) {
+      const isRetryable =
+        err instanceof Error &&
+        (err.message.includes("503") || err.message.includes("429"))
+
+      const isLastAttempt = attempt === retries - 1
+
+      if (!isRetryable || isLastAttempt) throw err
+
+      // Exponential backoff: 1s, 2s, 4s
+      const delay = 1000 * Math.pow(2, attempt)
+      console.warn(`Gemini attempt ${attempt + 1} failed, retrying in ${delay}ms...`)
+      await new Promise((res) => setTimeout(res, delay))
+    }
+  }
+  throw new Error("Unreachable")
+}
+
+const requestTimestamps: number[] = []
+const RATE_LIMIT = 10 // max requests per minute
+
+function isRateLimited(): boolean {
+  const now = Date.now()
+  const oneMinuteAgo = now - 60_000
+  // Remove old timestamps
+  while (requestTimestamps.length && requestTimestamps[0] < oneMinuteAgo) {
+    requestTimestamps.shift()
+  }
+  if (requestTimestamps.length >= RATE_LIMIT) return true
+  requestTimestamps.push(now)
+  return false
+}
 
 export async function POST(request: NextRequest) {
   try {
     const apiKey = process.env.GEMINI_API_KEY
     if (!apiKey) {
       return NextResponse.json({ error: "Gemini API key not configured" }, { status: 500 })
+    }
+
+    if (isRateLimited()) {
+      return serviceError() // auto-approve and skip validation
     }
 
     const formData = await request.formData()
@@ -62,30 +117,16 @@ export async function POST(request: NextRequest) {
 
     const ai = new GoogleGenAI({ apiKey })
 
-    const response = await ai.models.generateContent({
-      model: "gemini-2.5-flash",
-      contents: [
-        {
-          parts: [
-            { text: PROMPT },
-            { inlineData: { mimeType: file.type, data: base64 } },
-          ],
-        },
-      ],
-      config: {
-        temperature: 0,
-        maxOutputTokens: 512,
-        // disable thinking — we only need a short JSON classification
-        thinkingConfig: { thinkingBudget: 0 },
-      },
-    })
+    const response = await generateWithRetry(ai, [
+  {
+    parts: [
+      { text: PROMPT },
+      { inlineData: { mimeType: file.type, data: base64 } },
+    ],
+  },
+])
 
-    // Extract only non-thought parts (Gemini 2.5 returns thought parts separately)
-    const parts = response.candidates?.[0]?.content?.parts ?? []
-    const text = parts
-      .filter((p: { thought?: boolean; text?: string }) => !p.thought && typeof p.text === "string")
-      .map((p: { text?: string }) => p.text)
-      .join("") || (response.text ?? "")
+    const text = response.text ?? ""
 
     try {
       const cleaned = text.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim()
