@@ -1,36 +1,30 @@
 import { NextRequest, NextResponse } from "next/server"
 import { GoogleGenAI } from "@google/genai"
 
-const PROMPT = `You are a vehicle image validator for an automotive detailing application. Your job is to determine whether an uploaded image is acceptable for a job stage documentation.
+const PROMPT = `You are a content safety filter for an automotive workshop application used by professional technicians to document their work.
 
-APPROVED images — approve if the image reasonably contains ANY of the following:
-- A vehicle (car, truck, van, SUV, motorcycle, bus, jeep, etc.) — even partially visible, at any angle, indoors or outdoors
-- A specific vehicle part or area (engine, tire, wheel, bumper, hood, dashboard, exhaust, headlight, mirror, brake, door panel, seat, paint, etc.)
-- A vehicle being worked on, in a garage, or on a lift
-- A toy vehicle, die-cast model, scale model, or miniature car — these count as vehicles
-- A screenshot or photo taken from the internet, magazine, or screen showing a vehicle
-- Real-world phone camera photos are often dark, slightly blurry, or taken at odd angles — this is NORMAL and should still be approved as long as the subject is identifiable
+Your ONLY job is to block clearly inappropriate content. Approve everything else — including dark photos, blurry photos, garage interiors, tools, car parts, vehicles, people near vehicles, or anything that could plausibly be work documentation.
 
-REJECTED images — only reject if the image clearly is:
-- Completely unrelated to vehicles (e.g. food, portraits with no vehicle, pure landscapes, random objects with zero vehicle content)
-- A selfie or portrait where a human face is the ONLY subject and no vehicle is visible
-- Inappropriate, explicit, or offensive content
+REJECT ONLY if the image is:
+- Sexually explicit or pornographic
+- Extremely graphic violence or gore with no automotive context
 
-For Demo / borderline cases:
-- Screenshots, logos, or illustrations of vehicles → APPROVE, categorize as "vehicle"
-- Toy vehicles, die-cast models, scale models → APPROVE, categorize as "vehicle"
-- Vehicle images that include people → APPROVE as long as a vehicle is visible anywhere
-- Internet, magazine, or screen photos of vehicles → APPROVE, categorize as "vehicle"
-- Slightly blurry or dark real-world photos where a vehicle is still identifiable → APPROVE
-- When in doubt, APPROVE
+APPROVE everything else without hesitation, including:
+- Any vehicle (car, truck, van, SUV, motorcycle, bus, jeep, etc.) at any angle, lighting, or distance
+- Any vehicle part (engine bay, tires, wheels, bumpers, hoods, dashboards, exhausts, headlights, mirrors, brakes, door panels, seats, paint, etc.)
+- Garages, workshops, lifts, tools, equipment, workbenches
+- Dark, blurry, or low-quality photos — these are normal in automotive work
+- People working on vehicles or standing near vehicles
+- Toy vehicles, die-cast models, or illustrations of vehicles
+- Screenshots or photos of vehicles from any source
+- Anything that is ambiguous or unclear — APPROVE
 
-Respond ONLY with a valid JSON object. No markdown, no explanation, no extra text. Use this exact structure:
-
+Respond ONLY with valid JSON, no markdown, no extra text:
 {
   "approved": true or false,
-  "category": one of ["vehicle", "vehicle_part", "blurry", "face_or_selfie", "inappropriate", "unrelated"],
+  "category": one of ["vehicle", "vehicle_part", "workspace", "inappropriate", "unrelated"],
   "reason": "One short phrase, max 8 words",
-  "message": "One or two friendly sentences explaining the result to the user. If rejected, tell them what to do instead."
+  "message": "One or two friendly sentences. If rejected, say what to upload instead."
 }`
 
 export async function POST(request: NextRequest) {

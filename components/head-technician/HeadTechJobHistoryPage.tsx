@@ -217,7 +217,7 @@ export default function HeadTechJobHistoryPage({ jobId }: { jobId: string }) {
           const validateRes  = await fetch("/api/ai/image-handler", { method: "POST", body: validateForm });
           const validateJson = await validateRes.json();
 
-          if (!validateJson.approved) {
+          if (!validateJson.approved && validateJson.category === "inappropriate") {
             URL.revokeObjectURL(localUrl);
             setJob((prev) => {
               if (!prev) return prev;
@@ -1134,8 +1134,12 @@ function CameraModal({ onCapture, onClose }: { onCapture: (file: File) => void; 
   const videoRef  = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
-  const [camError, setCamError] = useState<string | null>(null);
-  const [ready, setReady]       = useState(false);
+  const [camError, setCamError]       = useState<string | null>(null);
+  const [ready, setReady]             = useState(false);
+  const [zoom, setZoom]               = useState(1);
+  const [minZoom, setMinZoom]         = useState(1);
+  const [maxZoom, setMaxZoom]         = useState(1);
+  const [zoomSupported, setZoomSupported] = useState(false);
 
   useEffect(() => {
     if (!navigator.mediaDevices?.getUserMedia) {
@@ -1153,6 +1157,16 @@ function CameraModal({ onCapture, onClose }: { onCapture: (file: File) => void; 
           videoRef.current.play();
           setReady(true);
         }
+        // Check zoom capability
+        const track = stream.getVideoTracks()[0];
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const caps = (track as any).getCapabilities?.() as Record<string, { min?: number; max?: number; step?: number }> | undefined;
+        if (caps?.zoom) {
+          setZoomSupported(true);
+          setMinZoom(caps.zoom.min ?? 1);
+          setMaxZoom(caps.zoom.max ?? 5);
+          setZoom(caps.zoom.min ?? 1);
+        }
       })
       .catch(() => { if (active) setCamError("Could not access the back camera. Please allow camera permissions and try again."); });
     return () => {
@@ -1160,6 +1174,14 @@ function CameraModal({ onCapture, onClose }: { onCapture: (file: File) => void; 
       streamRef.current?.getTracks().forEach((t: MediaStreamTrack) => t.stop());
     };
   }, []);
+
+  function applyZoom(value: number) {
+    const track = streamRef.current?.getVideoTracks()[0];
+    if (!track) return;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (track as any).applyConstraints?.({ advanced: [{ zoom: value }] });
+    setZoom(value);
+  }
 
   function close() {
     streamRef.current?.getTracks().forEach((t: MediaStreamTrack) => t.stop());
@@ -1218,7 +1240,31 @@ function CameraModal({ onCapture, onClose }: { onCapture: (file: File) => void; 
 
       <canvas ref={canvasRef} className="hidden" />
 
-      <div className="flex justify-center items-center py-8 bg-black">
+      <div className="flex flex-col items-center gap-4 py-6 bg-black">
+        {zoomSupported && (
+          <div className="flex items-center gap-3 w-64">
+            <button
+              type="button"
+              onClick={() => applyZoom(Math.max(minZoom, zoom - 0.5))}
+              className="text-white text-lg font-bold w-8 h-8 flex items-center justify-center rounded-full bg-white/20 active:bg-white/40"
+            >−</button>
+            <input
+              type="range"
+              min={minZoom}
+              max={maxZoom}
+              step={0.1}
+              value={zoom}
+              onChange={(e) => applyZoom(parseFloat(e.target.value))}
+              className="flex-1 accent-white"
+            />
+            <button
+              type="button"
+              onClick={() => applyZoom(Math.min(maxZoom, zoom + 0.5))}
+              className="text-white text-lg font-bold w-8 h-8 flex items-center justify-center rounded-full bg-white/20 active:bg-white/40"
+            >+</button>
+            <span className="text-white text-xs w-10 text-right">{zoom.toFixed(1)}×</span>
+          </div>
+        )}
         <button
           type="button"
           onClick={capture}
