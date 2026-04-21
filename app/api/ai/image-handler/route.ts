@@ -48,7 +48,7 @@ async function generateWithRetry(
   for (let attempt = 0; attempt < retries; attempt++) {
     try {
       const response = await ai.models.generateContent({
-        model: "gemini-2.5-flash",
+        model: "gemini-2.5-flash-lite",
         contents,
         config: {
           temperature: 0,
@@ -65,8 +65,8 @@ async function generateWithRetry(
 
       if (!isRetryable || isLastAttempt) throw err
 
-      // Exponential backoff: 1s, 2s, 4s
-      const delay = 1000 * Math.pow(2, attempt)
+      // Short backoff — stay within Vercel's 10s function timeout
+      const delay = 300 * (attempt + 1)
       console.warn(`Gemini attempt ${attempt + 1} failed, retrying in ${delay}ms...`)
       await new Promise((res) => setTimeout(res, delay))
     }
