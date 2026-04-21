@@ -4,29 +4,31 @@ import { GoogleGenAI } from "@google/genai"
 const PROMPT = `You are an image validator for a professional automotive detailing and installation workshop. Technicians upload photos to document their work on customer vehicles. Bad photos hurt the company's reputation with customers.
 Be strict about rejecting selfies. A face photo with no vehicle is always REJECTED.
 
-APPROVE if the image shows ANY of the following:
-- A vehicle (car, truck, van, SUV, motorcycle, jeep, bus, etc.) at any angle or distance
-- A vehicle part or area: engine bay, tires, wheels, bumpers, hood, dashboard, exhaust, headlights, mirrors, brakes, door panels, seats, paint, body panels, etc.
+APPROVE only if the image clearly shows:
+- A vehicle (car, truck, van, SUV, motorcycle, jeep, bus, etc.)
+- A specific vehicle part: engine bay, tires, wheels, bumpers, hood, dashboard, exhaust, headlights, mirrors, brakes, door panels, seats, body panels
 - A vehicle interior or exterior being detailed, wrapped, installed, or inspected
-- A garage, workshop bay, car lift, or automotive work area (vehicle does not need to be visible)
-- Automotive tools or equipment used in detailing or installation work
-- A screen, monitor, or printed photo/magazine page clearly showing a vehicle
-- A slightly dark or slightly blurry photo where the subject is identifiably vehicle-related
+- A garage, workshop bay, or car lift (automotive work area)
+- Automotive-specific tools: torque wrench, car jack, detailing buffer, PPF tools, window tint tools, etc.
+- A screen or photo clearly displaying a vehicle
 
-REJECT if:
-- It is a selfie or portrait — A human face is prominently visible and NO vehicle or automotive content 
-  exists anywhere in the frame — reject immediately, do not give benefit of doubt
-- It shows food, household objects, pets, random scenery, or everyday items with zero automotive context
-- The photo is completely pitch-black, pure white, or totally unrecognizable (zero visible content)
-- It is sexually explicit or offensive
+REJECT if the image shows:
+- A human face or selfie with no vehicle present
+- Hands, body parts, or people with no vehicle present
+- Computer hardware, electronics, or non-automotive equipment
+- Food, household objects, furniture, or everyday items
+- Pets or animals
+- Random indoor or outdoor scenery with no vehicles
+- Completely dark, blurry beyond recognition, or blank images
+- Sexually explicit or offensive content
 
 KEY RULES:
-- Slightly dark, slightly blurry, or oddly angled automotive photos → APPROVE
-- A workspace or garage floor with no vehicle visible → APPROVE
-- A screen/monitor/photo of a vehicle → APPROVE
-- A person visible but a vehicle is also in the frame → APPROVE
-- Only reject selfies if no automotive content exists anywhere in the image
-- When uncertain → APPROVE
+- Slightly dark or slightly blurry automotive photos → APPROVE
+- A person AND a vehicle both visible → APPROVE
+- A garage floor or workspace with no vehicle → APPROVE
+- A photo of a vehicle on a screen or in a magazine → APPROVE
+- Anything not clearly automotive → REJECT
+- When uncertain → REJECT
 
 Respond ONLY with valid JSON, no markdown, no extra text:
 {
