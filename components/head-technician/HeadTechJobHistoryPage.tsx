@@ -8,6 +8,29 @@ import {
 } from "lucide-react";
 import { BottomNav } from "./components/BottomNav";
 
+// ── Helpers ──────────────────────────────────────────────────────────────────
+
+function compressImage(file: File, maxWidth = 1920, quality = 0.82): Promise<File> {
+  return new Promise((resolve) => {
+    const img = new Image();
+    const url = URL.createObjectURL(file);
+    img.onload = () => {
+      URL.revokeObjectURL(url);
+      let { width, height } = img;
+      if (width > maxWidth) { height = Math.round((height * maxWidth) / width); width = maxWidth; }
+      const canvas = document.createElement("canvas");
+      canvas.width = width; canvas.height = height;
+      canvas.getContext("2d")?.drawImage(img, 0, 0, width, height);
+      canvas.toBlob(
+        (blob) => resolve(blob ? new File([blob], file.name.replace(/\.[^.]+$/, ".jpg"), { type: "image/jpeg" }) : file),
+        "image/jpeg", quality,
+      );
+    };
+    img.onerror = () => { URL.revokeObjectURL(url); resolve(file); };
+    img.src = url;
+  });
+}
+
 // ── Types ────────────────────────────────────────────────────────────────────
 
 interface StageMedia { id: string; url: string; type: string; pending?: boolean }
@@ -191,10 +214,14 @@ export default function HeadTechJobHistoryPage({ jobId }: { jobId: string }) {
     setUploadingId(stage.id);
     setUploadError((prev) => { const n = { ...prev }; delete n[stage.id]; return n; });
 
-    for (const file of Array.from(files)) {
+    for (let file of Array.from(files)) {
+      const isPhoto  = file.type.startsWith("image/");
+
+      // Compress photos to stay under the 4.5 MB Vercel payload limit
+      if (isPhoto) file = await compressImage(file);
+
       const tmpId    = `tmp-${Date.now()}`;
       const localUrl = URL.createObjectURL(file);
-      const isPhoto  = file.type.startsWith("image/");
 
       setJob((prev) => {
         if (!prev) return prev;
