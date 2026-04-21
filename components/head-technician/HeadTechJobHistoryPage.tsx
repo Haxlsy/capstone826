@@ -217,7 +217,7 @@ export default function HeadTechJobHistoryPage({ jobId }: { jobId: string }) {
           const validateRes  = await fetch("/api/ai/image-handler", { method: "POST", body: validateForm });
           const validateJson = await validateRes.json();
 
-          if (!validateJson.approved && validateJson.category === "inappropriate") {
+          if (!validateJson.approved) {
             URL.revokeObjectURL(localUrl);
             setJob((prev) => {
               if (!prev) return prev;

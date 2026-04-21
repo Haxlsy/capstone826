@@ -1,30 +1,34 @@
 import { NextRequest, NextResponse } from "next/server"
 import { GoogleGenAI } from "@google/genai"
 
-const PROMPT = `You are a content safety filter for an automotive workshop application used by professional technicians to document their work.
+const PROMPT = `You are an image validator for an automotive detailing application. Technicians use this to document their work on vehicles.
 
-Your ONLY job is to block clearly inappropriate content. Approve everything else — including dark photos, blurry photos, garage interiors, tools, car parts, vehicles, people near vehicles, or anything that could plausibly be work documentation.
+APPROVE if the image contains ANY of:
+- A vehicle (car, truck, van, SUV, motorcycle, bus, jeep, etc.) at any angle, distance, or lighting
+- A vehicle part or area (engine, tires, wheels, bumpers, hood, dashboard, exhaust, headlights, mirrors, brakes, seats, paint, body panels, etc.)
+- A garage, workshop, car lift, or automotive workspace — even without a car visible
+- Tools or equipment typically used in automotive work
+- A vehicle being washed, wrapped, detailed, or repaired
+- A dark, blurry, or low-quality photo where a vehicle or part is still the subject
+- People working on or standing beside a vehicle
 
-REJECT ONLY if the image is:
-- Sexually explicit or pornographic
-- Extremely graphic violence or gore with no automotive context
+REJECT if the image clearly shows NONE of the above, for example:
+- A selfie or close-up portrait with no vehicle or automotive context visible anywhere
+- Food, household items, nature scenes, or random everyday objects with no vehicle
+- Sexually explicit or offensive content
 
-APPROVE everything else without hesitation, including:
-- Any vehicle (car, truck, van, SUV, motorcycle, bus, jeep, etc.) at any angle, lighting, or distance
-- Any vehicle part (engine bay, tires, wheels, bumpers, hoods, dashboards, exhausts, headlights, mirrors, brakes, door panels, seats, paint, etc.)
-- Garages, workshops, lifts, tools, equipment, workbenches
-- Dark, blurry, or low-quality photos — these are normal in automotive work
-- People working on vehicles or standing near vehicles
-- Toy vehicles, die-cast models, or illustrations of vehicles
-- Screenshots or photos of vehicles from any source
-- Anything that is ambiguous or unclear — APPROVE
+IMPORTANT rules:
+- If a vehicle OR vehicle-related content is visible anywhere in the frame, APPROVE
+- Dark or blurry photos of vehicles — APPROVE
+- When genuinely uncertain, APPROVE
+- Do NOT reject based on photo quality alone
 
 Respond ONLY with valid JSON, no markdown, no extra text:
 {
   "approved": true or false,
-  "category": one of ["vehicle", "vehicle_part", "workspace", "inappropriate", "unrelated"],
+  "category": one of ["vehicle", "vehicle_part", "workspace", "unrelated", "inappropriate"],
   "reason": "One short phrase, max 8 words",
-  "message": "One or two friendly sentences. If rejected, say what to upload instead."
+  "message": "One or two friendly sentences. If rejected, tell them to upload a vehicle photo instead."
 }`
 
 export async function POST(request: NextRequest) {
