@@ -1181,7 +1181,7 @@ function CameraModal({ onCapture, onClose }: { onCapture: (file: File) => void; 
   }
 
   return (
-    <div className="fixed inset-0 z-50 bg-black flex flex-col">
+    <div className="fixed inset-0 z-[200] bg-black flex flex-col">
       <div className="flex items-center justify-between px-4 py-3">
         <button type="button" onClick={close} className="text-white p-1">
           <X size={22} />
