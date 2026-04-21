@@ -38,8 +38,32 @@ interface CrewMember {
   on_job:       boolean
 }
 
-const INPUT_CLS  = "w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-700 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
-const SELECT_CLS = `${INPUT_CLS} disabled:opacity-50`
+interface FieldErrors {
+  customer?:      string
+  customerName?:  string
+  contactNumber?: string
+  plateNumber?:   string
+  vehicleUnit?:   string
+  service?:       string
+  scheduledAt?:   string
+  headDetailer?:  string
+  headInstaller?: string
+  detailers?:     string
+  installers?:    string
+}
+
+function inputCls(hasError?: boolean) {
+  return `w-full border ${hasError ? "border-red-400 focus:ring-red-500 bg-red-50/30" : "border-gray-300 focus:ring-blue-500 bg-white"} rounded-lg px-3 py-2 text-sm text-gray-700 focus:outline-none focus:ring-2`
+}
+
+function selectCls(hasError?: boolean) {
+  return `${inputCls(hasError)} disabled:opacity-50`
+}
+
+function FieldError({ msg }: { msg?: string }) {
+  if (!msg) return null
+  return <p className="text-xs text-red-500 mt-1">{msg}</p>
+}
 
 function CrewCheckboxList({
   label,
@@ -48,6 +72,7 @@ function CrewCheckboxList({
   onToggle,
   loading,
   required,
+  error,
 }: {
   label:     string
   members:   CrewMember[]
@@ -55,6 +80,7 @@ function CrewCheckboxList({
   onToggle:  (id: string) => void
   loading:   boolean
   required?: boolean
+  error?:    string
 }) {
   return (
     <div className="flex flex-col gap-1.5">
@@ -70,7 +96,7 @@ function CrewCheckboxList({
       ) : members.length === 0 ? (
         <p className="text-xs text-gray-400 py-2">No available {label.toLowerCase()} at the moment.</p>
       ) : (
-        <div className="border border-gray-200 rounded-lg divide-y divide-gray-50 max-h-40 overflow-y-auto">
+        <div className={`border rounded-lg divide-y divide-gray-50 max-h-40 overflow-y-auto ${error ? "border-red-400 bg-red-50/20" : "border-gray-200"}`}>
           {members.map((c) => (
             <label
               key={c.id}
@@ -99,6 +125,7 @@ function CrewCheckboxList({
           ))}
         </div>
       )}
+      <FieldError msg={error} />
     </div>
   )
 }
@@ -131,12 +158,12 @@ export default function AddJobOrderForm() {
   const [selectedInstallerIds,    setSelectedInstallerIds]    = useState<Set<string>>(new Set())
   const [scheduledAt, setScheduledAt] = useState("")
 
-  const [loading,          setLoading]          = useState(false)
-  const [validationErrors, setValidationErrors] = useState<string[]>([])
-  const [apiError,         setApiError]         = useState<string | null>(null)
-  const [success,          setSuccess]          = useState(false)
-  const [showConfirm,      setShowConfirm]      = useState(false)
-  const [confirmSummary,   setConfirmSummary]   = useState<JobOrderSummary | null>(null)
+  const [loading,       setLoading]       = useState(false)
+  const [fieldErrors,   setFieldErrors]   = useState<FieldErrors>({})
+  const [apiError,      setApiError]      = useState<string | null>(null)
+  const [success,       setSuccess]       = useState(false)
+  const [showConfirm,   setShowConfirm]   = useState(false)
+  const [confirmSummary, setConfirmSummary] = useState<JobOrderSummary | null>(null)
 
   useEffect(() => {
     return () => { if (redirectTimer.current) clearTimeout(redirectTimer.current) }
@@ -170,6 +197,10 @@ export default function AddJobOrderForm() {
     loadRefs()
   }, [])
 
+  function clearField(key: keyof FieldErrors) {
+    setFieldErrors((prev) => { const next = { ...prev }; delete next[key]; return next })
+  }
+
   const selectedCustomer = !useManualCustomer
     ? customers.find((c) => c.id === selectedCustomerId) ?? null
     : null
@@ -181,34 +212,34 @@ export default function AddJobOrderForm() {
     setCustomServiceName(id ? (services.find((s) => s.id === id)?.name ?? "") : "")
     setCustomDurationMins(null)
     setPackageServiceIds([])
-    setValidationErrors([])
+    clearField("service")
   }
 
   const PHONE_RE = /^(09|\+639)\d{9}$/
 
-  function validate(): string[] {
-    const errs: string[] = []
+  function validate(): FieldErrors {
+    const errs: FieldErrors = {}
     if (!useManualCustomer && !selectedCustomerId)
-      errs.push("Please select a customer.")
+      errs.customer = "Please select a customer."
     if (useManualCustomer) {
       if (!manualCustomerName.trim())
-        errs.push("Customer name is required.")
+        errs.customerName = "Customer name is required."
       const rawPhone = manualContactNumber.replace(/[\s\-]/g, "")
       if (!rawPhone)
-        errs.push("Contact number is required.")
+        errs.contactNumber = "Contact number is required."
       else if (!PHONE_RE.test(rawPhone))
-        errs.push("Contact number must be a valid PH mobile number (e.g., 09XX-XXX-XXXX).")
+        errs.contactNumber = "Must be a valid PH mobile number (e.g., 09XX-XXX-XXXX)."
       if (!manualPlateNumber.trim())
-        errs.push("Plate number is required.")
+        errs.plateNumber = "Plate number is required."
       if (!manualVehicleUnit.trim())
-        errs.push("Vehicle unit is required.")
+        errs.vehicleUnit = "Vehicle unit is required."
     }
-    if (!selectedServiceId)              errs.push("Please select a service.")
-    if (!scheduledAt)                    errs.push("Please set a scheduled date and time.")
-    if (!selectedHeadDetailerId)         errs.push("Please select a Head Detailer.")
-    if (!selectedHeadInstallerId)        errs.push("Please select a Head Installer.")
-    if (selectedDetailerIds.size === 0)  errs.push("Please assign at least one Detailer.")
-    if (selectedInstallerIds.size === 0) errs.push("Please assign at least one Installer.")
+    if (!selectedServiceId)              errs.service       = "Please select a service."
+    if (!scheduledAt)                    errs.scheduledAt   = "Please set a scheduled date and time."
+    if (!selectedHeadDetailerId)         errs.headDetailer  = "Please select a Head Detailer."
+    if (!selectedHeadInstallerId)        errs.headInstaller = "Please select a Head Installer."
+    if (selectedDetailerIds.size === 0)  errs.detailers     = "Please assign at least one Detailer."
+    if (selectedInstallerIds.size === 0) errs.installers    = "Please assign at least one Installer."
     return errs
   }
 
@@ -217,13 +248,13 @@ export default function AddJobOrderForm() {
   const detailers      = crewMembers.filter((c) => c.role === "detailer"  && c.is_available && !c.on_job)
   const installers     = crewMembers.filter((c) => c.role === "installer" && c.is_available && !c.on_job)
 
-  function toggleCrew(id: string, set: Set<string>, setter: (s: Set<string>) => void) {
-    // Guard: never toggle a crew member who is currently on an active job
+  function toggleCrew(id: string, set: Set<string>, setter: (s: Set<string>) => void, field: keyof FieldErrors) {
     const member = crewMembers.find((c) => c.id === id)
     if (member?.on_job) return
     const next = new Set(set)
     next.has(id) ? next.delete(id) : next.add(id)
     setter(next)
+    if (next.size > 0) clearField(field)
   }
 
   function formatDate(dateStr: string): string {
@@ -247,8 +278,8 @@ export default function AddJobOrderForm() {
   function handleConfirmClick() {
     setApiError(null)
     const errs = validate()
-    if (errs.length > 0) { setValidationErrors(errs); return }
-    setValidationErrors([])
+    if (Object.keys(errs).length > 0) { setFieldErrors(errs); return }
+    setFieldErrors({})
 
     const effDuration = customDurationMins ?? (selectedService?.estimated_duration_mins ?? 0)
     const pkgServices = services.filter((s) => packageServiceIds.includes(s.id))
@@ -366,7 +397,7 @@ export default function AddJobOrderForm() {
                 <label className="text-xs font-medium text-gray-600">Customer <span className="text-red-500 ml-0.5">*</span></label>
                 <button
                   type="button"
-                  onClick={() => { setUseManualCustomer(true); setSelectedCustomerId(null); setValidationErrors([]) }}
+                  onClick={() => { setUseManualCustomer(true); setSelectedCustomerId(null); setFieldErrors({}) }}
                   className="text-xs text-blue-600 hover:underline"
                 >
                   Enter manually
@@ -374,9 +405,9 @@ export default function AddJobOrderForm() {
               </div>
               <select
                 value={selectedCustomerId ?? ""}
-                onChange={(e) => { setSelectedCustomerId(e.target.value || null); setValidationErrors([]) }}
+                onChange={(e) => { setSelectedCustomerId(e.target.value || null); clearField("customer") }}
                 disabled={loadingRefs}
-                className={SELECT_CLS}
+                className={selectCls(!!fieldErrors.customer)}
               >
                 <option value="">
                   {loadingRefs ? "Loading…" : customers.length === 0 ? "No customer records found" : "— Select customer —"}
@@ -385,6 +416,7 @@ export default function AddJobOrderForm() {
                   <option key={c.id} value={c.id}>{c.full_name} — {c.plate_number}</option>
                 ))}
               </select>
+              <FieldError msg={fieldErrors.customer} />
             </div>
 
             {selectedCustomer && (
@@ -404,29 +436,57 @@ export default function AddJobOrderForm() {
                 <label className="text-xs font-medium text-gray-600">Customer Name *</label>
                 <button
                   type="button"
-                  onClick={() => { setUseManualCustomer(false); setValidationErrors([]) }}
+                  onClick={() => { setUseManualCustomer(false); setFieldErrors({}) }}
                   className="text-xs text-blue-600 hover:underline"
                 >
                   Select from records
                 </button>
               </div>
-              <input type="text" value={manualCustomerName} onChange={(e) => setManualCustomerName(e.target.value)} placeholder="e.g., Juan dela Cruz" className={INPUT_CLS} />
+              <input
+                type="text"
+                value={manualCustomerName}
+                onChange={(e) => { setManualCustomerName(e.target.value); clearField("customerName") }}
+                placeholder="e.g., Juan dela Cruz"
+                className={inputCls(!!fieldErrors.customerName)}
+              />
+              <FieldError msg={fieldErrors.customerName} />
             </div>
             <div className="flex flex-col gap-1.5">
               <label className="text-xs font-medium text-gray-600">Contact Number <span className="text-red-500 ml-0.5">*</span></label>
-              <input type="tel" value={manualContactNumber} onChange={(e) => setManualContactNumber(e.target.value)} placeholder="e.g., 09XX-XXX-XXXX" className={INPUT_CLS} />
+              <input
+                type="tel"
+                value={manualContactNumber}
+                onChange={(e) => { setManualContactNumber(e.target.value); clearField("contactNumber") }}
+                placeholder="e.g., 09XX-XXX-XXXX"
+                className={inputCls(!!fieldErrors.contactNumber)}
+              />
+              <FieldError msg={fieldErrors.contactNumber} />
             </div>
             <div className="flex flex-col gap-1.5">
               <label className="text-xs font-medium text-gray-600">Plate Number <span className="text-red-500 ml-0.5">*</span></label>
-              <input type="text" value={manualPlateNumber} onChange={(e) => setManualPlateNumber(e.target.value)} placeholder="e.g., ABC-1234" className={INPUT_CLS} />
+              <input
+                type="text"
+                value={manualPlateNumber}
+                onChange={(e) => { setManualPlateNumber(e.target.value); clearField("plateNumber") }}
+                placeholder="e.g., ABC-1234"
+                className={inputCls(!!fieldErrors.plateNumber)}
+              />
+              <FieldError msg={fieldErrors.plateNumber} />
             </div>
             <div className="flex flex-col gap-1.5 col-span-2">
               <label className="text-xs font-medium text-gray-600">Email</label>
-              <input type="email" value={manualEmail} onChange={(e) => setManualEmail(e.target.value)} placeholder="e.g., juan@email.com" className={INPUT_CLS} />
+              <input type="email" value={manualEmail} onChange={(e) => setManualEmail(e.target.value)} placeholder="e.g., juan@email.com" className={inputCls()} />
             </div>
             <div className="flex flex-col gap-1.5 col-span-2">
               <label className="text-xs font-medium text-gray-600">Vehicle Unit <span className="text-red-500 ml-0.5">*</span></label>
-              <input type="text" value={manualVehicleUnit} onChange={(e) => setManualVehicleUnit(e.target.value)} placeholder="e.g., Toyota Vios 2020" className={INPUT_CLS} />
+              <input
+                type="text"
+                value={manualVehicleUnit}
+                onChange={(e) => { setManualVehicleUnit(e.target.value); clearField("vehicleUnit") }}
+                placeholder="e.g., Toyota Vios 2020"
+                className={inputCls(!!fieldErrors.vehicleUnit)}
+              />
+              <FieldError msg={fieldErrors.vehicleUnit} />
             </div>
           </div>
         )}
@@ -442,20 +502,22 @@ export default function AddJobOrderForm() {
               value={selectedServiceId ?? ""}
               onChange={(e) => handleServiceChange(e.target.value || null)}
               disabled={loadingRefs}
-              className={SELECT_CLS}
+              className={selectCls(!!fieldErrors.service)}
             >
               <option value="">{loadingRefs ? "Loading…" : services.length === 0 ? "No services found" : "— Select service —"}</option>
               {services.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
             </select>
+            <FieldError msg={fieldErrors.service} />
           </div>
           <div className="flex flex-col gap-1.5">
             <label className="text-xs font-medium text-gray-600">Scheduled Date & Time <span className="text-red-500 ml-0.5">*</span></label>
             <input
               type="datetime-local"
               value={scheduledAt}
-              onChange={(e) => { setScheduledAt(e.target.value); setValidationErrors([]) }}
-              className={INPUT_CLS}
+              onChange={(e) => { setScheduledAt(e.target.value); clearField("scheduledAt") }}
+              className={inputCls(!!fieldErrors.scheduledAt)}
             />
+            <FieldError msg={fieldErrors.scheduledAt} />
           </div>
         </div>
 
@@ -494,9 +556,9 @@ export default function AddJobOrderForm() {
             <label className="text-xs font-medium text-gray-600">Head Detailer <span className="text-red-500">*</span></label>
             <select
               value={selectedHeadDetailerId ?? ""}
-              onChange={(e) => { setSelectedHeadDetailerId(e.target.value || null); setValidationErrors([]) }}
+              onChange={(e) => { setSelectedHeadDetailerId(e.target.value || null); clearField("headDetailer") }}
               disabled={loadingRefs}
-              className={SELECT_CLS}
+              className={selectCls(!!fieldErrors.headDetailer)}
             >
               <option value="">— Select head detailer —</option>
               {headDetailers.map((t) => (
@@ -505,14 +567,15 @@ export default function AddJobOrderForm() {
                 </option>
               ))}
             </select>
+            <FieldError msg={fieldErrors.headDetailer} />
           </div>
           <div className="flex flex-col gap-1.5">
             <label className="text-xs font-medium text-gray-600">Head Installer <span className="text-red-500">*</span></label>
             <select
               value={selectedHeadInstallerId ?? ""}
-              onChange={(e) => { setSelectedHeadInstallerId(e.target.value || null); setValidationErrors([]) }}
+              onChange={(e) => { setSelectedHeadInstallerId(e.target.value || null); clearField("headInstaller") }}
               disabled={loadingRefs}
-              className={SELECT_CLS}
+              className={selectCls(!!fieldErrors.headInstaller)}
             >
               <option value="">— Select head installer —</option>
               {headInstallers.map((t) => (
@@ -521,6 +584,7 @@ export default function AddJobOrderForm() {
                 </option>
               ))}
             </select>
+            <FieldError msg={fieldErrors.headInstaller} />
           </div>
         </div>
 
@@ -530,48 +594,40 @@ export default function AddJobOrderForm() {
             required
             members={detailers}
             selected={selectedDetailerIds}
-            onToggle={(id) => toggleCrew(id, selectedDetailerIds, setSelectedDetailerIds)}
+            onToggle={(id) => toggleCrew(id, selectedDetailerIds, setSelectedDetailerIds, "detailers")}
             loading={loadingRefs}
+            error={fieldErrors.detailers}
           />
           <CrewCheckboxList
             label="Installers"
             required
             members={installers}
             selected={selectedInstallerIds}
-            onToggle={(id) => toggleCrew(id, selectedInstallerIds, setSelectedInstallerIds)}
+            onToggle={(id) => toggleCrew(id, selectedInstallerIds, setSelectedInstallerIds, "installers")}
             loading={loadingRefs}
+            error={fieldErrors.installers}
           />
         </div>
       </div>
 
       {/* Footer */}
-      <div className="flex gap-3">
-        <Link
-          href="/dashboard/job-management"
-          className="flex-1 py-3 text-sm font-medium text-gray-700 border border-gray-300 rounded-xl text-center hover:bg-gray-50 transition-colors"
-        >
-          Cancel
-        </Link>
-        <div className="flex-1 flex flex-col gap-2">
-          {validationErrors.length > 0 && (
-            <div className="bg-red-50 border border-red-200 rounded-lg px-4 py-3">
-              <p className="text-xs font-semibold text-red-600 mb-1.5">Please fix the following:</p>
-              <ul className="list-disc list-inside space-y-0.5">
-                {validationErrors.map((e, i) => (
-                  <li key={i} className="text-xs text-red-500">{e}</li>
-                ))}
-              </ul>
-            </div>
-          )}
-          {apiError && (
-            <p className="text-xs text-red-500 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
-              {apiError}
-            </p>
-          )}
+      <div className="flex flex-col gap-3">
+        {apiError && (
+          <p className="text-xs text-red-500 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
+            {apiError}
+          </p>
+        )}
+        <div className="flex gap-3">
+          <Link
+            href="/dashboard/job-management"
+            className="flex-1 py-3 text-sm font-medium text-gray-700 border border-gray-300 rounded-xl text-center hover:bg-gray-50 transition-colors"
+          >
+            Cancel
+          </Link>
           <button
             onClick={handleConfirmClick}
             disabled={loading || success}
-            className={`w-full py-3 text-sm font-semibold text-white rounded-xl transition-colors ${
+            className={`flex-1 py-3 text-sm font-semibold text-white rounded-xl transition-colors ${
               loading || success ? "bg-gray-400 cursor-not-allowed" : "bg-gray-900 hover:bg-gray-800"
             }`}
           >
