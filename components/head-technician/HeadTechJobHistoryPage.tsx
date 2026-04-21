@@ -720,7 +720,7 @@ export default function HeadTechJobHistoryPage({ jobId }: { jobId: string }) {
 
       {/* ── Flag for Rework modal (head_installer only) ── */}
       {reworkOpen && job && (
-        <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 p-4 sm:items-center">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
           <div className="bg-white rounded-2xl shadow-xl w-full max-w-md p-5 space-y-4">
             <div className="flex items-center gap-2">
               <AlertTriangle size={18} className="text-orange-500" />
@@ -798,7 +798,7 @@ export default function HeadTechJobHistoryPage({ jobId }: { jobId: string }) {
 
       {/* ── Flag Preparation for Rework modal (head_detailer only) ── */}
       {prepReworkOpen && job && (
-        <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 p-4 sm:items-center">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
           <div className="bg-white rounded-2xl shadow-xl w-full max-w-md p-5 space-y-4">
             <div className="flex items-center gap-2">
               <AlertTriangle size={18} className="text-orange-500" />

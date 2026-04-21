@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server"
 import { GoogleGenAI } from "@google/genai"
 
+const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY! });
+
 const PROMPT = `You are an image validator for a professional automotive detailing and installation workshop. Technicians upload photos to document their work on customer vehicles. Bad photos hurt the company's reputation with customers.
 Be strict about rejecting selfies. A face photo with no vehicle is always REJECTED.
 
