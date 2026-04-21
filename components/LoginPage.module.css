@@ -240,6 +240,7 @@
 /* ── Form header ───────────────────────────────────────────── */
 .formHeader {
   margin-bottom: 20px;
+  text-align: center;
 }
 
 .title {
@@ -501,7 +502,7 @@
     padding: 0 16px;
     gap: 10px;
   }
-  .brandLogo    { height: 30px; }
+  .brandLogo    { height: 60px; }
   .brandDivider { height: 22px; }
   .brandName    { font-size: 13px; }
 
