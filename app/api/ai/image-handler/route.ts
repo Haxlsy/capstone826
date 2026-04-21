@@ -1,26 +1,28 @@
 import { NextRequest, NextResponse } from "next/server"
 import { GoogleGenAI } from "@google/genai"
 
-const PROMPT = `You are a strict vehicle image validator for an automotive application. Your only job is to determine whether an uploaded image is acceptable for processing.
+const PROMPT = `You are a vehicle image validator for an automotive detailing application. Your job is to determine whether an uploaded image is acceptable for a job stage documentation.
 
-APPROVED images must meet ALL of the following:
-- The main subject is clearly a vehicle (car, truck, van, motorcycle, bus, jeep, SUV, boat, airplane, etc.) OR a specific vehicle part (engine, tire, wheel, bumper, hood, dashboard, exhaust, headlight, side mirror, brake, suspension, etc.)
-- The image is sharp, well-lit, and clearly visible
-- No human face is the main or prominent subject
-- No selfie or person taking a photo of themselves
-- No inappropriate, offensive, or explicit content
+APPROVED images — approve if the image reasonably contains ANY of the following:
+- A vehicle (car, truck, van, SUV, motorcycle, bus, jeep, etc.) — even partially visible, at any angle, indoors or outdoors
+- A specific vehicle part or area (engine, tire, wheel, bumper, hood, dashboard, exhaust, headlight, mirror, brake, door panel, seat, paint, etc.)
+- A vehicle being worked on, in a garage, or on a lift
+- A toy vehicle, die-cast model, scale model, or miniature car — these count as vehicles
+- A screenshot or photo taken from the internet, magazine, or screen showing a vehicle
+- Real-world phone camera photos are often dark, slightly blurry, or taken at odd angles — this is NORMAL and should still be approved as long as the subject is identifiable
 
-REJECTED images include any of the following:
-- Blurry, out-of-focus, dark, or too low resolution to identify the subject
-- A face, portrait, or selfie — even if a vehicle is in the background
+REJECTED images — only reject if the image clearly is:
+- Completely unrelated to vehicles (e.g. food, portraits with no vehicle, pure landscapes, random objects with zero vehicle content)
+- A selfie or portrait where a human face is the ONLY subject and no vehicle is visible
 - Inappropriate, explicit, or offensive content
-- Any image where the main subject is NOT a vehicle or vehicle part (food, animals, scenery, documents, random objects, etc.)
 
-
-For Demo purposes:
-- Screenshots, logos, or illustrations of vehicles are borderline — Allow them but categorize as "unrelated" with a note in the reason field.
-- Allow vehicle images that include people as long as the vehicle is the main subject and the image is clear. But if a face is prominent, reject it.
-- Allow vehicle images that is taken in the internet or from a magazine, as long as the vehicle is the main subject and the image is clear. But categorize them as "unrelated" with a note in the reason field.
+For Demo / borderline cases:
+- Screenshots, logos, or illustrations of vehicles → APPROVE, categorize as "vehicle"
+- Toy vehicles, die-cast models, scale models → APPROVE, categorize as "vehicle"
+- Vehicle images that include people → APPROVE as long as a vehicle is visible anywhere
+- Internet, magazine, or screen photos of vehicles → APPROVE, categorize as "vehicle"
+- Slightly blurry or dark real-world photos where a vehicle is still identifiable → APPROVE
+- When in doubt, APPROVE
 
 Respond ONLY with a valid JSON object. No markdown, no explanation, no extra text. Use this exact structure:
 
@@ -29,9 +31,7 @@ Respond ONLY with a valid JSON object. No markdown, no explanation, no extra tex
   "category": one of ["vehicle", "vehicle_part", "blurry", "face_or_selfie", "inappropriate", "unrelated"],
   "reason": "One short phrase, max 8 words",
   "message": "One or two friendly sentences explaining the result to the user. If rejected, tell them what to do instead."
-}
-
-Be strict and consistent. When in doubt, reject.`
+}`
 
 export async function POST(request: NextRequest) {
   try {
@@ -107,9 +107,9 @@ export async function POST(request: NextRequest) {
 
 function serviceError() {
   return NextResponse.json({
-    approved: false,
-    category: "unrelated",
-    reason: "Validation service error",
-    message: "We couldn't validate your image right now. Please try uploading the photo again.",
+    approved: true,
+    category: "vehicle",
+    reason: "Validation unavailable — approved by default",
+    message: "Image uploaded successfully.",
   })
 }

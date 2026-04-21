@@ -1,8 +1,8 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useRef } from "react"
 import { useRouter } from "next/navigation"
-import { User, Lock, Eye, EyeOff, LogIn } from "lucide-react"
+import { User, Lock, Eye, EyeOff, LogIn, AlertCircle, X } from "lucide-react"
 import styles from "./LoginPage.module.css"
 
 export default function LoginPage() {
@@ -11,8 +11,15 @@ export default function LoginPage() {
   const [password, setPassword]         = useState("")
   const [showPassword, setShowPassword] = useState(false)
   const [errors, setErrors]             = useState<{ username?: string; password?: string }>({})
-  const [serverError, setServerError]   = useState<string | null>(null)
   const [isLoading, setIsLoading]       = useState(false)
+  const [toast, setToast]               = useState<string | null>(null)
+  const toastTimer                      = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  function showToast(msg: string) {
+    setToast(msg)
+    if (toastTimer.current) clearTimeout(toastTimer.current)
+    toastTimer.current = setTimeout(() => setToast(null), 4000)
+  }
 
   function validate() {
     const e: { username?: string; password?: string } = {}
@@ -32,7 +39,6 @@ export default function LoginPage() {
     const errs = validate()
     if (Object.keys(errs).length > 0) { setErrors(errs); return }
     setErrors({})
-    setServerError(null)
     setIsLoading(true)
 
     try {
@@ -43,7 +49,7 @@ export default function LoginPage() {
       })
       const data = await res.json()
 
-      if (!res.ok) { setServerError(data.error ?? "Something went wrong."); return }
+      if (!res.ok) { showToast(data.error ?? "Something went wrong."); return }
 
       try { localStorage.setItem("826_user", JSON.stringify(data.user)) } catch { }
 
@@ -58,18 +64,22 @@ export default function LoginPage() {
 
       router.push(roleRoutes[data.user?.role ?? ""] ?? "/")
     } catch {
-      setServerError("Network error. Please try again.")
+      showToast("Network error. Please try again.")
     } finally {
       setIsLoading(false)
     }
   }
 
   return (
+    <>
     <div className={styles.page}>
       {/* Background blobs */}
       <div className={styles.flares} aria-hidden>
         <div className={`${styles.flare} ${styles.flare1}`} />
         <div className={`${styles.flare} ${styles.flare2}`} />
+        <div className={`${styles.flare} ${styles.flare3}`} />
+        <div className={`${styles.flare} ${styles.flare4}`} />
+        <div className={`${styles.flare} ${styles.flare5}`} />
       </div>
 
       {/* Dot accents */}
@@ -89,7 +99,7 @@ export default function LoginPage() {
         {/* Left — car image */}
         <div className={styles.imageSide}>
           <div className={styles.imageWrap}>
-            <img src="/assets/car-hero.png" alt="826 Featured Car" />
+            <img src="/assets/car-hero-svg.svg" alt="826 Featured Car" />
           </div>
         </div>
 
@@ -146,12 +156,12 @@ export default function LoginPage() {
                 </button>
               </div>
               <div className={styles.forgotRow}>
+                {errors.password
+                  ? <p className={styles.errorText}>{errors.password}</p>
+                  : <span />}
                 <a href="#" className={styles.forgotLink}>Forgot password?</a>
               </div>
-              {errors.password && <p className={styles.errorText}>{errors.password}</p>}
             </div>
-
-            {serverError && <p className={styles.serverError}>{serverError}</p>}
 
             <button type="submit" disabled={isLoading} className={styles.submitBtn}>
               {isLoading ? "…" : <><span>Login</span><LogIn size={18} /></>}
@@ -160,11 +170,24 @@ export default function LoginPage() {
         </div>
       </div>
 
-      {/* Status badge */}
-      <div className={styles.badge}>
-        <div className={styles.badgeDot} />
-        <span className={styles.badgeText}>Workshop Alpha · 826 HQ</span>
-      </div>
     </div>
+
+    {/* Toast notification */}
+    {toast && (
+      <div className={styles.toast}>
+        <AlertCircle size={16} className={styles.toastIcon} />
+        <span>{toast}</span>
+        <button type="button" onClick={() => setToast(null)} className={styles.toastClose} aria-label="Dismiss">
+          <X size={14} />
+        </button>
+      </div>
+    )}
+
+    {/* Status badge — outside .page so fixed positioning isn't clipped by overflow-x: hidden */}
+    <div className={styles.badge}>
+      <div className={styles.badgeDot} />
+      <span className={styles.badgeText}>826 Auto Aesthetic &amp; Protection · Ortigas Extension</span>
+    </div>
+    </>
   )
 }
