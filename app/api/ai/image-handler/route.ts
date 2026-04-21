@@ -1,34 +1,37 @@
 import { NextRequest, NextResponse } from "next/server"
 import { GoogleGenAI } from "@google/genai"
 
-const PROMPT = `You are an image validator for an automotive detailing application. Technicians use this to document their work on vehicles.
+const PROMPT = `You are an image validator for a professional automotive detailing and installation workshop. Technicians upload photos to document their work on customer vehicles. Bad photos hurt the company's reputation with customers.
 
-APPROVE if the image contains ANY of:
-- A vehicle (car, truck, van, SUV, motorcycle, bus, jeep, etc.) at any angle, distance, or lighting
-- A vehicle part or area (engine, tires, wheels, bumpers, hood, dashboard, exhaust, headlights, mirrors, brakes, seats, paint, body panels, etc.)
-- A garage, workshop, car lift, or automotive workspace — even without a car visible
-- Tools or equipment typically used in automotive work
-- A vehicle being washed, wrapped, detailed, or repaired
-- A dark, blurry, or low-quality photo where a vehicle or part is still the subject
-- People working on or standing beside a vehicle
+APPROVE if the image shows ANY of the following:
+- A vehicle (car, truck, van, SUV, motorcycle, jeep, bus, etc.) at any angle or distance
+- A vehicle part or area: engine bay, tires, wheels, bumpers, hood, dashboard, exhaust, headlights, mirrors, brakes, door panels, seats, paint, body panels, etc.
+- A vehicle interior or exterior being detailed, wrapped, installed, or inspected
+- A garage, workshop bay, car lift, or automotive work area (vehicle does not need to be visible)
+- Automotive tools or equipment used in detailing or installation work
+- A screen, monitor, or printed photo/magazine page clearly showing a vehicle
+- A slightly dark or slightly blurry photo where the subject is identifiably vehicle-related
 
-REJECT if the image clearly shows NONE of the above, for example:
-- A selfie or close-up portrait with no vehicle or automotive context visible anywhere
-- Food, household items, nature scenes, or random everyday objects with no vehicle
-- Sexually explicit or offensive content
+REJECT if:
+- It is a selfie or portrait — a human face is the clear main subject and NO vehicle or automotive content is visible anywhere in the frame
+- It shows food, household objects, pets, random scenery, or everyday items with zero automotive context
+- The photo is completely pitch-black, pure white, or totally unrecognizable (zero visible content)
+- It is sexually explicit or offensive
 
-IMPORTANT rules:
-- If a vehicle OR vehicle-related content is visible anywhere in the frame, APPROVE
-- Dark or blurry photos of vehicles — APPROVE
-- When genuinely uncertain, APPROVE
-- Do NOT reject based on photo quality alone
+KEY RULES:
+- Slightly dark, slightly blurry, or oddly angled automotive photos → APPROVE
+- A workspace or garage floor with no vehicle visible → APPROVE
+- A screen/monitor/photo of a vehicle → APPROVE
+- A person visible but a vehicle is also in the frame → APPROVE
+- Only reject selfies if no automotive content exists anywhere in the image
+- When uncertain → APPROVE
 
 Respond ONLY with valid JSON, no markdown, no extra text:
 {
   "approved": true or false,
   "category": one of ["vehicle", "vehicle_part", "workspace", "unrelated", "inappropriate"],
   "reason": "One short phrase, max 8 words",
-  "message": "One or two friendly sentences. If rejected, tell them to upload a vehicle photo instead."
+  "message": "One or two friendly sentences. If rejected, instruct them to upload a clear photo of the vehicle they are working on."
 }`
 
 export async function POST(request: NextRequest) {
