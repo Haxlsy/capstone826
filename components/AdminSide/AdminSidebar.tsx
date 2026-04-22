@@ -2,6 +2,7 @@
 
 import Link from "next/link"
 import { usePathname, useRouter } from "next/navigation"
+import { useState } from "react"
 import {
   LayoutDashboard,
   Users,
@@ -19,6 +20,7 @@ const navItems = [
 export default function AdminSidebar() {
   const pathname = usePathname()
   const router = useRouter()
+  const [collapsed, setCollapsed] = useState(false)
 
   async function handleLogout() {
     try {
@@ -28,54 +30,59 @@ export default function AdminSidebar() {
     router.push("/")
   }
 
+  function navClass(active: boolean) {
+    const base = `flex items-center gap-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${collapsed ? "justify-center px-2" : ""}`
+    if (active) return `${base} ${collapsed ? "px-2" : "border-l-[3px] pl-2 pr-3"} bg-(--color-primary) text-white border-(--color-info)`
+    return `${base} px-3 text-(--color-white)/70 hover:bg-(--color-base-medium) hover:text-white`
+  }
+
   return (
-    <aside className="w-60 bg-white border-r border-gray-100 flex flex-col shrink-0 h-full">
+    <aside className={`${collapsed ? "w-16" : "w-60"} flex flex-col shrink-0 h-full transition-all duration-200 overflow-hidden border-r border-(--color-border) bg-(--color-base-dark)`}>
       {/* Logo */}
-      <div className="flex items-center gap-3 px-5 py-5 border-b border-gray-100">
-        <div className="w-9 h-9 rounded-lg bg-gray-900 flex items-center justify-center text-white font-bold text-xs tracking-tight">
-          826
-        </div>
-        <span className="font-semibold text-gray-800 text-sm">826 Auto Care</span>
+      <div className="flex items-center px-3 py-4 border-b border-(--color-border)">
+        <button
+          onClick={() => setCollapsed((c) => !c)}
+          title={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+          className="cursor-pointer shrink-0"
+        >
+          <img src="/assets/826-logo.svg" alt="826 Auto Care" width={48} height={48} className="rounded-lg" />
+        </button>
+        {!collapsed && (
+          <span className="font-semibold text-white text-sm truncate ml-3">826 Auto Care</span>
+        )}
       </div>
 
       {/* Nav */}
-      <nav className="flex-1 py-4 px-3 space-y-0.5">
+      <nav className="flex-1 py-4 px-2 space-y-0.5">
         {navItems.map(({ label, href, icon: Icon }) => {
-          const isExact = pathname === href
+          const isExact    = pathname === href
           const isSubRoute = pathname.startsWith(href + "/") && href !== "/dashboard/admin"
-          const active = isExact || isSubRoute
           return (
-            <Link
-              key={href}
-              href={href}
-              className={`flex items-center gap-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
-                active
-                  ? "bg-blue-50 text-blue-600 border-l-4 border-blue-500 pl-2 pr-3"
-                  : "px-3 text-gray-500 hover:bg-gray-50 hover:text-gray-800"
-              }`}
-            >
+            <Link key={href} href={href} title={collapsed ? label : undefined} className={navClass(isExact || isSubRoute)}>
               <Icon className="w-4 h-4 shrink-0" />
-              <span className="flex-1">{label}</span>
+              {!collapsed && <span className="flex-1">{label}</span>}
             </Link>
           )
         })}
       </nav>
 
       {/* Settings + Logout */}
-      <div className="py-4 px-3 border-t border-gray-100 space-y-0.5">
+      <div className="py-4 px-2 border-t border-(--color-border) space-y-0.5">
         <Link
           href="/dashboard/admin/settings"
-          className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-gray-500 hover:bg-gray-50 hover:text-gray-800 transition-colors"
+          title={collapsed ? "Settings" : undefined}
+          className={navClass(pathname === "/dashboard/admin/settings")}
         >
           <Settings className="w-4 h-4 shrink-0" />
-          <span>Settings</span>
+          {!collapsed && <span>Settings</span>}
         </Link>
         <button
           onClick={handleLogout}
-          className="flex items-center gap-3 w-full px-3 py-2.5 rounded-lg text-sm font-medium text-gray-500 hover:bg-red-50 hover:text-red-600 transition-colors"
+          title={collapsed ? "Log Out" : undefined}
+          className={`flex items-center gap-3 w-full py-2.5 rounded-lg text-sm font-medium transition-colors text-white/60 hover:bg-(--color-error)/20 hover:text-(--color-error) ${collapsed ? "justify-center px-2" : "px-3"}`}
         >
           <LogOut className="w-4 h-4 shrink-0" />
-          Log Out
+          {!collapsed && "Log Out"}
         </button>
       </div>
     </aside>

@@ -54,7 +54,7 @@ export default function AdminTopBar() {
   const initials = getInitials(displayName)
 
   return (
-    <header className="h-14 bg-white border-b border-gray-100 flex items-center justify-end px-6 gap-5 shrink-0">
+    <header className="h-14 bg-(--color-white) border-b border-(--color-border) flex items-center justify-end px-6 gap-5 shrink-0">
       <NotificationBell notifications={MOCK_NOTIFICATIONS} />
       <div className="flex items-center gap-2.5">
         <div className="w-8 h-8 rounded-full bg-gray-700 text-white text-xs font-semibold flex items-center justify-center">

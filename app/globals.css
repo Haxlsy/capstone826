@@ -1,2 +1,35 @@
 @import "tailwindcss";
 
+:root {
+  /* --- Original Palette --- */
+  --color-base-dark: #15292E;      /* Backgrounds */
+  --color-base-medium: #074047;    /* Surface/Cards */
+  --color-primary: #1C8585;        /* Brand */
+  --color-accent: #1DA27E;         /* CTA/Vibrant */
+
+  /* --- Complementary Functional Colors --- */
+  /* Error: A muted coral/terracotta that contrasts with the greens */
+  --color-error: #D9534F; 
+  
+  /* Warning: A deep amber/gold to pop against the dark teal */
+  --color-warning: #D9A036; 
+
+  /* Info: A lighter, airy slate blue to distinguish from the greens */
+  --color-info: #5BC0DE;
+
+  /* --- Neutrals & Typography --- */
+  --color-white: #F8FAFA;          /* Off-white for better readability */
+  --color-gray-muted: #6C7A7D;     /* For less important text */
+  --color-border: #2A4248;         /* Subtle borders for dark mode */
+
+  /* --- Semantic Mappings --- */
+  --bg-body: var(--color-base-dark);
+  --bg-surface: var(--color-base-medium);
+  --text-main: var(--color-white);
+  --text-muted: var(--color-gray-muted);
+}
+
+/* Optional: Utility classes for quick testing */
+.text-error { color: var(--color-error); }
+.text-warning { color: var(--color-warning); }
+.bg-primary { background-color: var(--color-primary); }
