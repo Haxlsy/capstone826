@@ -4,7 +4,7 @@ import { useState, useEffect, useRef } from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { CheckCircle2 } from "lucide-react"
-import ServiceOverridePanel from "./ServiceOverridePanel"
+import ServiceOverridePanel, { type Stage } from "./ServiceOverridePanel"
 import JobOrderConfirmDialog, { type JobOrderSummary } from "./JobOrderConfirmDialog"
 
 interface CustomerRecord {
@@ -149,20 +149,23 @@ export default function AddJobOrderForm() {
   const [manualVehicleUnit,    setManualVehicleUnit]    = useState("")
 
   const [selectedServiceId,       setSelectedServiceId]       = useState<string | null>(null)
-  const [packageServiceIds,       setPackageServiceIds]       = useState<string[]>([])
   const [customServiceName,       setCustomServiceName]       = useState("")
+  const [customDescription,       setCustomDescription]       = useState("")
   const [customDurationMins,      setCustomDurationMins]      = useState<number | null>(null)
+  const [originalStages,          setOriginalStages]          = useState<Stage[]>([])
+  const [customStages,            setCustomStages]            = useState<Stage[]>([])
+  const [stagesLoading,           setStagesLoading]           = useState(false)
   const [selectedHeadDetailerId,  setSelectedHeadDetailerId]  = useState<string | null>(null)
   const [selectedHeadInstallerId, setSelectedHeadInstallerId] = useState<string | null>(null)
   const [selectedDetailerIds,     setSelectedDetailerIds]     = useState<Set<string>>(new Set())
   const [selectedInstallerIds,    setSelectedInstallerIds]    = useState<Set<string>>(new Set())
   const [scheduledAt, setScheduledAt] = useState("")
 
-  const [loading,       setLoading]       = useState(false)
-  const [fieldErrors,   setFieldErrors]   = useState<FieldErrors>({})
-  const [apiError,      setApiError]      = useState<string | null>(null)
-  const [success,       setSuccess]       = useState(false)
-  const [showConfirm,   setShowConfirm]   = useState(false)
+  const [loading,        setLoading]        = useState(false)
+  const [fieldErrors,    setFieldErrors]    = useState<FieldErrors>({})
+  const [apiError,       setApiError]       = useState<string | null>(null)
+  const [success,        setSuccess]        = useState(false)
+  const [showConfirm,    setShowConfirm]    = useState(false)
   const [confirmSummary, setConfirmSummary] = useState<JobOrderSummary | null>(null)
 
   useEffect(() => {
@@ -201,6 +204,21 @@ export default function AddJobOrderForm() {
     setFieldErrors((prev) => { const next = { ...prev }; delete next[key]; return next })
   }
 
+  async function fetchStages(serviceId: string) {
+    setStagesLoading(true)
+    try {
+      const res  = await fetch(`/api/operations/job-management/service-stages?serviceId=${serviceId}`)
+      const json = await res.json()
+      const stages: Stage[] = json.stages ?? []
+      setOriginalStages(stages)
+      setCustomStages(stages)
+    } catch {
+      // non-fatal — panel will show empty stage list
+    } finally {
+      setStagesLoading(false)
+    }
+  }
+
   const selectedCustomer = !useManualCustomer
     ? customers.find((c) => c.id === selectedCustomerId) ?? null
     : null
@@ -209,10 +227,22 @@ export default function AddJobOrderForm() {
 
   function handleServiceChange(id: string | null) {
     setSelectedServiceId(id)
-    setCustomServiceName(id ? (services.find((s) => s.id === id)?.name ?? "") : "")
+    const svc = id ? services.find((s) => s.id === id) : null
+    setCustomServiceName(svc?.name ?? "")
+    setCustomDescription(svc?.description ?? "")
     setCustomDurationMins(null)
-    setPackageServiceIds([])
+    setOriginalStages([])
+    setCustomStages([])
     clearField("service")
+    if (id) fetchStages(id)
+  }
+
+  function handleResetOverrides() {
+    if (!selectedService) return
+    setCustomServiceName(selectedService.name)
+    setCustomDescription(selectedService.description ?? "")
+    setCustomDurationMins(null)
+    setCustomStages(originalStages)
   }
 
   const PHONE_RE = /^(09|\+639)\d{9}$/
@@ -282,29 +312,27 @@ export default function AddJobOrderForm() {
     setFieldErrors({})
 
     const effDuration = customDurationMins ?? (selectedService?.estimated_duration_mins ?? 0)
-    const pkgServices = services.filter((s) => packageServiceIds.includes(s.id))
-    const totalMins   = effDuration + pkgServices.reduce((sum, s) => sum + s.estimated_duration_mins, 0)
-    const dMins       = totalMins
-    const dLabel      = dMins <= 0 ? "—" : dMins >= 60
-      ? `${Math.round(dMins / 60)} hr${Math.round(dMins / 60) !== 1 ? "s" : ""}`
-      : `${dMins} min${dMins !== 1 ? "s" : ""}`
+    const dLabel = effDuration <= 0 ? "—"
+      : effDuration >= 60
+        ? `${Math.round(effDuration / 60)} hr${Math.round(effDuration / 60) !== 1 ? "s" : ""}`
+        : `${effDuration} min${effDuration !== 1 ? "s" : ""}`
 
     const summary: JobOrderSummary = {
-      customerName:    selectedCustomer?.full_name   ?? manualCustomerName.trim(),
-      contactNumber:   selectedCustomer?.contact_number ?? manualContactNumber.trim(),
-      email:           selectedCustomer?.email        ?? (manualEmail.trim() || null),
-      plateNumber:     selectedCustomer?.plate_number ?? manualPlateNumber.trim(),
-      vehicleUnit:     selectedCustomer?.vehicle_unit ?? manualVehicleUnit.trim(),
-      serviceName:     customServiceName || selectedService?.name || "—",
-      isOverridden:    !!customServiceName && customServiceName !== selectedService?.name,
-      packageServices: pkgServices.map((s) => s.name),
-      scheduledAt:     formatDate(scheduledAt),
-      expectedEnd:     scheduledAt && totalMins > 0 ? addMinutes(scheduledAt, totalMins) : formatDate(scheduledAt),
-      duration:        dLabel,
-      headDetailer:    headTechs.find((t) => t.id === selectedHeadDetailerId)?.full_name  ?? "—",
-      headInstaller:   headTechs.find((t) => t.id === selectedHeadInstallerId)?.full_name ?? "—",
-      detailers:       crewMembers.filter((c) => selectedDetailerIds.has(c.id)).map((c) => c.full_name),
-      installers:      crewMembers.filter((c) => selectedInstallerIds.has(c.id)).map((c) => c.full_name),
+      customerName:  selectedCustomer?.full_name    ?? manualCustomerName.trim(),
+      contactNumber: selectedCustomer?.contact_number ?? manualContactNumber.trim(),
+      email:         selectedCustomer?.email          ?? (manualEmail.trim() || null),
+      plateNumber:   selectedCustomer?.plate_number   ?? manualPlateNumber.trim(),
+      vehicleUnit:   selectedCustomer?.vehicle_unit   ?? manualVehicleUnit.trim(),
+      serviceName:   customServiceName || selectedService?.name || "—",
+      isOverridden:  !!customServiceName && customServiceName !== selectedService?.name,
+      stages:        customStages.map((s) => ({ name: s.name, category: s.category })),
+      scheduledAt:   formatDate(scheduledAt),
+      expectedEnd:   scheduledAt && effDuration > 0 ? addMinutes(scheduledAt, effDuration) : formatDate(scheduledAt),
+      duration:      dLabel,
+      headDetailer:  headTechs.find((t) => t.id === selectedHeadDetailerId)?.full_name  ?? "—",
+      headInstaller: headTechs.find((t) => t.id === selectedHeadInstallerId)?.full_name ?? "—",
+      detailers:     crewMembers.filter((c) => selectedDetailerIds.has(c.id)).map((c) => c.full_name),
+      installers:    crewMembers.filter((c) => selectedInstallerIds.has(c.id)).map((c) => c.full_name),
     }
     setConfirmSummary(summary)
     setShowConfirm(true)
@@ -314,30 +342,48 @@ export default function AddJobOrderForm() {
     setLoading(true)
     setApiError(null)
     try {
+      // Determine which overrides actually changed
+      const nameChanged = customServiceName !== (selectedService?.name ?? "")
+      const descChanged = customDescription !== (selectedService?.description ?? "")
+
+      // Send all stages — the API distinguishes new vs. existing via is_new
+      const customStagesPayload = customStages.length > 0
+        ? customStages.map((s, i) => ({
+            service_stage_id:      s.isNew ? null : s.id,
+            is_new:                s.isNew ?? false,
+            custom_name:           s.name,
+            custom_stage_category: s.isNew ? s.category : null,
+            custom_sequence_order: i + 1,
+          }))
+        : null
+
       const payload: Record<string, unknown> = {
         service_id:           selectedServiceId,
         scheduled_at:         scheduledAt,
-        head_detailer_id:     selectedHeadDetailerId ?? null,
+        head_detailer_id:     selectedHeadDetailerId  ?? null,
         head_installer_id:    selectedHeadInstallerId ?? null,
         detailer_ids:         [...selectedDetailerIds],
         installer_ids:        [...selectedInstallerIds],
-        custom_service_name:  customServiceName !== (selectedService?.name ?? "") ? customServiceName : null,
+        custom_service_name:  nameChanged ? customServiceName : null,
+        custom_description:   descChanged ? customDescription : null,
         custom_duration_mins: customDurationMins,
-        package_service_ids:  packageServiceIds.length > 0 ? packageServiceIds : null,
+        custom_stages:        customStagesPayload,
       }
+
       if (!useManualCustomer) {
         payload.customer_record_id = selectedCustomerId
       } else {
-        payload.customer_name   = manualCustomerName.trim()
-        payload.contact_number  = manualContactNumber.trim()
-        payload.email           = manualEmail.trim() || null
-        payload.plate_number    = manualPlateNumber.trim()
-        payload.vehicle_unit    = manualVehicleUnit.trim() || null
+        payload.customer_name  = manualCustomerName.trim()
+        payload.contact_number = manualContactNumber.trim()
+        payload.email          = manualEmail.trim() || null
+        payload.plate_number   = manualPlateNumber.trim()
+        payload.vehicle_unit   = manualVehicleUnit.trim() || null
       }
+
       const res  = await fetch("/api/operations/job-management/add-job-order", {
-        method: "POST",
+        method:  "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
+        body:    JSON.stringify(payload),
       })
       const data = await res.json()
       if (!res.ok) throw new Error(data?.error ?? "Failed to create job order")
@@ -352,9 +398,9 @@ export default function AddJobOrderForm() {
     }
   }
 
-  const estimatedMins   = selectedService?.estimated_duration_mins ?? 0
-  const hrs             = Math.round(estimatedMins / 60)
-  const durationLabel   = estimatedMins > 0
+  const estimatedMins = selectedService?.estimated_duration_mins ?? 0
+  const hrs           = Math.round(estimatedMins / 60)
+  const durationLabel = estimatedMins > 0
     ? estimatedMins >= 60
       ? `${hrs} hr${hrs !== 1 ? "s" : ""}`
       : `${estimatedMins} min${estimatedMins !== 1 ? "s" : ""}`
@@ -365,16 +411,16 @@ export default function AddJobOrderForm() {
 
   return (
     <>
-    <div className={`flex gap-6 items-start ${selectedService ? "max-w-5xl" : "max-w-3xl"}`}>
-    <div className="flex flex-col gap-5 flex-1 min-w-0">
-      {/* Breadcrumb */}
-      <div className="text-xs text-gray-400">
-        <span>Job Management</span>
-        <span className="mx-1.5">›</span>
-        <span className="text-gray-600">Add Job Order</span>
+    <div className="flex flex-col gap-5 max-w-5xl">
+      {/* ── Page header (full width, above both columns) ─────────── */}
+      <div>
+        <div className="text-xs text-gray-400 mb-1">
+          <span>Job Management</span>
+          <span className="mx-1.5">›</span>
+          <span className="text-gray-600">Add Job Order</span>
+        </div>
+        <h1 className="text-xl font-bold text-gray-800">Create New Job Order</h1>
       </div>
-
-      <h1 className="text-xl font-bold text-gray-800">Create New Job Order</h1>
 
       {success && (
         <div className="flex items-center gap-2 bg-green-50 border border-green-200 rounded-xl px-4 py-3 text-green-700 text-sm font-medium">
@@ -383,277 +429,287 @@ export default function AddJobOrderForm() {
         </div>
       )}
 
-      {/* Card 1: Customer & Vehicle Details */}
-      <div className="bg-white border border-gray-200 rounded-xl p-5 space-y-4">
-        <div>
-          <h2 className="font-semibold text-sm text-gray-800">Customer & Vehicle Details</h2>
-          <p className="text-xs text-gray-400 mt-0.5">Select from Sales records or enter manually.</p>
+      {/* ── Two-column: form cards + panel ───────────────────────── */}
+      <div className="flex gap-6 items-start">
+      {/* ── Left: form ──────────────────────────────────────────── */}
+      <div className="flex flex-col gap-5 flex-1 min-w-0">
+        {/* Card 1: Customer & Vehicle Details */}
+        <div className="bg-white border border-gray-200 rounded-xl p-5 space-y-4">
+          <div>
+            <h2 className="font-semibold text-sm text-gray-800">Customer & Vehicle Details</h2>
+            <p className="text-xs text-gray-400 mt-0.5">Select from Sales records or enter manually.</p>
+          </div>
+
+          {!useManualCustomer ? (
+            <div className="flex flex-col gap-4">
+              <div className="flex flex-col gap-1.5">
+                <div className="flex items-center justify-between">
+                  <label className="text-xs font-medium text-gray-600">Customer <span className="text-red-500 ml-0.5">*</span></label>
+                  <button
+                    type="button"
+                    onClick={() => { setUseManualCustomer(true); setSelectedCustomerId(null); setFieldErrors({}) }}
+                    className="text-xs text-blue-600 hover:underline"
+                  >
+                    Enter manually
+                  </button>
+                </div>
+                <select
+                  value={selectedCustomerId ?? ""}
+                  onChange={(e) => { setSelectedCustomerId(e.target.value || null); clearField("customer") }}
+                  disabled={loadingRefs}
+                  aria-label="Customer"
+                  className={selectCls(!!fieldErrors.customer)}
+                >
+                  <option value="">
+                    {loadingRefs ? "Loading…" : customers.length === 0 ? "No customer records found" : "— Select customer —"}
+                  </option>
+                  {customers.map((c) => (
+                    <option key={c.id} value={c.id}>{c.full_name} — {c.plate_number}</option>
+                  ))}
+                </select>
+                <FieldError msg={fieldErrors.customer} />
+              </div>
+
+              {selectedCustomer && (
+                <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 space-y-1.5">
+                  <p className="text-sm font-semibold text-blue-900">{selectedCustomer.full_name}</p>
+                  <p className="text-xs text-blue-700">📞 {selectedCustomer.contact_number}</p>
+                  {selectedCustomer.email && <p className="text-xs text-blue-700">✉️ {selectedCustomer.email}</p>}
+                  <p className="text-xs text-blue-700">🚗 {selectedCustomer.plate_number}</p>
+                  {selectedCustomer.vehicle_unit && <p className="text-xs text-blue-700">Unit: {selectedCustomer.vehicle_unit}</p>}
+                </div>
+              )}
+            </div>
+          ) : (
+            <div className="grid grid-cols-2 gap-4">
+              <div className="flex flex-col gap-1.5 col-span-2">
+                <div className="flex items-center justify-between">
+                  <label className="text-xs font-medium text-gray-600">Customer Name *</label>
+                  <button
+                    type="button"
+                    onClick={() => { setUseManualCustomer(false); setFieldErrors({}) }}
+                    className="text-xs text-blue-600 hover:underline"
+                  >
+                    Select from records
+                  </button>
+                </div>
+                <input
+                  type="text"
+                  value={manualCustomerName}
+                  onChange={(e) => { setManualCustomerName(e.target.value); clearField("customerName") }}
+                  placeholder="e.g., Juan dela Cruz"
+                  className={inputCls(!!fieldErrors.customerName)}
+                />
+                <FieldError msg={fieldErrors.customerName} />
+              </div>
+              <div className="flex flex-col gap-1.5">
+                <label className="text-xs font-medium text-gray-600">Contact Number <span className="text-red-500 ml-0.5">*</span></label>
+                <input
+                  type="tel"
+                  value={manualContactNumber}
+                  onChange={(e) => { setManualContactNumber(e.target.value); clearField("contactNumber") }}
+                  placeholder="e.g., 09XX-XXX-XXXX"
+                  className={inputCls(!!fieldErrors.contactNumber)}
+                />
+                <FieldError msg={fieldErrors.contactNumber} />
+              </div>
+              <div className="flex flex-col gap-1.5">
+                <label className="text-xs font-medium text-gray-600">Plate Number <span className="text-red-500 ml-0.5">*</span></label>
+                <input
+                  type="text"
+                  value={manualPlateNumber}
+                  onChange={(e) => { setManualPlateNumber(e.target.value); clearField("plateNumber") }}
+                  placeholder="e.g., ABC-1234"
+                  className={inputCls(!!fieldErrors.plateNumber)}
+                />
+                <FieldError msg={fieldErrors.plateNumber} />
+              </div>
+              <div className="flex flex-col gap-1.5 col-span-2">
+                <label className="text-xs font-medium text-gray-600">Email</label>
+                <input type="email" value={manualEmail} onChange={(e) => setManualEmail(e.target.value)} placeholder="e.g., juan@email.com" className={inputCls()} />
+              </div>
+              <div className="flex flex-col gap-1.5 col-span-2">
+                <label className="text-xs font-medium text-gray-600">Vehicle Unit <span className="text-red-500 ml-0.5">*</span></label>
+                <input
+                  type="text"
+                  value={manualVehicleUnit}
+                  onChange={(e) => { setManualVehicleUnit(e.target.value); clearField("vehicleUnit") }}
+                  placeholder="e.g., Toyota Vios 2020"
+                  className={inputCls(!!fieldErrors.vehicleUnit)}
+                />
+                <FieldError msg={fieldErrors.vehicleUnit} />
+              </div>
+            </div>
+          )}
         </div>
 
-        {!useManualCustomer ? (
-          <div className="flex flex-col gap-4">
+        {/* Card 2: Service & Schedule */}
+        <div className="bg-white border border-gray-200 rounded-xl p-5 space-y-4">
+          <h2 className="font-semibold text-sm text-gray-800">Service & Schedule</h2>
+          <div className="grid grid-cols-2 gap-4">
             <div className="flex flex-col gap-1.5">
-              <div className="flex items-center justify-between">
-                <label className="text-xs font-medium text-gray-600">Customer <span className="text-red-500 ml-0.5">*</span></label>
-                <button
-                  type="button"
-                  onClick={() => { setUseManualCustomer(true); setSelectedCustomerId(null); setFieldErrors({}) }}
-                  className="text-xs text-blue-600 hover:underline"
-                >
-                  Enter manually
-                </button>
-              </div>
+              <label className="text-xs font-medium text-gray-600">Service <span className="text-red-500 ml-0.5">*</span></label>
               <select
-                value={selectedCustomerId ?? ""}
-                onChange={(e) => { setSelectedCustomerId(e.target.value || null); clearField("customer") }}
+                value={selectedServiceId ?? ""}
+                onChange={(e) => handleServiceChange(e.target.value || null)}
                 disabled={loadingRefs}
-                className={selectCls(!!fieldErrors.customer)}
+                aria-label="Service"
+                className={selectCls(!!fieldErrors.service)}
               >
-                <option value="">
-                  {loadingRefs ? "Loading…" : customers.length === 0 ? "No customer records found" : "— Select customer —"}
-                </option>
-                {customers.map((c) => (
-                  <option key={c.id} value={c.id}>{c.full_name} — {c.plate_number}</option>
+                <option value="">{loadingRefs ? "Loading…" : services.length === 0 ? "No services found" : "— Select service —"}</option>
+                {services.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+              </select>
+              <FieldError msg={fieldErrors.service} />
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <label className="text-xs font-medium text-gray-600">Scheduled Date & Time <span className="text-red-500 ml-0.5">*</span></label>
+              <input
+                aria-label="Date Time Input"
+                type="datetime-local"
+                value={scheduledAt}
+                onChange={(e) => { setScheduledAt(e.target.value); clearField("scheduledAt") }}
+                className={inputCls(!!fieldErrors.scheduledAt)}
+              />
+              <FieldError msg={fieldErrors.scheduledAt} />
+            </div>
+          </div>
+
+          {scheduledAt && (
+            <div className="bg-gray-50 rounded-lg p-4 grid grid-cols-2 gap-4">
+              <div>
+                <p className="text-xs text-gray-500">Scheduled Start</p>
+                <p className="text-sm font-medium text-gray-800 mt-1">{formatDate(scheduledAt)}</p>
+              </div>
+              <div>
+                <p className="text-xs text-gray-500">Expected Completion</p>
+                <p className="text-sm font-medium text-gray-800 mt-1">{expectedCompletion}</p>
+              </div>
+              <div>
+                <p className="text-xs text-gray-500">Service</p>
+                <p className="text-sm font-medium text-gray-800 mt-1">{selectedService?.name ?? "—"}</p>
+              </div>
+              <div>
+                <p className="text-xs text-gray-500">Estimated Duration</p>
+                <p className="text-sm font-medium text-gray-800 mt-1">{durationLabel}</p>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Card 3: Team Assignment */}
+        <div className="bg-white border border-gray-200 rounded-xl p-5 space-y-5">
+          <div>
+            <h2 className="font-semibold text-sm text-gray-800">Team Assignment</h2>
+            <p className="text-xs text-gray-400 mt-0.5">All team fields are required.</p>
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
+            <div className="flex flex-col gap-1.5">
+              <label className="text-xs font-medium text-gray-600">Head Detailer <span className="text-red-500">*</span></label>
+              <select
+                value={selectedHeadDetailerId ?? ""}
+                onChange={(e) => { setSelectedHeadDetailerId(e.target.value || null); clearField("headDetailer") }}
+                disabled={loadingRefs}
+                aria-label="Head Detailer"
+                className={selectCls(!!fieldErrors.headDetailer)}
+              >
+                <option value="">— Select head detailer —</option>
+                {headDetailers.map((t) => (
+                  <option key={t.id} value={t.id}>
+                    {t.full_name}{t.active_jobs > 0 ? ` (${t.active_jobs} active)` : ""}
+                  </option>
                 ))}
               </select>
-              <FieldError msg={fieldErrors.customer} />
+              <FieldError msg={fieldErrors.headDetailer} />
             </div>
-
-            {selectedCustomer && (
-              <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 space-y-1.5">
-                <p className="text-sm font-semibold text-blue-900">{selectedCustomer.full_name}</p>
-                <p className="text-xs text-blue-700">📞 {selectedCustomer.contact_number}</p>
-                {selectedCustomer.email && <p className="text-xs text-blue-700">✉️ {selectedCustomer.email}</p>}
-                <p className="text-xs text-blue-700">🚗 {selectedCustomer.plate_number}</p>
-                {selectedCustomer.vehicle_unit && <p className="text-xs text-blue-700">Unit: {selectedCustomer.vehicle_unit}</p>}
-              </div>
-            )}
+            <div className="flex flex-col gap-1.5">
+              <label className="text-xs font-medium text-gray-600">Head Installer <span className="text-red-500">*</span></label>
+              <select
+                value={selectedHeadInstallerId ?? ""}
+                onChange={(e) => { setSelectedHeadInstallerId(e.target.value || null); clearField("headInstaller") }}
+                disabled={loadingRefs}
+                aria-label="Head Installer"
+                className={selectCls(!!fieldErrors.headInstaller)}
+              >
+                <option value="">— Select head installer —</option>
+                {headInstallers.map((t) => (
+                  <option key={t.id} value={t.id}>
+                    {t.full_name}{t.active_jobs > 0 ? ` (${t.active_jobs} active)` : ""}
+                  </option>
+                ))}
+              </select>
+              <FieldError msg={fieldErrors.headInstaller} />
+            </div>
           </div>
-        ) : (
+
           <div className="grid grid-cols-2 gap-4">
-            <div className="flex flex-col gap-1.5 col-span-2">
-              <div className="flex items-center justify-between">
-                <label className="text-xs font-medium text-gray-600">Customer Name *</label>
-                <button
-                  type="button"
-                  onClick={() => { setUseManualCustomer(false); setFieldErrors({}) }}
-                  className="text-xs text-blue-600 hover:underline"
-                >
-                  Select from records
-                </button>
-              </div>
-              <input
-                type="text"
-                value={manualCustomerName}
-                onChange={(e) => { setManualCustomerName(e.target.value); clearField("customerName") }}
-                placeholder="e.g., Juan dela Cruz"
-                className={inputCls(!!fieldErrors.customerName)}
-              />
-              <FieldError msg={fieldErrors.customerName} />
-            </div>
-            <div className="flex flex-col gap-1.5">
-              <label className="text-xs font-medium text-gray-600">Contact Number <span className="text-red-500 ml-0.5">*</span></label>
-              <input
-                type="tel"
-                value={manualContactNumber}
-                onChange={(e) => { setManualContactNumber(e.target.value); clearField("contactNumber") }}
-                placeholder="e.g., 09XX-XXX-XXXX"
-                className={inputCls(!!fieldErrors.contactNumber)}
-              />
-              <FieldError msg={fieldErrors.contactNumber} />
-            </div>
-            <div className="flex flex-col gap-1.5">
-              <label className="text-xs font-medium text-gray-600">Plate Number <span className="text-red-500 ml-0.5">*</span></label>
-              <input
-                type="text"
-                value={manualPlateNumber}
-                onChange={(e) => { setManualPlateNumber(e.target.value); clearField("plateNumber") }}
-                placeholder="e.g., ABC-1234"
-                className={inputCls(!!fieldErrors.plateNumber)}
-              />
-              <FieldError msg={fieldErrors.plateNumber} />
-            </div>
-            <div className="flex flex-col gap-1.5 col-span-2">
-              <label className="text-xs font-medium text-gray-600">Email</label>
-              <input type="email" value={manualEmail} onChange={(e) => setManualEmail(e.target.value)} placeholder="e.g., juan@email.com" className={inputCls()} />
-            </div>
-            <div className="flex flex-col gap-1.5 col-span-2">
-              <label className="text-xs font-medium text-gray-600">Vehicle Unit <span className="text-red-500 ml-0.5">*</span></label>
-              <input
-                type="text"
-                value={manualVehicleUnit}
-                onChange={(e) => { setManualVehicleUnit(e.target.value); clearField("vehicleUnit") }}
-                placeholder="e.g., Toyota Vios 2020"
-                className={inputCls(!!fieldErrors.vehicleUnit)}
-              />
-              <FieldError msg={fieldErrors.vehicleUnit} />
-            </div>
-          </div>
-        )}
-      </div>
-
-      {/* Card 2: Service & Schedule */}
-      <div className="bg-white border border-gray-200 rounded-xl p-5 space-y-4">
-        <h2 className="font-semibold text-sm text-gray-800">Service & Schedule</h2>
-        <div className="grid grid-cols-2 gap-4">
-          <div className="flex flex-col gap-1.5">
-            <label className="text-xs font-medium text-gray-600">Service <span className="text-red-500 ml-0.5">*</span> </label>
-            <select
-              value={selectedServiceId ?? ""}
-              onChange={(e) => handleServiceChange(e.target.value || null)}
-              disabled={loadingRefs}
-              className={selectCls(!!fieldErrors.service)}
-            >
-              <option value="">{loadingRefs ? "Loading…" : services.length === 0 ? "No services found" : "— Select service —"}</option>
-              {services.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
-            </select>
-            <FieldError msg={fieldErrors.service} />
-          </div>
-          <div className="flex flex-col gap-1.5">
-            <label className="text-xs font-medium text-gray-600">Scheduled Date & Time <span className="text-red-500 ml-0.5">*</span></label>
-            <input
-              type="datetime-local"
-              value={scheduledAt}
-              onChange={(e) => { setScheduledAt(e.target.value); clearField("scheduledAt") }}
-              className={inputCls(!!fieldErrors.scheduledAt)}
+            <CrewCheckboxList
+              label="Detailers"
+              required
+              members={detailers}
+              selected={selectedDetailerIds}
+              onToggle={(id) => toggleCrew(id, selectedDetailerIds, setSelectedDetailerIds, "detailers")}
+              loading={loadingRefs}
+              error={fieldErrors.detailers}
             />
-            <FieldError msg={fieldErrors.scheduledAt} />
+            <CrewCheckboxList
+              label="Installers"
+              required
+              members={installers}
+              selected={selectedInstallerIds}
+              onToggle={(id) => toggleCrew(id, selectedInstallerIds, setSelectedInstallerIds, "installers")}
+              loading={loadingRefs}
+              error={fieldErrors.installers}
+            />
           </div>
         </div>
 
-        {scheduledAt && (
-          <div className="bg-gray-50 rounded-lg p-4 grid grid-cols-2 gap-4">
-            <div>
-              <p className="text-xs text-gray-500">Scheduled Start</p>
-              <p className="text-sm font-medium text-gray-800 mt-1">{formatDate(scheduledAt)}</p>
-            </div>
-            <div>
-              <p className="text-xs text-gray-500">Expected Completion</p>
-              <p className="text-sm font-medium text-gray-800 mt-1">{expectedCompletion}</p>
-            </div>
-            <div>
-              <p className="text-xs text-gray-500">Service</p>
-              <p className="text-sm font-medium text-gray-800 mt-1">{selectedService?.name ?? "—"}</p>
-            </div>
-            <div>
-              <p className="text-xs text-gray-500">Estimated Duration</p>
-              <p className="text-sm font-medium text-gray-800 mt-1">{durationLabel}</p>
-            </div>
-          </div>
-        )}
-      </div>
-
-      {/* Card 3: Team Assignment */}
-      <div className="bg-white border border-gray-200 rounded-xl p-5 space-y-5">
-        <div>
-          <h2 className="font-semibold text-sm text-gray-800">Team Assignment</h2>
-          <p className="text-xs text-gray-400 mt-0.5">All team fields are required.</p>
-        </div>
-
-        {/* Head techs */}
-        <div className="grid grid-cols-2 gap-4">
-          <div className="flex flex-col gap-1.5">
-            <label className="text-xs font-medium text-gray-600">Head Detailer <span className="text-red-500">*</span></label>
-            <select
-              value={selectedHeadDetailerId ?? ""}
-              onChange={(e) => { setSelectedHeadDetailerId(e.target.value || null); clearField("headDetailer") }}
-              disabled={loadingRefs}
-              className={selectCls(!!fieldErrors.headDetailer)}
+        {/* Footer */}
+        <div className="flex flex-col gap-3">
+          {apiError && (
+            <p className="text-xs text-red-500 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
+              {apiError}
+            </p>
+          )}
+          <div className="flex gap-3">
+            <Link
+              href="/dashboard/job-management"
+              className="flex-1 py-3 text-sm font-medium text-gray-700 border border-gray-300 rounded-xl text-center hover:bg-gray-50 transition-colors"
             >
-              <option value="">— Select head detailer —</option>
-              {headDetailers.map((t) => (
-                <option key={t.id} value={t.id}>
-                  {t.full_name}{t.active_jobs > 0 ? ` (${t.active_jobs} active)` : ""}
-                </option>
-              ))}
-            </select>
-            <FieldError msg={fieldErrors.headDetailer} />
-          </div>
-          <div className="flex flex-col gap-1.5">
-            <label className="text-xs font-medium text-gray-600">Head Installer <span className="text-red-500">*</span></label>
-            <select
-              value={selectedHeadInstallerId ?? ""}
-              onChange={(e) => { setSelectedHeadInstallerId(e.target.value || null); clearField("headInstaller") }}
-              disabled={loadingRefs}
-              className={selectCls(!!fieldErrors.headInstaller)}
+              Cancel
+            </Link>
+            <button
+              type="button"
+              onClick={handleConfirmClick}
+              disabled={loading || success}
+              className={`flex-1 py-3 text-sm font-semibold text-white rounded-xl transition-colors ${
+                loading || success ? "bg-gray-400 cursor-not-allowed" : "bg-gray-900 hover:bg-gray-800"
+              }`}
             >
-              <option value="">— Select head installer —</option>
-              {headInstallers.map((t) => (
-                <option key={t.id} value={t.id}>
-                  {t.full_name}{t.active_jobs > 0 ? ` (${t.active_jobs} active)` : ""}
-                </option>
-              ))}
-            </select>
-            <FieldError msg={fieldErrors.headInstaller} />
+              {loading ? "Creating…" : success ? "Created!" : "Create Job Order"}
+            </button>
           </div>
         </div>
-
-        <div className="grid grid-cols-2 gap-4">
-          <CrewCheckboxList
-            label="Detailers"
-            required
-            members={detailers}
-            selected={selectedDetailerIds}
-            onToggle={(id) => toggleCrew(id, selectedDetailerIds, setSelectedDetailerIds, "detailers")}
-            loading={loadingRefs}
-            error={fieldErrors.detailers}
-          />
-          <CrewCheckboxList
-            label="Installers"
-            required
-            members={installers}
-            selected={selectedInstallerIds}
-            onToggle={(id) => toggleCrew(id, selectedInstallerIds, setSelectedInstallerIds, "installers")}
-            loading={loadingRefs}
-            error={fieldErrors.installers}
-          />
-        </div>
       </div>
 
-      {/* Footer */}
-      <div className="flex flex-col gap-3">
-        {apiError && (
-          <p className="text-xs text-red-500 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
-            {apiError}
-          </p>
-        )}
-        <div className="flex gap-3">
-          <Link
-            href="/dashboard/job-management"
-            className="flex-1 py-3 text-sm font-medium text-gray-700 border border-gray-300 rounded-xl text-center hover:bg-gray-50 transition-colors"
-          >
-            Cancel
-          </Link>
-          <button
-            onClick={handleConfirmClick}
-            disabled={loading || success}
-            className={`flex-1 py-3 text-sm font-semibold text-white rounded-xl transition-colors ${
-              loading || success ? "bg-gray-400 cursor-not-allowed" : "bg-gray-900 hover:bg-gray-800"
-            }`}
-          >
-            {loading ? "Creating…" : success ? "Created!" : "Create Job Order"}
-          </button>
-        </div>
-      </div>
-    </div>
-
-    {/* Service Override Panel — appears when a service is selected */}
-    {selectedService && (
+      {/* ── Right: service override panel (always visible) ───────── */}
       <div className="sticky top-6">
         <ServiceOverridePanel
           primaryService={selectedService}
-          allServices={services}
-          packageServiceIds={packageServiceIds}
+          originalStages={originalStages}
+          stagesLoading={stagesLoading}
           customName={customServiceName}
+          customDescription={customDescription}
           customDurationMins={customDurationMins}
-          onPackageChange={setPackageServiceIds}
-          onOverrideChange={(name, duration) => {
-            setCustomServiceName(name)
-            setCustomDurationMins(duration)
-          }}
+          customStages={customStages}
+          onNameChange={setCustomServiceName}
+          onDescriptionChange={setCustomDescription}
+          onDurationChange={setCustomDurationMins}
+          onStagesChange={setCustomStages}
+          onReset={handleResetOverrides}
         />
       </div>
-    )}
+      </div>
     </div>
 
     {showConfirm && confirmSummary && (
