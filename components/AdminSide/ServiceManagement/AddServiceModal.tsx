@@ -1,7 +1,16 @@
 "use client"
 
 import { useEffect, useRef, useState } from "react"
-import { X, GripVertical, Trash2, Plus, Pencil } from "lucide-react"
+import { X, GripVertical, Trash2, Plus, Pencil, ChevronDown, Check } from "lucide-react"
+
+const SERVICE_TYPES = [
+  "Paint Protection Film",
+  "Coating Services",
+  "Auto Detailing",
+  "Nano Ceramic Tint",
+] as const
+
+type ServiceType = typeof SERVICE_TYPES[number]
 
 interface Stage {
   id: string
@@ -15,15 +24,122 @@ interface AddServiceModalProps {
 }
 
 const EMPTY_FORM = {
-  serviceName: "",
-  description: "",
-  estimatedDays: "3",
+  serviceType:  "" as ServiceType | "",
+  serviceName:  "",
+  description:  "",
+  durationHrs:  "0",
+  durationMins: "0",
 }
 
 function makeId() {
   return Math.random().toString(36).slice(2)
 }
 
+// ─── Searchable Service Type Combobox ────────────────────────────────────────
+function ServiceTypeCombobox({
+  value,
+  onChange,
+  error,
+}: {
+  value: string
+  onChange: (v: ServiceType) => void
+  error?: string
+}) {
+  const [open, setOpen]     = useState(false)
+  const [query, setQuery]   = useState("")
+  const containerRef        = useRef<HTMLDivElement>(null)
+  const inputRef            = useRef<HTMLInputElement>(null)
+
+  const filtered = SERVICE_TYPES.filter((t) =>
+    t.toLowerCase().includes(query.toLowerCase())
+  )
+
+  useEffect(() => {
+    function handleClick(e: MouseEvent) {
+      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
+        setOpen(false)
+        setQuery("")
+      }
+    }
+    document.addEventListener("mousedown", handleClick)
+    return () => document.removeEventListener("mousedown", handleClick)
+  }, [])
+
+  function handleSelect(type: ServiceType) {
+    onChange(type)
+    setOpen(false)
+    setQuery("")
+  }
+
+  function handleInputChange(e: React.ChangeEvent<HTMLInputElement>) {
+    setQuery(e.target.value)
+    if (!open) setOpen(true)
+  }
+
+  function handleToggle() {
+    setOpen((v) => !v)
+    if (!open) {
+      setQuery("")
+      setTimeout(() => inputRef.current?.focus(), 0)
+    }
+  }
+
+  const displayValue = open ? query : value
+
+  return (
+    <div ref={containerRef} className="relative">
+      <div
+        className={`flex items-center border rounded-lg transition-colors ${
+          error ? "border-red-400 bg-red-50" : open ? "border-blue-400 ring-2 ring-blue-100" : "border-gray-200"
+        }`}
+      >
+        <input
+          ref={inputRef}
+          type="text"
+          value={displayValue}
+          onChange={handleInputChange}
+          onFocus={() => { setOpen(true); setQuery("") }}
+          placeholder="Select service type..."
+          className="flex-1 px-3 py-2.5 text-sm bg-transparent focus:outline-none"
+          readOnly={!open}
+        />
+        <button
+          type="button"
+          onClick={handleToggle}
+          className="px-3 text-gray-400 hover:text-gray-600 transition-colors"
+        >
+          <ChevronDown className={`w-4 h-4 transition-transform ${open ? "rotate-180" : ""}`} />
+        </button>
+      </div>
+
+      {open && (
+        <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-gray-100 rounded-xl shadow-lg z-20 overflow-hidden">
+          {filtered.length === 0 ? (
+            <p className="px-3 py-2.5 text-sm text-gray-400">No match found.</p>
+          ) : (
+            filtered.map((type) => (
+              <button
+                key={type}
+                type="button"
+                onClick={() => handleSelect(type)}
+                className="w-full flex items-center justify-between px-3 py-2.5 text-sm text-left hover:bg-gray-50 transition-colors"
+              >
+                <span className={value === type ? "text-gray-900 font-medium" : "text-gray-700"}>
+                  {type}
+                </span>
+                {value === type && <Check className="w-4 h-4 text-blue-500 shrink-0" />}
+              </button>
+            ))
+          )}
+        </div>
+      )}
+
+      {error && <p className="text-xs text-red-500 mt-0.5">{error}</p>}
+    </div>
+  )
+}
+
+// ─── Stage List ───────────────────────────────────────────────────────────────
 function StageList({
   stages,
   errors,
@@ -113,23 +229,27 @@ function StageList({
   )
 }
 
+// ─── Main Modal ───────────────────────────────────────────────────────────────
 export default function AddServiceModal({ open, onClose, onSuccess }: AddServiceModalProps) {
-  const [form, setForm]                     = useState(EMPTY_FORM)
-  const [detailerStages, setDetailerStages] = useState<Stage[]>([])
+  const [form, setForm]                       = useState(EMPTY_FORM)
+  const [detailerStages, setDetailerStages]   = useState<Stage[]>([])
   const [installerStages, setInstallerStages] = useState<Stage[]>([])
-  const [editingId, setEditingId]           = useState<string | null>(null)
-  const [errors, setErrors]                 = useState<Record<string, string>>({})
-  const [serverError, setServerError]       = useState("")
-  const [submitting, setSubmitting]         = useState(false)
+  const [finisherStages, setFinisherStages]   = useState<Stage[]>([])
+  const [editingId, setEditingId]             = useState<string | null>(null)
+  const [errors, setErrors]                   = useState<Record<string, string>>({})
+  const [serverError, setServerError]         = useState("")
+  const [submitting, setSubmitting]           = useState(false)
 
-  const detailerDragIndex = useRef<number | null>(null)
+  const detailerDragIndex  = useRef<number | null>(null)
   const installerDragIndex = useRef<number | null>(null)
+  const finisherDragIndex  = useRef<number | null>(null)
 
   useEffect(() => {
     if (open) {
       setForm(EMPTY_FORM)
       setDetailerStages([])
       setInstallerStages([])
+      setFinisherStages([])
       setEditingId(null)
       setErrors({})
       setServerError("")
@@ -146,35 +266,35 @@ export default function AddServiceModal({ open, onClose, onSuccess }: AddService
     if (errors[key]) setErrors((p) => ({ ...p, [key]: undefined as unknown as string }))
   }
 
-  function addDetailerStage() {
+  function setServiceType(value: ServiceType) {
+    setForm((p) => ({ ...p, serviceType: value }))
+    if (errors.serviceType) setErrors((p) => ({ ...p, serviceType: undefined as unknown as string }))
+  }
+
+  function addStage(list: "detailer" | "installer" | "finisher") {
     const id = makeId()
-    setDetailerStages((p) => [...p, { id, name: "" }])
+    const setter = list === "detailer" ? setDetailerStages : list === "installer" ? setInstallerStages : setFinisherStages
+    setter((p) => [...p, { id, name: "" }])
     setEditingId(id)
   }
 
-  function addInstallerStage() {
-    const id = makeId()
-    setInstallerStages((p) => [...p, { id, name: "" }])
-    setEditingId(id)
-  }
-
-  function updateStage(list: "detailer" | "installer", id: string, value: string) {
-    const setter = list === "detailer" ? setDetailerStages : setInstallerStages
+  function updateStage(list: "detailer" | "installer" | "finisher", id: string, value: string) {
+    const setter = list === "detailer" ? setDetailerStages : list === "installer" ? setInstallerStages : setFinisherStages
     setter((p) => p.map((s) => (s.id === id ? { ...s, name: value } : s)))
     setErrors((p) => ({ ...p, [`stage_${id}`]: undefined as unknown as string }))
   }
 
-  function removeStage(list: "detailer" | "installer", id: string) {
-    const setter = list === "detailer" ? setDetailerStages : setInstallerStages
+  function removeStage(list: "detailer" | "installer" | "finisher", id: string) {
+    const setter = list === "detailer" ? setDetailerStages : list === "installer" ? setInstallerStages : setFinisherStages
     setter((p) => p.filter((s) => s.id !== id))
     if (editingId === id) setEditingId(null)
   }
 
   function makeDragHandlers(
-    list: "detailer" | "installer",
+    list: "detailer" | "installer" | "finisher",
     dragIndex: React.RefObject<number | null>
   ) {
-    const setter = list === "detailer" ? setDetailerStages : setInstallerStages
+    const setter = list === "detailer" ? setDetailerStages : list === "installer" ? setInstallerStages : setFinisherStages
     return {
       onDragStart: (index: number) => { dragIndex.current = index },
       onDragOver:  (e: React.DragEvent, index: number) => {
@@ -194,14 +314,25 @@ export default function AddServiceModal({ open, onClose, onSuccess }: AddService
 
   const detailerDnd  = makeDragHandlers("detailer", detailerDragIndex)
   const installerDnd = makeDragHandlers("installer", installerDragIndex)
+  const finisherDnd  = makeDragHandlers("finisher", finisherDragIndex)
 
   function validate() {
     const e: Record<string, string> = {}
+    if (!form.serviceType) e.serviceType = "Service type is required."
     if (!form.serviceName.trim()) e.serviceName = "Service name is required."
-    if (!form.estimatedDays.trim()) e.estimatedDays = "Duration is required."
-    else if (isNaN(Number(form.estimatedDays)) || Number(form.estimatedDays) < 1)
-      e.estimatedDays = "Enter a valid number of days (minimum 1)."
-    ;[...detailerStages, ...installerStages].forEach((s) => {
+    const hrs  = Number(form.durationHrs)
+    const mins = Number(form.durationMins)
+    if (isNaN(hrs) || isNaN(mins)) {
+      e.duration = "Enter a valid duration."
+    } else if (hrs === 0 && mins === 0) {
+      e.duration = "Duration must be at least 1 minute."
+    } else if (mins < 0 || mins > 59) {
+      e.duration = "Minutes must be between 0 and 59."
+    }
+    if (detailerStages.length === 0) e.detailerStages = "At least 1 preparation stage is required."
+    if (installerStages.length === 0) e.installerStages = "At least 1 installation stage is required."
+    if (finisherStages.length === 0) e.finisherStages = "At least 1 finishing stage is required."
+    ;[...detailerStages, ...installerStages, ...finisherStages].forEach((s) => {
       if (!s.name.trim()) e[`stage_${s.id}`] = "Stage name cannot be empty."
     })
     return e
@@ -217,18 +348,22 @@ export default function AddServiceModal({ open, onClose, onSuccess }: AddService
     }
     setSubmitting(true)
     try {
+      const totalMins = Number(form.durationHrs) * 60 + Number(form.durationMins)
+      let seq = 1
       const allStages = [
-        ...detailerStages.map((s, i) => ({ name: s.name.trim(), category: "preparation", sequence_order: i + 1 })),
-        ...installerStages.map((s, i) => ({ name: s.name.trim(), category: "installation", sequence_order: i + 1 })),
+        ...detailerStages.map((s)  => ({ name: s.name.trim(), category: "preparation",  sequence_order: seq++ })),
+        ...installerStages.map((s) => ({ name: s.name.trim(), category: "installation", sequence_order: seq++ })),
+        ...finisherStages.map((s)  => ({ name: s.name.trim(), category: "finishing",     sequence_order: seq++ })),
       ]
       const res = await fetch("/api/admin/create-service", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          serviceName:             form.serviceName.trim(),
-          description:             form.description.trim(),
-          estimatedDurationMins:   Number(form.estimatedDays) * 24 * 60,
-          stages:                  allStages,
+          serviceType:           form.serviceType,
+          serviceName:           form.serviceName.trim(),
+          description:           form.description.trim(),
+          estimatedDurationMins: totalMins,
+          stages:                allStages,
         }),
       })
       const json = await res.json()
@@ -278,6 +413,18 @@ export default function AddServiceModal({ open, onClose, onSuccess }: AddService
             </div>
           )}
 
+          {/* Service Type */}
+          <div className="space-y-1.5">
+            <label className="block text-sm font-medium text-gray-700">
+              Service Type <span className="text-red-500">*</span>
+            </label>
+            <ServiceTypeCombobox
+              value={form.serviceType}
+              onChange={setServiceType}
+              error={errors.serviceType}
+            />
+          </div>
+
           {/* Service Name */}
           <div className="space-y-1.5">
             <label className="block text-sm font-medium text-gray-700">
@@ -307,24 +454,37 @@ export default function AddServiceModal({ open, onClose, onSuccess }: AddService
             />
           </div>
 
-          {/* Estimated Duration */}
+          {/* Estimated Duration — HH:MM */}
           <div className="space-y-1.5">
             <label className="block text-sm font-medium text-gray-700">
               Estimated Duration <span className="text-red-500">*</span>
             </label>
             <div className="flex items-center gap-2">
-              <input
-                type="number"
-                min="1"
-                value={form.estimatedDays}
-                onChange={(e) => setField("estimatedDays", e.target.value)}
-                className={`w-28 px-3 py-2.5 text-sm border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-100 focus:border-blue-400 transition-colors ${
-                  errors.estimatedDays ? "border-red-400 bg-red-50" : "border-gray-200"
-                }`}
-              />
-              <span className="text-sm text-gray-500">days</span>
+              <div className={`flex items-center border rounded-lg overflow-hidden transition-colors ${
+                errors.duration ? "border-red-400 bg-red-50" : "border-gray-200"
+              }`}>
+                <input
+                  type="number"
+                  min="0"
+                  value={form.durationHrs}
+                  onChange={(e) => setField("durationHrs", e.target.value)}
+                  className="w-16 px-3 py-2.5 text-sm text-center bg-transparent focus:outline-none"
+                  placeholder="00"
+                />
+                <span className="text-gray-400 text-sm font-medium px-0.5">:</span>
+                <input
+                  type="number"
+                  min="0"
+                  max="59"
+                  value={form.durationMins}
+                  onChange={(e) => setField("durationMins", e.target.value)}
+                  className="w-16 px-3 py-2.5 text-sm text-center bg-transparent focus:outline-none"
+                  placeholder="00"
+                />
+              </div>
+              <span className="text-sm text-gray-500">HH : MM</span>
             </div>
-            {errors.estimatedDays && <p className="text-xs text-red-500">{errors.estimatedDays}</p>}
+            {errors.duration && <p className="text-xs text-red-500">{errors.duration}</p>}
             <p className="text-xs text-gray-400">
               Used to automatically calculate the job timeline when a job order is created.
             </p>
@@ -339,14 +499,11 @@ export default function AddServiceModal({ open, onClose, onSuccess }: AddService
               </p>
             </div>
 
-            {/* Detailers Section */}
+            {/* Preparation Team (Detailers) */}
             <div className="space-y-2.5">
-              <div className="flex items-center gap-2">
-                <span className="text-xs font-semibold text-blue-700 uppercase tracking-wide bg-blue-50 px-2.5 py-1 rounded-full">
-                  Preparation Team (Detailers)
-                </span>
-              </div>
-
+              <span className={`text-xs font-semibold uppercase tracking-wide px-2.5 py-1 rounded-full ${errors.detailerStages ? "text-red-700 bg-red-50" : "text-blue-700 bg-blue-50"}`}>
+                Preparation Team (Detailers) <span className="text-red-500">*</span>
+              </span>
               <StageList
                 stages={detailerStages}
                 errors={errors}
@@ -359,14 +516,15 @@ export default function AddServiceModal({ open, onClose, onSuccess }: AddService
                 onDragEnd={detailerDnd.onDragEnd}
                 placeholder="Stage name (e.g. Wash & Dry)"
               />
-
-              {detailerStages.length === 0 && (
+              {detailerStages.length === 0 && !errors.detailerStages && (
                 <p className="text-xs text-gray-400 italic">No stages added yet.</p>
               )}
-
+              {errors.detailerStages && (
+                <p className="text-xs text-red-500">{errors.detailerStages}</p>
+              )}
               <button
                 type="button"
-                onClick={addDetailerStage}
+                onClick={() => addStage("detailer")}
                 className="flex items-center gap-1 text-sm font-medium text-blue-600 hover:text-blue-700 transition-colors"
               >
                 <Plus className="w-4 h-4" />
@@ -374,17 +532,13 @@ export default function AddServiceModal({ open, onClose, onSuccess }: AddService
               </button>
             </div>
 
-            {/* Divider */}
             <div className="border-t border-gray-100" />
 
-            {/* Installers Section */}
+            {/* Installation Team (Installers) */}
             <div className="space-y-2.5">
-              <div className="flex items-center gap-2">
-                <span className="text-xs font-semibold text-purple-700 uppercase tracking-wide bg-purple-50 px-2.5 py-1 rounded-full">
-                  Installation Team (Installers)
-                </span>
-              </div>
-
+              <span className={`text-xs font-semibold uppercase tracking-wide px-2.5 py-1 rounded-full ${errors.installerStages ? "text-red-700 bg-red-50" : "text-purple-700 bg-purple-50"}`}>
+                Installation Team (Installers) <span className="text-red-500">*</span>
+              </span>
               <StageList
                 stages={installerStages}
                 errors={errors}
@@ -397,15 +551,51 @@ export default function AddServiceModal({ open, onClose, onSuccess }: AddService
                 onDragEnd={installerDnd.onDragEnd}
                 placeholder="Stage name (e.g. PPF Application)"
               />
-
-              {installerStages.length === 0 && (
+              {installerStages.length === 0 && !errors.installerStages && (
                 <p className="text-xs text-gray-400 italic">No stages added yet.</p>
               )}
-
+              {errors.installerStages && (
+                <p className="text-xs text-red-500">{errors.installerStages}</p>
+              )}
               <button
                 type="button"
-                onClick={addInstallerStage}
+                onClick={() => addStage("installer")}
                 className="flex items-center gap-1 text-sm font-medium text-purple-600 hover:text-purple-700 transition-colors"
+              >
+                <Plus className="w-4 h-4" />
+                Add Stage
+              </button>
+            </div>
+
+            <div className="border-t border-gray-100" />
+
+            {/* Finishing Stage (Detailers) */}
+            <div className="space-y-2.5">
+              <span className={`text-xs font-semibold uppercase tracking-wide px-2.5 py-1 rounded-full ${errors.finisherStages ? "text-red-700 bg-red-50" : "text-emerald-700 bg-emerald-50"}`}>
+                Finishing Stage (Detailers) <span className="text-red-500">*</span>
+              </span>
+              <StageList
+                stages={finisherStages}
+                errors={errors}
+                editingId={editingId}
+                setEditingId={setEditingId}
+                onUpdate={(id, val) => updateStage("finisher", id, val)}
+                onRemove={(id) => removeStage("finisher", id)}
+                onDragStart={finisherDnd.onDragStart}
+                onDragOver={finisherDnd.onDragOver}
+                onDragEnd={finisherDnd.onDragEnd}
+                placeholder="Stage name (e.g. Final Inspection)"
+              />
+              {finisherStages.length === 0 && !errors.finisherStages && (
+                <p className="text-xs text-gray-400 italic">No stages added yet.</p>
+              )}
+              {errors.finisherStages && (
+                <p className="text-xs text-red-500">{errors.finisherStages}</p>
+              )}
+              <button
+                type="button"
+                onClick={() => addStage("finisher")}
+                className="flex items-center gap-1 text-sm font-medium text-emerald-600 hover:text-emerald-700 transition-colors"
               >
                 <Plus className="w-4 h-4" />
                 Add Stage

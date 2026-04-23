@@ -3,10 +3,12 @@
 import { useCallback, useEffect, useRef, useState } from "react"
 import { Search, Filter, MoreHorizontal, ChevronLeft, ChevronRight } from "lucide-react"
 import AddServiceModal from "./AddServiceModal"
+import EditServiceModal from "./EditServiceModal"
 
 interface Service {
   id:                      string
   name:                    string
+  service_type:            string | null
   description:             string | null
   estimated_duration_mins: number | null
   is_archived:             boolean
@@ -20,6 +22,18 @@ function truncate(text: string | null, max = 48) {
   return text.length > max ? text.slice(0, max) + "..." : text
 }
 
+
+const SERVICE_TYPE_STYLES: Record<string, string> = {
+  "Paint Protection Film": "bg-orange-50 text-orange-700",
+  "Coating Services":      "bg-violet-50 text-violet-700",
+  "Auto Detailing":        "bg-sky-50 text-sky-700",
+  "Nano Ceramic Tint":     "bg-teal-50 text-teal-700",
+}
+
+function serviceTypeCls(type: string | null) {
+  if (!type) return ""
+  return SERVICE_TYPE_STYLES[type] ?? "bg-gray-100 text-gray-600"
+}
 
 function formatDuration(mins: number | null) {
   if (!mins) return "—"
@@ -45,9 +59,10 @@ export default function ServiceTable() {
   const [page, setPage]         = useState(1)
   const [pageSize, setPageSize] = useState(15)
 
-  const [selected, setSelected]     = useState<Set<string>>(new Set())
-  const [actionMenu, setActionMenu] = useState<string | null>(null)
+  const [selected, setSelected]         = useState<Set<string>>(new Set())
+  const [actionMenu, setActionMenu]     = useState<string | null>(null)
   const [addModalOpen, setAddModalOpen] = useState(false)
+  const [editServiceId, setEditServiceId] = useState<string | null>(null)
 
   const filterRef = useRef<HTMLDivElement>(null)
   const actionRef = useRef<HTMLDivElement>(null)
@@ -73,8 +88,8 @@ export default function ServiceTable() {
         page:   String(page),
         limit:  String(pageSize),
       })
-      const minMins = durationMin ? String(Number(durationMin) * 24 * 60) : ""
-      const maxMins = durationMax ? String(Number(durationMax) * 24 * 60) : ""
+      const minMins = durationMin ? String(Number(durationMin) * 60) : ""
+      const maxMins = durationMax ? String(Number(durationMax) * 60) : ""
       if (minMins) params.set("durationMin", minMins)
       if (maxMins) params.set("durationMax", maxMins)
       const res  = await fetch(`/api/operations/services?${params}`)
@@ -171,7 +186,7 @@ export default function ServiceTable() {
               </div>
 
               <div className="border-t border-gray-100 pt-2 space-y-2">
-                <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Duration (days)</p>
+                <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Duration (hours)</p>
                 <div className="flex items-center gap-2">
                   <input
                     type="number"
@@ -218,6 +233,13 @@ export default function ServiceTable() {
         onSuccess={() => fetchServices()}
       />
 
+      <EditServiceModal
+        serviceId={editServiceId}
+        open={editServiceId !== null}
+        onClose={() => setEditServiceId(null)}
+        onSuccess={() => { setEditServiceId(null); fetchServices() }}
+      />
+
       {fetchError && (
         <p className="text-sm text-red-500">{fetchError}</p>
       )}
@@ -235,7 +257,10 @@ export default function ServiceTable() {
                   className="rounded border-gray-300"
                 />
               </th>
-              <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide w-56">
+              <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide w-44">
+                Service Type
+              </th>
+              <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide w-48">
                 Service Name
               </th>
               <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">
@@ -256,11 +281,11 @@ export default function ServiceTable() {
           <tbody>
             {loading ? (
               <tr>
-                <td colSpan={7} className="text-center py-12 text-sm text-gray-400">Loading...</td>
+                <td colSpan={8} className="text-center py-12 text-sm text-gray-400">Loading...</td>
               </tr>
             ) : services.length === 0 ? (
               <tr>
-                <td colSpan={7} className="text-center py-12 text-sm text-gray-400">No services found.</td>
+                <td colSpan={8} className="text-center py-12 text-sm text-gray-400">No services found.</td>
               </tr>
             ) : (
               services.map((service) => (
@@ -275,6 +300,15 @@ export default function ServiceTable() {
                       onChange={() => toggleSelect(service.id)}
                       className="rounded border-gray-300"
                     />
+                  </td>
+                  <td className="px-4 py-3.5">
+                    {service.service_type ? (
+                      <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium whitespace-nowrap ${serviceTypeCls(service.service_type)}`}>
+                        {service.service_type}
+                      </span>
+                    ) : (
+                      <span className="text-xs text-gray-400">—</span>
+                    )}
                   </td>
                   <td className="px-4 py-3.5 font-medium text-gray-800">{service.name}</td>
                   <td className="px-4 py-3.5 text-gray-400 max-w-xs">{truncate(service.description)}</td>
@@ -307,7 +341,13 @@ export default function ServiceTable() {
                       </button>
 
                       {actionMenu === service.id && (
-                        <div className="absolute right-4 top-full mt-1 w-36 bg-white border border-gray-100 rounded-xl shadow-lg z-10 py-1">
+                        <div className="absolute right-4 bottom-8 w-36 bg-white border border-gray-100 rounded-xl shadow-lg z-10 py-1">
+                          <button
+                            onClick={() => { setActionMenu(null); setEditServiceId(service.id) }}
+                            className="w-full text-left text-sm px-3.5 py-2 text-gray-700 hover:bg-gray-50 transition-colors"
+                          >
+                            Edit Service
+                          </button>
                           <button
                             onClick={() => handleArchiveToggle(service)}
                             className={`w-full text-left text-sm px-3.5 py-2 transition-colors ${

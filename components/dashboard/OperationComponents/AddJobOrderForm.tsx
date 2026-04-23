@@ -19,6 +19,7 @@ interface CustomerRecord {
 interface Service {
   id:                      string
   name:                    string
+  service_type:            string | null
   description:             string | null
   estimated_duration_mins: number
 }
@@ -97,32 +98,35 @@ function CrewCheckboxList({
         <p className="text-xs text-gray-400 py-2">No available {label.toLowerCase()} at the moment.</p>
       ) : (
         <div className={`border rounded-lg divide-y divide-gray-50 max-h-40 overflow-y-auto ${error ? "border-red-400 bg-red-50/20" : "border-gray-200"}`}>
-          {members.map((c) => (
-            <label
-              key={c.id}
-              className={`flex items-center gap-3 px-3 py-2.5 ${c.on_job ? "bg-orange-50/60 cursor-not-allowed" : "hover:bg-gray-50 cursor-pointer"}`}
-            >
-              <input
-                type="checkbox"
-                checked={selected.has(c.id)}
-                onChange={() => !c.on_job && onToggle(c.id)}
-                disabled={c.on_job}
-                className="w-4 h-4 rounded border-gray-300 disabled:opacity-40"
-              />
-              <div className="flex-1 min-w-0">
-                <p className={`text-sm truncate ${c.on_job ? "text-gray-400" : "text-gray-700"}`}>{c.full_name}</p>
-              </div>
-              <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded-full ${
-                c.on_job
-                  ? "bg-orange-100 text-orange-600"
-                  : c.is_available
-                    ? "bg-green-50 text-green-600"
-                    : "bg-gray-100 text-gray-400"
-              }`}>
-                {c.on_job ? "On Job" : c.is_available ? "Available" : "Busy"}
-              </span>
-            </label>
-          ))}
+          {members.map((c) => {
+            const disabled = c.on_job || !c.is_available
+            return (
+              <label
+                key={c.id}
+                className={`flex items-center gap-3 px-3 py-2.5 ${disabled ? "bg-gray-50/60 cursor-not-allowed" : "hover:bg-gray-50 cursor-pointer"}`}
+              >
+                <input
+                  type="checkbox"
+                  checked={selected.has(c.id)}
+                  onChange={() => !disabled && onToggle(c.id)}
+                  disabled={disabled}
+                  className="w-4 h-4 rounded border-gray-300 disabled:opacity-40"
+                />
+                <div className="flex-1 min-w-0">
+                  <p className={`text-sm truncate ${disabled ? "text-gray-400" : "text-gray-700"}`}>{c.full_name}</p>
+                </div>
+                <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded-full ${
+                  c.on_job
+                    ? "bg-orange-100 text-orange-600"
+                    : c.is_available
+                      ? "bg-green-50 text-green-600"
+                      : "bg-gray-100 text-gray-400"
+                }`}>
+                  {c.on_job ? "On Job" : c.is_available ? "Available" : "Unavailable"}
+                </span>
+              </label>
+            )
+          })}
         </div>
       )}
       <FieldError msg={error} />
@@ -264,8 +268,31 @@ export default function AddJobOrderForm() {
       if (!manualVehicleUnit.trim())
         errs.vehicleUnit = "Vehicle unit is required."
     }
-    if (!selectedServiceId)              errs.service       = "Please select a service."
-    if (!scheduledAt)                    errs.scheduledAt   = "Please set a scheduled date and time."
+    if (!selectedServiceId) {
+      errs.service = "Please select a service."
+    }
+    if (!scheduledAt) {
+      errs.scheduledAt = isPPF
+        ? "Please set a scheduled date."
+        : "Please set a scheduled date and time."
+    } else {
+      const now = new Date()
+      if (isPPF) {
+        if (scheduledAt < todayStr) {
+          errs.scheduledAt = "Scheduled date cannot be in the past."
+        }
+      } else {
+        const selected = new Date(scheduledAt)
+        if (selected <= now) {
+          errs.scheduledAt = "Scheduled date and time cannot be in the past."
+        } else {
+          const totalMins = selected.getHours() * 60 + selected.getMinutes()
+          if (totalMins < 10 * 60 || totalMins > 19 * 60) {
+            errs.scheduledAt = "Start time must be within working hours (10:00 AM – 7:00 PM)."
+          }
+        }
+      }
+    }
     if (!selectedHeadDetailerId)         errs.headDetailer  = "Please select a Head Detailer."
     if (!selectedHeadInstallerId)        errs.headInstaller = "Please select a Head Installer."
     if (selectedDetailerIds.size === 0)  errs.detailers     = "Please assign at least one Detailer."
@@ -275,8 +302,8 @@ export default function AddJobOrderForm() {
 
   const headDetailers  = headTechs.filter((t) => t.role === "head_detailer")
   const headInstallers = headTechs.filter((t) => t.role === "head_installer")
-  const detailers      = crewMembers.filter((c) => c.role === "detailer"  && c.is_available && !c.on_job)
-  const installers     = crewMembers.filter((c) => c.role === "installer" && c.is_available && !c.on_job)
+  const detailers      = crewMembers.filter((c) => c.role === "detailer"  && !c.on_job && c.is_available)
+  const installers     = crewMembers.filter((c) => c.role === "installer" && !c.on_job && c.is_available)
 
   function toggleCrew(id: string, set: Set<string>, setter: (s: Set<string>) => void, field: keyof FieldErrors) {
     const member = crewMembers.find((c) => c.id === id)
@@ -287,19 +314,61 @@ export default function AddJobOrderForm() {
     if (next.size > 0) clearField(field)
   }
 
-  function formatDate(dateStr: string): string {
-    if (!dateStr) return "—"
-    return new Date(dateStr).toLocaleString("en-US", {
+  const isPPF    = selectedService?.service_type === "Paint Protection Film"
+  const todayStr = new Date().toISOString().split("T")[0]
+
+  // Resolve a full ISO datetime from scheduledAt regardless of whether it's
+  // a date-only string (PPF) or a full datetime string (other services).
+  function resolveStartDate(raw: string, ppf: boolean): Date {
+    if (ppf) {
+      const [y, m, d] = raw.split("-").map(Number)
+      return new Date(y, m - 1, d, 10, 0, 0)
+    }
+    return new Date(raw)
+  }
+
+  function formatScheduledStart(raw: string, ppf: boolean): string {
+    if (!raw) return "—"
+    const d = resolveStartDate(raw, ppf)
+    return d.toLocaleString("en-US", {
       month: "short", day: "numeric", year: "numeric",
       hour: "numeric", minute: "2-digit",
     })
   }
 
-  function addMinutes(dateStr: string, mins: number): string {
-    if (!dateStr || !mins) return "—"
-    const d = new Date(dateStr)
-    d.setMinutes(d.getMinutes() + mins)
-    return d.toLocaleString("en-US", {
+  // Calculates expected completion respecting working hours (10 AM – 7 PM).
+  // If a day's remaining work time is exhausted, the job continues the next
+  // calendar day starting at 10 AM.
+  function calculateCompletion(raw: string, durationMins: number, ppf: boolean): string {
+    if (!raw || durationMins <= 0) return "—"
+    const WORK_START = 10 * 60   // 600  mins
+    const WORK_END   = 19 * 60   // 1140 mins
+
+    let current   = resolveStartDate(raw, ppf)
+    let remaining = durationMins
+
+    while (remaining > 0) {
+      const nowMins      = current.getHours() * 60 + current.getMinutes()
+      const availToday   = WORK_END - nowMins
+
+      if (availToday <= 0) {
+        // Already at or past 7 PM — jump to next day at 10 AM
+        current.setDate(current.getDate() + 1)
+        current.setHours(10, 0, 0, 0)
+        continue
+      }
+
+      if (remaining <= availToday) {
+        current = new Date(current.getTime() + remaining * 60_000)
+        remaining = 0
+      } else {
+        remaining -= availToday
+        current.setDate(current.getDate() + 1)
+        current.setHours(WORK_START / 60, 0, 0, 0)
+      }
+    }
+
+    return current.toLocaleString("en-US", {
       month: "short", day: "numeric", year: "numeric",
       hour: "numeric", minute: "2-digit",
     })
@@ -326,8 +395,10 @@ export default function AddJobOrderForm() {
       serviceName:   customServiceName || selectedService?.name || "—",
       isOverridden:  !!customServiceName && customServiceName !== selectedService?.name,
       stages:        customStages.map((s) => ({ name: s.name, category: s.category })),
-      scheduledAt:   formatDate(scheduledAt),
-      expectedEnd:   scheduledAt && effDuration > 0 ? addMinutes(scheduledAt, effDuration) : formatDate(scheduledAt),
+      scheduledAt:   formatScheduledStart(scheduledAt, isPPF),
+      expectedEnd:   scheduledAt && effDuration > 0
+        ? calculateCompletion(scheduledAt, effDuration, isPPF)
+        : formatScheduledStart(scheduledAt, isPPF),
       duration:      dLabel,
       headDetailer:  headTechs.find((t) => t.id === selectedHeadDetailerId)?.full_name  ?? "—",
       headInstaller: headTechs.find((t) => t.id === selectedHeadInstallerId)?.full_name ?? "—",
@@ -359,7 +430,7 @@ export default function AddJobOrderForm() {
 
       const payload: Record<string, unknown> = {
         service_id:           selectedServiceId,
-        scheduled_at:         scheduledAt,
+        scheduled_at:         isPPF ? `${scheduledAt}T10:00:00` : scheduledAt,
         head_detailer_id:     selectedHeadDetailerId  ?? null,
         head_installer_id:    selectedHeadInstallerId ?? null,
         detailer_ids:         [...selectedDetailerIds],
@@ -406,8 +477,8 @@ export default function AddJobOrderForm() {
       : `${estimatedMins} min${estimatedMins !== 1 ? "s" : ""}`
     : "—"
   const expectedCompletion = scheduledAt && estimatedMins > 0
-    ? addMinutes(scheduledAt, estimatedMins)
-    : scheduledAt ? formatDate(scheduledAt) : "—"
+    ? calculateCompletion(scheduledAt, estimatedMins, isPPF)
+    : scheduledAt ? formatScheduledStart(scheduledAt, isPPF) : "—"
 
   return (
     <>
@@ -562,14 +633,32 @@ export default function AddJobOrderForm() {
               <FieldError msg={fieldErrors.service} />
             </div>
             <div className="flex flex-col gap-1.5">
-              <label className="text-xs font-medium text-gray-600">Scheduled Date & Time <span className="text-red-500 ml-0.5">*</span></label>
-              <input
-                aria-label="Date Time Input"
-                type="datetime-local"
-                value={scheduledAt}
-                onChange={(e) => { setScheduledAt(e.target.value); clearField("scheduledAt") }}
-                className={inputCls(!!fieldErrors.scheduledAt)}
-              />
+              <label className="text-xs font-medium text-gray-600">
+                {isPPF ? "Scheduled Date" : "Scheduled Date & Time"}
+                <span className="text-red-500 ml-0.5">*</span>
+              </label>
+              {isPPF ? (
+                <input
+                  aria-label="Scheduled Date"
+                  type="date"
+                  min={todayStr}
+                  value={scheduledAt}
+                  onChange={(e) => { setScheduledAt(e.target.value); clearField("scheduledAt") }}
+                  className={inputCls(!!fieldErrors.scheduledAt)}
+                />
+              ) : (
+                <input
+                  aria-label="Scheduled Date and Time"
+                  type="datetime-local"
+                  min={`${todayStr}T10:00`}
+                  value={scheduledAt}
+                  onChange={(e) => { setScheduledAt(e.target.value); clearField("scheduledAt") }}
+                  className={inputCls(!!fieldErrors.scheduledAt)}
+                />
+              )}
+              {!fieldErrors.scheduledAt && !isPPF && (
+                <p className="text-[10px] text-gray-400">Working hours: 10:00 AM – 7:00 PM</p>
+              )}
               <FieldError msg={fieldErrors.scheduledAt} />
             </div>
           </div>
@@ -578,7 +667,12 @@ export default function AddJobOrderForm() {
             <div className="bg-gray-50 rounded-lg p-4 grid grid-cols-2 gap-4">
               <div>
                 <p className="text-xs text-gray-500">Scheduled Start</p>
-                <p className="text-sm font-medium text-gray-800 mt-1">{formatDate(scheduledAt)}</p>
+                <p className="text-sm font-medium text-gray-800 mt-1">
+                  {formatScheduledStart(scheduledAt, isPPF)}
+                </p>
+                {isPPF && (
+                  <p className="text-[10px] text-gray-400 mt-0.5">Starts at 10:00 AM</p>
+                )}
               </div>
               <div>
                 <p className="text-xs text-gray-500">Expected Completion</p>

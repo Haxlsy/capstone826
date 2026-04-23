@@ -83,8 +83,29 @@ export async function POST(request: Request) {
 
     // ── Resolve customer record ───────────────────────────────────────────────
     let resolvedCustomerRecordId: string | null = customer_record_id ?? null
+    // These mirror the customer's data directly on job_order so queries work
+    // without always joining customer_record.
+    let resolvedCustomerName:   string | null = null
+    let resolvedContactNumber:  string | null = null
+    let resolvedPlateNumber:    string | null = null
+    let resolvedVehicleUnit:    string | null = null
 
-    if (!resolvedCustomerRecordId) {
+    if (resolvedCustomerRecordId) {
+      // Selected from customer records — fetch the data to denormalise onto job_order.
+      const { data: existingCustomer } = await admin
+        .from("customer_record")
+        .select("full_name, contact_number, plate_number, vehicle_unit")
+        .eq("id", resolvedCustomerRecordId)
+        .single()
+
+      if (existingCustomer) {
+        resolvedCustomerName  = (existingCustomer as any).full_name      ?? null
+        resolvedContactNumber = (existingCustomer as any).contact_number ?? null
+        resolvedPlateNumber   = (existingCustomer as any).plate_number   ?? null
+        resolvedVehicleUnit   = (existingCustomer as any).vehicle_unit   ?? null
+      }
+    } else {
+      // Manual entry — create or reuse a customer_record row.
       if (plate_number?.trim()) {
         const { data: existing } = await admin
           .from("customer_record")
@@ -115,6 +136,11 @@ export async function POST(request: Request) {
 
         resolvedCustomerRecordId = newCustomer.id
       }
+
+      resolvedCustomerName  = customer_name?.trim()  ?? null
+      resolvedContactNumber = contact_number?.trim() ?? null
+      resolvedPlateNumber   = plate_number?.trim()   ?? null
+      resolvedVehicleUnit   = vehicle_unit?.trim()   ?? null
     }
 
     // ── Insert job order ──────────────────────────────────────────────────────
@@ -124,6 +150,11 @@ export async function POST(request: Request) {
       expected_completion_at,
       status:                 "Pending",
       customer_record_id:     resolvedCustomerRecordId,
+      // Denormalised customer fields — populated for both record-selected and manual paths
+      customer_name:          resolvedCustomerName,
+      contact_number:         resolvedContactNumber,
+      plate_number:           resolvedPlateNumber,
+      vehicle_unit:           resolvedVehicleUnit,
     }
 
     // Store overrides only when they differ from the original

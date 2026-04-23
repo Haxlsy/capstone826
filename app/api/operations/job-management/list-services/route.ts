@@ -6,7 +6,7 @@ export async function GET() {
     const supabase = createAdminClient()
     const { data, error } = await supabase
       .from("service")
-      .select("id, name, description, estimated_duration_mins")
+      .select("id, name, service_type, description, estimated_duration_mins")
       .eq("is_archived", false)
       .order("name")
 

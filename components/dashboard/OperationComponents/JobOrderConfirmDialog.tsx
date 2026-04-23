@@ -13,7 +13,7 @@ export interface JobOrderSummary {
   // Service
   serviceName:  string
   isOverridden: boolean
-  stages:       Array<{ name: string; category: "preparation" | "installation" }>
+  stages:       Array<{ name: string; category: "preparation" | "installation" | "finishing" }>
 
   // Schedule
   scheduledAt: string
@@ -59,10 +59,16 @@ function Section({ icon: Icon, title, children }: {
   )
 }
 
-function categoryClass(cat: "preparation" | "installation") {
-  return cat === "preparation"
-    ? "bg-blue-50 text-blue-600"
-    : "bg-amber-50 text-amber-600"
+function categoryClass(cat: "preparation" | "installation" | "finishing") {
+  if (cat === "preparation") return "bg-blue-50 text-blue-600"
+  if (cat === "installation") return "bg-amber-50 text-amber-600"
+  return "bg-emerald-50 text-emerald-600"
+}
+
+function categoryLabel(cat: "preparation" | "installation" | "finishing") {
+  if (cat === "preparation") return "Prep"
+  if (cat === "installation") return "Install"
+  return "Finish"
 }
 
 export default function JobOrderConfirmDialog({ summary, submitting, onConfirm, onBack }: Props) {
@@ -114,7 +120,7 @@ export default function JobOrderConfirmDialog({ summary, submitting, onConfirm, 
                     <span
                       className={`text-[9px] font-semibold px-1.5 py-0.5 rounded-full shrink-0 ${categoryClass(s.category)}`}
                     >
-                      {s.category === "preparation" ? "Prep" : "Install"}
+                      {categoryLabel(s.category)}
                     </span>
                     <span className="text-xs text-gray-700">{s.name}</span>
                   </div>
