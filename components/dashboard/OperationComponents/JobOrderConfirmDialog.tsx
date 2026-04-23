@@ -1,30 +1,30 @@
 "use client"
 
-import { User, Car, Wrench, Calendar, Users, Package, X } from "lucide-react"
+import { User, Wrench, Calendar, Users, X } from "lucide-react"
 
 export interface JobOrderSummary {
   // Customer
-  customerName:    string
-  contactNumber:   string
-  email:           string | null
-  plateNumber:     string
-  vehicleUnit:     string
+  customerName:  string
+  contactNumber: string
+  email:         string | null
+  plateNumber:   string
+  vehicleUnit:   string
 
   // Service
-  serviceName:     string
-  isOverridden:    boolean
-  packageServices: string[]
+  serviceName:  string
+  isOverridden: boolean
+  stages:       Array<{ name: string; category: "preparation" | "installation" | "finishing" }>
 
   // Schedule
-  scheduledAt:     string   // formatted string
-  expectedEnd:     string   // formatted string
-  duration:        string   // e.g. "2 hrs"
+  scheduledAt: string
+  expectedEnd: string
+  duration:    string
 
   // Team
-  headDetailer:    string
-  headInstaller:   string
-  detailers:       string[]
-  installers:      string[]
+  headDetailer:  string
+  headInstaller: string
+  detailers:     string[]
+  installers:    string[]
 }
 
 interface Props {
@@ -59,6 +59,18 @@ function Section({ icon: Icon, title, children }: {
   )
 }
 
+function categoryClass(cat: "preparation" | "installation" | "finishing") {
+  if (cat === "preparation") return "bg-blue-50 text-blue-600"
+  if (cat === "installation") return "bg-amber-50 text-amber-600"
+  return "bg-emerald-50 text-emerald-600"
+}
+
+function categoryLabel(cat: "preparation" | "installation" | "finishing") {
+  if (cat === "preparation") return "Prep"
+  if (cat === "installation") return "Install"
+  return "Finish"
+}
+
 export default function JobOrderConfirmDialog({ summary, submitting, onConfirm, onBack }: Props) {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
@@ -70,8 +82,10 @@ export default function JobOrderConfirmDialog({ summary, submitting, onConfirm, 
             <p className="text-xs text-gray-400 mt-0.5">Review details before creating.</p>
           </div>
           <button
+            type="button"
             onClick={onBack}
             disabled={submitting}
+            aria-label="Close"
             className="p-1.5 rounded-lg text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors"
           >
             <X className="w-4 h-4" />
@@ -95,16 +109,22 @@ export default function JobOrderConfirmDialog({ summary, submitting, onConfirm, 
               label="Service"
               value={summary.serviceName + (summary.isOverridden ? " (overridden)" : "")}
             />
-            {summary.packageServices.length > 0 && (
-              <div className="flex justify-between gap-4 py-1.5">
-                <span className="text-xs text-gray-400 shrink-0 flex items-center gap-1">
-                  <Package className="w-3 h-3" /> Package
-                </span>
-                <div className="text-right">
-                  {summary.packageServices.map((s, i) => (
-                    <p key={i} className="text-xs font-medium text-gray-700">{s}</p>
-                  ))}
-                </div>
+            {summary.stages.length > 0 && (
+              <div className="mt-2 flex flex-col gap-1">
+                <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide mb-1">
+                  Workflow Stages
+                </p>
+                {summary.stages.map((s, i) => (
+                  <div key={i} className="flex items-center gap-2">
+                    <span className="text-[10px] text-gray-400 w-4 shrink-0">{i + 1}.</span>
+                    <span
+                      className={`text-[9px] font-semibold px-1.5 py-0.5 rounded-full shrink-0 ${categoryClass(s.category)}`}
+                    >
+                      {categoryLabel(s.category)}
+                    </span>
+                    <span className="text-xs text-gray-700">{s.name}</span>
+                  </div>
+                ))}
               </div>
             )}
           </Section>
@@ -128,6 +148,7 @@ export default function JobOrderConfirmDialog({ summary, submitting, onConfirm, 
         {/* Footer */}
         <div className="px-6 py-4 border-t border-gray-100 flex gap-3">
           <button
+            type="button"
             onClick={onBack}
             disabled={submitting}
             className="flex-1 py-2.5 text-sm font-medium border border-gray-200 text-gray-600 rounded-xl hover:bg-gray-50 disabled:opacity-50 transition-colors"
@@ -135,6 +156,7 @@ export default function JobOrderConfirmDialog({ summary, submitting, onConfirm, 
             Back to Edit
           </button>
           <button
+            type="button"
             onClick={onConfirm}
             disabled={submitting}
             className="flex-1 py-2.5 text-sm font-semibold bg-gray-900 text-white rounded-xl hover:bg-gray-800 disabled:opacity-50 transition-colors"

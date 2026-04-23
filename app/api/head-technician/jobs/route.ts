@@ -3,37 +3,6 @@ import { cookies } from "next/headers"
 import { createClient } from "@/lib/supabase/server"
 import { createAdminClient } from "@/lib/supabase/admin"
 
-// ── Mock data ─────────────────────────────────────────────────────────────────
-// Used when no DB job assignments exist yet. raw_id "1"/"2" map to mock
-// detail records in the /jobs/[id] route.
-const MOCK_JOBS = [
-  {
-    job_id:           "JO-2026-001",
-    raw_id:           "1",
-    customer_name:    "Juan Dela Cruz",
-    plate_number:     "ABC-1234",
-    car_make:         "Toyota Fortuner",
-    car_color:        "White",
-    service:          "Ceramic Coating",
-    technician_name:  "Pedro Santos",
-    scheduled_start:  "Apr 12, 2026",
-    status:           "Ongoing",
-    progress:         60,
-  },
-  {
-    job_id:           "JO-2026-002",
-    raw_id:           "2",
-    customer_name:    "Maria Reyes",
-    plate_number:     "XYZ-5678",
-    car_make:         "Honda CR-V",
-    car_color:        "Black",
-    service:          "Window Tinting",
-    technician_name:  "Rosa Tan",
-    scheduled_start:  "Apr 13, 2026",
-    status:           "Pending",
-    progress:         0,
-  },
-]
 
 function fmtDate(iso: string | null): string {
   if (!iso) return "—"
@@ -72,8 +41,7 @@ export async function GET() {
 
     const jobIds = (teamRows ?? []).map((t: any) => t.job_order_id)
 
-    // No real assignments yet — return mock data so the UI is demonstrable
-    if (jobIds.length === 0) return NextResponse.json({ jobs: MOCK_JOBS })
+    if (jobIds.length === 0) return NextResponse.json({ jobs: [] })
 
     // ── Real DB path ────────────────────────────────────────────────────────
     const { data: jobs, error } = await admin
@@ -136,7 +104,7 @@ export async function GET() {
       }
     })
 
-    return NextResponse.json({ jobs: result.length > 0 ? result : MOCK_JOBS })
+    return NextResponse.json({ jobs: result })
   } catch (err: any) {
     return NextResponse.json({ error: err?.message ?? String(err) }, { status: 500 })
   }

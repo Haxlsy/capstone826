@@ -28,7 +28,7 @@ export async function GET(request: Request) {
     // Base query
     let query = supabase
       .from("service")
-      .select("id, name, description, estimated_duration_mins, is_archived, created_at", { count: "exact" })
+      .select("id, name, service_type, description, estimated_duration_mins, is_archived, created_at", { count: "exact" })
       .order("created_at", { ascending: false })
 
     if (search) query = query.ilike("name", `%${search}%`)
@@ -44,12 +44,13 @@ export async function GET(request: Request) {
     if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
     const services = (data ?? []).map((s) => ({
-      id:                     s.id,
-      name:                   s.name,
-      description:            s.description ?? null,
+      id:                      s.id,
+      name:                    s.name,
+      service_type:            s.service_type ?? null,
+      description:             s.description ?? null,
       estimated_duration_mins: s.estimated_duration_mins ?? null,
-      is_archived:            s.is_archived,
-      stage_count:            countMap[s.id] ?? 0,
+      is_archived:             s.is_archived,
+      stage_count:             countMap[s.id] ?? 0,
     }))
 
     return NextResponse.json({ services, total: count ?? 0 })

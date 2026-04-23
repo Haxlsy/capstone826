@@ -16,7 +16,7 @@ interface Stage {
   id:                  string
   name:                string
   sequence_order:      number
-  category:            "preparation" | "installation"
+  category:            "preparation" | "installation" | "finishing"
   status:              "pending" | "in_progress" | "done" | "for_rework"
   rework_instructions: string | null
   handoff_notes:       string | null
@@ -58,6 +58,7 @@ interface JobDetail {
   actual_start_at:        string | null
   expected_completion_at: string | null
   created_at:             string
+  finishing_approved_at:  string | null
   history:                HistoryEntry[]
   stages:                 Stage[]
 }
@@ -98,6 +99,7 @@ export default function JobOrderDetail({ jobId }: { jobId: string }) {
 
   // Release confirmation
   const [releasing, setReleasing] = useState(false)
+  const [settingForRelease, setSettingForRelease] = useState(false)
 
   // Resend state: tracks which stage is currently being resent
   const [resendingId, setResendingId] = useState<string | null>(null)
@@ -139,6 +141,24 @@ export default function JobOrderDetail({ jobId }: { jobId: string }) {
     }
   }
 
+  async function setForRelease() {
+    setSettingForRelease(true)
+    try {
+      const res  = await fetch(`/api/operations/job-orders/${jobId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: "For Release" }),
+      })
+      const json = await res.json()
+      if (!res.ok) throw new Error(json?.error ?? "Failed to set job for release")
+      await load()
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : String(err))
+    } finally {
+      setSettingForRelease(false)
+    }
+  }
+
   async function resendStage(stageId: string) {
     setResendingId(stageId)
     try {
@@ -177,10 +197,15 @@ export default function JobOrderDetail({ jobId }: { jobId: string }) {
     </div>
   )
 
-  const prepStages  = job.stages.filter((s) => s.category === "preparation")
-  const instStages  = job.stages.filter((s) => s.category === "installation")
-  const canRelease  = job.status === "For Release"
-  const displayId   = `JO-${new Date(job.created_at).getFullYear()}-${job.id.slice(-4).toUpperCase()}`
+  const prepStages    = job.stages.filter((s) => s.category === "preparation")
+  const instStages    = job.stages.filter((s) => s.category === "installation")
+  const finishStages  = job.stages.filter((s) => s.category === "finishing")
+  const hasFinishing  = finishStages.length > 0
+  const canRelease    = job.status === "For Release"
+  // "For Released" button: shown when finishing stages exist and job is not yet For Release / Released
+  const showForReleased   = hasFinishing && !["For Release", "Released"].includes(job.status)
+  const canForReleased    = showForReleased && Boolean(job.finishing_approved_at)
+  const displayId     = `JO-${new Date(job.created_at).getFullYear()}-${job.id.slice(-4).toUpperCase()}`
 
   return (
     <div className="flex flex-col gap-6 max-w-5xl mx-auto">
@@ -194,6 +219,30 @@ export default function JobOrderDetail({ jobId }: { jobId: string }) {
           Back to Job Management
         </Link>
         <div className="flex items-center gap-3">
+          {/* For Released — visible (but maybe disabled) when finishing stages exist and job not yet released */}
+          {showForReleased && (
+            <div className="relative group">
+              <button
+                onClick={canForReleased ? setForRelease : undefined}
+                disabled={settingForRelease || !canForReleased}
+                className={`flex items-center gap-2 text-sm font-semibold px-4 py-2 rounded-lg transition-colors ${
+                  canForReleased
+                    ? "bg-emerald-600 text-white hover:bg-emerald-700 disabled:opacity-60"
+                    : "bg-gray-100 text-gray-400 border border-gray-200 cursor-not-allowed"
+                }`}
+              >
+                <PackageCheck className="w-4 h-4" />
+                {settingForRelease ? "Processing…" : "For Released"}
+              </button>
+              {/* Tooltip when locked */}
+              {!canForReleased && (
+                <div className="absolute right-0 top-full mt-2 w-56 bg-gray-900 text-white text-xs rounded-lg px-3 py-2 shadow-lg z-10 hidden group-hover:block">
+                  Waiting for the Head Detailer to complete finishing stages and pass to Operations.
+                  <div className="absolute -top-1.5 right-4 w-3 h-3 bg-gray-900 rotate-45" />
+                </div>
+              )}
+            </div>
+          )}
           {canRelease && (
             <button
               onClick={markReleased}
@@ -254,13 +303,36 @@ export default function JobOrderDetail({ jobId }: { jobId: string }) {
       <div className="bg-white rounded-xl border border-gray-100 p-6">
         <h2 className="text-sm font-semibold text-gray-700 uppercase tracking-wide mb-4">Service Stage Progress</h2>
 
-        {[{ label: "Preparation Stages", stages: prepStages }, { label: "Installation Stages", stages: instStages }].map(
-          ({ label, stages }) =>
+        {[
+          { label: "Preparation Stages", stages: prepStages, extra: null },
+          { label: "Installation Stages", stages: instStages, extra: null },
+          {
+            label: "Finishing Stages",
+            stages: finishStages,
+            extra: job.finishing_approved_at
+              ? `Passed to Operations · ${fmtDate(job.finishing_approved_at)}`
+              : finishStages.length > 0
+                ? "Awaiting Head Detailer"
+                : null,
+          },
+        ].map(
+          ({ label, stages, extra }) =>
             stages.length === 0 ? null : (
               <div key={label} className="mb-6 last:mb-0">
-                <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-3">{label}</p>
+                <div className="flex items-center gap-3 mb-3">
+                  <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide">{label}</p>
+                  {extra && (
+                    <span className={`text-[11px] font-medium px-2 py-0.5 rounded-full ${
+                      job.finishing_approved_at && label === "Finishing Stages"
+                        ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
+                        : "bg-amber-50 text-amber-600 border border-amber-200"
+                    }`}>
+                      {extra}
+                    </span>
+                  )}
+                </div>
                 <div className="flex flex-col gap-2">
-                  {stages.map((stage, idx) => (
+                  {stages.map((stage) => (
                     <div
                       key={stage.id}
                       className={`flex items-start gap-3 p-3 rounded-lg border ${
@@ -275,7 +347,7 @@ export default function JobOrderDetail({ jobId }: { jobId: string }) {
                         stage.status === "for_rework" ? "bg-orange-400 text-white" :
                         "bg-gray-200 text-gray-500"
                       }`}>
-                        {stage.status === "done" ? "✓" : idx + 1}
+                        {stage.status === "done" ? "✓" : stage.sequence_order ?? "—"}
                       </div>
 
                       <div className="flex-1 min-w-0">

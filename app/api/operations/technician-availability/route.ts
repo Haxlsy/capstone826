@@ -29,6 +29,8 @@ export async function GET() {
 
     let ongoingMap = new Map<string, { job_id: string; customer: string; service: string }>()
 
+    const ACTIVE_STATUSES = ["Pending", "Ongoing", "For Rework", "Delayed"]
+
     if (assignedJobIds.length > 0) {
       const { data: ongoingJobs } = await supabase
         .from("job_order")
@@ -38,7 +40,7 @@ export async function GET() {
            service:service_id(name)`
         )
         .in("id", assignedJobIds)
-        .eq("status", "Ongoing")
+        .in("status", ACTIVE_STATUSES)
 
       // Build technicianId → job info map
       const jobInfoMap = new Map<string, { job_id: string; customer: string; service: string }>()

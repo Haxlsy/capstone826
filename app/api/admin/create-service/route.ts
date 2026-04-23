@@ -1,29 +1,40 @@
 import { NextResponse } from "next/server"
 import { createAdminClient } from "@/lib/supabase/admin"
 
+const VALID_SERVICE_TYPES = [
+  "Paint Protection Film",
+  "Coating Services",
+  "Auto Detailing",
+  "Nano Ceramic Tint",
+] as const
+
+type ServiceType = typeof VALID_SERVICE_TYPES[number]
+
 interface Stage {
   name: string
-  category: "preparation" | "installation"
+  category: "preparation" | "installation" | "finishing"
   sequence_order: number
 }
 
 export async function POST(request: Request) {
   const body = await request.json()
-  const { serviceName, description, estimatedDurationMins, stages } = body
+  const { serviceType, serviceName, description, estimatedDurationMins, stages } = body
 
   if (!serviceName) {
-    return NextResponse.json(
-      { error: "Service name is required." },
-      { status: 400 }
-    )
+    return NextResponse.json({ error: "Service name is required." }, { status: 400 })
+  }
+
+  if (!serviceType || !(VALID_SERVICE_TYPES as readonly string[]).includes(serviceType)) {
+    return NextResponse.json({ error: "A valid service type is required." }, { status: 400 })
   }
 
   const supabase = createAdminClient()
 
   const serviceInsert: Record<string, unknown> = {
-    name:        serviceName.trim(),
-    description: description?.trim() || null,
-    is_archived: false,
+    name:         serviceName.trim(),
+    service_type: (serviceType as ServiceType).trim(),
+    description:  description?.trim() || null,
+    is_archived:  false,
   }
 
   if (estimatedDurationMins !== undefined && estimatedDurationMins !== null && estimatedDurationMins !== "") {
@@ -43,7 +54,6 @@ export async function POST(request: Request) {
     )
   }
 
-  // Insert service stages if provided
   if (stages && (stages as Stage[]).length > 0) {
     const stageRows = (stages as Stage[]).map((s) => ({
       service_id:     service.id,
@@ -57,7 +67,6 @@ export async function POST(request: Request) {
       .insert(stageRows)
 
     if (stageError) {
-      // Rollback: delete the service row
       await supabase.from("service").delete().eq("id", service.id)
       return NextResponse.json(
         { error: stageError.message ?? "Failed to save workflow stages." },
