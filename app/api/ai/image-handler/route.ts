@@ -48,11 +48,12 @@ async function generateWithRetry(
   for (let attempt = 0; attempt < retries; attempt++) {
     try {
       const response = await ai.models.generateContent({
-        model: "gemini-3.1-flash-lite",
+        model: "gemini-3.1-flash-lite-preview",
         contents,
         config: {
           temperature: 0,
           maxOutputTokens: 1024,
+          responseMimeType: "application/json",
         },
       })
       return response
