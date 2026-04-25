@@ -327,7 +327,10 @@ export async function PATCH(
 
       const { error: updateErr } = await admin
         .from("job_order")
-        .update({ finishing_approved_at: new Date().toISOString() })
+        .update({ 
+          finishing_approved_at: new Date().toISOString(),
+          status: "For Inspection"
+        })
         .eq("id", jobId)
 
       if (updateErr) return NextResponse.json({ error: updateErr.message }, { status: 500 })

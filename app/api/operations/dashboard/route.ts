@@ -41,8 +41,8 @@ export async function GET() {
       "Pending":    "pending",
       "Ongoing":    "ongoing",
       "For Rework": "for_rework",
-      "For Release":"for_release",
-      "Released":   "released",
+      "For Inspection":"for_inspection",
+      "For Release":   "for_release",
       "Delayed":    "delayed",
       "Cancelled":  "cancelled",
     }

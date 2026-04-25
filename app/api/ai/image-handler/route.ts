@@ -92,7 +92,20 @@ function isRateLimited(): boolean {
 
 export async function POST(request: NextRequest) {
   try {
+    const isTestMode = process.env.GEMINI_API_KEY_TEST
+
+    if(isTestMode){
+      console.log("TEST MODE: Skipping Gemini validation");
+      return NextResponse.json({
+        approved: true,
+        category: "vehicle",
+        reason: "Test mode enabled - validation skipped",
+        message: "Image uploaded successfully (Bypassed AI).",
+      })
+    }
+
     const apiKey = process.env.GEMINI_API_KEY
+
     if (!apiKey) {
       return NextResponse.json({ error: "Gemini API key not configured" }, { status: 500 })
     }

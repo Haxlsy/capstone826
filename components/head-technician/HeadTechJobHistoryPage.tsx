@@ -344,11 +344,12 @@ export default function HeadTechJobHistoryPage({ jobId }: { jobId: string }) {
   async function handleApprove() {
     setApproving(true);
     const actionName = inFinishingPhase ? "approve_finishing" : "approve";
+    const setStatusInpect = "For Inspection"
     try {
       const res  = await fetch(`/api/head-technician/jobs/${jobId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: actionName, handoff_notes: handoffNotes }),
+        body: JSON.stringify({ action: actionName, handoff_notes: handoffNotes, status: setStatusInpect }),
       });
       const json = await res.json();
       if (!res.ok) throw new Error(json?.error ?? "Failed to approve.");
