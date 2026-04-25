@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useRef } from "react"
+import { useState, useEffect, useRef, useMemo } from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { CheckCircle2 } from "lucide-react"
@@ -480,6 +480,17 @@ export default function AddJobOrderForm() {
     ? calculateCompletion(scheduledAt, estimatedMins, isPPF)
     : scheduledAt ? formatScheduledStart(scheduledAt, isPPF) : "—"
 
+  const [searchQuery, setSearchQuery] = useState("");
+  const [isOpen, setIsOpen] = useState(false);
+
+  const filteredCustomers = useMemo(() => {
+    if(!searchQuery.trim()) return customers;
+    return customers.filter((c)=>
+      c.full_name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      c.plate_number.toLowerCase().includes(searchQuery.toLowerCase())
+    )
+  },[searchQuery, customers]);
+
   return (
     <>
     <div className="flex flex-col gap-5 max-w-5xl">
@@ -524,20 +535,55 @@ export default function AddJobOrderForm() {
                     Enter manually
                   </button>
                 </div>
-                <select
-                  value={selectedCustomerId ?? ""}
-                  onChange={(e) => { setSelectedCustomerId(e.target.value || null); clearField("customer") }}
-                  disabled={loadingRefs}
-                  aria-label="Customer"
+                <div className="relative group">
+                <input
+                  type="text"
+                  placeholder="Search name or plate..."
+                  value={searchQuery}
+                  onFocus={() => setIsOpen(true)}
+                  // Using a blur with delay so the click on the item actually registers
+                  onBlur={() => setTimeout(() => setIsOpen(false), 200)}
+                  onChange={(e) => {
+                    const value = e.target.value;
+                    setSearchQuery(e.target.value);
+                    setIsOpen(true);
+
+                    if(value === ""){
+                      setSelectedCustomerId(null);
+                    }
+                  }}
                   className={selectCls(!!fieldErrors.customer)}
-                >
-                  <option value="">
-                    {loadingRefs ? "Loading…" : customers.length === 0 ? "No customer records found" : "— Select customer —"}
-                  </option>
-                  {customers.map((c) => (
-                    <option key={c.id} value={c.id}>{c.full_name} — {c.plate_number}</option>
-                  ))}
-                </select>
+                />
+                
+                {/* Search Results Dropdown with Scrollbar */}
+                {isOpen && (
+                  <div className="absolute z-50 w-full mt-1 bg-white border border-gray-200 rounded-xl shadow-xl overflow-hidden">
+                    <div className="max-h-[220px] overflow-y-auto scrollbar-thin scrollbar-thumb-gray-200">
+                      {filteredCustomers.length > 0 ? (
+                        filteredCustomers.map((c) => (
+                          <button
+                            key={c.id}
+                            type="button"
+                            className="w-full text-left px-4 py-3 text-sm hover:bg-emerald-50 transition-colors border-b last:border-none border-gray-50 flex flex-col"
+                            onClick={() => {
+                              setSelectedCustomerId(c.id);
+                              setSearchQuery(c.full_name);
+                              setIsOpen(false);
+                            }}
+                          >
+                            <span className="font-semibold text-gray-900">{c.full_name}</span>
+                            <span className="text-[10px] text-gray-500 uppercase tracking-wider">{c.plate_number}</span>
+                          </button>
+                        ))
+                      ) : (
+                        <div className="px-4 py-8 text-center text-sm text-gray-400">
+                          No matching customers
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
                 <FieldError msg={fieldErrors.customer} />
               </div>
 
@@ -657,7 +703,7 @@ export default function AddJobOrderForm() {
                 />
               )}
               {!fieldErrors.scheduledAt && !isPPF && (
-                <p className="text-[10px] text-gray-400">Working hours: 10:00 AM – 7:00 PM</p>
+                <p className="text-[10px] text-gray-400">Working hours: 10:00 AM – 8:00 PM</p>
               )}
               <FieldError msg={fieldErrors.scheduledAt} />
             </div>
