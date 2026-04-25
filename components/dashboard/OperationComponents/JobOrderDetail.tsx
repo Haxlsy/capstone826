@@ -16,7 +16,7 @@ interface Stage {
   id:                  string
   name:                string
   sequence_order:      number
-  category:            "preparation" | "installation" | "finishing"
+  category:            "preparation" | "installation" | "finishing" | "inspection"
   status:              "pending" | "in_progress" | "done" | "for_rework"
   rework_instructions: string | null
   handoff_notes:       string | null
@@ -77,8 +77,8 @@ const STATUS_COLORS: Record<string, string> = {
   "Pending":     "bg-yellow-50 text-yellow-700 border-yellow-200",
   "Ongoing":     "bg-blue-50 text-blue-700 border-blue-200",
   "For Rework":  "bg-orange-50 text-orange-700 border-orange-200",
-  "For Release": "bg-purple-50 text-purple-700 border-purple-200",
-  "Released":    "bg-green-50 text-green-700 border-green-200",
+  "For ": "bg-purple-50 text-purple-700 border-purple-200",
+  "For Release":    "bg-green-50 text-green-700 border-green-200",
   "Delayed":     "bg-red-50 text-red-700 border-red-200",
   "Cancelled":   "bg-gray-50 text-gray-500 border-gray-200",
 }
@@ -201,6 +201,8 @@ export default function JobOrderDetail({ jobId }: { jobId: string }) {
   const instStages    = job.stages.filter((s) => s.category === "installation")
   const finishStages  = job.stages.filter((s) => s.category === "finishing")
   const hasFinishing  = finishStages.length > 0
+
+  const inspectStages = job.stages.filter((s)=>s.category === "inspection" )
   const canRelease    = job.status === "For Release"
   // "For Released" button: shown when finishing stages exist and job is not yet For Release / Released
   const showForReleased   = hasFinishing && !["For Release", "Released"].includes(job.status)
@@ -232,7 +234,7 @@ export default function JobOrderDetail({ jobId }: { jobId: string }) {
                 }`}
               >
                 <PackageCheck className="w-4 h-4" />
-                {settingForRelease ? "Processing…" : "For Released"}
+                {settingForRelease ? "Processing…" : "For Release"}
               </button>
               {/* Tooltip when locked */}
               {!canForReleased && (
@@ -315,6 +317,7 @@ export default function JobOrderDetail({ jobId }: { jobId: string }) {
                 ? "Awaiting Head Detailer"
                 : null,
           },
+          {label:"Inspection Stages", stages: inspectStages, extra:null},
         ].map(
           ({ label, stages, extra }) =>
             stages.length === 0 ? null : (
