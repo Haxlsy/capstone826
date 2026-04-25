@@ -1,7 +1,7 @@
 "use client"
 
 import { useMemo, useRef, useState } from "react"
-import { Layers, RotateCcw, GripVertical, Plus, X } from "lucide-react"
+import { Layers, RotateCcw, GripVertical, Plus, X, ChevronDown } from "lucide-react"
 
 export interface Stage {
   id:             string
@@ -21,6 +21,7 @@ export interface ServiceInfo {
 
 interface Props {
   primaryService:     ServiceInfo | null
+  availableServices:  ServiceInfo[]
   originalStages:     Stage[]
   stagesLoading:      boolean
   customName:         string
@@ -32,6 +33,8 @@ interface Props {
   onDurationChange:    (v: number | null) => void
   onStagesChange:      (stages: Stage[]) => void
   onReset:             () => void
+  onServiceSelect:     (service: ServiceInfo) => void
+  onServiceClear:      () => void
 }
 
 const FIELD_CLS =
@@ -141,6 +144,7 @@ function StageList({
 
 export default function ServiceOverridePanel({
   primaryService,
+  availableServices,
   originalStages,
   stagesLoading,
   customName,
@@ -152,10 +156,20 @@ export default function ServiceOverridePanel({
   onDurationChange,
   onStagesChange,
   onReset,
+  onServiceSelect,
+  onServiceClear,
 }: Props) {
   const dragItem     = useRef<number | null>(null)
   const dragOverItem = useRef<number | null>(null)
-  const [dragging, setDragging] = useState(false)
+  const [dragging,         setDragging]         = useState(false)
+  const [nameDropdownOpen, setNameDropdownOpen] = useState(false)
+
+  const filteredNameServices = useMemo(() =>
+    customName.trim()
+      ? availableServices.filter((s) => s.name.toLowerCase().includes(customName.toLowerCase()))
+      : availableServices,
+    [availableServices, customName]
+  )
 
   const isModified = useMemo(() => {
     if (!primaryService) return false
@@ -243,8 +257,8 @@ export default function ServiceOverridePanel({
   const installStages = customStages.map((s, i) => ({ ...s, globalIndex: i })).filter((s) => s.category === "installation")
   const finishStages  = customStages.map((s, i) => ({ ...s, globalIndex: i })).filter((s) => s.category === "finishing")
 
-  // ── Placeholder ───────────────────────────────────────────────────
-  if (!primaryService) {
+  // ── Placeholder (no service type selected yet) ────────────────────
+  if (!primaryService && availableServices.length === 0) {
     return (
       <div className="w-80 shrink-0 bg-white border border-gray-200 rounded-xl flex flex-col items-center justify-center gap-3 px-6 py-14 text-center min-h-[260px]">
         <div className="w-10 h-10 rounded-full bg-gray-100 flex items-center justify-center">
@@ -253,7 +267,7 @@ export default function ServiceOverridePanel({
         <div>
           <p className="text-sm font-medium text-gray-500">No service selected</p>
           <p className="text-xs text-gray-400 mt-1 leading-relaxed">
-            Pick a service from the form to review and edit its details for this job.
+            Select a service type from the form to get started.
           </p>
         </div>
       </div>
@@ -288,29 +302,63 @@ export default function ServiceOverridePanel({
       <div className="overflow-y-auto flex-1">
         {/* Service fields */}
         <div className="p-4 flex flex-col gap-3 border-b border-gray-100">
-          {/* Service Type (read-only — set at the service level) */}
-          {primaryService.service_type && (
+          {/* Service Type badge */}
+          {(primaryService?.service_type ?? availableServices[0]?.service_type) && (
             <div className="flex flex-col gap-1">
               <p className={LABEL_CLS}>Service Type</p>
               <span className="inline-flex w-fit items-center px-2.5 py-1 rounded-full text-xs font-medium bg-blue-50 text-blue-700">
-                {primaryService.service_type}
+                {primaryService?.service_type ?? availableServices[0]?.service_type}
               </span>
             </div>
           )}
 
-          <div className="flex flex-col gap-1">
+          {/* Service Name — searchable combobox */}
+          <div className="flex flex-col gap-1 relative">
             <label className={LABEL_CLS}>
               Service Name <span className="text-red-500">*</span>
             </label>
-            <input
-              type="text"
-              value={customName}
-              onChange={(e) => onNameChange(e.target.value)}
-              className={FIELD_CLS}
-              placeholder={primaryService.name}
-            />
+            <div className="relative">
+              <input
+                type="text"
+                value={customName}
+                onChange={(e) => {
+                  onNameChange(e.target.value)
+                  if (e.target.value === "") onServiceClear()
+                  else setNameDropdownOpen(true)
+                }}
+                onFocus={() => setNameDropdownOpen(true)}
+                onBlur={() => setTimeout(() => setNameDropdownOpen(false), 200)}
+                className={`${FIELD_CLS} pr-7`}
+                placeholder="Search or select a service name…"
+              />
+              <ChevronDown className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400" />
+            </div>
+            {nameDropdownOpen && filteredNameServices.length > 0 && (
+              <div className="absolute z-50 w-full top-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg overflow-hidden">
+                <div className="max-h-48 overflow-y-auto">
+                  {filteredNameServices.map((s) => (
+                    <button
+                      key={s.id}
+                      type="button"
+                      onClick={() => { onServiceSelect(s); setNameDropdownOpen(false) }}
+                      className="w-full text-left px-3 py-2 text-sm hover:bg-blue-50 transition-colors border-b last:border-none border-gray-50"
+                    >
+                      <span className="font-medium text-gray-800">{s.name}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
 
+          {!primaryService && (
+            <p className="text-xs text-gray-400 text-center py-4">
+              Select a service name above to see its details and workflow stages.
+            </p>
+          )}
+
+          {primaryService && (
+            <>
           <div className="flex flex-col gap-1">
             <label className={LABEL_CLS}>Description</label>
             <textarea
@@ -354,10 +402,12 @@ export default function ServiceOverridePanel({
               Used to automatically calculate the job timeline.
             </p>
           </div>
+            </>
+          )}
         </div>
 
         {/* Workflow Stages */}
-        <div className="p-4 flex flex-col gap-4">
+        {primaryService && <div className="p-4 flex flex-col gap-4">
           <p className="text-xs font-semibold text-gray-700">Workflow Stages</p>
 
           {stagesLoading ? (
@@ -434,7 +484,7 @@ export default function ServiceOverridePanel({
               </div>
             </>
           )}
-        </div>
+        </div>}
       </div>
 
       {/* Footer note */}
