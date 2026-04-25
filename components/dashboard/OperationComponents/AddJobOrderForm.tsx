@@ -152,6 +152,7 @@ export default function AddJobOrderForm() {
   const [manualPlateNumber,    setManualPlateNumber]    = useState("")
   const [manualVehicleUnit,    setManualVehicleUnit]    = useState("")
 
+  const [selectedServiceType,     setSelectedServiceType]     = useState<string | null>(null)
   const [selectedServiceId,       setSelectedServiceId]       = useState<string | null>(null)
   const [customServiceName,       setCustomServiceName]       = useState("")
   const [customDescription,       setCustomDescription]       = useState("")
@@ -163,7 +164,7 @@ export default function AddJobOrderForm() {
   const [selectedHeadInstallerId, setSelectedHeadInstallerId] = useState<string | null>(null)
   const [selectedDetailerIds,     setSelectedDetailerIds]     = useState<Set<string>>(new Set())
   const [selectedInstallerIds,    setSelectedInstallerIds]    = useState<Set<string>>(new Set())
-  const [scheduledAt, setScheduledAt] = useState("")
+  const [scheduledAt,             setScheduledAt] = useState("")
 
   const [loading,        setLoading]        = useState(false)
   const [fieldErrors,    setFieldErrors]    = useState<FieldErrors>({})
@@ -229,16 +230,43 @@ export default function AddJobOrderForm() {
 
   const selectedService = services.find((s) => s.id === selectedServiceId) ?? null
 
-  function handleServiceChange(id: string | null) {
-    setSelectedServiceId(id)
-    const svc = id ? services.find((s) => s.id === id) : null
-    setCustomServiceName(svc?.name ?? "")
-    setCustomDescription(svc?.description ?? "")
+  const uniqueServiceTypes = useMemo(
+    () => [...new Set(services.map((s) => s.service_type).filter(Boolean))] as string[],
+    [services]
+  )
+
+  const availableServices = useMemo(
+    () => (selectedServiceType ? services.filter((s) => s.service_type === selectedServiceType) : []),
+    [selectedServiceType, services]
+  )
+
+  function handleServiceTypeChange(type: string | null) {
+    setSelectedServiceType(type)
+    setSelectedServiceId(null)
+    setCustomServiceName("")
+    setCustomDescription("")
     setCustomDurationMins(null)
     setOriginalStages([])
     setCustomStages([])
     clearField("service")
-    if (id) fetchStages(id)
+  }
+
+  function handleServiceClear() {
+    setSelectedServiceId(null)
+    setCustomDescription("")
+    setCustomDurationMins(null)
+    setOriginalStages([])
+    setCustomStages([])
+  }
+
+  function handleServiceSelect(svc: Service) {
+    setSelectedServiceId(svc.id)
+    setCustomServiceName(svc.name)
+    setCustomDescription(svc.description ?? "")
+    setCustomDurationMins(null)
+    setOriginalStages([])
+    setCustomStages([])
+    fetchStages(svc.id)
   }
 
   function handleResetOverrides() {
@@ -268,8 +296,10 @@ export default function AddJobOrderForm() {
       if (!manualVehicleUnit.trim())
         errs.vehicleUnit = "Vehicle unit is required."
     }
-    if (!selectedServiceId) {
-      errs.service = "Please select a service."
+    if (!selectedServiceType) {
+      errs.service = "Please select a service type."
+    } else if (!selectedServiceId) {
+      errs.service = "Please select a service name from the panel."
     }
     if (!scheduledAt) {
       errs.scheduledAt = isPPF
@@ -314,7 +344,7 @@ export default function AddJobOrderForm() {
     if (next.size > 0) clearField(field)
   }
 
-  const isPPF    = selectedService?.service_type === "Paint Protection Film"
+  const isPPF    = selectedServiceType === "Paint Protection Film"
   const todayStr = new Date().toISOString().split("T")[0]
 
   // Resolve a full ISO datetime from scheduledAt regardless of whether it's
@@ -469,14 +499,15 @@ export default function AddJobOrderForm() {
     }
   }
 
-  const estimatedMins = selectedService?.estimated_duration_mins ?? 0
-  const hrs           = Math.round(estimatedMins / 60)
-  const durationLabel = estimatedMins > 0
+  const estimatedMins  = customDurationMins ?? (selectedService?.estimated_duration_mins ?? 0)
+  const hrs            = Math.round(estimatedMins / 60)
+  const durationLabel  = estimatedMins > 0
     ? estimatedMins >= 60
       ? `${hrs} hr${hrs !== 1 ? "s" : ""}`
       : `${estimatedMins} min${estimatedMins !== 1 ? "s" : ""}`
     : "—"
-  const expectedCompletion = scheduledAt && estimatedMins > 0
+  const effectiveServiceName = customServiceName || selectedService?.name || "—"
+  const expectedCompletion   = scheduledAt && estimatedMins > 0
     ? calculateCompletion(scheduledAt, estimatedMins, isPPF)
     : scheduledAt ? formatScheduledStart(scheduledAt, isPPF) : "—"
 
@@ -667,14 +698,14 @@ export default function AddJobOrderForm() {
             <div className="flex flex-col gap-1.5">
               <label className="text-xs font-medium text-gray-600">Service <span className="text-red-500 ml-0.5">*</span></label>
               <select
-                value={selectedServiceId ?? ""}
-                onChange={(e) => handleServiceChange(e.target.value || null)}
+                value={selectedServiceType ?? ""}
+                onChange={(e) => handleServiceTypeChange(e.target.value || null)}
                 disabled={loadingRefs}
-                aria-label="Service"
+                aria-label="Service Type"
                 className={selectCls(!!fieldErrors.service)}
               >
-                <option value="">{loadingRefs ? "Loading…" : services.length === 0 ? "No services found" : "— Select service —"}</option>
-                {services.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+                <option value="">{loadingRefs ? "Loading…" : services.length === 0 ? "No services found" : "— Select service type —"}</option>
+                {uniqueServiceTypes.map((type) => <option key={type} value={type}>{type}</option>)}
               </select>
               <FieldError msg={fieldErrors.service} />
             </div>
@@ -726,7 +757,7 @@ export default function AddJobOrderForm() {
               </div>
               <div>
                 <p className="text-xs text-gray-500">Service</p>
-                <p className="text-sm font-medium text-gray-800 mt-1">{selectedService?.name ?? "—"}</p>
+                <p className="text-sm font-medium text-gray-800 mt-1">{effectiveServiceName}</p>
               </div>
               <div>
                 <p className="text-xs text-gray-500">Estimated Duration</p>
@@ -836,6 +867,7 @@ export default function AddJobOrderForm() {
       <div className="sticky top-6">
         <ServiceOverridePanel
           primaryService={selectedService}
+          availableServices={availableServices}
           originalStages={originalStages}
           stagesLoading={stagesLoading}
           customName={customServiceName}
@@ -847,6 +879,8 @@ export default function AddJobOrderForm() {
           onDurationChange={setCustomDurationMins}
           onStagesChange={setCustomStages}
           onReset={handleResetOverrides}
+          onServiceSelect={handleServiceSelect}
+          onServiceClear={handleServiceClear}
         />
       </div>
       </div>
