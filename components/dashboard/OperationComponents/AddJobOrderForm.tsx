@@ -528,7 +528,7 @@ export default function AddJobOrderForm() {
       {/* ── Page header (full width, above both columns) ─────────── */}
       <div>
         <div className="text-xs text-gray-400 mb-1">
-          <span>Job Management</span>
+          <span>Job Order</span>
           <span className="mx-1.5">›</span>
           <span className="text-gray-600">Add Job Order</span>
         </div>

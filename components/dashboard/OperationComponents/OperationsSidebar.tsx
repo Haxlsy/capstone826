@@ -5,6 +5,7 @@ import { usePathname, useRouter } from "next/navigation"
 import { useEffect, useState } from "react"
 import {
   LayoutDashboard,
+  Briefcase,
   ClipboardList,
   AlertTriangle,
   Archive,
@@ -12,21 +13,44 @@ import {
   Wrench,
   Settings,
   LogOut,
+  ChevronDown,
 } from "lucide-react"
 
-const navItems = [
-  { label: "Dashboard",               href: "/dashboard/operations",               icon: LayoutDashboard },
-  { label: "Job Management",          href: "/dashboard/job-management",           icon: ClipboardList },
-  { label: "Concerns",                href: "/dashboard/concerns",                 icon: AlertTriangle, showBadge: true },
-  { label: "Job Order Records",       href: "/dashboard/job-order-records",        icon: Archive },
+const JOB_MGMT_PATHS = [
+  "/dashboard/job-management",
+  "/dashboard/job-order-records",
+  "/dashboard/technician-availability",
+]
+
+const jobMgmtSubItems = [
+  { label: "Job Order",               href: "/dashboard/job-management",          icon: ClipboardList },
+  { label: "Job Records",              href: "/dashboard/job-order-records",        icon: Archive },
   { label: "Technician Availability", href: "/dashboard/technician-availability",  icon: UserCheck },
-  { label: "Service Management",      href: "/dashboard/services",                 icon: Wrench },
+]
+
+const topItems = [
+  { label: "Dashboard", href: "/dashboard/operations", icon: LayoutDashboard },
+]
+
+const bottomItems = [
+  { label: "Concerns",           href: "/dashboard/concerns", icon: AlertTriangle, showBadge: true },
+  { label: "Service Management", href: "/dashboard/services",  icon: Wrench },
 ]
 
 export default function OperationsSidebar() {
   const pathname = usePathname()
   const router   = useRouter()
+
   const [pendingConcerns, setPendingConcerns] = useState(0)
+  const [jobMgmtOpen,     setJobMgmtOpen]     = useState(false)
+
+  const isJobMgmtActive = JOB_MGMT_PATHS.some(
+    (p) => pathname === p || pathname.startsWith(p + "/")
+  )
+
+  useEffect(() => {
+    if (isJobMgmtActive) setJobMgmtOpen(true)
+  }, [isJobMgmtActive])
 
   useEffect(() => {
     async function fetchPendingCount() {
@@ -40,7 +64,7 @@ export default function OperationsSidebar() {
       } catch {}
     }
     fetchPendingCount()
-  }, [pathname]) // re-fetch whenever the user navigates (e.g. after resolving a concern)
+  }, [pathname])
 
   async function handleLogout() {
     try {
@@ -48,6 +72,14 @@ export default function OperationsSidebar() {
     } catch {}
     try { localStorage.removeItem("826_user") } catch {}
     router.push("/")
+  }
+
+  function navLinkCls(active: boolean) {
+    return `flex items-center gap-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
+      active
+        ? "bg-blue-50 text-blue-600 border-l-4 border-blue-500 pl-2 pr-3"
+        : "px-3 text-gray-500 hover:bg-gray-50 hover:text-gray-800"
+    }`
   }
 
   return (
@@ -62,19 +94,60 @@ export default function OperationsSidebar() {
 
       {/* Nav */}
       <nav className="flex-1 py-4 px-3 space-y-0.5">
-        {navItems.map(({ label, href, icon: Icon, showBadge }) => {
-          const active      = pathname === href || pathname.startsWith(href + "/")
-          const badgeCount  = showBadge ? pendingConcerns : 0
+        {/* Top flat items (Dashboard) */}
+        {topItems.map(({ label, href, icon: Icon }) => {
+          const active = pathname === href || pathname.startsWith(href + "/")
           return (
-            <Link
-              key={href}
-              href={href}
-              className={`flex items-center gap-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
-                active
-                  ? "bg-blue-50 text-blue-600 border-l-4 border-blue-500 pl-2 pr-3"
-                  : "px-3 text-gray-500 hover:bg-gray-50 hover:text-gray-800"
-              }`}
-            >
+            <Link key={href} href={href} className={navLinkCls(active)}>
+              <Icon className="w-4 h-4 shrink-0" />
+              <span className="flex-1">{label}</span>
+            </Link>
+          )
+        })}
+
+        {/* Job Management collapsible group */}
+        <button
+          type="button"
+          onClick={() => setJobMgmtOpen((o) => !o)}
+          className={`flex items-center gap-3 w-full px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
+            isJobMgmtActive
+              ? "bg-blue-50 text-blue-600"
+              : "text-gray-500 hover:bg-gray-50 hover:text-gray-800"
+          }`}
+        >
+          <Briefcase className="w-4 h-4 shrink-0" />
+          <span className="flex-1 text-left">Job Management</span>
+          <ChevronDown className={`w-3.5 h-3.5 transition-transform duration-200 ${jobMgmtOpen ? "rotate-180" : ""}`} />
+        </button>
+
+        {jobMgmtOpen && (
+          <div className="ml-4 pl-3 border-l border-gray-100 space-y-0.5 mt-0.5">
+            {jobMgmtSubItems.map(({ label, href, icon: Icon }) => {
+              const active = pathname === href || pathname.startsWith(href + "/")
+              return (
+                <Link
+                  key={href}
+                  href={href}
+                  className={`flex items-center gap-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+                    active
+                      ? "bg-blue-50 text-blue-600 border-l-4 border-blue-500 pl-2 pr-3"
+                      : "px-3 text-gray-500 hover:bg-gray-50 hover:text-gray-700"
+                  }`}
+                >
+                  <Icon className="w-4 h-4 shrink-0" />
+                  <span>{label}</span>
+                </Link>
+              )
+            })}
+          </div>
+        )}
+
+        {/* Bottom flat items (Concerns, Service Management) */}
+        {bottomItems.map(({ label, href, icon: Icon, showBadge }) => {
+          const active     = pathname === href || pathname.startsWith(href + "/")
+          const badgeCount = showBadge ? pendingConcerns : 0
+          return (
+            <Link key={href} href={href} className={navLinkCls(active)}>
               <Icon className="w-4 h-4 shrink-0" />
               <span className="flex-1">{label}</span>
               {showBadge && badgeCount > 0 && (

@@ -157,7 +157,7 @@ export default function JobOrderRecords() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-xl font-bold text-gray-800">Job Order Records</h1>
+          <h1 className="text-xl font-bold text-gray-800">Job Records</h1>
           <p className="text-sm text-gray-400 mt-0.5">Completed and released units.</p>
         </div>
         <div className="flex items-center gap-2">

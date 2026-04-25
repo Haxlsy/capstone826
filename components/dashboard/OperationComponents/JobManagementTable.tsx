@@ -241,7 +241,7 @@ export default function JobManagementTable() {
       <div className="flex flex-col gap-5">
         {/* Header */}
         <div className="flex items-center justify-between">
-          <h1 className="text-xl font-bold text-gray-800">Job Management</h1>
+          <h1 className="text-xl font-bold text-gray-800">Job Order</h1>
           <div className="flex items-center gap-3">
             <BulkStatusButton
               count={selectedIds.size}
