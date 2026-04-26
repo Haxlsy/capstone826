@@ -1,4 +1,6 @@
 import { NextResponse } from "next/server"
+import { cookies } from "next/headers"
+import { createClient } from "@/lib/supabase/server"
 import { createAdminClient } from "@/lib/supabase/admin"
 
 // GET /api/admin/workflow-categories
@@ -24,6 +26,22 @@ export async function GET() {
 // Body: { name: string, technician_role: "detailer" | "installer", display_color?: string }
 export async function POST(request: Request) {
   try {
+    const cookieStore = await cookies()
+    const supabase    = createClient(cookieStore)
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) return NextResponse.json({ error: "Unauthorized." }, { status: 401 })
+
+    const admin = createAdminClient()
+    const { data: profile } = await admin
+      .from("user_account")
+      .select("role")
+      .eq("id", user.id)
+      .single()
+
+    if (!profile || !["admin", "super_admin"].includes(profile.role)) {
+      return NextResponse.json({ error: "Forbidden. Admin access required." }, { status: 403 })
+    }
+
     const body = await request.json()
     const { name, technician_role, display_color } = body
 
@@ -34,9 +52,8 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "technician_role must be 'detailer' or 'installer'." }, { status: 400 })
     }
 
-    const supabase = createAdminClient()
 
-    const { data, error } = await supabase
+    const { data, error } = await admin
       .from("workflow_category")
       .insert({
         name:            name.trim(),

@@ -5,6 +5,7 @@ import { usePathname, useRouter } from "next/navigation"
 import {
   LayoutDashboard,
   Users,
+  Wrench,
   Bot,
   Settings,
   LogOut,
@@ -13,6 +14,7 @@ import {
 const navItems = [
   { label: "Dashboard", href: "/dashboard/admin", icon: LayoutDashboard },
   { label: "Account Management", href: "/dashboard/admin/accounts", icon: Users },
+  { label: "Service Management", href: "/dashboard/admin/services", icon: Wrench },
   { label: "AI Chatbot", href: "/dashboard/admin/chatbot", icon: Bot },
 ]
 

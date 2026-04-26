@@ -1,4 +1,6 @@
 import { NextResponse } from "next/server"
+import { cookies } from "next/headers"
+import { createClient } from "@/lib/supabase/server"
 import { createAdminClient } from "@/lib/supabase/admin"
 
 const VALID_SERVICE_TYPES = [
@@ -17,6 +19,22 @@ interface Stage {
 }
 
 export async function POST(request: Request) {
+  const cookieStore = await cookies()
+  const supabase    = createClient(cookieStore)
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return NextResponse.json({ error: "Unauthorized." }, { status: 401 })
+
+  const admin = createAdminClient()
+  const { data: profile } = await admin
+    .from("user_account")
+    .select("role")
+    .eq("id", user.id)
+    .single()
+
+  if (!profile || !["admin", "super_admin"].includes(profile.role)) {
+    return NextResponse.json({ error: "Forbidden. Admin access required." }, { status: 403 })
+  }
+
   const body = await request.json()
   const { serviceType, serviceName, description, estimatedDurationMins, stages } = body
 
@@ -27,8 +45,6 @@ export async function POST(request: Request) {
   if (!serviceType || !(VALID_SERVICE_TYPES as readonly string[]).includes(serviceType)) {
     return NextResponse.json({ error: "A valid service type is required." }, { status: 400 })
   }
-
-  const supabase = createAdminClient()
 
   const serviceInsert: Record<string, unknown> = {
     name:         serviceName.trim(),
@@ -41,7 +57,7 @@ export async function POST(request: Request) {
     serviceInsert.estimated_duration_mins = Number(estimatedDurationMins)
   }
 
-  const { data: service, error: serviceError } = await supabase
+  const { data: service, error: serviceError } = await admin
     .from("service")
     .insert(serviceInsert)
     .select("id")
@@ -62,12 +78,12 @@ export async function POST(request: Request) {
       sequence_order: s.sequence_order,
     }))
 
-    const { error: stageError } = await supabase
+    const { error: stageError } = await admin
       .from("service_stage")
       .insert(stageRows)
 
     if (stageError) {
-      await supabase.from("service").delete().eq("id", service.id)
+      await admin.from("service").delete().eq("id", service.id)
       return NextResponse.json(
         { error: stageError.message ?? "Failed to save workflow stages." },
         { status: 500 }

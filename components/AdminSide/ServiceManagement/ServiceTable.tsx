@@ -44,7 +44,7 @@ function formatDuration(mins: number | null) {
   return days === 1 ? "1 day" : `${days} days`
 }
 
-export default function ServiceTable() {
+export default function ServiceTable({ canWrite = true }: { canWrite?: boolean }) {
   const [services, setServices]   = useState<Service[]>([])
   const [totalCount, setTotal]    = useState(0)
   const [loading, setLoading]     = useState(true)
@@ -219,26 +219,31 @@ export default function ServiceTable() {
           )}
         </div>
 
-        <button
-          onClick={() => setAddModalOpen(true)}
-          className="ml-auto flex items-center gap-1.5 bg-gray-900 text-white text-sm font-medium px-4 py-2 rounded-lg hover:bg-gray-700 transition-colors"
-        >
-          + Add Service
-        </button>
+        {canWrite && (
+          <button
+            onClick={() => setAddModalOpen(true)}
+            className="ml-auto flex items-center gap-1.5 bg-gray-900 text-white text-sm font-medium px-4 py-2 rounded-lg hover:bg-gray-700 transition-colors"
+          >
+            + Add Service
+          </button>
+        )}
       </div>
 
-      <AddServiceModal
-        open={addModalOpen}
-        onClose={() => setAddModalOpen(false)}
-        onSuccess={() => fetchServices()}
-      />
-
-      <EditServiceModal
-        serviceId={editServiceId}
-        open={editServiceId !== null}
-        onClose={() => setEditServiceId(null)}
-        onSuccess={() => { setEditServiceId(null); fetchServices() }}
-      />
+      {canWrite && (
+        <>
+          <AddServiceModal
+            open={addModalOpen}
+            onClose={() => setAddModalOpen(false)}
+            onSuccess={() => fetchServices()}
+          />
+          <EditServiceModal
+            serviceId={editServiceId}
+            open={editServiceId !== null}
+            onClose={() => setEditServiceId(null)}
+            onSuccess={() => { setEditServiceId(null); fetchServices() }}
+          />
+        </>
+      )}
 
       {fetchError && (
         <p className="text-sm text-red-500">{fetchError}</p>
@@ -275,17 +280,17 @@ export default function ServiceTable() {
               <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide w-28">
                 Status
               </th>
-              <th className="w-10" />
+              {canWrite && <th className="w-10" />}
             </tr>
           </thead>
           <tbody>
             {loading ? (
               <tr>
-                <td colSpan={8} className="text-center py-12 text-sm text-gray-400">Loading...</td>
+                <td colSpan={canWrite ? 8 : 7} className="text-center py-12 text-sm text-gray-400">Loading...</td>
               </tr>
             ) : services.length === 0 ? (
               <tr>
-                <td colSpan={8} className="text-center py-12 text-sm text-gray-400">No services found.</td>
+                <td colSpan={canWrite ? 8 : 7} className="text-center py-12 text-sm text-gray-400">No services found.</td>
               </tr>
             ) : (
               services.map((service) => (
@@ -331,37 +336,39 @@ export default function ServiceTable() {
                       </span>
                     )}
                   </td>
-                  <td className="px-4 py-3.5 relative">
-                    <div ref={actionMenu === service.id ? actionRef : null}>
-                      <button
-                        onClick={() => setActionMenu((prev) => prev === service.id ? null : service.id)}
-                        className="p-1 rounded-lg hover:bg-gray-100 text-gray-400 hover:text-gray-600 transition-colors"
-                      >
-                        <MoreHorizontal className="w-4 h-4" />
-                      </button>
+                  {canWrite && (
+                    <td className="px-4 py-3.5 relative">
+                      <div ref={actionMenu === service.id ? actionRef : null}>
+                        <button
+                          onClick={() => setActionMenu((prev) => prev === service.id ? null : service.id)}
+                          className="p-1 rounded-lg hover:bg-gray-100 text-gray-400 hover:text-gray-600 transition-colors"
+                        >
+                          <MoreHorizontal className="w-4 h-4" />
+                        </button>
 
-                      {actionMenu === service.id && (
-                        <div className="absolute right-4 bottom-8 w-36 bg-white border border-gray-100 rounded-xl shadow-lg z-10 py-1">
-                          <button
-                            onClick={() => { setActionMenu(null); setEditServiceId(service.id) }}
-                            className="w-full text-left text-sm px-3.5 py-2 text-gray-700 hover:bg-gray-50 transition-colors"
-                          >
-                            Edit Service
-                          </button>
-                          <button
-                            onClick={() => handleArchiveToggle(service)}
-                            className={`w-full text-left text-sm px-3.5 py-2 transition-colors ${
-                              service.is_archived
-                                ? "text-green-600 hover:bg-green-50"
-                                : "text-red-500 hover:bg-red-50"
-                            }`}
-                          >
-                            {service.is_archived ? "Unarchive" : "Archive"}
-                          </button>
-                        </div>
-                      )}
-                    </div>
-                  </td>
+                        {actionMenu === service.id && (
+                          <div className="absolute right-4 bottom-8 w-36 bg-white border border-gray-100 rounded-xl shadow-lg z-10 py-1">
+                            <button
+                              onClick={() => { setActionMenu(null); setEditServiceId(service.id) }}
+                              className="w-full text-left text-sm px-3.5 py-2 text-gray-700 hover:bg-gray-50 transition-colors"
+                            >
+                              Edit Service
+                            </button>
+                            <button
+                              onClick={() => handleArchiveToggle(service)}
+                              className={`w-full text-left text-sm px-3.5 py-2 transition-colors ${
+                                service.is_archived
+                                  ? "text-green-600 hover:bg-green-50"
+                                  : "text-red-500 hover:bg-red-50"
+                              }`}
+                            >
+                              {service.is_archived ? "Unarchive" : "Archive"}
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    </td>
+                  )}
                 </tr>
               ))
             )}

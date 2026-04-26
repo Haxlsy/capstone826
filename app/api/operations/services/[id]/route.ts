@@ -1,4 +1,6 @@
 import { NextResponse } from "next/server"
+import { cookies } from "next/headers"
+import { createClient } from "@/lib/supabase/server"
 import { createAdminClient } from "@/lib/supabase/admin"
 
 const VALID_SERVICE_TYPES = [
@@ -68,9 +70,24 @@ export async function PATCH(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const cookieStore = await cookies()
+    const supabaseAuth = createClient(cookieStore)
+    const { data: { user } } = await supabaseAuth.auth.getUser()
+    if (!user) return NextResponse.json({ error: "Unauthorized." }, { status: 401 })
+
     const { id }  = await params
     const body    = await request.json()
     const supabase = createAdminClient()
+
+    const { data: profile } = await supabase
+      .from("user_account")
+      .select("role")
+      .eq("id", user.id)
+      .single()
+
+    if (!profile || !["admin", "super_admin"].includes(profile.role)) {
+      return NextResponse.json({ error: "Forbidden. Admin access required." }, { status: 403 })
+    }
 
     // Archive toggle
     if (typeof body.is_archived === "boolean") {
