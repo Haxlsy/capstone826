@@ -6,7 +6,9 @@ import { Layers, RotateCcw, GripVertical, Plus, X, ChevronDown } from "lucide-re
 export interface Stage {
   id:             string
   name:           string
-  category:       "preparation" | "installation" | "finishing"
+  category_id:    string | null
+  category_name:  string | null
+  category_color: string | null
   sequence_order: number
   isNew?:         boolean
 }
@@ -47,7 +49,7 @@ type StageWithIndex = Stage & { globalIndex: number }
 
 function StageList({
   stages,
-  category,
+  categoryId,
   dragging,
   dragItemRef,
   accentDrag,
@@ -62,7 +64,7 @@ function StageList({
   onAdd,
 }: {
   stages:       StageWithIndex[]
-  category:     "preparation" | "installation" | "finishing"
+  categoryId:   string | null
   dragging:     boolean
   dragItemRef:  React.MutableRefObject<number | null>
   accentDrag:   string
@@ -71,16 +73,16 @@ function StageList({
   onDragStart:  (globalIndex: number) => void
   onDragEnter:  (globalIndex: number) => void
   onDragEnd:    () => void
-  onDrop:       (category: "preparation" | "installation" | "finishing") => void
+  onDrop:       (categoryId: string | null) => void
   onRename:     (id: string, name: string) => void
   onRemove:     (id: string) => void
-  onAdd:        (category: "preparation" | "installation" | "finishing") => void
+  onAdd:        (categoryId: string | null) => void
 }) {
   return (
     <div
       className="flex flex-col gap-1"
       onDragOver={(e) => e.preventDefault()}
-      onDrop={() => onDrop(category)}
+      onDrop={() => onDrop(categoryId)}
     >
       {stages.map((stage, localIdx) => (
         <div
@@ -112,7 +114,7 @@ function StageList({
             value={stage.name}
             onChange={(e) => onRename(stage.id, e.target.value)}
             placeholder={stage.isNew ? "Stage name" : undefined}
-            aria-label={`${category} stage ${localIdx + 1} name`}
+            aria-label={`${categoryId ?? "unknown"} stage ${localIdx + 1} name`}
             autoFocus={stage.isNew && stage.name === ""}
             className={`flex-1 min-w-0 bg-transparent text-xs text-gray-700 focus:outline-none border-b border-transparent ${accentFocus} py-0.5 placeholder:text-gray-300`}
           />
@@ -132,7 +134,7 @@ function StageList({
 
       <button
         type="button"
-        onClick={() => onAdd(category)}
+        onClick={() => onAdd(categoryId)}
         className={`flex items-center gap-1 text-xs font-medium mt-1 ${accentAdd} transition-colors w-fit`}
       >
         <Plus className="w-3.5 h-3.5" />
@@ -213,7 +215,7 @@ export default function ServiceOverridePanel({
     dragOverItem.current = globalIndex
   }
 
-  function handleDrop(category: "preparation" | "installation" | "finishing") {
+  function handleDrop(categoryId: string | null) {
     setDragging(false)
     if (dragItem.current === null || dragOverItem.current === null) return
     if (dragItem.current === dragOverItem.current) return
@@ -221,7 +223,7 @@ export default function ServiceOverridePanel({
     const fromStage = customStages[dragItem.current]
     const toStage   = customStages[dragOverItem.current]
     if (!fromStage || !toStage) return
-    if (fromStage.category !== category || toStage.category !== category) return
+    if (fromStage.category_id !== categoryId || toStage.category_id !== categoryId) return
 
     const next = [...customStages]
     next.splice(dragItem.current, 1)
@@ -242,20 +244,42 @@ export default function ServiceOverridePanel({
     onStagesChange(next.map((s, i) => ({ ...s, sequence_order: i + 1 })))
   }
 
-  function addStage(category: "preparation" | "installation" | "finishing") {
+  function addStage(categoryId: string | null) {
+    const template = customStages.find((s) => s.category_id === categoryId)
     const newStage: Stage = {
       id:             `new-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
       name:           "",
-      category,
+      category_id:    categoryId,
+      category_name:  template?.category_name ?? null,
+      category_color: template?.category_color ?? null,
       sequence_order: customStages.length + 1,
       isNew:          true,
     }
     onStagesChange([...customStages, newStage])
   }
 
-  const prepStages    = customStages.map((s, i) => ({ ...s, globalIndex: i })).filter((s) => s.category === "preparation")
-  const installStages = customStages.map((s, i) => ({ ...s, globalIndex: i })).filter((s) => s.category === "installation")
-  const finishStages  = customStages.map((s, i) => ({ ...s, globalIndex: i })).filter((s) => s.category === "finishing")
+  // Derive unique category sections in the order they first appear
+  const stageSections = useMemo(() => {
+    const seen = new Map<string | null, {
+      categoryId:    string | null
+      categoryName:  string | null
+      categoryColor: string | null
+      stages:        (Stage & { globalIndex: number })[]
+    }>()
+    customStages.forEach((s, i) => {
+      const key = s.category_id ?? `_${s.category_name}`
+      if (!seen.has(key)) {
+        seen.set(key, {
+          categoryId:    s.category_id,
+          categoryName:  s.category_name,
+          categoryColor: s.category_color,
+          stages:        [],
+        })
+      }
+      seen.get(key)!.stages.push({ ...s, globalIndex: i })
+    })
+    return Array.from(seen.values())
+  }, [customStages])
 
   // ── Placeholder (no service type selected yet) ────────────────────
   if (!primaryService && availableServices.length === 0) {
@@ -412,77 +436,49 @@ export default function ServiceOverridePanel({
 
           {stagesLoading ? (
             <p className="text-xs text-gray-400">Loading stages…</p>
+          ) : stageSections.length === 0 ? (
+            <p className="text-xs text-gray-400 italic">No stages defined for this service.</p>
           ) : (
-            <>
-              {/* Preparation Team */}
-              <div className="flex flex-col gap-2">
-                <p className="text-[10px] font-bold text-blue-600 uppercase tracking-widest">
-                  Preparation Team (Detailers)
-                </p>
-                <StageList
-                  stages={prepStages}
-                  category="preparation"
-                  dragging={dragging}
-                  dragItemRef={dragItem}
-                  accentDrag="border-blue-300 bg-blue-50/50"
-                  accentFocus="focus:border-blue-400"
-                  accentAdd="text-blue-500 hover:text-blue-700"
-                  onDragStart={handleDragStart}
-                  onDragEnter={handleDragEnter}
-                  onDragEnd={() => setDragging(false)}
-                  onDrop={handleDrop}
-                  onRename={renameStage}
-                  onRemove={removeStage}
-                  onAdd={addStage}
-                />
-              </div>
-
-              {/* Installation Team */}
-              <div className="flex flex-col gap-2">
-                <p className="text-[10px] font-bold text-purple-600 uppercase tracking-widest">
-                  Installation Team (Installers)
-                </p>
-                <StageList
-                  stages={installStages}
-                  category="installation"
-                  dragging={dragging}
-                  dragItemRef={dragItem}
-                  accentDrag="border-purple-300 bg-purple-50/50"
-                  accentFocus="focus:border-purple-400"
-                  accentAdd="text-purple-500 hover:text-purple-700"
-                  onDragStart={handleDragStart}
-                  onDragEnter={handleDragEnter}
-                  onDragEnd={() => setDragging(false)}
-                  onDrop={handleDrop}
-                  onRename={renameStage}
-                  onRemove={removeStage}
-                  onAdd={addStage}
-                />
-              </div>
-
-              {/* Finishing Stage */}
-              <div className="flex flex-col gap-2">
-                <p className="text-[10px] font-bold text-emerald-600 uppercase tracking-widest">
-                  Finishing Stage (Detailers)
-                </p>
-                <StageList
-                  stages={finishStages}
-                  category="finishing"
-                  dragging={dragging}
-                  dragItemRef={dragItem}
-                  accentDrag="border-emerald-300 bg-emerald-50/50"
-                  accentFocus="focus:border-emerald-400"
-                  accentAdd="text-emerald-500 hover:text-emerald-700"
-                  onDragStart={handleDragStart}
-                  onDragEnter={handleDragEnter}
-                  onDragEnd={() => setDragging(false)}
-                  onDrop={handleDrop}
-                  onRename={renameStage}
-                  onRemove={removeStage}
-                  onAdd={addStage}
-                />
-              </div>
-            </>
+            stageSections.map((sec) => {
+              const color = sec.categoryColor ?? "blue"
+              const accentMap: Record<string, { drag: string; focus: string; add: string }> = {
+                blue:    { drag: "border-blue-300 bg-blue-50/50",     focus: "focus:border-blue-400",     add: "text-blue-500 hover:text-blue-700" },
+                purple:  { drag: "border-purple-300 bg-purple-50/50", focus: "focus:border-purple-400",   add: "text-purple-500 hover:text-purple-700" },
+                emerald: { drag: "border-emerald-300 bg-emerald-50/50", focus: "focus:border-emerald-400", add: "text-emerald-500 hover:text-emerald-700" },
+                orange:  { drag: "border-orange-300 bg-orange-50/50", focus: "focus:border-orange-400",   add: "text-orange-500 hover:text-orange-700" },
+                rose:    { drag: "border-rose-300 bg-rose-50/50",     focus: "focus:border-rose-400",     add: "text-rose-500 hover:text-rose-700" },
+                teal:    { drag: "border-teal-300 bg-teal-50/50",     focus: "focus:border-teal-400",     add: "text-teal-500 hover:text-teal-700" },
+                yellow:  { drag: "border-yellow-300 bg-yellow-50/50", focus: "focus:border-yellow-400",   add: "text-yellow-500 hover:text-yellow-700" },
+              }
+              const accent = accentMap[color] ?? accentMap.blue
+              const textColor: Record<string, string> = {
+                blue: "text-blue-600", purple: "text-purple-600", emerald: "text-emerald-600",
+                orange: "text-orange-600", rose: "text-rose-600", teal: "text-teal-600", yellow: "text-yellow-600",
+              }
+              return (
+                <div key={sec.categoryId ?? sec.categoryName} className="flex flex-col gap-2">
+                  <p className={`text-[10px] font-bold uppercase tracking-widest ${textColor[color] ?? "text-blue-600"}`}>
+                    {sec.categoryName ?? "Unknown"}
+                  </p>
+                  <StageList
+                    stages={sec.stages}
+                    categoryId={sec.categoryId}
+                    dragging={dragging}
+                    dragItemRef={dragItem}
+                    accentDrag={accent.drag}
+                    accentFocus={accent.focus}
+                    accentAdd={accent.add}
+                    onDragStart={handleDragStart}
+                    onDragEnter={handleDragEnter}
+                    onDragEnd={() => setDragging(false)}
+                    onDrop={handleDrop}
+                    onRename={renameStage}
+                    onRemove={removeStage}
+                    onAdd={addStage}
+                  />
+                </div>
+              )
+            })
           )}
         </div>}
       </div>

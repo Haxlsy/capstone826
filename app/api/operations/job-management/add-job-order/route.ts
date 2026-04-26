@@ -7,7 +7,7 @@ interface CustomStage {
   service_stage_id:      string | null   // null for stages added only for this job
   is_new:                boolean
   custom_name:           string
-  custom_stage_category: "preparation" | "installation" | null
+  custom_stage_category: string | null
   custom_sequence_order: number
 }
 

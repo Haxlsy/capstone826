@@ -424,7 +424,7 @@ export default function AddJobOrderForm() {
       vehicleUnit:   selectedCustomer?.vehicle_unit   ?? manualVehicleUnit.trim(),
       serviceName:   customServiceName || selectedService?.name || "—",
       isOverridden:  !!customServiceName && customServiceName !== selectedService?.name,
-      stages:        customStages.map((s) => ({ name: s.name, category: s.category })),
+      stages:        customStages.map((s) => ({ name: s.name, category_name: s.category_name, category_color: s.category_color })),
       scheduledAt:   formatScheduledStart(scheduledAt, isPPF),
       expectedEnd:   scheduledAt && effDuration > 0
         ? calculateCompletion(scheduledAt, effDuration, isPPF)
@@ -453,7 +453,7 @@ export default function AddJobOrderForm() {
             service_stage_id:      s.isNew ? null : s.id,
             is_new:                s.isNew ?? false,
             custom_name:           s.name,
-            custom_stage_category: s.isNew ? s.category : null,
+            custom_stage_category: s.isNew ? (s.category_name ?? null) : null,
             custom_sequence_order: i + 1,
           }))
         : null

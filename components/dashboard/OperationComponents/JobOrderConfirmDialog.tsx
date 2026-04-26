@@ -13,7 +13,7 @@ export interface JobOrderSummary {
   // Service
   serviceName:  string
   isOverridden: boolean
-  stages:       Array<{ name: string; category: "preparation" | "installation" | "finishing" }>
+  stages:       Array<{ name: string; category_name: string | null; category_color: string | null }>
 
   // Schedule
   scheduledAt: string
@@ -59,16 +59,18 @@ function Section({ icon: Icon, title, children }: {
   )
 }
 
-function categoryClass(cat: "preparation" | "installation" | "finishing") {
-  if (cat === "preparation") return "bg-blue-50 text-blue-600"
-  if (cat === "installation") return "bg-amber-50 text-amber-600"
-  return "bg-emerald-50 text-emerald-600"
+const COLOR_BADGE: Record<string, string> = {
+  blue:    "bg-blue-50 text-blue-600",
+  purple:  "bg-purple-50 text-purple-600",
+  emerald: "bg-emerald-50 text-emerald-600",
+  orange:  "bg-orange-50 text-orange-600",
+  rose:    "bg-rose-50 text-rose-600",
+  teal:    "bg-teal-50 text-teal-600",
+  yellow:  "bg-yellow-50 text-yellow-600",
 }
 
-function categoryLabel(cat: "preparation" | "installation" | "finishing") {
-  if (cat === "preparation") return "Prep"
-  if (cat === "installation") return "Install"
-  return "Finish"
+function categoryBadgeClass(color: string | null) {
+  return COLOR_BADGE[color ?? "blue"] ?? COLOR_BADGE.blue
 }
 
 export default function JobOrderConfirmDialog({ summary, submitting, onConfirm, onBack }: Props) {
@@ -118,9 +120,9 @@ export default function JobOrderConfirmDialog({ summary, submitting, onConfirm, 
                   <div key={i} className="flex items-center gap-2">
                     <span className="text-[10px] text-gray-400 w-4 shrink-0">{i + 1}.</span>
                     <span
-                      className={`text-[9px] font-semibold px-1.5 py-0.5 rounded-full shrink-0 ${categoryClass(s.category)}`}
+                      className={`text-[9px] font-semibold px-1.5 py-0.5 rounded-full shrink-0 ${categoryBadgeClass(s.category_color)}`}
                     >
-                      {categoryLabel(s.category)}
+                      {s.category_name ?? "—"}
                     </span>
                     <span className="text-xs text-gray-700">{s.name}</span>
                   </div>

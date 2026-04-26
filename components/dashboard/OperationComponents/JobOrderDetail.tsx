@@ -16,12 +16,14 @@ interface Stage {
   id:                  string
   name:                string
   sequence_order:      number
-  category:            "preparation" | "installation" | "finishing" | "inspection"
+  category_id:         string | null
+  category_name:       string | null
+  category_color:      string | null
   status:              "pending" | "in_progress" | "done" | "for_rework"
   rework_instructions: string | null
   handoff_notes:       string | null
   completed_at:        string | null
-  messenger_sent:      boolean | null   // null = not attempted, true = sent, false = failed
+  messenger_sent:      boolean | null
   messenger_sent_at:   string | null
   media:               StageMedia[]
 }
@@ -197,14 +199,20 @@ export default function JobOrderDetail({ jobId }: { jobId: string }) {
     </div>
   )
 
-  const prepStages    = job.stages.filter((s) => s.category === "preparation")
-  const instStages    = job.stages.filter((s) => s.category === "installation")
-  const finishStages  = job.stages.filter((s) => s.category === "finishing")
+  // Group stages by category, preserving the order they first appear
+  const categoryGroups = job.stages.reduce((acc, s) => {
+    const key = s.category_id ?? `_${s.category_name}`
+    if (!acc.has(key)) {
+      acc.set(key, { name: s.category_name ?? "Unknown", color: s.category_color ?? "blue", stages: [] })
+    }
+    acc.get(key)!.stages.push(s)
+    return acc
+  }, new Map<string, { name: string; color: string; stages: Stage[] }>())
+
+  const finishStages  = job.stages.filter((s) => s.category_name === "finishing")
   const hasFinishing  = finishStages.length > 0
 
-  const inspectStages = job.stages.filter((s)=>s.category === "inspection" )
   const canRelease    = job.status === "For Release"
-  // "For Released" button: shown when finishing stages exist and job is not yet For Release / Released
   const showForReleased   = hasFinishing && !["For Release", "Released"].includes(job.status)
   const canForReleased    = showForReleased && Boolean(job.finishing_approved_at)
   const displayId     = `JO-${new Date(job.created_at).getFullYear()}-${job.id.slice(-4).toUpperCase()}`
@@ -305,37 +313,29 @@ export default function JobOrderDetail({ jobId }: { jobId: string }) {
       <div className="bg-white rounded-xl border border-gray-100 p-6">
         <h2 className="text-sm font-semibold text-gray-700 uppercase tracking-wide mb-4">Service Stage Progress</h2>
 
-        {[
-          { label: "Preparation Stages", stages: prepStages, extra: null },
-          { label: "Installation Stages", stages: instStages, extra: null },
-          {
-            label: "Finishing Stages",
-            stages: finishStages,
-            extra: job.finishing_approved_at
+        {Array.from(categoryGroups.entries()).map(([key, group]) => {
+          const isFinishing = group.name === "finishing"
+          const extra = isFinishing
+            ? job.finishing_approved_at
               ? `Passed to Operations · ${fmtDate(job.finishing_approved_at)}`
-              : finishStages.length > 0
-                ? "Awaiting Head Detailer"
-                : null,
-          },
-          {label:"Inspection Stages", stages: inspectStages, extra:null},
-        ].map(
-          ({ label, stages, extra }) =>
-            stages.length === 0 ? null : (
-              <div key={label} className="mb-6 last:mb-0">
-                <div className="flex items-center gap-3 mb-3">
-                  <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide">{label}</p>
-                  {extra && (
-                    <span className={`text-[11px] font-medium px-2 py-0.5 rounded-full ${
-                      job.finishing_approved_at && label === "Finishing Stages"
-                        ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
-                        : "bg-amber-50 text-amber-600 border border-amber-200"
-                    }`}>
-                      {extra}
-                    </span>
-                  )}
-                </div>
+              : "Awaiting Head Detailer"
+            : null
+          return (
+            <div key={key} className="mb-6 last:mb-0">
+              <div className="flex items-center gap-3 mb-3">
+                <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide">{group.name} stages</p>
+                {extra && (
+                  <span className={`text-[11px] font-medium px-2 py-0.5 rounded-full ${
+                    job.finishing_approved_at && isFinishing
+                      ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
+                      : "bg-amber-50 text-amber-600 border border-amber-200"
+                  }`}>
+                    {extra}
+                  </span>
+                )}
+              </div>
                 <div className="flex flex-col gap-2">
-                  {stages.map((stage) => (
+                  {group.stages.map((stage) => (
                     <div
                       key={stage.id}
                       className={`flex items-start gap-3 p-3 rounded-lg border ${
@@ -427,7 +427,7 @@ export default function JobOrderDetail({ jobId }: { jobId: string }) {
                 </div>
               </div>
             )
-        )}
+        })}
       </div>
 
       {/* Status History */}

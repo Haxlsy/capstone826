@@ -9,7 +9,7 @@ const VALID_SERVICE_TYPES = [
 ] as const
 
 // GET /api/operations/services/[id]
-// Returns a single service with its stages for editing.
+// Returns a single service with its stages (including category info) for editing.
 export async function GET(
   _request: Request,
   { params }: { params: Promise<{ id: string }> }
@@ -26,7 +26,7 @@ export async function GET(
         .single(),
       supabase
         .from("service_stage")
-        .select("id, name, category, sequence_order")
+        .select("id, name, sequence_order, workflow_category(id, name, technician_role, display_color)")
         .eq("service_id", id)
         .order("sequence_order"),
     ])
@@ -34,9 +34,24 @@ export async function GET(
     if (serviceRes.error) return NextResponse.json({ error: serviceRes.error.message }, { status: 500 })
     if (!serviceRes.data)  return NextResponse.json({ error: "Service not found." }, { status: 404 })
 
+    const stages = (stagesRes.data ?? []).map((s) => {
+      const cat = Array.isArray(s.workflow_category)
+        ? s.workflow_category[0]
+        : s.workflow_category
+      return {
+        id:             s.id,
+        name:           s.name,
+        sequence_order: s.sequence_order,
+        category_id:    cat?.id    ?? null,
+        category_name:  cat?.name  ?? null,
+        category_role:  cat?.technician_role ?? null,
+        category_color: cat?.display_color ?? null,
+      }
+    })
+
     return NextResponse.json({
       service: serviceRes.data,
-      stages:  stagesRes.data ?? [],
+      stages,
     })
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err)
@@ -47,6 +62,7 @@ export async function GET(
 // PATCH /api/operations/services/[id]
 // Body (archive toggle): { is_archived: boolean }
 // Body (full edit):      { serviceType, serviceName, description, estimatedDurationMins, stages }
+//   Each stage: { dbId?: string | null, name: string, category_id: string, sequence_order: number }
 export async function PATCH(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
@@ -93,7 +109,7 @@ export async function PATCH(
     if (updateError) return NextResponse.json({ error: updateError.message }, { status: 500 })
 
     // ── Smart stage update (avoid FK violations on job_stage_progress) ──
-    type StagePayload = { dbId: string | null; name: string; category: string; sequence_order: number }
+    type StagePayload = { dbId: string | null; name: string; category_id: string; sequence_order: number }
     const stageList: StagePayload[] = Array.isArray(stages) ? stages : []
 
     // 1. Find which existing DB stage IDs were removed by the user
@@ -127,11 +143,11 @@ export async function PATCH(
       }
     }
 
-    // 3. Update existing stages (name + sequence_order may have changed)
+    // 3. Update existing stages
     for (const s of stageList.filter((s) => s.dbId)) {
       const { error: upErr } = await supabase
         .from("service_stage")
-        .update({ name: s.name, category: s.category, sequence_order: s.sequence_order })
+        .update({ name: s.name, category_id: s.category_id, sequence_order: s.sequence_order })
         .eq("id", s.dbId as string)
       if (upErr) return NextResponse.json({ error: upErr.message }, { status: 500 })
     }
@@ -144,7 +160,7 @@ export async function PATCH(
         .insert(newStages.map((s) => ({
           service_id:     id,
           name:           s.name,
-          category:       s.category,
+          category_id:    s.category_id,
           sequence_order: s.sequence_order,
         })))
       if (insErr) return NextResponse.json({ error: insErr.message }, { status: 500 })

@@ -44,11 +44,13 @@ export async function GET(
       .from("job_stage_progress")
       .select(
         `id, status, rework_instructions, handoff_notes, completed_at,
-         stage:service_stage_id(name, sequence_order, category),
+         messenger_sent, messenger_sent_at,
+         custom_name, custom_stage_category, custom_sequence_order,
+         stage:service_stage_id(name, sequence_order, workflow_category(id, name, technician_role, display_color)),
          media:stage_media(id, file_url, media_type)`
       )
       .eq("job_order_id", id)
-      .order("service_stage_id")
+      .order("custom_sequence_order")
 
     const j = job as any
     const headDetailer  = (team ?? []).find((t: any) => t.role_in_job === "head_detailer")
@@ -83,19 +85,27 @@ export async function GET(
           created_at: h.created_at,
           changed_by: h.changed_by?.full_name ?? "System",
         })),
-        stages: (stages ?? []).map((s: any) => ({
-          id:                   s.id,
-          name:                 s.stage?.name ?? "—",
-          sequence_order:       s.stage?.sequence_order,
-          category:             s.stage?.category,
-          status:               s.status,
-          rework_instructions:  s.rework_instructions,
-          handoff_notes:        s.handoff_notes,
-          completed_at:         s.completed_at,
-          messenger_sent:       (s as any).messenger_sent ?? null,
-          messenger_sent_at:    (s as any).messenger_sent_at ?? null,
-          media:                s.media ?? [],
-        })),
+        stages: (stages ?? []).map((s: any) => {
+          const stageRow = s.stage
+          const cat = Array.isArray(stageRow?.workflow_category)
+            ? stageRow.workflow_category[0]
+            : stageRow?.workflow_category
+          return {
+            id:                   s.id,
+            name:                 s.custom_name ?? stageRow?.name ?? "—",
+            sequence_order:       s.custom_sequence_order ?? stageRow?.sequence_order,
+            category_id:          cat?.id    ?? null,
+            category_name:        cat?.name  ?? s.custom_stage_category ?? null,
+            category_color:       cat?.display_color ?? null,
+            status:               s.status,
+            rework_instructions:  s.rework_instructions,
+            handoff_notes:        s.handoff_notes,
+            completed_at:         s.completed_at,
+            messenger_sent:       s.messenger_sent ?? null,
+            messenger_sent_at:    s.messenger_sent_at ?? null,
+            media:                s.media ?? [],
+          }
+        }),
       },
     })
   } catch (err: any) {

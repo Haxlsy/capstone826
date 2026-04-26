@@ -12,7 +12,7 @@ type ServiceType = typeof VALID_SERVICE_TYPES[number]
 
 interface Stage {
   name: string
-  category: "preparation" | "installation" | "finishing"
+  category_id: string
   sequence_order: number
 }
 
@@ -58,7 +58,7 @@ export async function POST(request: Request) {
     const stageRows = (stages as Stage[]).map((s) => ({
       service_id:     service.id,
       name:           s.name,
-      category:       s.category,
+      category_id:    s.category_id,
       sequence_order: s.sequence_order,
     }))
 
