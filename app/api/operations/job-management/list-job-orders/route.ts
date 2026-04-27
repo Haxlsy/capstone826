@@ -45,6 +45,22 @@ export async function GET(request: Request) {
       .select("job_order_id, status")
       .in("job_order_id", jobIds)
 
+    // Released-at timestamps from history (only needed for released jobs)
+    const releasedAtMap = new Map<string, string>()
+    if (releasedOnly && jobIds.length > 0) {
+      const { data: historyRows } = await supabase
+        .from("job_order_history")
+        .select("job_order_id, created_at")
+        .in("job_order_id", jobIds)
+        .eq("status", "Released")
+        .order("created_at", { ascending: false })
+      for (const h of historyRows ?? []) {
+        if (!releasedAtMap.has(h.job_order_id)) {
+          releasedAtMap.set(h.job_order_id, h.created_at)
+        }
+      }
+    }
+
     // Build maps
     const teamMap = new Map<string, { head_detailer: string; head_installer: string }>()
     for (const t of teamRows ?? []) {
@@ -63,6 +79,7 @@ export async function GET(request: Request) {
       progressMap.set(s.job_order_id, entry)
     }
 
+    const nowMs = Date.now()
     const result = (jobs ?? []).map((j: any) => {
       const prog = progressMap.get(j.id) ?? { total: 0, done: 0 }
       const team = teamMap.get(j.id) ?? { head_detailer: "Unassigned", head_installer: "Unassigned" }
@@ -79,8 +96,10 @@ export async function GET(request: Request) {
         scheduled_at:            j.scheduled_at,
         actual_start_at:         j.actual_start_at,
         expected_completion_at:  j.expected_completion_at,
+        released_at:             releasedAtMap.get(j.id) ?? null,
         created_at:              j.created_at,
         progress:                prog.total > 0 ? Math.round((prog.done / prog.total) * 100) : 0,
+        is_overdue:              j.status === "Ongoing" && !!j.expected_completion_at && new Date(j.expected_completion_at).getTime() < nowMs,
       }
     })
 
