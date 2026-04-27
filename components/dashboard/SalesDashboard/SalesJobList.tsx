@@ -120,8 +120,8 @@ export default function SalesJobList() {
   return (
     <div className="flex flex-col gap-5">
       <div>
-        <h1 className="text-xl font-bold text-gray-800">Job Management</h1>
-        <p className="text-sm text-gray-400 mt-0.5">Read-only view of all active job orders.</p>
+        <h1 className="text-xl font-bold text-gray-800">View Job Orders</h1>
+        <p className="text-sm text-gray-400 mt-0.5">Read-only reference view of all active job orders.</p>
       </div>
 
       {/* Tabs */}

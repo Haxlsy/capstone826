@@ -7,9 +7,16 @@ export type Status =
   | "Delayed"
   | "Cancelled";
 
+export type StageGroup = {
+  label: string;
+  color: string;
+  done: number;
+  total: number;
+};
+
 export type HeadTechJob = {
   job_id: string;
-  raw_id?: string;   // UUID for real DB rows, "1"/"2" for mock
+  raw_id?: string;
   customer_name: string;
   plate_number: string;
   car_make: string;
@@ -19,6 +26,7 @@ export type HeadTechJob = {
   scheduled_start: string;
   status: Status;
   progress: number;
+  stage_groups: StageGroup[];
 };
 
 export const STATUS_STYLES: Record<Status, string> = {

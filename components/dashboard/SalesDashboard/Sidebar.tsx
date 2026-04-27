@@ -3,16 +3,19 @@
 import Link from "next/link"
 import { usePathname, useRouter } from "next/navigation"
 import {
-  LayoutDashboard,
   MessageCircle,
   Users,
+  ClipboardList,
+  AlertCircle,
   Settings,
   LogOut,
 } from "lucide-react"
 
 const navItems = [
-  { label: "Inquiry Management", href: "/dashboard/sales", icon: MessageCircle },
-  { label: "Customer Records", href: "/dashboard/sales/customer-records", icon: Users },
+  { label: "Inquiry Management",  href: "/dashboard/sales",               icon: MessageCircle,  exact: true },
+  { label: "Customer Records",    href: "/dashboard/sales/customer-records", icon: Users,        exact: true },
+  { label: "View Job Orders",     href: "/dashboard/sales/job-orders",    icon: ClipboardList,  exact: false },
+  { label: "View Concerns",       href: "/dashboard/sales/concerns",      icon: AlertCircle,    exact: false },
 ]
 
 export default function Sidebar() {
@@ -39,8 +42,8 @@ export default function Sidebar() {
 
       {/* Nav */}
       <nav className="flex-1 py-4 px-3 space-y-0.5">
-        {navItems.map(({ label, href, icon: Icon }) => {
-          const active = pathname === href
+        {navItems.map(({ label, href, icon: Icon, exact }) => {
+          const active = exact ? pathname === href : pathname.startsWith(href)
           return (
             <Link
               key={href}
