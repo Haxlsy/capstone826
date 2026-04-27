@@ -12,6 +12,7 @@ export const ACTIVE_JOBS: HeadTechJob[] = [
     scheduled_start: "Apr 3, 2026, 9:00 AM",
     status: "Ongoing",
     progress: 60,
+    stage_groups: [],
   },
   {
     job_id: "JO-2026-010",
@@ -24,6 +25,7 @@ export const ACTIVE_JOBS: HeadTechJob[] = [
     scheduled_start: "Apr 2, 2026, 10:00 AM",
     status: "For Release",
     progress: 100,
+    stage_groups: [],
   },
   {
     job_id: "JO-2026-009",
@@ -36,6 +38,7 @@ export const ACTIVE_JOBS: HeadTechJob[] = [
     scheduled_start: "Apr 1, 2026, 8:30 AM",
     status: "Ongoing",
     progress: 33,
+    stage_groups: [],
   },
   {
     job_id: "JO-2026-006",
@@ -48,6 +51,7 @@ export const ACTIVE_JOBS: HeadTechJob[] = [
     scheduled_start: "Mar 31, 2026, 1:00 PM",
     status: "For Release",
     progress: 100,
+    stage_groups: [],
   },
   {
     job_id: "JO-2026-005",
@@ -60,6 +64,7 @@ export const ACTIVE_JOBS: HeadTechJob[] = [
     scheduled_start: "Mar 30, 2026, 9:00 AM",
     status: "Pending",
     progress: 0,
+    stage_groups: [],
   },
   {
     job_id: "JO-2026-004",
@@ -72,6 +77,7 @@ export const ACTIVE_JOBS: HeadTechJob[] = [
     scheduled_start: "Mar 29, 2026, 11:30 AM",
     status: "Delayed",
     progress: 60,
+    stage_groups: [],
   },
 ];
 
