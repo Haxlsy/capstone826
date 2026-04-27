@@ -3,14 +3,7 @@
 import { useEffect, useRef, useState } from "react"
 import { GripVertical, Trash2, Pencil, Plus, ChevronDown, ChevronUp, Check, X } from "lucide-react"
 
-export const SERVICE_TYPES = [
-  "Paint Protection Film",
-  "Coating Services",
-  "Auto Detailing",
-  "Nano Ceramic Tint",
-] as const
-
-export type ServiceType = typeof SERVICE_TYPES[number]
+export type ServiceType = string
 
 export interface Stage {
   id:                 string
@@ -74,11 +67,13 @@ export function makeId() {
 // ─── Searchable Service Type Combobox ────────────────────────────────────────
 export function ServiceTypeCombobox({
   value,
+  serviceTypes,
   onChange,
   error,
 }: {
   value: string
-  onChange: (v: ServiceType) => void
+  serviceTypes: string[]
+  onChange: (v: string) => void
   error?: string
 }) {
   const [open, setOpen]     = useState(false)
@@ -86,9 +81,14 @@ export function ServiceTypeCombobox({
   const containerRef        = useRef<HTMLDivElement>(null)
   const inputRef            = useRef<HTMLInputElement>(null)
 
-  const filtered = SERVICE_TYPES.filter((t) =>
+  const trimmed  = query.trim()
+  const filtered = serviceTypes.filter((t) =>
     t.toLowerCase().includes(query.toLowerCase())
   )
+  const exactMatch = serviceTypes.some(
+    (t) => t.toLowerCase() === trimmed.toLowerCase()
+  )
+  const showCreate = trimmed.length > 0 && !exactMatch
 
   useEffect(() => {
     function handleClick(e: MouseEvent) {
@@ -103,6 +103,12 @@ export function ServiceTypeCombobox({
 
   const displayValue = open ? query : value
 
+  function selectType(type: string) {
+    onChange(type)
+    setOpen(false)
+    setQuery("")
+  }
+
   return (
     <div ref={containerRef} className="relative">
       <div
@@ -116,9 +122,8 @@ export function ServiceTypeCombobox({
           value={displayValue}
           onChange={(e) => { setQuery(e.target.value); if (!open) setOpen(true) }}
           onFocus={() => { setOpen(true); setQuery("") }}
-          placeholder="Select service type..."
+          placeholder="Select or type a service type..."
           className="flex-1 px-3 py-2.5 text-sm bg-transparent focus:outline-none"
-          readOnly={!open}
         />
         <button
           type="button"
@@ -134,20 +139,29 @@ export function ServiceTypeCombobox({
 
       {open && (
         <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-gray-100 rounded-xl shadow-lg z-20 overflow-hidden">
-          {filtered.length === 0 ? (
+          {filtered.map((type) => (
+            <button
+              key={type}
+              type="button"
+              onClick={() => selectType(type)}
+              className="w-full flex items-center justify-between px-3 py-2.5 text-sm text-left hover:bg-gray-50 transition-colors"
+            >
+              <span className={value === type ? "text-gray-900 font-medium" : "text-gray-700"}>{type}</span>
+              {value === type && <Check className="w-4 h-4 text-blue-500 shrink-0" />}
+            </button>
+          ))}
+          {showCreate && (
+            <button
+              type="button"
+              onClick={() => selectType(trimmed)}
+              className="w-full flex items-center gap-2 px-3 py-2.5 text-sm text-left text-blue-600 hover:bg-blue-50 transition-colors font-medium border-t border-gray-100"
+            >
+              <Plus className="w-4 h-4 shrink-0" />
+              Create &ldquo;{trimmed}&rdquo;
+            </button>
+          )}
+          {filtered.length === 0 && !showCreate && (
             <p className="px-3 py-2.5 text-sm text-gray-400">No match found.</p>
-          ) : (
-            filtered.map((type) => (
-              <button
-                key={type}
-                type="button"
-                onClick={() => { onChange(type); setOpen(false); setQuery("") }}
-                className="w-full flex items-center justify-between px-3 py-2.5 text-sm text-left hover:bg-gray-50 transition-colors"
-              >
-                <span className={value === type ? "text-gray-900 font-medium" : "text-gray-700"}>{type}</span>
-                {value === type && <Check className="w-4 h-4 text-blue-500 shrink-0" />}
-              </button>
-            ))
           )}
         </div>
       )}
