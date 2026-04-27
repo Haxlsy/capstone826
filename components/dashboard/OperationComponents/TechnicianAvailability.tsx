@@ -10,11 +10,37 @@ interface ActiveJob {
 }
 
 interface Technician {
-  id:           string
-  full_name:    string
-  role:         "detailer" | "installer"
-  is_available: boolean
-  active_job:   ActiveJob | null
+  id:             string
+  full_name:      string
+  role:           "detailer" | "installer"
+  is_available:   boolean
+  available_days: string[]
+  active_job:     ActiveJob | null
+}
+
+const DAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"] as const
+const ALL_DAYS: string[] = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
+
+function DayPicker({ value, onChange }: { value: string[]; onChange: (v: string[]) => void }) {
+  return (
+    <div className="flex gap-1">
+      {DAYS.map((d) => {
+        const active = value.includes(d)
+        return (
+          <button
+            key={d}
+            type="button"
+            onClick={() => onChange(active ? value.filter((x) => x !== d) : [...value, d])}
+            className={`w-9 h-9 rounded-lg text-xs font-semibold transition-colors ${
+              active ? "bg-gray-900 text-white" : "bg-gray-100 text-gray-400 hover:bg-gray-200"
+            }`}
+          >
+            {d[0]}
+          </button>
+        )
+      })}
+    </div>
+  )
 }
 
 const ROLE_LABEL: Record<Technician["role"], string> = {
@@ -60,6 +86,7 @@ export default function TechnicianAvailability() {
   const [addOpen, setAddOpen]       = useState(false)
   const [newName, setNewName]       = useState("")
   const [newRole, setNewRole]       = useState<Technician["role"]>("detailer")
+  const [newDays, setNewDays]       = useState<string[]>(ALL_DAYS)
   const [adding, setAdding]         = useState(false)
   const [addError, setAddError]     = useState<string | null>(null)
 
@@ -68,6 +95,7 @@ export default function TechnicianAvailability() {
   const [editingTech, setEditingTech] = useState<Technician | null>(null)
   const [editName, setEditName]       = useState("")
   const [editRole, setEditRole]       = useState<Technician["role"]>("detailer")
+  const [editDays, setEditDays]       = useState<string[]>(ALL_DAYS)
   const [updating, setUpdating]       = useState(false)
   const [editError, setEditError]     = useState<string | null>(null)
 
@@ -139,14 +167,15 @@ export default function TechnicianAvailability() {
       const res  = await fetch("/api/operations/technician-availability", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ full_name: newName.trim(), role: newRole }),
+        body: JSON.stringify({ full_name: newName.trim(), role: newRole, available_days: newDays }),
       })
       const json = await res.json()
       if (!res.ok) throw new Error(json?.error ?? "Failed to add technician")
-      setTechnicians((prev) => [...prev, json.technician])
+      setTechnicians((prev) => [...prev, { ...json.technician, active_job: null }])
       setAddOpen(false)
       setNewName("")
       setNewRole("detailer")
+      setNewDays(ALL_DAYS)
     } catch (err: unknown) {
       setAddError(err instanceof Error ? err.message : String(err))
     } finally {
@@ -162,11 +191,11 @@ export default function TechnicianAvailability() {
       const res  = await fetch("/api/operations/technician-availability", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id: editingTech.id, full_name: editName.trim(), role: editRole }),
+        body: JSON.stringify({ id: editingTech.id, full_name: editName.trim(), role: editRole, available_days: editDays }),
       })
       const json = await res.json()
       if (!res.ok) throw new Error(json?.error ?? "Failed to update technician")
-      setTechnicians((prev) => prev.map((t) => t.id === editingTech.id ? { ...t, full_name: editName.trim(), role: editRole } : t))
+      setTechnicians((prev) => prev.map((t) => t.id === editingTech.id ? { ...t, full_name: editName.trim(), role: editRole, available_days: editDays } : t))
       setEditOpen(false)
       setEditingTech(null)
     } catch (err: unknown) {
@@ -362,6 +391,21 @@ export default function TechnicianAvailability() {
                             </span>
                           </div>
                         )}
+                        <div className="flex gap-0.5 mt-1.5">
+                          {DAYS.map((d) => (
+                            <span
+                              key={d}
+                              title={d}
+                              className={`w-4 h-4 rounded-sm text-[8px] font-bold flex items-center justify-center ${
+                                (tech.available_days ?? ALL_DAYS).includes(d)
+                                  ? "bg-blue-100 text-blue-600"
+                                  : "bg-gray-100 text-gray-300"
+                              }`}
+                            >
+                              {d[0]}
+                            </span>
+                          ))}
+                        </div>
                       </div>
 
                       <div className="flex items-center gap-1 group/actions">
@@ -370,6 +414,7 @@ export default function TechnicianAvailability() {
                             setEditingTech(tech)
                             setEditName(tech.full_name)
                             setEditRole(tech.role)
+                            setEditDays(tech.available_days ?? ALL_DAYS)
                             setEditOpen(true)
                             setEditError(null)
                           }}
@@ -425,7 +470,7 @@ export default function TechnicianAvailability() {
       {/* Add Technician Modal */}
       {addOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-          <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm p-6">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-md p-6">
             <div className="flex items-center justify-between mb-5">
               <h3 className="text-base font-semibold text-gray-800">Add Technician</h3>
               <button onClick={() => setAddOpen(false)} className="text-gray-400 hover:text-gray-600">
@@ -455,13 +500,17 @@ export default function TechnicianAvailability() {
                   <option value="installer">Installer</option>
                 </select>
               </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-2">Working Days</label>
+                <DayPicker value={newDays} onChange={setNewDays} />
+              </div>
             </div>
 
             {addError && <p className="text-xs text-red-500 mt-3">{addError}</p>}
 
             <div className="flex gap-3 mt-5">
               <button
-                onClick={() => setAddOpen(false)}
+                onClick={() => { setAddOpen(false); setNewName(""); setNewRole("detailer"); setNewDays(ALL_DAYS); setAddError(null) }}
                 className="flex-1 py-2 text-sm font-medium text-gray-600 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors"
               >
                 Cancel
@@ -519,7 +568,7 @@ export default function TechnicianAvailability() {
       {/* Edit Technician Modal */}
       {editOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-          <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm p-6">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-md p-6">
             <div className="flex items-center justify-between mb-5">
               <h3 className="text-base font-semibold text-gray-800">Edit Technician</h3>
               <button
@@ -554,6 +603,10 @@ export default function TechnicianAvailability() {
                   <option value="detailer">Detailer</option>
                   <option value="installer">Installer</option>
                 </select>
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-2">Working Days</label>
+                <DayPicker value={editDays} onChange={setEditDays} />
               </div>
             </div>
 
