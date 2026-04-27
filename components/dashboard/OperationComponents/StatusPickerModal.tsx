@@ -2,13 +2,14 @@
 
 import {
   Clock, PlayCircle, ClipboardCheck,
-  AlertTriangle, PackageCheck,
+  AlertTriangle, PackageCheck, ShieldCheck,
 } from "lucide-react"
 
 export type JobStatus =
   | "Pending"
   | "Ongoing"
   | "For Rework"
+  | "For Inspection"
   | "For Release"
   | "Released"
   | "Delayed"
@@ -52,6 +53,15 @@ export const STATUS_OPTIONS: StatusOption[] = [
     iconBg: "bg-orange-100",
   },
   {
+    label: "For Inspection",
+    db: "For Inspection",
+    icon: <ShieldCheck className="w-4 h-4" />,
+    ring: "ring-violet-200",
+    bg: "bg-violet-50 hover:bg-violet-100",
+    text: "text-violet-700",
+    iconBg: "bg-violet-100",
+  },
+  {
     label: "For Release",
     db: "For Release",
     icon: <ClipboardCheck className="w-4 h-4" />,
@@ -81,21 +91,23 @@ export const STATUS_OPTIONS: StatusOption[] = [
 ]
 
 export const ALLOWED_NEXT: Record<JobStatus, JobStatus[]> = {
-  "Pending":    ["Ongoing", "Delayed"],
-  "Ongoing":    ["For Rework", "For Release", "Delayed"],
-  "For Rework": ["Ongoing", "For Release", "Delayed"],
-  "For Release":["Released"],
-  "Released":   [],
-  "Delayed":    ["Ongoing", "For Release"],
+  "Pending":        ["Ongoing", "Delayed"],
+  "Ongoing":        ["For Rework", "For Inspection", "For Release", "Delayed"],
+  "For Rework":     ["Ongoing", "For Inspection", "For Release", "Delayed"],
+  "For Inspection": ["For Release", "Delayed"],
+  "For Release":    ["Released"],
+  "Released":       [],
+  "Delayed":        ["Ongoing", "For Inspection", "For Release"],
 }
 
 export const STATUS_BADGE_MAP: Record<string, string> = {
-  Pending:        "bg-amber-100 text-amber-700",
-  Ongoing:        "bg-blue-100 text-blue-700",
-  "For Rework":   "bg-orange-100 text-orange-700",
-  "For Release":  "bg-emerald-100 text-emerald-700",
-  Released:       "bg-teal-100 text-teal-700",
-  Delayed:        "bg-red-100 text-red-700",
+  Pending:          "bg-amber-100 text-amber-700",
+  Ongoing:          "bg-blue-100 text-blue-700",
+  "For Rework":     "bg-orange-100 text-orange-700",
+  "For Inspection": "bg-violet-100 text-violet-700",
+  "For Release":    "bg-emerald-100 text-emerald-700",
+  Released:         "bg-teal-100 text-teal-700",
+  Delayed:          "bg-red-100 text-red-700",
 }
 
 interface Props {
