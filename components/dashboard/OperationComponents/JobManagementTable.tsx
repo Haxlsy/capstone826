@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
-import { Search, ChevronRight, Filter, X } from "lucide-react"
+import { Search, ChevronRight, Filter, X, Clock } from "lucide-react"
 import StatusPickerModal, {
   type JobStatus,
   type StatusOption,
@@ -24,10 +24,11 @@ interface JobOrder {
   scheduled:     string
   scheduledRaw:  string   // ISO — used for date-range filtering
   status:        JobStatus
+  is_overdue:    boolean
 }
 
-type TabType = "All" | "Pending" | "Ongoing" | "For Rework" | "For Release" | "Delayed" | "Cancelled"
-const TABS: TabType[] = ["All", "Pending", "Ongoing", "For Rework", "For Release", "Delayed", "Cancelled"]
+type TabType = "All" | "Pending" | "Ongoing" | "For Rework" | "For Inspection" | "For Release" | "Delayed" | "Cancelled"
+const TABS: TabType[] = ["All", "Pending", "Ongoing", "For Rework", "For Inspection", "For Release", "Delayed", "Cancelled"]
 
 function fmtDate(iso: string | null | undefined): string {
   if (!iso) return "—"
@@ -96,6 +97,7 @@ export default function JobManagementTable() {
         scheduled:     fmtDate(r.scheduled_at),
         scheduledRaw: r.scheduled_at  ?? "",
         status:       (r.status as JobStatus) ?? "Pending",
+        is_overdue:   r.is_overdue ?? false,
       }))
 
       setJobOrders(mapped)
@@ -454,14 +456,21 @@ export default function JobManagementTable() {
                         <span className="text-sm text-gray-500">{job.scheduled}</span>
                       </td>
                       <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
-                        <button
-                          onClick={() => openSinglePicker(job)}
-                          title="Click to update status"
-                          className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium cursor-pointer hover:opacity-80 active:scale-95 transition-all ${STATUS_BADGE_MAP[job.status]}`}
-                        >
-                          {job.status}
-                          <ChevronRight className="w-3 h-3 opacity-60" />
-                        </button>
+                        <div className="flex items-center gap-1.5">
+                          <button
+                            onClick={() => openSinglePicker(job)}
+                            title="Click to update status"
+                            className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium cursor-pointer hover:opacity-80 active:scale-95 transition-all ${STATUS_BADGE_MAP[job.status]}`}
+                          >
+                            {job.status}
+                            <ChevronRight className="w-3 h-3 opacity-60" />
+                          </button>
+                          {job.is_overdue && (
+                            <span title="Stage overdue — past expected completion" className="text-red-500">
+                              <Clock className="w-3.5 h-3.5" />
+                            </span>
+                          )}
+                        </div>
                       </td>
                       <td className="px-4 py-3">
                         <span className="text-[11px] text-gray-300 font-medium whitespace-nowrap">View details →</span>

@@ -22,10 +22,13 @@ interface Stage {
   status:              "pending" | "in_progress" | "done" | "for_rework"
   rework_instructions: string | null
   handoff_notes:       string | null
+  completion_notes:    string | null
   completed_at:        string | null
   messenger_sent:      boolean | null
   messenger_sent_at:   string | null
   media:               StageMedia[]
+  is_delayed:          boolean
+  expected_end_at:     string | null
 }
 
 interface HistoryEntry {
@@ -76,13 +79,14 @@ function fmtDate(iso: string | null | undefined): string {
 }
 
 const STATUS_COLORS: Record<string, string> = {
-  "Pending":     "bg-yellow-50 text-yellow-700 border-yellow-200",
-  "Ongoing":     "bg-blue-50 text-blue-700 border-blue-200",
-  "For Rework":  "bg-orange-50 text-orange-700 border-orange-200",
-  "For ": "bg-purple-50 text-purple-700 border-purple-200",
+  "Pending":        "bg-yellow-50 text-yellow-700 border-yellow-200",
+  "Ongoing":        "bg-blue-50 text-blue-700 border-blue-200",
+  "For Rework":     "bg-orange-50 text-orange-700 border-orange-200",
+  "For Inspection": "bg-violet-50 text-violet-700 border-violet-200",
   "For Release":    "bg-green-50 text-green-700 border-green-200",
-  "Delayed":     "bg-red-50 text-red-700 border-red-200",
-  "Cancelled":   "bg-gray-50 text-gray-500 border-gray-200",
+  "Released":       "bg-teal-50 text-teal-700 border-teal-200",
+  "Delayed":        "bg-red-50 text-red-700 border-red-200",
+  "Cancelled":      "bg-gray-50 text-gray-500 border-gray-200",
 }
 
 const STAGE_STATUS_PILL: Record<string, string> = {
@@ -209,12 +213,21 @@ export default function JobOrderDetail({ jobId }: { jobId: string }) {
     return acc
   }, new Map<string, { name: string; color: string; stages: Stage[] }>())
 
-  const finishStages  = job.stages.filter((s) => s.category_name === "finishing")
-  const hasFinishing  = finishStages.length > 0
+  // The last category by sequence order owns the "Passed to Operations" indicator.
+  const lastStage = job.stages.length > 0
+    ? job.stages.reduce((max, s) => (s.sequence_order ?? 0) > (max.sequence_order ?? 0) ? s : max, job.stages[0])
+    : null
+  const lastCategoryKey = lastStage
+    ? (lastStage.category_id ?? `_${lastStage.category_name}`)
+    : null
 
-  const canRelease    = job.status === "For Release"
-  const showForReleased   = hasFinishing && !["For Release", "Released"].includes(job.status)
-  const canForReleased    = showForReleased && Boolean(job.finishing_approved_at)
+  const canRelease      = job.status === "For Release"
+  // Show the "For Release" button whenever the job is awaiting operations sign-off.
+  // It's enabled once the head detailer has passed finishing to ops (For Inspection),
+  // or for jobs with no finishing stages that operations want to release directly.
+  const showForReleased = !["For Release", "Released"].includes(job.status)
+  const canForReleased  = job.status === "For Inspection" ||
+    (Boolean(job.finishing_approved_at) && !["For Release", "Released"].includes(job.status))
   const displayId     = `JO-${new Date(job.created_at).getFullYear()}-${job.id.slice(-4).toUpperCase()}`
 
   return (
@@ -314,11 +327,11 @@ export default function JobOrderDetail({ jobId }: { jobId: string }) {
         <h2 className="text-sm font-semibold text-gray-700 uppercase tracking-wide mb-4">Service Stage Progress</h2>
 
         {Array.from(categoryGroups.entries()).map(([key, group]) => {
-          const isFinishing = group.name === "finishing"
-          const extra = isFinishing
+          const isLastCategory = key === lastCategoryKey
+          const extra = isLastCategory
             ? job.finishing_approved_at
               ? `Passed to Operations · ${fmtDate(job.finishing_approved_at)}`
-              : "Awaiting Head Detailer"
+              : "Awaiting handoff to Operations"
             : null
           return (
             <div key={key} className="mb-6 last:mb-0">
@@ -326,7 +339,7 @@ export default function JobOrderDetail({ jobId }: { jobId: string }) {
                 <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide">{group.name} stages</p>
                 {extra && (
                   <span className={`text-[11px] font-medium px-2 py-0.5 rounded-full ${
-                    job.finishing_approved_at && isFinishing
+                    job.finishing_approved_at
                       ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
                       : "bg-amber-50 text-amber-600 border border-amber-200"
                   }`}>
@@ -359,10 +372,20 @@ export default function JobOrderDetail({ jobId }: { jobId: string }) {
                           <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${STAGE_STATUS_PILL[stage.status]}`}>
                             {stage.status.replace("_", " ")}
                           </span>
+                          {stage.is_delayed && (
+                            <span className="text-xs px-2 py-0.5 rounded-full font-medium bg-red-100 text-red-600 flex items-center gap-1">
+                              <Clock className="w-3 h-3" /> Delayed
+                            </span>
+                          )}
                           {stage.completed_at && (
                             <span className="text-xs text-gray-400">{fmtDate(stage.completed_at)}</span>
                           )}
                         </div>
+                        {stage.status !== "done" && stage.expected_end_at && (
+                          <p className={`text-xs mt-0.5 ${stage.is_delayed ? "text-red-400" : "text-gray-400"}`}>
+                            Expected by {fmtDate(stage.expected_end_at)}
+                          </p>
+                        )}
 
                         {/* Messenger send status indicator (done stages only) */}
                         {stage.status === "done" && (
@@ -392,6 +415,12 @@ export default function JobOrderDetail({ jobId }: { jobId: string }) {
                         {stage.rework_instructions && (
                           <p className="text-xs text-orange-600 mt-1">
                             Rework: {stage.rework_instructions}
+                          </p>
+                        )}
+
+                        {stage.completion_notes && (
+                          <p className="text-xs text-gray-500 mt-1 italic">
+                            Notes: {stage.completion_notes}
                           </p>
                         )}
 
