@@ -3,6 +3,31 @@ import { cookies } from "next/headers"
 import { createClient } from "@/lib/supabase/server"
 import { createAdminClient } from "@/lib/supabase/admin"
 
+function addWorkingMins(from: Date, mins: number): Date {
+  const WORK_START = 10 * 60 // 10 AM
+  const WORK_END   = 20 * 60 // 8 PM
+  let current   = new Date(from)
+  let remaining = mins
+  while (remaining > 0) {
+    const nowMins    = current.getHours() * 60 + current.getMinutes()
+    const availToday = WORK_END - nowMins
+    if (availToday <= 0) {
+      current.setDate(current.getDate() + 1)
+      current.setHours(10, 0, 0, 0)
+      continue
+    }
+    if (remaining <= availToday) {
+      current = new Date(current.getTime() + remaining * 60_000)
+      remaining = 0
+    } else {
+      remaining -= availToday
+      current.setDate(current.getDate() + 1)
+      current.setHours(10, 0, 0, 0)
+    }
+  }
+  return current
+}
+
 export async function GET(
   _request: Request,
   { params }: { params: Promise<{ id: string }> }
@@ -40,17 +65,49 @@ export async function GET(
       .eq("job_order_id", id)
       .order("created_at", { ascending: true })
 
-    const { data: stages } = await supabase
+    // Two-step approach: avoid nested FK embedding which silently fails in PostgREST
+    const { data: stages, error: stagesError } = await supabase
       .from("job_stage_progress")
       .select(
-        `id, status, rework_instructions, handoff_notes, completed_at,
+        `id, status, rework_instructions, handoff_notes, completion_notes, completed_at,
          messenger_sent, messenger_sent_at,
-         custom_name, custom_stage_category, custom_sequence_order,
-         stage:service_stage_id(name, sequence_order, workflow_category(id, name, technician_role, display_color)),
+         custom_name, custom_sequence_order, stage_duration_mins,
+         service_stage_id,
          media:stage_media(id, file_url, media_type)`
       )
       .eq("job_order_id", id)
       .order("custom_sequence_order")
+
+    if (stagesError) {
+      console.error("[job-orders detail] stages query failed:", stagesError.message)
+      return NextResponse.json({ error: `Stages query failed: ${stagesError.message}` }, { status: 500 })
+    }
+
+    // Fetch service_stage info separately
+    const ssIds = [...new Set((stages ?? []).map((s: any) => s.service_stage_id as string).filter(Boolean))]
+    type SSRow = { id: string; name: string; sequence_order: number; category_id: string | null; stage_duration_mins: number }
+    let ssRows: SSRow[] = []
+    if (ssIds.length > 0) {
+      const { data } = await supabase
+        .from("service_stage")
+        .select("id, name, sequence_order, category_id, stage_duration_mins")
+        .in("id", ssIds)
+      ssRows = (data ?? []) as SSRow[]
+    }
+    const ssMap = new Map(ssRows.map((r) => [r.id, r]))
+
+    // Fetch workflow_category info separately
+    const catIds = [...new Set(ssRows.map((r) => r.category_id).filter(Boolean) as string[])]
+    type CatRow = { id: string; name: string; display_color: string; technician_role: string }
+    let catRows: CatRow[] = []
+    if (catIds.length > 0) {
+      const { data } = await supabase
+        .from("workflow_category")
+        .select("id, name, display_color, technician_role")
+        .in("id", catIds)
+      catRows = (data ?? []) as CatRow[]
+    }
+    const catMap = new Map(catRows.map((r) => [r.id, r]))
 
     const j = job as any
     const headDetailer  = (team ?? []).find((t: any) => t.role_in_job === "head_detailer")
@@ -85,27 +142,58 @@ export async function GET(
           created_at: h.created_at,
           changed_by: h.changed_by?.full_name ?? "System",
         })),
-        stages: (stages ?? []).map((s: any) => {
-          const stageRow = s.stage
-          const cat = Array.isArray(stageRow?.workflow_category)
-            ? stageRow.workflow_category[0]
-            : stageRow?.workflow_category
-          return {
-            id:                   s.id,
-            name:                 s.custom_name ?? stageRow?.name ?? "—",
-            sequence_order:       s.custom_sequence_order ?? stageRow?.sequence_order,
-            category_id:          cat?.id    ?? null,
-            category_name:        cat?.name  ?? s.custom_stage_category ?? null,
-            category_color:       cat?.display_color ?? null,
-            status:               s.status,
-            rework_instructions:  s.rework_instructions,
-            handoff_notes:        s.handoff_notes,
-            completed_at:         s.completed_at,
-            messenger_sent:       s.messenger_sent ?? null,
-            messenger_sent_at:    s.messenger_sent_at ?? null,
-            media:                s.media ?? [],
+        stages: (() => {
+          // Build mapped stages first
+          const mapped = (stages ?? []).map((s: any) => {
+            const ss  = s.service_stage_id ? ssMap.get(s.service_stage_id) : null
+            const cat = ss?.category_id ? catMap.get(ss.category_id) : null
+            return {
+              id:                   s.id,
+              service_stage_id:     s.service_stage_id ?? null,
+              name:                 s.custom_name ?? ss?.name ?? "—",
+              sequence_order:       s.custom_sequence_order ?? ss?.sequence_order ?? 0,
+              category_id:          cat?.id          ?? null,
+              category_name:        cat?.name        ?? null,
+              category_color:       cat?.display_color ?? null,
+              status:               s.status,
+              rework_instructions:  s.rework_instructions,
+              handoff_notes:        s.handoff_notes,
+              completion_notes:     s.completion_notes ?? null,
+              completed_at:         s.completed_at,
+              messenger_sent:       s.messenger_sent ?? null,
+              messenger_sent_at:    s.messenger_sent_at ?? null,
+              media:                s.media ?? [],
+              is_delayed:           false,
+              expected_end_at:      null as string | null,
+              _raw_duration_mins:   (s.stage_duration_mins as number | null) ?? null,
+            }
+          })
+
+          // Compute delay: sort by sequence_order, accumulate durations using working hours
+          if (j.actual_start_at) {
+            const sorted = [...mapped].sort((a, b) => a.sequence_order - b.sequence_order)
+            const nowMs = Date.now()
+            let cumulativeMins = 0
+            const jobStart = new Date(j.actual_start_at)
+            for (const stage of sorted) {
+              // Prefer per-job override duration stored on job_stage_progress, fall back to service_stage
+              const overrideDuration = (stage as any)._raw_duration_mins as number | null
+              const serviceDuration  = stage.service_stage_id
+                ? (ssMap.get(stage.service_stage_id)?.stage_duration_mins ?? 0)
+                : 0
+              const durationMins = overrideDuration != null ? overrideDuration : serviceDuration
+              cumulativeMins += durationMins
+              if (durationMins > 0) {
+                const expectedEnd = addWorkingMins(jobStart, cumulativeMins)
+                stage.expected_end_at = expectedEnd.toISOString()
+                stage.is_delayed = stage.status !== "done" && nowMs > expectedEnd.getTime()
+              }
+            }
           }
-        }),
+
+          // Strip internal fields before returning
+          return mapped.map(({ service_stage_id: _ss, _raw_duration_mins: _rd, ...rest }) => rest)
+        })(),
       },
     })
   } catch (err: any) {

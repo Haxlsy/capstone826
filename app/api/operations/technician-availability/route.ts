@@ -11,7 +11,7 @@ export async function GET() {
     const [{ data, error }, { data: assignments }] = await Promise.all([
       supabase
         .from("technician")
-        .select("id, full_name, role, is_available, is_archived")
+        .select("id, full_name, role, is_available, is_archived, available_days")
         .eq("is_archived", false)
         .order("role")
         .order("full_name"),
@@ -61,11 +61,12 @@ export async function GET() {
     }
 
     const technicians = (data ?? []).map((t: any) => ({
-      id:           t.id,
-      full_name:    t.full_name,
-      role:         t.role,
-      is_available: t.is_available,
-      active_job:   ongoingMap.get(t.id) ?? null,
+      id:             t.id,
+      full_name:      t.full_name,
+      role:           t.role,
+      is_available:   t.is_available,
+      available_days: (t.available_days as string[]) ?? ["Mon","Tue","Wed","Thu","Fri","Sat","Sun"],
+      active_job:     ongoingMap.get(t.id) ?? null,
     }))
 
     return NextResponse.json({ technicians })
@@ -77,7 +78,7 @@ export async function GET() {
 // PATCH — update a technician's details (availability, name, role, or archive)
 export async function PATCH(request: Request) {
   try {
-    const { id, is_available, full_name, role, is_archived } = await request.json()
+    const { id, is_available, full_name, role, is_archived, available_days } = await request.json()
 
     if (!id) {
       return NextResponse.json({ error: "id is required." }, { status: 400 })
@@ -90,6 +91,7 @@ export async function PATCH(request: Request) {
     if (typeof is_archived  === "boolean") updates.is_archived  = is_archived
     if (full_name?.trim())                updates.full_name    = full_name.trim()
     if (role === "detailer" || role === "installer") updates.role = role
+    if (Array.isArray(available_days))    updates.available_days = available_days
 
     if (Object.keys(updates).length === 0) {
       return NextResponse.json({ error: "No valid fields provided for update." }, { status: 400 })
@@ -108,10 +110,12 @@ export async function PATCH(request: Request) {
   }
 }
 
+const ALL_DAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
+
 // POST — create a new technician (detailer or installer)
 export async function POST(request: Request) {
   try {
-    const { full_name, role } = await request.json()
+    const { full_name, role, available_days } = await request.json()
 
     if (!full_name?.trim()) {
       return NextResponse.json({ error: "full_name is required." }, { status: 400 })
@@ -123,8 +127,13 @@ export async function POST(request: Request) {
     const supabase = createAdminClient()
     const { data, error } = await supabase
       .from("technician")
-      .insert({ full_name: full_name.trim(), role, is_available: true })
-      .select("id, full_name, role, is_available")
+      .insert({
+        full_name:      full_name.trim(),
+        role,
+        is_available:   true,
+        available_days: Array.isArray(available_days) ? available_days : ALL_DAYS,
+      })
+      .select("id, full_name, role, is_available, available_days")
       .single()
 
     if (error) return NextResponse.json({ error: error.message }, { status: 500 })
