@@ -206,6 +206,7 @@ export async function POST(request: Request) {
               .update({
                 custom_name:           cs.custom_name,
                 custom_sequence_order: cs.custom_sequence_order,
+                stage_duration_mins:   cs.stage_duration_mins ?? null,
               })
               .eq("job_order_id", job.id)
               .eq("service_stage_id", cs.service_stage_id)
@@ -222,6 +223,7 @@ export async function POST(request: Request) {
             custom_name:           cs.custom_name,
             custom_stage_category: cs.custom_stage_category,
             custom_sequence_order: cs.custom_sequence_order,
+            stage_duration_mins:   cs.stage_duration_mins ?? null,
           }))
         )
       }
