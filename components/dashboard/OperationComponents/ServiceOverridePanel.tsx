@@ -4,13 +4,14 @@ import { useMemo, useRef, useState } from "react"
 import { Layers, RotateCcw, GripVertical, Plus, X, ChevronDown } from "lucide-react"
 
 export interface Stage {
-  id:             string
-  name:           string
-  category_id:    string | null
-  category_name:  string | null
-  category_color: string | null
-  sequence_order: number
-  isNew?:         boolean
+  id:                  string
+  name:                string
+  category_id:         string | null
+  category_name:       string | null
+  category_color:      string | null
+  sequence_order:      number
+  stage_duration_mins: number
+  isNew?:              boolean
 }
 
 export interface ServiceInfo {
@@ -60,23 +61,25 @@ function StageList({
   onDragEnd,
   onDrop,
   onRename,
+  onUpdateDuration,
   onRemove,
   onAdd,
 }: {
-  stages:       StageWithIndex[]
-  categoryId:   string | null
-  dragging:     boolean
-  dragItemRef:  React.MutableRefObject<number | null>
-  accentDrag:   string
-  accentFocus:  string
-  accentAdd:    string
-  onDragStart:  (globalIndex: number) => void
-  onDragEnter:  (globalIndex: number) => void
-  onDragEnd:    () => void
-  onDrop:       (categoryId: string | null) => void
-  onRename:     (id: string, name: string) => void
-  onRemove:     (id: string) => void
-  onAdd:        (categoryId: string | null) => void
+  stages:           StageWithIndex[]
+  categoryId:       string | null
+  dragging:         boolean
+  dragItemRef:      React.MutableRefObject<number | null>
+  accentDrag:       string
+  accentFocus:      string
+  accentAdd:        string
+  onDragStart:      (globalIndex: number) => void
+  onDragEnter:      (globalIndex: number) => void
+  onDragEnd:        () => void
+  onDrop:           (categoryId: string | null) => void
+  onRename:         (id: string, name: string) => void
+  onUpdateDuration: (id: string, mins: number) => void
+  onRemove:         (id: string) => void
+  onAdd:            (categoryId: string | null) => void
 }) {
   return (
     <div
@@ -84,53 +87,86 @@ function StageList({
       onDragOver={(e) => e.preventDefault()}
       onDrop={() => onDrop(categoryId)}
     >
-      {stages.map((stage, localIdx) => (
-        <div
-          key={stage.id}
-          draggable={!stage.isNew}
-          onDragStart={() => !stage.isNew && onDragStart(stage.globalIndex)}
-          onDragEnter={() => onDragEnter(stage.globalIndex)}
-          onDragEnd={onDragEnd}
-          className={`flex items-center gap-2 rounded-lg border px-2 py-1.5 transition-colors ${
-            dragging && dragItemRef.current === stage.globalIndex
-              ? `${accentDrag} opacity-50`
-              : stage.isNew
-                ? "border-dashed border-gray-300 bg-white"
-                : "border-gray-100 bg-gray-50 hover:border-gray-200"
-          }`}
-        >
-          {stage.isNew ? (
-            <span className="w-3.5 shrink-0" />
-          ) : (
-            <GripVertical className="w-3.5 h-3.5 text-gray-300 shrink-0 cursor-grab active:cursor-grabbing" />
-          )}
+      {stages.map((stage, localIdx) => {
+        const durMins = stage.stage_duration_mins ?? 0
+        const durHH   = Math.floor(durMins / 60)
+        const durMM   = durMins % 60
+        return (
+          <div
+            key={stage.id}
+            draggable={!stage.isNew}
+            onDragStart={() => !stage.isNew && onDragStart(stage.globalIndex)}
+            onDragEnter={() => onDragEnter(stage.globalIndex)}
+            onDragEnd={onDragEnd}
+            className={`flex items-center gap-2 rounded-lg border px-2 py-1.5 transition-colors ${
+              dragging && dragItemRef.current === stage.globalIndex
+                ? `${accentDrag} opacity-50`
+                : stage.isNew
+                  ? "border-dashed border-gray-300 bg-white"
+                  : "border-gray-100 bg-gray-50 hover:border-gray-200"
+            }`}
+          >
+            {stage.isNew ? (
+              <span className="w-3.5 shrink-0" />
+            ) : (
+              <GripVertical className="w-3.5 h-3.5 text-gray-300 shrink-0 cursor-grab active:cursor-grabbing" />
+            )}
 
-          <span className="text-[10px] font-medium text-gray-400 w-4 shrink-0">
-            {localIdx + 1}.
-          </span>
+            <span className="text-[10px] font-medium text-gray-400 w-4 shrink-0">
+              {localIdx + 1}.
+            </span>
 
-          <input
-            type="text"
-            value={stage.name}
-            onChange={(e) => onRename(stage.id, e.target.value)}
-            placeholder={stage.isNew ? "Stage name" : undefined}
-            aria-label={`${categoryId ?? "unknown"} stage ${localIdx + 1} name`}
-            autoFocus={stage.isNew && stage.name === ""}
-            className={`flex-1 min-w-0 bg-transparent text-xs text-gray-700 focus:outline-none border-b border-transparent ${accentFocus} py-0.5 placeholder:text-gray-300`}
-          />
+            <input
+              type="text"
+              value={stage.name}
+              onChange={(e) => onRename(stage.id, e.target.value)}
+              placeholder={stage.isNew ? "Stage name" : undefined}
+              aria-label={`${categoryId ?? "unknown"} stage ${localIdx + 1} name`}
+              autoFocus={stage.isNew && stage.name === ""}
+              className={`flex-1 min-w-0 bg-transparent text-xs text-gray-700 focus:outline-none border-b border-transparent ${accentFocus} py-0.5 placeholder:text-gray-300`}
+            />
 
-          {stage.isNew && (
-            <button
-              type="button"
-              onClick={() => onRemove(stage.id)}
-              aria-label="Remove stage"
-              className="shrink-0 text-gray-300 hover:text-red-400 transition-colors"
-            >
-              <X className="w-3.5 h-3.5" />
-            </button>
-          )}
-        </div>
-      ))}
+            {/* Per-stage HH:MM duration */}
+            <div className="flex items-center border border-gray-200 rounded overflow-hidden shrink-0">
+              <input
+                type="number"
+                min={0}
+                value={durHH}
+                onChange={(e) => {
+                  const hh = Math.max(0, parseInt(e.target.value, 10) || 0)
+                  onUpdateDuration(stage.id, hh * 60 + durMM)
+                }}
+                aria-label={`Stage ${localIdx + 1} hours`}
+                className="w-8 px-1 py-0.5 text-[10px] text-center bg-white focus:outline-none text-gray-600"
+              />
+              <span className="text-[10px] text-gray-400">:</span>
+              <input
+                type="number"
+                min={0}
+                max={59}
+                value={durMM}
+                onChange={(e) => {
+                  const mm = Math.min(59, Math.max(0, parseInt(e.target.value, 10) || 0))
+                  onUpdateDuration(stage.id, durHH * 60 + mm)
+                }}
+                aria-label={`Stage ${localIdx + 1} minutes`}
+                className="w-8 px-1 py-0.5 text-[10px] text-center bg-white focus:outline-none text-gray-600"
+              />
+            </div>
+
+            {stage.isNew && (
+              <button
+                type="button"
+                onClick={() => onRemove(stage.id)}
+                aria-label="Remove stage"
+                className="shrink-0 text-gray-300 hover:text-red-400 transition-colors"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            )}
+          </div>
+        )
+      })}
 
       <button
         type="button"
@@ -186,24 +222,13 @@ export default function ServiceOverridePanel({
     })
   }, [primaryService, customName, customDescription, customDurationMins, customStages, originalStages])
 
-  // ── Derived HH:MM from current duration ────────────────────────────
-  const effectiveMins = customDurationMins ?? (primaryService?.estimated_duration_mins ?? 0)
-  const displayHrs    = Math.floor(effectiveMins / 60)
-  const displayMins   = effectiveMins % 60
-
-  function handleHrsChange(raw: string) {
-    const hrs = parseInt(raw, 10)
-    if (isNaN(hrs) || hrs < 0) return
-    const total = hrs * 60 + displayMins
-    onDurationChange(total === 0 ? null : total)
-  }
-
-  function handleMinsChange(raw: string) {
-    const mins = parseInt(raw, 10)
-    if (isNaN(mins) || mins < 0 || mins > 59) return
-    const total = displayHrs * 60 + mins
-    onDurationChange(total === 0 ? null : total)
-  }
+  // ── Total duration derived from stage durations ────────────────────
+  const totalDurationMins = useMemo(
+    () => customStages.reduce((acc, s) => acc + (s.stage_duration_mins ?? 0), 0),
+    [customStages]
+  )
+  const displayHrs = Math.floor(totalDurationMins / 60)
+  const displayMins = totalDurationMins % 60
 
   // ── Drag-and-drop (within same category only) ─────────────────────
   function handleDragStart(globalIndex: number) {
@@ -247,15 +272,23 @@ export default function ServiceOverridePanel({
   function addStage(categoryId: string | null) {
     const template = customStages.find((s) => s.category_id === categoryId)
     const newStage: Stage = {
-      id:             `new-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
-      name:           "",
-      category_id:    categoryId,
-      category_name:  template?.category_name ?? null,
-      category_color: template?.category_color ?? null,
-      sequence_order: customStages.length + 1,
-      isNew:          true,
+      id:                  `new-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+      name:                "",
+      category_id:         categoryId,
+      category_name:       template?.category_name ?? null,
+      category_color:      template?.category_color ?? null,
+      sequence_order:      customStages.length + 1,
+      stage_duration_mins: 0,
+      isNew:               true,
     }
     onStagesChange([...customStages, newStage])
+  }
+
+  function updateStageDuration(id: string, mins: number) {
+    const next = customStages.map((s) => s.id === id ? { ...s, stage_duration_mins: mins } : s)
+    onStagesChange(next)
+    const total = next.reduce((acc, s) => acc + (s.stage_duration_mins ?? 0), 0)
+    onDurationChange(total === 0 ? null : total)
   }
 
   // Derive unique category sections in the order they first appear
@@ -396,34 +429,15 @@ export default function ServiceOverridePanel({
           </div>
 
           <div className="flex flex-col gap-1">
-            <label className={LABEL_CLS}>
-              Estimated Duration <span className="text-red-500">*</span>
-            </label>
-            <div className="flex items-center gap-2">
-              <div className="flex items-center border border-gray-200 rounded-lg overflow-hidden">
-                <input
-                  type="number"
-                  min={0}
-                  value={displayHrs}
-                  onChange={(e) => handleHrsChange(e.target.value)}
-                  aria-label="Estimated duration hours"
-                  className="w-14 px-2 py-1.5 text-sm text-center text-gray-700 bg-white focus:outline-none"
-                />
-                <span className="text-gray-400 text-sm font-medium px-0.5">:</span>
-                <input
-                  type="number"
-                  min={0}
-                  max={59}
-                  value={displayMins}
-                  onChange={(e) => handleMinsChange(e.target.value)}
-                  aria-label="Estimated duration minutes"
-                  className="w-14 px-2 py-1.5 text-sm text-center text-gray-700 bg-white focus:outline-none"
-                />
-              </div>
-              <span className="text-xs text-gray-400">HH : MM</span>
+            <p className={LABEL_CLS}>Estimated Duration</p>
+            <div className="flex items-center gap-2 px-2.5 py-1.5 border border-gray-200 rounded-lg bg-gray-50">
+              <span className="text-sm font-medium text-gray-700 tabular-nums">
+                {String(displayHrs).padStart(2, "0")}:{String(displayMins).padStart(2, "0")}
+              </span>
+              <span className="text-[10px] text-gray-400">HH : MM</span>
             </div>
             <p className="text-[10px] text-gray-400">
-              Used to automatically calculate the job timeline.
+              Sum of all stage durations. Set per stage below.
             </p>
           </div>
             </>
@@ -473,6 +487,7 @@ export default function ServiceOverridePanel({
                     onDragEnd={() => setDragging(false)}
                     onDrop={handleDrop}
                     onRename={renameStage}
+                    onUpdateDuration={updateStageDuration}
                     onRemove={removeStage}
                     onAdd={addStage}
                   />
