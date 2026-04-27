@@ -11,7 +11,6 @@ import {
   makeId,
   minsToHHMM,
   sumStageDurations,
-  type ServiceType,
   type WorkflowCategory,
   type CategorySection,
 } from "./service-form-helpers"
@@ -24,11 +23,12 @@ interface EditServiceModalProps {
 }
 
 export default function EditServiceModal({ serviceId, open, onClose, onSuccess }: EditServiceModalProps) {
-  const [serviceType,  setServiceType]  = useState<ServiceType | "">("")
+  const [serviceType,  setServiceType]  = useState("")
   const [serviceName,  setServiceName]  = useState("")
   const [description,  setDescription]  = useState("")
 
   const [globalCategories, setGlobalCategories] = useState<WorkflowCategory[]>([])
+  const [serviceTypes, setServiceTypes]         = useState<string[]>([])
   const [sections, setSections]                 = useState<CategorySection[]>([])
 
   const [editingId,   setEditingId]   = useState<string | null>(null)
@@ -57,16 +57,18 @@ export default function EditServiceModal({ serviceId, open, onClose, onSuccess }
     setEditingId(null)
     setShowCreateForm(false)
 
-    // Fetch global categories and service data in parallel
+    // Fetch global categories, service types, and service data in parallel
     Promise.all([
       fetch("/api/admin/workflow-categories").then((r) => r.json()),
+      fetch("/api/admin/service-types").then((r) => r.json()),
       fetch(`/api/operations/services/${serviceId}`).then((r) => r.json()),
     ])
-      .then(([catJson, svcJson]) => {
+      .then(([catJson, typesJson, svcJson]) => {
         if (svcJson.error) { setFetchError(svcJson.error); return }
 
         const allCategories: WorkflowCategory[] = catJson.categories ?? []
         setGlobalCategories(allCategories)
+        if (Array.isArray(typesJson.types)) setServiceTypes(typesJson.types)
 
         const svc = svcJson.service
         setServiceType(svc.service_type ?? "")
@@ -341,6 +343,7 @@ export default function EditServiceModal({ serviceId, open, onClose, onSuccess }
               </label>
               <ServiceTypeCombobox
                 value={serviceType}
+                serviceTypes={serviceTypes}
                 onChange={(v) => { setServiceType(v); clearError("serviceType") }}
                 error={errors.serviceType}
               />
