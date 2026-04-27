@@ -3,6 +3,31 @@ import { cookies } from "next/headers"
 import { createClient } from "@/lib/supabase/server"
 import { createAdminClient } from "@/lib/supabase/admin"
 
+function addWorkingMins(from: Date, mins: number): Date {
+  const WORK_START = 10 * 60 // 10 AM
+  const WORK_END   = 20 * 60 // 8 PM
+  let current   = new Date(from)
+  let remaining = mins
+  while (remaining > 0) {
+    const nowMins    = current.getHours() * 60 + current.getMinutes()
+    const availToday = WORK_END - nowMins
+    if (availToday <= 0) {
+      current.setDate(current.getDate() + 1)
+      current.setHours(10, 0, 0, 0)
+      continue
+    }
+    if (remaining <= availToday) {
+      current = new Date(current.getTime() + remaining * 60_000)
+      remaining = 0
+    } else {
+      remaining -= availToday
+      current.setDate(current.getDate() + 1)
+      current.setHours(10, 0, 0, 0)
+    }
+  }
+  return current
+}
+
 function fmtDate(iso: string | null): string {
   if (!iso) return "—"
   return new Date(iso).toLocaleString("en-US", {
@@ -64,23 +89,49 @@ export async function GET(
     // Step 1: raw job_stage_progress rows
     const { data: stageRows } = await admin
       .from("job_stage_progress")
-      .select("id, status, rework_instructions, handoff_notes, completed_at, service_stage_id, media:stage_media(id, file_url, media_type)")
+      .select("id, status, rework_instructions, handoff_notes, completion_notes, completed_at, stage_duration_mins, service_stage_id, media:stage_media(id, file_url, media_type)")
       .eq("job_order_id", id)
 
-    // Step 2: resolve service_stage details in a single IN query
+    // Step 2: resolve service_stage details + category names via explicit two-step lookup.
+    // FK embedding (workflow_category(name)) silently returns null in this codebase.
     const ssIds = (stageRows ?? [])
       .map((s: any) => s.service_stage_id as string | null)
       .filter(Boolean) as string[]
 
-    type SSInfo = { name: string; sequence_order: number; category: string }
+    type SSInfo = { name: string; sequence_order: number; category: string; category_role: string; category_color: string; stage_duration_mins: number }
     const ssMap: Record<string, SSInfo> = {}
     if (ssIds.length > 0) {
       const { data: ssRows } = await admin
         .from("service_stage")
-        .select("id, name, sequence_order, category")
+        .select("id, name, sequence_order, stage_duration_mins, category_id")
         .in("id", ssIds)
+
+      // Step 2b: resolve category name + technician_role + display_color from workflow_category
+      const catIds = [...new Set(
+        (ssRows ?? []).map((s: any) => s.category_id as string | null).filter(Boolean)
+      )] as string[]
+
+      const catInfoMap: Map<string, { name: string; role: string; color: string }> = new Map()
+      if (catIds.length > 0) {
+        const { data: catRows } = await admin
+          .from("workflow_category")
+          .select("id, name, technician_role, display_color")
+          .in("id", catIds)
+        for (const c of (catRows ?? []) as any[]) {
+          catInfoMap.set(c.id as string, { name: c.name as string, role: c.technician_role as string, color: c.display_color as string ?? "blue" })
+        }
+      }
+
       for (const ss of (ssRows ?? []) as any[]) {
-        ssMap[ss.id] = { name: ss.name, sequence_order: ss.sequence_order, category: ss.category }
+        const catInfo = catInfoMap.get(ss.category_id)
+        ssMap[ss.id] = {
+          name:                ss.name,
+          sequence_order:      ss.sequence_order,
+          stage_duration_mins: (ss as any).stage_duration_mins ?? 0,
+          category:            catInfo?.name  ?? "preparation",
+          category_role:       catInfo?.role  ?? "detailer",
+          category_color:      catInfo?.color ?? "blue",
+        }
       }
     }
 
@@ -100,10 +151,68 @@ export async function GET(
       .filter((t: any) => t.role_in_job === "installer")
       .map((t: any) => (t.technician as any)?.full_name ?? "Unknown")
 
-    const prepStages    = stages.filter((s: any) => s.stageInfo?.category === "preparation")
-    const installStages = stages.filter((s: any) => s.stageInfo?.category === "installation")
-    const lastPrep      = prepStages.filter((s: any) => s.status === "done").at(-1)
-    const handoffNotes  = (lastPrep as any)?.handoff_notes ?? null
+    // Role-based stage grouping — works for any category names.
+    const stagesWithInfo = stages.filter((s: any) => s.stageInfo !== null)
+    const installerStages = stagesWithInfo.filter((s: any) => s.stageInfo.category_role === "installer")
+    const detailerStages  = stagesWithInfo.filter((s: any) => s.stageInfo.category_role === "detailer")
+
+    // Pre-installation detailer stages = detailer stages that come before any installer stage (by sequence_order).
+    const minInstallerSeq = installerStages.length > 0
+      ? Math.min(...installerStages.map((s: any) => s.stageInfo.sequence_order as number))
+      : 999999
+    const preInstallDetailerStages = detailerStages.filter(
+      (s: any) => s.stageInfo.sequence_order < minInstallerSeq
+    )
+
+    // preparation_finished: all pre-install detailer stages done (gate for head installer entry).
+    const preparation_finished =
+      installerStages.length === 0 ||
+      preInstallDetailerStages.length === 0 ||
+      preInstallDetailerStages.every((s: any) => s.status === "done")
+
+    // Per-stage unlock: a stage at seq N with role R is unlocked when all OTHER-role stages
+    // with seq < N are done. This correctly handles any interleaved role ordering.
+    const computedStages = stagesWithInfo.map((s: any) => {
+      const myRole = s.stageInfo.category_role as string
+      const otherRolePreceding = stagesWithInfo.filter((o: any) =>
+        (o.stageInfo.category_role as string) !== myRole &&
+        (o.stageInfo.sequence_order as number) < (s.stageInfo.sequence_order as number)
+      )
+      const is_unlocked = otherRolePreceding.every((o: any) => o.status === "done")
+      return { ...s, is_unlocked }
+    })
+
+    // Which role owns the last stage by sequence order? That role gets "Pass to Operations".
+    const sortedBySeq = [...stagesWithInfo].sort((a: any, b: any) =>
+      (b.stageInfo.sequence_order as number) - (a.stageInfo.sequence_order as number)
+    )
+    const last_stage_role: string = (sortedBySeq[0]?.stageInfo.category_role as string) ?? "detailer"
+
+    // handoff notes from the last done detailer stage (kept for backward compat)
+    const lastPrep     = preInstallDetailerStages.filter((s: any) => s.status === "done").at(-1)
+    const handoffNotes = (lastPrep as any)?.handoff_notes ?? null
+
+    // Build a lookup from jsp id → computed is_unlocked
+    const unlockedMap = new Map(computedStages.map((s: any) => [s.id as string, s.is_unlocked as boolean]))
+
+    // Compute expected_end_at per stage using working-hours-aware accumulation
+    const expectedEndMap = new Map<string, string>()
+    if (j.actual_start_at) {
+      const sorted = [...stagesWithInfo].sort(
+        (a: any, b: any) => (a.stageInfo.sequence_order as number) - (b.stageInfo.sequence_order as number)
+      )
+      const jobStart = new Date(j.actual_start_at as string)
+      let cumulativeMins = 0
+      for (const s of sorted as any[]) {
+        const overrideDuration = s.stage_duration_mins as number | null
+        const serviceDuration  = s.stageInfo?.stage_duration_mins ?? 0
+        const durationMins     = overrideDuration != null ? overrideDuration : serviceDuration
+        cumulativeMins += durationMins
+        if (durationMins > 0) {
+          expectedEndMap.set(s.id as string, addWorkingMins(jobStart, cumulativeMins).toISOString())
+        }
+      }
+    }
 
     return NextResponse.json({
       job: {
@@ -117,8 +226,8 @@ export async function GET(
         scheduled_start:       fmtDate(j.scheduled_at),
         status:                j.status,
         handoff_notes:         handoffNotes,
-        preparation_finished:  prepStages.length > 0 && prepStages.every((s: any) => s.status === "done"),
-        installation_finished: installStages.length > 0 && installStages.every((s: any) => s.status === "done"),
+        preparation_finished,
+        last_stage_role,
         finishing_approved_at: j.finishing_approved_at ?? null,
         detailers,
         installers,
@@ -129,12 +238,18 @@ export async function GET(
         })),
         stages: stages.map((s: any) => ({
           id:                   s.id,
-          name:                 s.stageInfo?.name           ?? "Stage",
-          order:                s.stageInfo?.sequence_order ?? 0,
-          category:             s.stageInfo?.category       ?? "preparation",
+          name:                 s.stageInfo?.name                ?? "Stage",
+          order:                s.stageInfo?.sequence_order      ?? 0,
+          category:             s.stageInfo?.category            ?? "preparation",
+          category_role:        s.stageInfo?.category_role       ?? "detailer",
+          category_color:       s.stageInfo?.category_color ?? null,
+          stage_duration_mins:  (s.stage_duration_mins as number | null) ?? s.stageInfo?.stage_duration_mins ?? 0,
+          expected_end_at:      expectedEndMap.get(s.id as string) ?? null,
+          is_unlocked:          unlockedMap.get(s.id as string) ?? true,
           status:               s.status,
-          rework_instructions:  s.rework_instructions ?? null,
-          handoff_notes:        s.handoff_notes       ?? null,
+          rework_instructions:  s.rework_instructions  ?? null,
+          handoff_notes:        s.handoff_notes         ?? null,
+          completion_notes:     s.completion_notes      ?? null,
           completed_at:         s.completed_at ? fmtDate(s.completed_at) : null,
           media:                (s.media ?? []).map((m: any) => ({
             id:   m.id,
@@ -160,7 +275,7 @@ export async function PATCH(
   try {
     const { id: jobId } = await params
     const body          = await request.json()
-    const { action, stage_id, handoff_notes, media_url, media_type, stage_ids, rework_instructions } = body
+    const { action, stage_id, handoff_notes, completion_notes, media_url, media_type, stage_ids, rework_instructions } = body
 
     const cookieStore = await cookies()
     const supabase    = createClient(cookieStore)
@@ -198,10 +313,11 @@ export async function PATCH(
       await admin
         .from("job_stage_progress")
         .update({
-          status:          "done",
-          completed_at:    new Date().toISOString(),
-          completed_by_id: user.id,
-          handoff_notes:   handoff_notes ?? null,
+          status:           "done",
+          completed_at:     new Date().toISOString(),
+          completed_by_id:  user.id,
+          handoff_notes:    handoff_notes    ?? null,
+          completion_notes: completion_notes ?? null,
         })
         .eq("id", stage_id)
         .eq("job_order_id", jobId)
@@ -213,6 +329,33 @@ export async function PATCH(
           file_url:              media_url,
           uploaded_by_id:        user.id,
         })
+      }
+
+      // Recalculate expected_completion_at from remaining stage durations
+      const { data: allStages } = await admin
+        .from("job_stage_progress")
+        .select("status, service_stage_id")
+        .eq("job_order_id", jobId)
+
+      const remainingServiceStageIds = (allStages ?? [])
+        .filter((s: any) => s.status !== "done" && s.service_stage_id)
+        .map((s: any) => s.service_stage_id as string)
+
+      if (remainingServiceStageIds.length > 0) {
+        const { data: durations } = await admin
+          .from("service_stage")
+          .select("stage_duration_mins")
+          .in("id", remainingServiceStageIds)
+        const remainingMins = (durations ?? []).reduce(
+          (acc: number, d: any) => acc + (d.stage_duration_mins ?? 0), 0
+        )
+        if (remainingMins > 0) {
+          const newCompletion = addWorkingMins(new Date(), remainingMins)
+          await admin.from("job_order").update({ expected_completion_at: newCompletion.toISOString() }).eq("id", jobId)
+        }
+      } else {
+        // All stages done — set expected_completion_at to now
+        await admin.from("job_order").update({ expected_completion_at: new Date().toISOString() }).eq("id", jobId)
       }
 
       return NextResponse.json({ success: true })
@@ -227,40 +370,9 @@ export async function PATCH(
 
       const isInstaller = (profile as any)?.role === "head_installer"
 
-      let newStatus = "Ongoing"
-
-      if (isInstaller) {
-        // Check whether finishing stages exist for this job.
-        // Two-step query avoids PostgREST embedding ambiguity inside PATCH handlers.
-        const { data: jspRows } = await admin
-          .from("job_stage_progress")
-          .select("service_stage_id, custom_stage_category")
-          .eq("job_order_id", jobId)
-
-        // Custom finishing stages (service_stage_id = null, category stored inline)
-        const hasCustomFinishing = (jspRows ?? []).some(
-          (s: any) => s.custom_stage_category === "finishing"
-        )
-
-        // Seeded finishing stages (join service_stage directly)
-        let hasSeededFinishing = false
-        const ssIds = (jspRows ?? [])
-          .map((s: any) => s.service_stage_id as string | null)
-          .filter(Boolean) as string[]
-
-        if (!hasCustomFinishing && ssIds.length > 0) {
-          const { data: ssRows } = await admin
-            .from("service_stage")
-            .select("id")
-            .in("id", ssIds)
-            .eq("category", "finishing")
-            .limit(1)
-          hasSeededFinishing = (ssRows ?? []).length > 0
-        }
-
-        const hasFinishing = hasCustomFinishing || hasSeededFinishing
-        newStatus = hasFinishing ? "Ongoing" : "For Release"
-      }
+      // Installer completing installation always returns to Ongoing.
+      // Operations decides when to set For Release after inspecting the result.
+      const newStatus = "Ongoing"
 
       await admin.from("job_order").update({ status: newStatus }).eq("id", jobId)
 
@@ -274,14 +386,42 @@ export async function PATCH(
 
       // Save handoff notes to the last preparation stage (head_detailer only)
       if (handoff_notes && !isInstaller) {
-        const { data: prepStages } = await admin
+        // Two-step: get service_stage_ids → look up their category_ids → look up names.
+        const { data: prepJspRows } = await admin
           .from("job_stage_progress")
-          .select("id, stage:service_stage_id(category)")
+          .select("id, service_stage_id")
           .eq("job_order_id", jobId)
           .order("service_stage_id")
 
-        const lastPrep = (prepStages ?? [])
-          .filter((s: any) => (s.stage as any)?.category === "preparation")
+        const prepSsIds = (prepJspRows ?? [])
+          .map((s: any) => s.service_stage_id as string | null)
+          .filter(Boolean) as string[]
+
+        let prepCategoryMap: Map<string, string> = new Map()
+        if (prepSsIds.length > 0) {
+          const { data: prepSsRows } = await admin
+            .from("service_stage")
+            .select("id, category_id")
+            .in("id", prepSsIds)
+
+          const prepCatIds = [...new Set(
+            (prepSsRows ?? []).map((s: any) => s.category_id as string | null).filter(Boolean)
+          )] as string[]
+
+          if (prepCatIds.length > 0) {
+            const { data: prepCatRows } = await admin
+              .from("workflow_category")
+              .select("id, name")
+              .in("id", prepCatIds)
+            const catNameMap = new Map((prepCatRows ?? []).map((c: any) => [c.id as string, c.name as string]))
+            for (const ss of (prepSsRows ?? []) as any[]) {
+              prepCategoryMap.set(ss.id, catNameMap.get(ss.category_id) ?? "")
+            }
+          }
+        }
+
+        const lastPrep = (prepJspRows ?? [])
+          .filter((s: any) => s.service_stage_id && prepCategoryMap.get(s.service_stage_id) === "preparation")
           .at(-1)
 
         if (lastPrep) {
@@ -296,31 +436,62 @@ export async function PATCH(
     }
 
     if (action === "approve_finishing") {
-      // Only head_detailer can pass finishing to ops.
       const { data: profile } = await admin
         .from("user_account")
         .select("role")
         .eq("id", user.id)
         .single()
 
-      if ((profile as any)?.role !== "head_detailer") {
-        return NextResponse.json({ error: "Unauthorized: Only the Head Detailer can pass finishing to operations." }, { status: 403 })
+      const callerRole = (profile as any)?.role as string | undefined
+      if (callerRole !== "head_detailer" && callerRole !== "head_installer") {
+        return NextResponse.json({ error: "Unauthorized." }, { status: 403 })
       }
 
-      // Validate all finishing stages are done.
-      const { data: finishingStages } = await admin
+      // Determine last_stage_role for this job (same logic as GET)
+      const { data: allJspForRole } = await admin
         .from("job_stage_progress")
-        .select("id, status, stage:service_stage_id(category)")
+        .select("id, status, service_stage_id")
         .eq("job_order_id", jobId)
 
-      const finishing = (finishingStages ?? []).filter(
-        (s: any) => (s.stage as any)?.category === "finishing"
-      )
+      const allSsIdsForRole = (allJspForRole ?? [])
+        .map((s: any) => s.service_stage_id as string | null).filter(Boolean) as string[]
+      let jobLastStageRole = "detailer"
+      if (allSsIdsForRole.length > 0) {
+        const { data: allSsForRole } = await admin
+          .from("service_stage")
+          .select("id, sequence_order, category_id")
+          .in("id", allSsIdsForRole)
+        const allCatIds = [...new Set((allSsForRole ?? []).map((s: any) => s.category_id as string | null).filter(Boolean))] as string[]
+        if (allCatIds.length > 0) {
+          const { data: allCatRows } = await admin
+            .from("workflow_category")
+            .select("id, technician_role")
+            .in("id", allCatIds)
+          const catRoleMap = new Map((allCatRows ?? []).map((c: any) => [c.id as string, c.technician_role as string]))
+          const sorted = [...(allSsForRole ?? [])].sort((a: any, b: any) =>
+            (b.sequence_order as number) - (a.sequence_order as number)
+          )
+          jobLastStageRole = catRoleMap.get((sorted[0] as any)?.category_id) ?? "detailer"
+        }
+      }
 
-      const allDone = finishing.length > 0 && finishing.every((s: any) => s.status === "done")
+      const expectedCallerRole = jobLastStageRole === "installer" ? "head_installer" : "head_detailer"
+      if (callerRole !== expectedCallerRole) {
+        return NextResponse.json({
+          error: `Only the ${expectedCallerRole.replace("_", " ")} can pass this job to operations.`,
+        }, { status: 403 })
+      }
+
+      // Validate ALL stages are done — category-agnostic so any workflow shape is supported.
+      const { data: allJspRows } = await admin
+        .from("job_stage_progress")
+        .select("id, status")
+        .eq("job_order_id", jobId)
+
+      const allDone = (allJspRows ?? []).length > 0 && (allJspRows ?? []).every((s: any) => s.status === "done")
       if (!allDone) {
         return NextResponse.json(
-          { error: "All finishing stages must be marked done before passing to operations." },
+          { error: "All stages must be marked done before passing to operations." },
           { status: 400 }
         )
       }
