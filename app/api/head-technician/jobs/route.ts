@@ -64,25 +64,70 @@ export async function GET() {
       .select("job_order_id, role_in_job, user_account:user_account_id(full_name)")
       .in("job_order_id", jobIds)
 
-    // Stage progress filtered by this role's category
-    const relevantCategory = role === "head_detailer" ? "preparation" : "installation"
-    const { data: stages } = await admin
+    // ── Stage progress (2-step to avoid silent PostgREST FK failures) ────────
+    const { data: stageProg } = await admin
       .from("job_stage_progress")
-      .select("job_order_id, status, stage:service_stage_id(category)")
+      .select("job_order_id, status, service_stage_id")
       .in("job_order_id", jobIds)
 
-    const progressMap = new Map<string, { total: number; done: number }>()
-    for (const s of stages ?? []) {
-      const stg = s.stage as any
-      if (stg?.category !== relevantCategory) continue
-      const entry = progressMap.get(s.job_order_id) ?? { total: 0, done: 0 }
-      entry.total++
-      if (s.status === "done") entry.done++
-      progressMap.set(s.job_order_id, entry)
+    // Step 2: service_stage → category_id
+    const ssIds = [
+      ...new Set(
+        (stageProg ?? []).map((s: any) => s.service_stage_id as string).filter(Boolean)
+      ),
+    ]
+    type SSRow = { id: string; category_id: string | null }
+    let ssRows: SSRow[] = []
+    if (ssIds.length > 0) {
+      const { data } = await admin
+        .from("service_stage")
+        .select("id, category_id")
+        .in("id", ssIds)
+      ssRows = (data ?? []) as SSRow[]
+    }
+    const ssMap = new Map(ssRows.map((r) => [r.id, r]))
+
+    // Step 3: workflow_category → name, color
+    const catIds = [
+      ...new Set(ssRows.map((r) => r.category_id).filter(Boolean) as string[]),
+    ]
+    type CatRow = { id: string; name: string; display_color: string; technician_role: string }
+    let catRows: CatRow[] = []
+    if (catIds.length > 0) {
+      const { data } = await admin
+        .from("workflow_category")
+        .select("id, name, display_color, technician_role")
+        .in("id", catIds)
+      catRows = (data ?? []) as CatRow[]
+    }
+    const catMap = new Map(catRows.map((r) => [r.id, r]))
+
+    // Build per-job, per-category progress
+    type StageGroup = { label: string; color: string; done: number; total: number }
+    const groupsMap = new Map<string, Map<string, StageGroup>>()
+
+    for (const s of stageProg ?? []) {
+      const ss = s.service_stage_id ? ssMap.get(s.service_stage_id) : null
+      if (!ss?.category_id) continue
+      const cat = catMap.get(ss.category_id)
+      if (!cat) continue
+
+      if (!groupsMap.has(s.job_order_id)) groupsMap.set(s.job_order_id, new Map())
+      const jobGroups = groupsMap.get(s.job_order_id)!
+      if (!jobGroups.has(cat.id)) {
+        jobGroups.set(cat.id, { label: cat.name, color: cat.display_color, done: 0, total: 0 })
+      }
+      const g = jobGroups.get(cat.id)!
+      g.total++
+      if ((s as any).status === "done") g.done++
     }
 
     const result = (jobs ?? []).map((j: any) => {
-      const prog = progressMap.get(j.id) ?? { total: 0, done: 0 }
+      const jobGroups = groupsMap.get(j.id)
+      const stageGroups: StageGroup[] = jobGroups ? [...jobGroups.values()] : []
+      const totalDone = stageGroups.reduce((a, g) => a + g.done, 0)
+      const totalAll  = stageGroups.reduce((a, g) => a + g.total, 0)
+
       const member = (allTeam ?? []).find(
         (t: any) => t.job_order_id === j.id && t.role_in_job === role
       )
@@ -91,7 +136,7 @@ export async function GET() {
 
       return {
         job_id:           `JO-${year}-${seq}`,
-        raw_id:           j.id as string,       // UUID — matches detail route lookup
+        raw_id:           j.id as string,
         customer_name:    (j.customer as any)?.full_name    ?? j.customer_name ?? "—",
         plate_number:     (j.customer as any)?.plate_number ?? j.plate_number  ?? "—",
         car_make:         (j.customer as any)?.vehicle_unit ?? j.vehicle_unit  ?? "—",
@@ -100,7 +145,8 @@ export async function GET() {
         technician_name:  (member?.user_account as any)?.full_name ?? "Unassigned",
         scheduled_start:  fmtDate(j.scheduled_at),
         status:           j.status,
-        progress:         prog.total > 0 ? Math.round((prog.done / prog.total) * 100) : 0,
+        progress:         totalAll > 0 ? Math.round((totalDone / totalAll) * 100) : 0,
+        stage_groups:     stageGroups,
       }
     })
 
