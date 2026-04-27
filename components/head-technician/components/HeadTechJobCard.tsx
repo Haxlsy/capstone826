@@ -16,15 +16,7 @@ export function HeadTechJobCard({ job }: HeadTechJobCardProps) {
     router.push(`/head-technician/${id}`)
   }
 
-  const progressColor =
-    job.progress >= 80 ? "bg-emerald-500" :
-    job.progress >= 40 ? "bg-blue-500" :
-    "bg-gray-300"
-
-  const progressBg =
-    job.progress >= 80 ? "bg-emerald-50" :
-    job.progress >= 40 ? "bg-blue-50" :
-    "bg-gray-100"
+  const hasGroups = job.stage_groups && job.stage_groups.length > 0
 
   return (
     <div
@@ -78,16 +70,43 @@ export function HeadTechJobCard({ job }: HeadTechJobCardProps) {
           </div>
         </div>
 
-        {/* Progress bar */}
-        <div className="space-y-1.5">
-          <div className={`w-full h-2 ${progressBg} rounded-full overflow-hidden`}>
-            <div
-              className={`h-full rounded-full transition-all duration-500 ${progressColor}`}
-              style={{ width: `${job.progress}%` }}
-            />
+        {/* Per-category progress bars */}
+        {hasGroups ? (
+          <div className="space-y-2">
+            {job.stage_groups.map((group) => {
+              const pct = group.total > 0 ? Math.round((group.done / group.total) * 100) : 0
+              return (
+                <div key={group.label}>
+                  <div className="flex items-center justify-between mb-1">
+                    <div className="flex items-center gap-1.5">
+                      <span className="inline-block w-2 h-2 rounded-full bg-teal-400 shrink-0" />
+                      <span className="text-[11px] font-medium text-gray-500">{group.label}</span>
+                    </div>
+                    <span className="text-[11px] text-gray-400">
+                      {group.done}/{group.total} done
+                    </span>
+                  </div>
+                  <div className="w-full h-1.5 bg-teal-50 rounded-full overflow-hidden">
+                    <div
+                      className="h-full bg-teal-400 rounded-full transition-all duration-500"
+                      style={{ width: `${pct}%` }}
+                    />
+                  </div>
+                </div>
+              )
+            })}
           </div>
-          <p className="text-[11px] text-gray-400 font-medium">{job.progress}% complete</p>
-        </div>
+        ) : (
+          <div className="space-y-1.5">
+            <div className="w-full h-1.5 bg-teal-50 rounded-full overflow-hidden">
+              <div
+                className="h-full bg-teal-400 rounded-full transition-all duration-500"
+                style={{ width: `${job.progress}%` }}
+              />
+            </div>
+            <p className="text-[11px] text-gray-400 font-medium">{job.progress}% complete</p>
+          </div>
+        )}
       </div>
     </div>
   )

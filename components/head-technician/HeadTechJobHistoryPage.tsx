@@ -39,10 +39,16 @@ interface StageDoc {
   id:                  string;
   name:                string;
   order:               number;
-  category:            "preparation" | "installation" | "finishing";
+  category:            string;
+  category_role:       string;
+  category_color:      string | null;
+  stage_duration_mins: number;
+  expected_end_at:     string | null;
+  is_unlocked:         boolean;
   status:              "pending" | "in_progress" | "done" | "for_rework";
   rework_instructions: string | null;
   handoff_notes:       string | null;
+  completion_notes:    string | null;
   completed_at:        string | null;
   media:               StageMedia[];
 }
@@ -65,7 +71,7 @@ interface JobDetail {
   status:                string;
   handoff_notes:         string | null;
   preparation_finished:  boolean;
-  installation_finished: boolean;
+  last_stage_role:       string;
   finishing_approved_at: string | null;
   detailers:             string[];
   installers:            string[];
@@ -157,45 +163,50 @@ export default function HeadTechJobHistoryPage({ jobId }: { jobId: string }) {
 
   // ── Derived ───────────────────────────────────────────────────────────────
 
-  const isInstaller     = userRole === "head_installer";
+  const isInstaller = userRole === "head_installer";
 
-  const prepStages      = (job?.stages ?? []).filter((s) => s.category === "preparation");
-  const installStages   = (job?.stages ?? []).filter((s) => s.category === "installation");
-  const finishingStages = (job?.stages ?? []).filter((s) => s.category === "finishing");
+  // All stages for my role — both locked and unlocked are shown; locked ones are readonly.
+  const installerStages = (job?.stages ?? []).filter((s) => s.category_role === "installer");
+  const detailerStages  = (job?.stages ?? []).filter((s) => s.category_role === "detailer");
+  const myStages        = isInstaller ? installerStages : detailerStages;
 
-  // head_detailer moves to finishing phase once installation is done and finishing stages exist.
-  const inFinishingPhase = !isInstaller
-    && (job?.installation_finished ?? false)
-    && finishingStages.length > 0;
+  // Detailer prep stages (before first installer stage) — shown read-only to installer.
+  const minInstallerOrder = installerStages.length > 0
+    ? Math.min(...installerStages.map((s) => s.order))
+    : 999999;
+  const prepStages = detailerStages.filter((s) => s.order < minInstallerOrder);
 
-  // The stages the current user is actively working on.
-  const myStages = isInstaller
-    ? installStages
-    : inFinishingPhase
-      ? finishingStages
-      : prepStages;
+  // Unlocked = gate met; locked stages render as readonly.
+  const activeMyStages = myStages.filter((s) => s.is_unlocked);
+  const allDone = activeMyStages.length > 0 && activeMyStages.every((s) => s.status === "done");
 
-  const doneCount = myStages.filter((s) => s.status === "done").length;
-  const allDone   = myStages.length > 0 && myStages.every((s) => s.status === "done");
+  // Progress counts only unlocked stages.
+  const progressDone = activeMyStages.filter((s) => s.status === "done").length;
+  const progress     = activeMyStages.length > 0
+    ? Math.round((progressDone / activeMyStages.length) * 100)
+    : 0;
 
-  // For the head_detailer, show overall progress across prep + finishing (their full scope).
-  // This prevents the bar showing 100% when prep is done but finishing stages remain.
-  const detailerAllStages  = [...prepStages, ...finishingStages];
-  const progressStages     = isInstaller ? myStages : (detailerAllStages.length > 0 ? detailerAllStages : myStages);
-  const progressDone       = progressStages.filter((s) => s.status === "done").length;
-  const progress           = progressStages.length > 0 ? Math.round((progressDone / progressStages.length) * 100) : 0;
+  // All job stages done — gates "Pass to Operations".
+  const allJobStagesDone = (job?.stages ?? []).length > 0 && (job?.stages ?? []).every((s) => s.status === "done");
 
-  // Derived synchronously from job + userRole — no useState, no flash on role load.
-  const approvedPhase: "prep" | "install" | "finishing" | null = (() => {
+  // "Pass to Operations" belongs to whoever owns the last stage.
+  const isLastRole = job
+    ? (isInstaller ? job.last_stage_role === "installer" : job.last_stage_role === "detailer")
+    : false;
+
+  // Locked stages remain ahead — used to decide whether to show "Complete Installation".
+  const hasLockedStagesAhead = myStages.some((s) => !s.is_unlocked);
+
+  const finishingAlreadyApproved = Boolean(job?.finishing_approved_at);
+
+  // Approved banner: shown when the user completed their current phase handoff.
+  const approvedPhase: "prep" | "finishing" | null = (() => {
     if (!job || !userRole) return null;
-    if (isInstaller && job.installation_finished) return "install";
-    if (!isInstaller && inFinishingPhase && Boolean(job.finishing_approved_at)) return "finishing";
-    if (!isInstaller && !inFinishingPhase && job.preparation_finished) return "prep";
+    if (Boolean(job.finishing_approved_at)) return "finishing";
+    if (job.preparation_finished && !isInstaller && hasLockedStagesAhead) return "prep";
     return null;
   })();
-
   const approved = approvedPhase !== null;
-  const finishingAlreadyApproved = Boolean(job?.finishing_approved_at);
 
   // ── Actions ───────────────────────────────────────────────────────────────
 
@@ -213,14 +224,14 @@ export default function HeadTechJobHistoryPage({ jobId }: { jobId: string }) {
     finally { setStartingJob(false); }
   }
 
-  async function markDone(stage: StageDoc) {
+  async function markDone(stage: StageDoc, notes: string) {
     if (stage.status === "done" || markingId !== null) return;
     setMarkingId(stage.id);
     try {
       const res = await fetch(`/api/head-technician/jobs/${jobId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "mark_stage_done", stage_id: stage.id }),
+        body: JSON.stringify({ action: "mark_stage_done", stage_id: stage.id, completion_notes: notes || null }),
       });
       if (res.ok) {
         const now = new Date().toLocaleString("en-US", {
@@ -230,7 +241,7 @@ export default function HeadTechJobHistoryPage({ jobId }: { jobId: string }) {
         setJob((prev) => prev ? {
           ...prev,
           stages: prev.stages.map((s) =>
-            s.id === stage.id ? { ...s, status: "done", completed_at: now } : s
+            s.id === stage.id ? { ...s, status: "done", completed_at: now, completion_notes: notes || null } : s
           ),
         } : prev);
       }
@@ -343,23 +354,20 @@ export default function HeadTechJobHistoryPage({ jobId }: { jobId: string }) {
 
   async function handleApprove() {
     setApproving(true);
-    const actionName = inFinishingPhase ? "approve_finishing" : "approve";
-    const setStatusInpect = "For Inspection"
+    // "Pass to Operations" uses approve_finishing; handoff between phases uses approve.
+    const actionName = (isLastRole && allJobStagesDone) ? "approve_finishing" : "approve";
     try {
       const res  = await fetch(`/api/head-technician/jobs/${jobId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: actionName, handoff_notes: handoffNotes, status: setStatusInpect }),
+        body: JSON.stringify({ action: actionName, handoff_notes: handoffNotes }),
       });
       const json = await res.json();
       if (!res.ok) throw new Error(json?.error ?? "Failed to approve.");
       setShowApprove(false);
-      // Optimistically update job state so approvedPhase resolves immediately
-      // (avoids the action-button flash while load() is in-flight).
       setJob((prev) => {
         if (!prev) return prev;
-        if (inFinishingPhase)  return { ...prev, finishing_approved_at: new Date().toISOString() };
-        if (isInstaller)       return { ...prev, installation_finished: true };
+        if (actionName === "approve_finishing") return { ...prev, finishing_approved_at: new Date().toISOString() };
         return { ...prev, preparation_finished: true };
       });
       await load();
@@ -444,17 +452,15 @@ export default function HeadTechJobHistoryPage({ jobId }: { jobId: string }) {
 
   // ── Approve banner text based on which phase ──
   function approveBannerText() {
-    if (approvedPhase === "finishing") return "Finishing complete — passed to Operations.";
-    if (approvedPhase === "install")   return "Installation complete — handed off to Finishing.";
+    if (approvedPhase === "finishing") return "All stages complete — passed to Operations.";
     return "Preparation approved — handed off to Installation.";
   }
 
   // ── readOnly conditions ────────────────────────────────────────
   function isReadOnly(stage: StageDoc): boolean {
     if (job!.status === "Pending") return true;
-    if (approved) return true;
-    if (stage.category === "finishing" && finishingAlreadyApproved) return true;
-    if (isInstaller && !job!.preparation_finished) return true;
+    if (finishingAlreadyApproved) return true;
+    if (!stage.is_unlocked) return true;
     return false;
   }
 
@@ -485,9 +491,7 @@ export default function HeadTechJobHistoryPage({ jobId }: { jobId: string }) {
             <span className="text-xs font-semibold px-3 py-1 rounded-full bg-emerald-50 text-emerald-600 border border-emerald-100">
               {approvedPhase === "finishing"
                 ? "Passed to Operations"
-                : approvedPhase === "install"
-                  ? "Installation Complete"
-                  : "Preparation Approved"}
+                : "Preparation Approved"}
             </span>
           )}
           {job.status === "For Rework" && !approved && (
@@ -544,14 +548,14 @@ export default function HeadTechJobHistoryPage({ jobId }: { jobId: string }) {
           </div>
         )}
 
-        {/* Notice: head_detailer waiting for installation to complete before finishing */}
-        {!isInstaller && finishingStages.length > 0 && !job.installation_finished && (
+        {/* Notice: some stages are still locked (waiting on other role) */}
+        {myStages.some((s) => !s.is_unlocked) && (
           <div className="bg-amber-50 rounded-2xl p-4 flex gap-3 border border-amber-100">
             <Clock size={15} className="text-amber-500 mt-0.5 shrink-0" />
             <div>
-              <p className="text-xs font-semibold text-amber-700 mb-1">Finishing Stages Pending</p>
+              <p className="text-xs font-semibold text-amber-700 mb-1">Stages Pending</p>
               <p className="text-sm text-amber-700 leading-snug">
-                Finishing stages will be available once the Installation team completes their work.
+                Some of your stages are locked until the other team completes their preceding work.
               </p>
             </div>
           </div>
@@ -575,7 +579,7 @@ export default function HeadTechJobHistoryPage({ jobId }: { jobId: string }) {
           <div className="space-y-2">
             <div className="flex justify-between text-xs font-medium text-gray-500">
               <span>Progress</span>
-              <span>{progressDone} / {progressStages.length} stages · {progress}%</span>
+              <span>{progressDone} / {activeMyStages.length} stages · {progress}%</span>
             </div>
             <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
               <div
@@ -588,61 +592,85 @@ export default function HeadTechJobHistoryPage({ jobId }: { jobId: string }) {
           </div>
         )}
 
-        {/* Preparation stages read-only (head_installer view) */}
-        {isInstaller && prepStages.length > 0 && (
-          <section className="space-y-2">
-            <SectionLabel>Preparation Stages</SectionLabel>
-            {prepStages.map((stage) => (
-              <StageCard
-                key={stage.id}
-                stage={stage}
-                readOnly
-                isMarking={false}
-                isUploading={false}
-                removingId={null}
-                uploadError={null}
-                onMarkDone={() => {}}
-                onFileChange={() => {}}
-                onRemoveMedia={() => {}}
-                onPreview={(url, type) => setPreview({ url, type })}
-              />
-            ))}
-          </section>
-        )}
+        {/* Preparation stages read-only (head_installer view) — grouped by category */}
+        {isInstaller && prepStages.length > 0 && (() => {
+          const prepGroups = prepStages.reduce((map, s) => {
+            if (!map.has(s.category)) map.set(s.category, { color: s.category_color ?? "blue", stages: [] as StageDoc[] });
+            map.get(s.category)!.stages.push(s);
+            return map;
+          }, new Map<string, { color: string; stages: StageDoc[] }>());
+          return (
+            <section className="space-y-4">
+              <SectionLabel>Preparation Stages</SectionLabel>
+              {Array.from(prepGroups.entries()).map(([catName, { color, stages: catStages }]) => (
+                <div key={catName} className="space-y-2">
+                  <CategoryBadge name={catName} color={color} />
+                  {catStages.map((stage) => (
+                    <StageCard
+                      key={stage.id}
+                      stage={stage}
+                      readOnly
+                      isMarking={false}
+                      isUploading={false}
+                      removingId={null}
+                      uploadError={null}
+                      onMarkDone={() => {}}
+                      onFileChange={() => {}}
+                      onRemoveMedia={() => {}}
+                      onPreview={(url, type) => setPreview({ url, type })}
+                    />
+                  ))}
+                </div>
+              ))}
+            </section>
+          );
+        })()}
 
-        {/* My active stages */}
-        <section className="space-y-2">
-          <SectionLabel>
-            {isInstaller
-              ? "Installation Stages"
-              : inFinishingPhase
-                ? "Finishing Stages"
-                : "Preparation Stages"}
-          </SectionLabel>
+        {/* My active stages — grouped by category with lock indicators */}
+        {myStages.length === 0 ? (
+          <p className="text-sm text-gray-400 text-center py-8">No stages assigned for your role.</p>
+        ) : (() => {
+          const myGroups = myStages.reduce((map, s) => {
+            if (!map.has(s.category)) map.set(s.category, { color: s.category_color ?? "blue", stages: [] as StageDoc[] });
+            map.get(s.category)!.stages.push(s);
+            return map;
+          }, new Map<string, { color: string; stages: StageDoc[] }>());
+          const lastCatName = myStages.reduce((max, s) => s.order > max.order ? s : max, myStages[0])?.category;
+          return (
+            <section className="space-y-4">
+              {Array.from(myGroups.entries()).map(([catName, { color, stages: catStages }]) => (
+                <div key={catName} className="space-y-2">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <CategoryBadge name={catName} color={color} />
+                    {catName === lastCatName && isLastRole && (
+                      <span className="text-[11px] font-medium px-2 py-0.5 rounded-full bg-violet-50 text-violet-700 border border-violet-200">
+                        Last stage before Operations Inspection
+                      </span>
+                    )}
+                  </div>
+                  {catStages.map((stage) => (
+                    <StageCard
+                      key={stage.id}
+                      stage={stage}
+                      readOnly={isReadOnly(stage)}
+                      isMarking={markingId === stage.id}
+                      isUploading={uploadingId === stage.id}
+                      removingId={removingId}
+                      uploadError={uploadError[stage.id] ?? null}
+                      onMarkDone={(notes) => markDone(stage, notes)}
+                      onFileChange={(files) => handleFileChange(stage, files)}
+                      onRemoveMedia={(mediaId) => removeMedia(stage, mediaId)}
+                      onPreview={(url, type) => setPreview({ url, type })}
+                    />
+                  ))}
+                </div>
+              ))}
+            </section>
+          );
+        })()}
 
-          {myStages.length === 0 ? (
-            <p className="text-sm text-gray-400 text-center py-8">No stages assigned for your role.</p>
-          ) : (
-            myStages.map((stage) => (
-              <StageCard
-                key={stage.id}
-                stage={stage}
-                readOnly={isReadOnly(stage)}
-                isMarking={markingId === stage.id}
-                isUploading={uploadingId === stage.id}
-                removingId={removingId}
-                uploadError={uploadError[stage.id] ?? null}
-                onMarkDone={() => markDone(stage)}
-                onFileChange={(files) => handleFileChange(stage, files)}
-                onRemoveMedia={(mediaId) => removeMedia(stage, mediaId)}
-                onPreview={(url, type) => setPreview({ url, type })}
-              />
-            ))
-          )}
-        </section>
-
-        {/* ── Installer: Flag for Rework + Complete Installation ── */}
-        {isInstaller && !approved && myStages.length > 0 && allDone && (
+        {/* ── Installer: Flag for Rework + Complete Installation (only when locked detailer stages remain) ── */}
+        {isInstaller && !finishingAlreadyApproved && !approved && allDone && hasLockedStagesAhead && (
           <div className="space-y-2 pt-1">
             {showApprove ? (
               <div className="bg-white rounded-2xl p-4 space-y-3 border border-emerald-100 shadow-[0_2px_12px_-4px_rgba(0,0,0,0.06)]">
@@ -689,7 +717,7 @@ export default function HeadTechJobHistoryPage({ jobId }: { jobId: string }) {
         )}
 
         {/* ── Head Detailer (Prep phase): Flag for Rework + Approve Preparation ── */}
-        {!isInstaller && !inFinishingPhase && !approved && myStages.length > 0 && allDone && (
+        {!isInstaller && allDone && hasLockedStagesAhead && !finishingAlreadyApproved && !approved && (
           <div className="space-y-2 pt-1">
             {showApprove ? (
               <div className="bg-white rounded-2xl p-4 space-y-3 border border-emerald-100 shadow-[0_2px_12px_-4px_rgba(0,0,0,0.06)]">
@@ -743,8 +771,8 @@ export default function HeadTechJobHistoryPage({ jobId }: { jobId: string }) {
           </div>
         )}
 
-        {/* ── Head Detailer (Finishing phase): Flag for Rework + Pass to Operation ── */}
-        {!isInstaller && inFinishingPhase && !approved && !finishingAlreadyApproved && myStages.length > 0 && allDone && (
+        {/* ── Pass to Operations — whoever owns the last stage by sequence order ── */}
+        {isLastRole && allJobStagesDone && !finishingAlreadyApproved && (
           <div className="space-y-2 pt-1">
             {showApprove ? (
               <div className="bg-white rounded-2xl p-4 space-y-3 border border-emerald-100 shadow-[0_2px_12px_-4px_rgba(0,0,0,0.06)]">
@@ -1005,6 +1033,27 @@ function ReworkModal({
   );
 }
 
+// ── CategoryBadge ─────────────────────────────────────────────────────────────
+
+const COLOR_BADGE: Record<string, string> = {
+  blue:    "bg-blue-50 text-blue-700 border-blue-200",
+  purple:  "bg-purple-50 text-purple-700 border-purple-200",
+  emerald: "bg-emerald-50 text-emerald-700 border-emerald-200",
+  orange:  "bg-orange-50 text-orange-700 border-orange-200",
+  rose:    "bg-rose-50 text-rose-700 border-rose-200",
+  teal:    "bg-teal-50 text-teal-700 border-teal-200",
+  yellow:  "bg-yellow-50 text-yellow-700 border-yellow-200",
+};
+
+function CategoryBadge({ name, color }: { name: string; color: string }) {
+  const cls = COLOR_BADGE[color] ?? COLOR_BADGE.blue;
+  return (
+    <span className={`inline-block text-xs font-semibold px-2 py-0.5 rounded-full uppercase tracking-wide border ${cls}`}>
+      {name}
+    </span>
+  );
+}
+
 // ── SectionLabel ──────────────────────────────────────────────────────────────
 
 function SectionLabel({ children }: { children: React.ReactNode }) {
@@ -1017,6 +1066,12 @@ function SectionLabel({ children }: { children: React.ReactNode }) {
 
 // ── StageCard ─────────────────────────────────────────────────────────────────
 
+function fmtDuration(mins: number): string {
+  const h = Math.floor(mins / 60);
+  const m = mins % 60;
+  return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
+}
+
 function StageCard({
   stage, readOnly, isMarking, isUploading, removingId, uploadError,
   onMarkDone, onFileChange, onRemoveMedia, onPreview,
@@ -1027,11 +1082,13 @@ function StageCard({
   isUploading:   boolean;
   removingId:    string | null;
   uploadError:   string | null;
-  onMarkDone:    () => void;
+  onMarkDone:    (notes: string) => void;
   onFileChange:  (files: FileList | null) => void;
   onRemoveMedia: (mediaId: string) => void;
   onPreview:     (url: string, type: string) => void;
 }) {
+  const [notes, setNotes] = useState("");
+
   const done       = stage.status === "done";
   const rework     = stage.status === "for_rework";
   const photoCount = stage.media.filter((m) => m.type !== "video").length;
@@ -1060,8 +1117,25 @@ function StageCard({
           }`}>
             {stage.order}. {stage.name}
           </p>
+          {!done && (stage.expected_end_at || stage.stage_duration_mins > 0) && (
+            <p className="flex items-center gap-1 text-[11px] text-gray-400 mt-0.5">
+              <Clock size={10} />
+              {stage.expected_end_at && (
+                <span>Due by {new Date(stage.expected_end_at).toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}</span>
+              )}
+              {stage.expected_end_at && stage.stage_duration_mins > 0 && (
+                <span className="text-gray-300">·</span>
+              )}
+              {stage.stage_duration_mins > 0 && (
+                <span>{fmtDuration(stage.stage_duration_mins)}</span>
+              )}
+            </p>
+          )}
           {stage.completed_at && (
             <p className="text-[11px] text-emerald-600 font-medium mt-0.5">✓ Done {stage.completed_at}</p>
+          )}
+          {done && stage.completion_notes && (
+            <p className="text-[11px] text-gray-500 mt-1 leading-snug italic">{stage.completion_notes}</p>
           )}
           {readOnly && !done && (
             <p className="text-[11px] text-gray-400 capitalize mt-0.5">{stage.status.replace("_", " ")}</p>
@@ -1133,6 +1207,15 @@ function StageCard({
           {rework && (
             <p className="text-[11px] text-orange-500">Media locked — stage is flagged for rework.</p>
           )}
+          {!done && !rework && (
+            <textarea
+              value={notes}
+              onChange={(e) => setNotes(e.target.value)}
+              placeholder="Optional completion notes…"
+              rows={2}
+              className="w-full text-xs border border-gray-200 rounded-xl px-3 py-2 resize-none focus:outline-none focus:ring-2 focus:ring-gray-200 bg-gray-50 text-gray-800 placeholder-gray-400 transition"
+            />
+          )}
           <div className="flex items-center gap-2">
             <label className={`flex-1 flex items-center justify-center gap-1.5 text-xs font-semibold border rounded-xl py-2.5 transition-colors ${
               isUploading || photoFull || done || rework
@@ -1170,7 +1253,7 @@ function StageCard({
 
             {!done && (
               <button
-                onClick={onMarkDone}
+                onClick={() => onMarkDone(notes)}
                 disabled={isMarking || isUploading || stage.media.length === 0}
                 className="flex-1 flex items-center justify-center gap-1.5 text-xs font-semibold text-white bg-gray-900 rounded-xl py-2.5 hover:bg-gray-700 active:scale-[0.98] transition-all disabled:opacity-40 disabled:cursor-not-allowed"
               >
