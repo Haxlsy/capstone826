@@ -3,15 +3,6 @@ import { cookies } from "next/headers"
 import { createClient } from "@/lib/supabase/server"
 import { createAdminClient } from "@/lib/supabase/admin"
 
-const VALID_SERVICE_TYPES = [
-  "Paint Protection Film",
-  "Coating Services",
-  "Auto Detailing",
-  "Nano Ceramic Tint",
-] as const
-
-type ServiceType = typeof VALID_SERVICE_TYPES[number]
-
 interface Stage {
   name:               string
   category_id:        string
@@ -43,8 +34,8 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Service name is required." }, { status: 400 })
   }
 
-  if (!serviceType || !(VALID_SERVICE_TYPES as readonly string[]).includes(serviceType)) {
-    return NextResponse.json({ error: "A valid service type is required." }, { status: 400 })
+  if (!serviceType?.trim()) {
+    return NextResponse.json({ error: "Service type is required." }, { status: 400 })
   }
 
   const stageList: Stage[] = Array.isArray(stages) ? stages : []
@@ -52,7 +43,7 @@ export async function POST(request: Request) {
 
   const serviceInsert: Record<string, unknown> = {
     name:                   serviceName.trim(),
-    service_type:           (serviceType as ServiceType).trim(),
+    service_type:           serviceType.trim(),
     description:            description?.trim() || null,
     is_archived:            false,
     estimated_duration_mins: estimatedDurationMins,
