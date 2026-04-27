@@ -15,6 +15,7 @@ interface JobRecord {
   head_installer:         string
   scheduled_at:           string | null
   expected_completion_at: string | null
+  released_at:            string | null
   created_at:             string
 }
 
@@ -70,6 +71,7 @@ export default function JobOrderRecords() {
         head_installer:         r.head_installer ?? "Unassigned",
         scheduled_at:           r.scheduled_at,
         expected_completion_at: r.expected_completion_at,
+        released_at:            r.released_at ?? null,
         created_at:             r.created_at,
       }))
 
@@ -280,7 +282,7 @@ export default function JobOrderRecords() {
                   <div className="flex items-center gap-1.5">
                     <span className="w-1.5 h-1.5 rounded-full bg-teal-400 shrink-0" />
                     <span className="text-sm text-teal-700 font-medium">
-                      {r.expected_completion_at ? fmtDateTime(r.expected_completion_at) : fmtDate(r.created_at)}
+                      {fmtDateTime(r.released_at)}
                     </span>
                   </div>
                 </td>
