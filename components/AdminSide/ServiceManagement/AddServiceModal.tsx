@@ -11,7 +11,6 @@ import {
   makeId,
   minsToHHMM,
   sumStageDurations,
-  type ServiceType,
   type WorkflowCategory,
   type CategorySection,
 } from "./service-form-helpers"
@@ -23,7 +22,7 @@ interface AddServiceModalProps {
 }
 
 const EMPTY_FORM = {
-  serviceType: "" as ServiceType | "",
+  serviceType: "",
   serviceName: "",
   description: "",
 }
@@ -31,6 +30,7 @@ const EMPTY_FORM = {
 export default function AddServiceModal({ open, onClose, onSuccess }: AddServiceModalProps) {
   const [form, setForm]                         = useState(EMPTY_FORM)
   const [globalCategories, setGlobalCategories] = useState<WorkflowCategory[]>([])
+  const [serviceTypes, setServiceTypes]         = useState<string[]>([])
   const [sections, setSections]                 = useState<CategorySection[]>([])
   const [editingId, setEditingId]               = useState<string | null>(null)
   const [errors, setErrors]                     = useState<Record<string, string>>({})
@@ -52,6 +52,11 @@ export default function AddServiceModal({ open, onClose, onSuccess }: AddService
     fetch("/api/admin/workflow-categories")
       .then((r) => r.json())
       .then((json) => { if (json.categories) setGlobalCategories(json.categories) })
+      .catch(() => {})
+
+    fetch("/api/admin/service-types")
+      .then((r) => r.json())
+      .then((json) => { if (Array.isArray(json.types)) setServiceTypes(json.types) })
       .catch(() => {})
   }, [open])
 
@@ -275,6 +280,7 @@ export default function AddServiceModal({ open, onClose, onSuccess }: AddService
             </label>
             <ServiceTypeCombobox
               value={form.serviceType}
+              serviceTypes={serviceTypes}
               onChange={(v) => {
                 setForm((p) => ({ ...p, serviceType: v }))
                 if (errors.serviceType) setErrors((p) => ({ ...p, serviceType: undefined as unknown as string }))
