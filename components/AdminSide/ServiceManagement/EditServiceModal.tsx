@@ -1,7 +1,7 @@
 "use client"
 
-import { useEffect, useRef, useState } from "react"
-import { X, Plus } from "lucide-react"
+import { useEffect, useMemo, useRef, useState } from "react"
+import { X, Plus, Clock } from "lucide-react"
 import {
   ServiceTypeCombobox,
   StageList,
@@ -9,6 +9,8 @@ import {
   CreateCategoryForm,
   colorStyles,
   makeId,
+  minsToHHMM,
+  sumStageDurations,
   type ServiceType,
   type WorkflowCategory,
   type CategorySection,
@@ -25,8 +27,6 @@ export default function EditServiceModal({ serviceId, open, onClose, onSuccess }
   const [serviceType,  setServiceType]  = useState<ServiceType | "">("")
   const [serviceName,  setServiceName]  = useState("")
   const [description,  setDescription]  = useState("")
-  const [durationHrs,  setDurationHrs]  = useState("0")
-  const [durationMins, setDurationMins] = useState("0")
 
   const [globalCategories, setGlobalCategories] = useState<WorkflowCategory[]>([])
   const [sections, setSections]                 = useState<CategorySection[]>([])
@@ -73,15 +73,12 @@ export default function EditServiceModal({ serviceId, open, onClose, onSuccess }
         setServiceName(svc.name ?? "")
         setDescription(svc.description ?? "")
 
-        const totalMins = svc.estimated_duration_mins ?? 0
-        setDurationHrs(String(Math.floor(totalMins / 60)))
-        setDurationMins(String(totalMins % 60))
-
         // Group stages by category_id, preserving sequence order
         type LoadedStage = {
           id: string
           name: string
           sequence_order: number
+          stage_duration_mins: number
           category_id: string | null
           category_name: string | null
           category_role: "detailer" | "installer" | null
@@ -104,9 +101,10 @@ export default function EditServiceModal({ serviceId, open, onClose, onSuccess }
             })
           }
           seen.get(s.category_id)!.stages.push({
-            id:    makeId(),
-            dbId:  s.id,
-            name:  s.name,
+            id:                 makeId(),
+            dbId:               s.id,
+            name:               s.name,
+            stage_duration_mins: s.stage_duration_mins ?? 0,
           })
         }
         setSections(Array.from(seen.values()))
@@ -167,7 +165,7 @@ export default function EditServiceModal({ serviceId, open, onClose, onSuccess }
     setSections((prev) =>
       prev.map((sec) =>
         sec.categoryId === categoryId
-          ? { ...sec, stages: [...sec.stages, { id, name: "" }] }
+          ? { ...sec, stages: [...sec.stages, { id, name: "", stage_duration_mins: 0 }] }
           : sec
       )
     )
@@ -185,6 +183,17 @@ export default function EditServiceModal({ serviceId, open, onClose, onSuccess }
     clearError(`stage_${stageId}`)
   }
 
+  function updateStageDuration(categoryId: string, stageId: string, mins: number) {
+    setSections((prev) =>
+      prev.map((sec) =>
+        sec.categoryId === categoryId
+          ? { ...sec, stages: sec.stages.map((s) => s.id === stageId ? { ...s, stage_duration_mins: mins } : s) }
+          : sec
+      )
+    )
+    clearError(`dur_${stageId}`)
+  }
+
   function removeStage(categoryId: string, stageId: string) {
     setSections((prev) =>
       prev.map((sec) =>
@@ -195,6 +204,11 @@ export default function EditServiceModal({ serviceId, open, onClose, onSuccess }
     )
     if (editingId === stageId) setEditingId(null)
   }
+
+  const totalDurationMins = useMemo(
+    () => sumStageDurations(sections.flatMap((s) => s.stages)),
+    [sections]
+  )
 
   function makeDragHandlers(categoryId: string, dragIndex: React.MutableRefObject<number | null>) {
     return {
@@ -222,21 +236,13 @@ export default function EditServiceModal({ serviceId, open, onClose, onSuccess }
     const e: Record<string, string> = {}
     if (!serviceType)        e.serviceType = "Service type is required."
     if (!serviceName.trim()) e.serviceName = "Service name is required."
-    const hrs  = Number(durationHrs)
-    const mins = Number(durationMins)
-    if (isNaN(hrs) || isNaN(mins)) {
-      e.duration = "Enter a valid duration."
-    } else if (hrs === 0 && mins === 0) {
-      e.duration = "Duration must be at least 1 minute."
-    } else if (mins < 0 || mins > 59) {
-      e.duration = "Minutes must be between 0 and 59."
-    }
     if (sections.length === 0) e.sections = "At least 1 category section is required."
     sections.forEach((sec) => {
       if (sec.stages.length === 0)
         e[`section_${sec.categoryId}`] = `At least 1 stage is required in "${sec.categoryName}".`
       sec.stages.forEach((s) => {
         if (!s.name.trim()) e[`stage_${s.id}`] = "Stage name cannot be empty."
+        if ((s.stage_duration_mins ?? 0) < 1) e[`dur_${s.id}`] = "Duration must be at least 1 minute."
       })
     })
     return e
@@ -249,14 +255,14 @@ export default function EditServiceModal({ serviceId, open, onClose, onSuccess }
     if (Object.keys(errs).length > 0) { setErrors(errs); return }
     setSubmitting(true)
     try {
-      const totalMins = Number(durationHrs) * 60 + Number(durationMins)
       let seq = 1
       const allStages = sections.flatMap((sec) =>
         sec.stages.map((s) => ({
-          dbId:           s.dbId ?? null,
-          name:           s.name.trim(),
-          category_id:    sec.categoryId,
-          sequence_order: seq++,
+          dbId:               s.dbId ?? null,
+          name:               s.name.trim(),
+          category_id:        sec.categoryId,
+          sequence_order:     seq++,
+          stage_duration_mins: s.stage_duration_mins,
         }))
       )
       const res = await fetch(`/api/operations/services/${serviceId}`, {
@@ -264,10 +270,9 @@ export default function EditServiceModal({ serviceId, open, onClose, onSuccess }
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           serviceType,
-          serviceName:           serviceName.trim(),
-          description:           description.trim(),
-          estimatedDurationMins: totalMins,
-          stages:                allStages,
+          serviceName:  serviceName.trim(),
+          description:  description.trim(),
+          stages:       allStages,
         }),
       })
       const json = await res.json()
@@ -370,34 +375,19 @@ export default function EditServiceModal({ serviceId, open, onClose, onSuccess }
               />
             </div>
 
-            {/* Estimated Duration */}
+            {/* Estimated Duration — computed from stage durations */}
             <div className="space-y-1.5">
-              <label className="block text-sm font-medium text-gray-700">
-                Estimated Duration <span className="text-red-500">*</span>
-              </label>
-              <div className="flex items-center gap-2">
-                <div className={`flex items-center border rounded-lg overflow-hidden transition-colors ${
-                  errors.duration ? "border-red-400 bg-red-50" : "border-gray-200"
-                }`}>
-                  <input
-                    type="number" min="0"
-                    value={durationHrs}
-                    onChange={(e) => { setDurationHrs(e.target.value); clearError("duration") }}
-                    className="w-16 px-3 py-2.5 text-sm text-center bg-transparent focus:outline-none"
-                    placeholder="00"
-                  />
-                  <span className="text-gray-400 text-sm font-medium px-0.5">:</span>
-                  <input
-                    type="number" min="0" max="59"
-                    value={durationMins}
-                    onChange={(e) => { setDurationMins(e.target.value); clearError("duration") }}
-                    className="w-16 px-3 py-2.5 text-sm text-center bg-transparent focus:outline-none"
-                    placeholder="00"
-                  />
-                </div>
-                <span className="text-sm text-gray-500">HH : MM</span>
+              <label className="block text-sm font-medium text-gray-700">Estimated Duration</label>
+              <div className="flex items-center gap-2 px-3 py-2.5 border border-gray-200 rounded-lg bg-gray-50">
+                <Clock className="w-4 h-4 text-gray-400 shrink-0" />
+                <span className="text-sm font-medium text-gray-700">
+                  {minsToHHMM(totalDurationMins)}
+                </span>
+                <span className="text-xs text-gray-400">HH : MM</span>
               </div>
-              {errors.duration && <p className="text-xs text-red-500">{errors.duration}</p>}
+              <p className="text-xs text-gray-400">
+                Auto-calculated from the sum of all stage durations below.
+              </p>
             </div>
 
             {/* Workflow Stages */}
@@ -445,6 +435,7 @@ export default function EditServiceModal({ serviceId, open, onClose, onSuccess }
                         editingId={editingId}
                         setEditingId={setEditingId}
                         onUpdate={(id, val) => updateStage(sec.categoryId, id, val)}
+                        onUpdateDuration={(id, mins) => updateStageDuration(sec.categoryId, id, mins)}
                         onRemove={(id) => removeStage(sec.categoryId, id)}
                         onDragStart={dnd.onDragStart}
                         onDragOver={dnd.onDragOver}

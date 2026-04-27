@@ -13,9 +13,26 @@ export const SERVICE_TYPES = [
 export type ServiceType = typeof SERVICE_TYPES[number]
 
 export interface Stage {
-  id: string
-  name: string
-  dbId?: string
+  id:                 string
+  name:               string
+  dbId?:              string
+  stage_duration_mins: number
+}
+
+// ─── Duration helpers ─────────────────────────────────────────────────────────
+export function sumStageDurations(stages: Stage[]): number {
+  return stages.reduce((acc, s) => acc + (s.stage_duration_mins ?? 0), 0)
+}
+
+export function minsToHHMM(mins: number): string {
+  const h = Math.floor(mins / 60)
+  const m = mins % 60
+  return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`
+}
+
+export function hhmmToMins(hhmm: string): number {
+  const [h, m] = hhmm.split(":").map(Number)
+  return (isNaN(h) ? 0 : h) * 60 + (isNaN(m) ? 0 : m)
 }
 
 export interface WorkflowCategory {
@@ -147,6 +164,7 @@ export function StageList({
   editingId,
   setEditingId,
   onUpdate,
+  onUpdateDuration,
   onRemove,
   onDragStart,
   onDragOver,
@@ -158,6 +176,7 @@ export function StageList({
   editingId: string | null
   setEditingId: (id: string | null) => void
   onUpdate: (id: string, value: string) => void
+  onUpdateDuration: (id: string, mins: number) => void
   onRemove: (id: string) => void
   onDragStart: (index: number) => void
   onDragOver: (e: React.DragEvent, index: number) => void
@@ -167,7 +186,17 @@ export function StageList({
   return (
     <div className="space-y-2">
       {stages.map((stage, index) => {
-        const isEditing = editingId === stage.id
+        const isEditing  = editingId === stage.id
+        const durMins    = stage.stage_duration_mins ?? 0
+        const durHH      = Math.floor(durMins / 60)
+        const durMM      = durMins % 60
+        const durError   = errors[`dur_${stage.id}`]
+
+        function commitDuration(hh: number, mm: number) {
+          const total = Math.max(0, hh) * 60 + Math.min(59, Math.max(0, mm))
+          onUpdateDuration(stage.id, total)
+        }
+
         return (
           <div
             key={stage.id}
@@ -175,52 +204,83 @@ export function StageList({
             onDragStart={() => onDragStart(index)}
             onDragOver={(e) => onDragOver(e, index)}
             onDragEnd={onDragEnd}
-            className="flex items-center gap-2 group"
+            className="flex flex-col gap-1 group"
           >
-            <div className="cursor-grab active:cursor-grabbing text-gray-300 hover:text-gray-400 shrink-0">
-              <GripVertical className="w-4 h-4" />
-            </div>
-            <span className="text-sm text-gray-400 w-5 shrink-0 text-right">{index + 1}.</span>
+            <div className="flex items-center gap-2">
+              <div className="cursor-grab active:cursor-grabbing text-gray-300 hover:text-gray-400 shrink-0">
+                <GripVertical className="w-4 h-4" />
+              </div>
+              <span className="text-sm text-gray-400 w-5 shrink-0 text-right">{index + 1}.</span>
 
-            <div className="flex-1">
-              {isEditing ? (
+              <div className="flex-1 min-w-0">
+                {isEditing ? (
+                  <input
+                    autoFocus
+                    type="text"
+                    value={stage.name}
+                    onChange={(e) => onUpdate(stage.id, e.target.value)}
+                    onBlur={() => setEditingId(null)}
+                    onKeyDown={(e) => { if (e.key === "Enter") setEditingId(null) }}
+                    placeholder={placeholder}
+                    className={`w-full px-3 py-2 text-sm border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-100 focus:border-blue-400 transition-colors ${
+                      errors[`stage_${stage.id}`] ? "border-red-400 bg-red-50" : "border-gray-200"
+                    }`}
+                  />
+                ) : (
+                  <div
+                    className={`flex items-center justify-between px-3 py-2 text-sm border rounded-lg bg-gray-50 cursor-text ${
+                      errors[`stage_${stage.id}`] ? "border-red-400" : "border-gray-200"
+                    }`}
+                    onClick={() => setEditingId(stage.id)}
+                  >
+                    <span className={stage.name ? "text-gray-700" : "text-gray-400"}>
+                      {stage.name || placeholder}
+                    </span>
+                    <Pencil className="w-3.5 h-3.5 text-gray-400 shrink-0 ml-2" />
+                  </div>
+                )}
+                {errors[`stage_${stage.id}`] && (
+                  <p className="text-xs text-red-500 mt-0.5">{errors[`stage_${stage.id}`]}</p>
+                )}
+              </div>
+
+              {/* HH:MM duration input */}
+              <div className={`flex items-center border rounded-lg overflow-hidden shrink-0 transition-colors ${
+                durError ? "border-red-400 bg-red-50" : "border-gray-200"
+              }`}>
                 <input
-                  autoFocus
-                  type="text"
-                  value={stage.name}
-                  onChange={(e) => onUpdate(stage.id, e.target.value)}
-                  onBlur={() => setEditingId(null)}
-                  onKeyDown={(e) => { if (e.key === "Enter") setEditingId(null) }}
-                  placeholder={placeholder}
-                  className={`w-full px-3 py-2 text-sm border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-100 focus:border-blue-400 transition-colors ${
-                    errors[`stage_${stage.id}`] ? "border-red-400 bg-red-50" : "border-gray-200"
-                  }`}
+                  type="number"
+                  min={0}
+                  value={durHH}
+                  onChange={(e) => commitDuration(parseInt(e.target.value, 10) || 0, durMM)}
+                  aria-label={`Stage ${index + 1} hours`}
+                  className="w-10 px-1.5 py-2 text-xs text-center bg-transparent focus:outline-none"
+                  placeholder="00"
                 />
-              ) : (
-                <div
-                  className={`flex items-center justify-between px-3 py-2 text-sm border rounded-lg bg-gray-50 cursor-text ${
-                    errors[`stage_${stage.id}`] ? "border-red-400" : "border-gray-200"
-                  }`}
-                  onClick={() => setEditingId(stage.id)}
-                >
-                  <span className={stage.name ? "text-gray-700" : "text-gray-400"}>
-                    {stage.name || placeholder}
-                  </span>
-                  <Pencil className="w-3.5 h-3.5 text-gray-400 shrink-0 ml-2" />
-                </div>
-              )}
-              {errors[`stage_${stage.id}`] && (
-                <p className="text-xs text-red-500 mt-0.5">{errors[`stage_${stage.id}`]}</p>
-              )}
-            </div>
+                <span className="text-gray-400 text-xs font-medium">:</span>
+                <input
+                  type="number"
+                  min={0}
+                  max={59}
+                  value={durMM}
+                  onChange={(e) => commitDuration(durHH, parseInt(e.target.value, 10) || 0)}
+                  aria-label={`Stage ${index + 1} minutes`}
+                  className="w-10 px-1.5 py-2 text-xs text-center bg-transparent focus:outline-none"
+                  placeholder="00"
+                />
+              </div>
 
-            <button
-              type="button"
-              onClick={() => onRemove(stage.id)}
-              className="shrink-0 p-1 text-gray-300 hover:text-red-400 transition-colors"
-            >
-              <Trash2 className="w-4 h-4" />
-            </button>
+              <button
+                type="button"
+                onClick={() => onRemove(stage.id)}
+                className="shrink-0 p-1 text-gray-300 hover:text-red-400 transition-colors"
+              >
+                <Trash2 className="w-4 h-4" />
+              </button>
+            </div>
+            {durError && (
+              <p className="text-xs text-red-500 pl-11">{durError}</p>
+            )}
           </div>
         )
       })}
