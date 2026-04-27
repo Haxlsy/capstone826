@@ -13,9 +13,10 @@ const VALID_SERVICE_TYPES = [
 type ServiceType = typeof VALID_SERVICE_TYPES[number]
 
 interface Stage {
-  name: string
-  category_id: string
-  sequence_order: number
+  name:               string
+  category_id:        string
+  sequence_order:     number
+  stage_duration_mins: number
 }
 
 export async function POST(request: Request) {
@@ -36,7 +37,7 @@ export async function POST(request: Request) {
   }
 
   const body = await request.json()
-  const { serviceType, serviceName, description, estimatedDurationMins, stages } = body
+  const { serviceType, serviceName, description, stages } = body
 
   if (!serviceName) {
     return NextResponse.json({ error: "Service name is required." }, { status: 400 })
@@ -46,15 +47,15 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "A valid service type is required." }, { status: 400 })
   }
 
-  const serviceInsert: Record<string, unknown> = {
-    name:         serviceName.trim(),
-    service_type: (serviceType as ServiceType).trim(),
-    description:  description?.trim() || null,
-    is_archived:  false,
-  }
+  const stageList: Stage[] = Array.isArray(stages) ? stages : []
+  const estimatedDurationMins = stageList.reduce((acc, s) => acc + (s.stage_duration_mins ?? 0), 0)
 
-  if (estimatedDurationMins !== undefined && estimatedDurationMins !== null && estimatedDurationMins !== "") {
-    serviceInsert.estimated_duration_mins = Number(estimatedDurationMins)
+  const serviceInsert: Record<string, unknown> = {
+    name:                   serviceName.trim(),
+    service_type:           (serviceType as ServiceType).trim(),
+    description:            description?.trim() || null,
+    is_archived:            false,
+    estimated_duration_mins: estimatedDurationMins,
   }
 
   const { data: service, error: serviceError } = await admin
@@ -70,12 +71,13 @@ export async function POST(request: Request) {
     )
   }
 
-  if (stages && (stages as Stage[]).length > 0) {
-    const stageRows = (stages as Stage[]).map((s) => ({
-      service_id:     service.id,
-      name:           s.name,
-      category_id:    s.category_id,
-      sequence_order: s.sequence_order,
+  if (stageList.length > 0) {
+    const stageRows = stageList.map((s) => ({
+      service_id:          service.id,
+      name:                s.name,
+      category_id:         s.category_id,
+      sequence_order:      s.sequence_order,
+      stage_duration_mins: s.stage_duration_mins ?? 0,
     }))
 
     const { error: stageError } = await admin

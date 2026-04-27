@@ -455,6 +455,7 @@ export default function AddJobOrderForm() {
             custom_name:           s.name,
             custom_stage_category: s.isNew ? (s.category_name ?? null) : null,
             custom_sequence_order: i + 1,
+            stage_duration_mins:   s.stage_duration_mins ?? 0,
           }))
         : null
 

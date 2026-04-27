@@ -28,7 +28,7 @@ export async function GET(
         .single(),
       supabase
         .from("service_stage")
-        .select("id, name, sequence_order, workflow_category(id, name, technician_role, display_color)")
+        .select("id, name, sequence_order, stage_duration_mins, workflow_category(id, name, technician_role, display_color)")
         .eq("service_id", id)
         .order("sequence_order"),
     ])
@@ -41,13 +41,14 @@ export async function GET(
         ? s.workflow_category[0]
         : s.workflow_category
       return {
-        id:             s.id,
-        name:           s.name,
-        sequence_order: s.sequence_order,
-        category_id:    cat?.id    ?? null,
-        category_name:  cat?.name  ?? null,
-        category_role:  cat?.technician_role ?? null,
-        category_color: cat?.display_color ?? null,
+        id:                  s.id,
+        name:                s.name,
+        sequence_order:      s.sequence_order,
+        stage_duration_mins: (s as unknown as { stage_duration_mins: number }).stage_duration_mins ?? 0,
+        category_id:         cat?.id    ?? null,
+        category_name:       cat?.name  ?? null,
+        category_role:       cat?.technician_role ?? null,
+        category_color:      cat?.display_color ?? null,
       }
     })
 
@@ -100,7 +101,7 @@ export async function PATCH(
     }
 
     // Full edit
-    const { serviceType, serviceName, description, estimatedDurationMins, stages } = body
+    const { serviceType, serviceName, description, stages } = body
 
     if (!serviceName?.trim()) {
       return NextResponse.json({ error: "Service name is required." }, { status: 400 })
@@ -109,25 +110,24 @@ export async function PATCH(
       return NextResponse.json({ error: "A valid service type is required." }, { status: 400 })
     }
 
-    const updatePayload: Record<string, unknown> = {
-      name:         serviceName.trim(),
-      service_type: serviceType.trim(),
-      description:  description?.trim() || null,
-    }
-    if (estimatedDurationMins !== undefined && estimatedDurationMins !== null) {
-      updatePayload.estimated_duration_mins = Number(estimatedDurationMins)
-    }
+    // ── Smart stage update (avoid FK violations on job_stage_progress) ──
+    type StagePayload = { dbId: string | null; name: string; category_id: string; sequence_order: number; stage_duration_mins: number }
+    const stageList: StagePayload[] = Array.isArray(stages) ? stages : []
+
+    // Derive estimated_duration_mins from stage durations
+    const derivedDuration = stageList.reduce((acc, s) => acc + (s.stage_duration_mins ?? 0), 0)
 
     const { error: updateError } = await supabase
       .from("service")
-      .update(updatePayload)
+      .update({
+        name:                   serviceName.trim(),
+        service_type:           serviceType.trim(),
+        description:            description?.trim() || null,
+        estimated_duration_mins: derivedDuration,
+      })
       .eq("id", id)
 
     if (updateError) return NextResponse.json({ error: updateError.message }, { status: 500 })
-
-    // ── Smart stage update (avoid FK violations on job_stage_progress) ──
-    type StagePayload = { dbId: string | null; name: string; category_id: string; sequence_order: number }
-    const stageList: StagePayload[] = Array.isArray(stages) ? stages : []
 
     // 1. Find which existing DB stage IDs were removed by the user
     const keptDbIds = new Set(stageList.filter((s) => s.dbId).map((s) => s.dbId as string))
@@ -164,7 +164,12 @@ export async function PATCH(
     for (const s of stageList.filter((s) => s.dbId)) {
       const { error: upErr } = await supabase
         .from("service_stage")
-        .update({ name: s.name, category_id: s.category_id, sequence_order: s.sequence_order })
+        .update({
+          name:                s.name,
+          category_id:         s.category_id,
+          sequence_order:      s.sequence_order,
+          stage_duration_mins: s.stage_duration_mins ?? 0,
+        })
         .eq("id", s.dbId as string)
       if (upErr) return NextResponse.json({ error: upErr.message }, { status: 500 })
     }
@@ -175,10 +180,11 @@ export async function PATCH(
       const { error: insErr } = await supabase
         .from("service_stage")
         .insert(newStages.map((s) => ({
-          service_id:     id,
-          name:           s.name,
-          category_id:    s.category_id,
-          sequence_order: s.sequence_order,
+          service_id:          id,
+          name:                s.name,
+          category_id:         s.category_id,
+          sequence_order:      s.sequence_order,
+          stage_duration_mins: s.stage_duration_mins ?? 0,
         })))
       if (insErr) return NextResponse.json({ error: insErr.message }, { status: 500 })
     }

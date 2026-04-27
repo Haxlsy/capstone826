@@ -9,6 +9,7 @@ interface CustomStage {
   custom_name:           string
   custom_stage_category: string | null
   custom_sequence_order: number
+  stage_duration_mins:   number
 }
 
 export async function POST(request: Request) {
@@ -64,11 +65,18 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Service not found." }, { status: 400 })
     }
 
-    // Use custom duration if provided, else fall back to service default
+    // Derive duration: sum from stages (most accurate) → explicit override → service default
+    const stageDurationSum =
+      Array.isArray(custom_stages) && (custom_stages as CustomStage[]).length > 0
+        ? (custom_stages as CustomStage[]).reduce((acc, s) => acc + (s.stage_duration_mins ?? 0), 0)
+        : null
+
     const effectiveDurationMins =
-      typeof custom_duration_mins === "number" && custom_duration_mins > 0
-        ? custom_duration_mins
-        : svc.estimated_duration_mins
+      stageDurationSum !== null && stageDurationSum > 0
+        ? stageDurationSum
+        : typeof custom_duration_mins === "number" && custom_duration_mins > 0
+          ? custom_duration_mins
+          : svc.estimated_duration_mins
 
     let expected_completion_at: string | null = null
     if (scheduled_at && effectiveDurationMins) {
@@ -160,8 +168,9 @@ export async function POST(request: Request) {
     // Store overrides only when they differ from the original
     if (custom_service_name) jobPayload.custom_service_name = custom_service_name
     if (custom_description)  jobPayload.custom_description  = custom_description
-    if (typeof custom_duration_mins === "number" && custom_duration_mins > 0) {
-      jobPayload.custom_duration_mins = custom_duration_mins
+    // Persist the effective duration (from stage sum, explicit override, or service default)
+    if (effectiveDurationMins && effectiveDurationMins > 0) {
+      jobPayload.custom_duration_mins = effectiveDurationMins
     }
 
     console.log("[add-job-order] step: insert job_order")

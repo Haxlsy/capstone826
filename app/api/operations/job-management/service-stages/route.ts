@@ -16,7 +16,7 @@ export async function GET(request: Request) {
     const admin = createAdminClient()
     const { data, error } = await admin
       .from("service_stage")
-      .select("id, name, sequence_order, workflow_category(id, name, technician_role, display_color)")
+      .select("id, name, sequence_order, stage_duration_mins, workflow_category(id, name, technician_role, display_color)")
       .eq("service_id", serviceId)
       .order("sequence_order")
 
@@ -27,13 +27,14 @@ export async function GET(request: Request) {
         ? s.workflow_category[0]
         : s.workflow_category
       return {
-        id:             s.id,
-        name:           s.name,
-        sequence_order: s.sequence_order,
-        category_id:    cat?.id    ?? null,
-        category_name:  cat?.name  ?? null,
-        category_role:  cat?.technician_role ?? null,
-        category_color: cat?.display_color ?? null,
+        id:                  s.id,
+        name:                s.name,
+        sequence_order:      s.sequence_order,
+        stage_duration_mins: (s as unknown as { stage_duration_mins: number }).stage_duration_mins ?? 0,
+        category_id:         cat?.id    ?? null,
+        category_name:       cat?.name  ?? null,
+        category_role:       cat?.technician_role ?? null,
+        category_color:      cat?.display_color ?? null,
       }
     })
 
