@@ -32,11 +32,12 @@ interface HeadTech {
 }
 
 interface CrewMember {
-  id:           string
-  full_name:    string
-  role:         "detailer" | "installer"
-  is_available: boolean
-  on_job:       boolean
+  id:             string
+  full_name:      string
+  role:           "detailer" | "installer"
+  is_available:   boolean
+  on_job:         boolean
+  available_days: string[]
 }
 
 interface FieldErrors {
@@ -317,8 +318,8 @@ export default function AddJobOrderForm() {
           errs.scheduledAt = "Scheduled date and time cannot be in the past."
         } else {
           const totalMins = selected.getHours() * 60 + selected.getMinutes()
-          if (totalMins < 10 * 60 || totalMins > 19 * 60) {
-            errs.scheduledAt = "Start time must be within working hours (10:00 AM – 7:00 PM)."
+          if (totalMins < 10 * 60 || totalMins > 20 * 60) {
+            errs.scheduledAt = "Start time must be within working hours (10:00 AM – 8:00 PM)."
           }
         }
       }
@@ -332,8 +333,6 @@ export default function AddJobOrderForm() {
 
   const headDetailers  = headTechs.filter((t) => t.role === "head_detailer")
   const headInstallers = headTechs.filter((t) => t.role === "head_installer")
-  const detailers      = crewMembers.filter((c) => c.role === "detailer"  && !c.on_job && c.is_available)
-  const installers     = crewMembers.filter((c) => c.role === "installer" && !c.on_job && c.is_available)
 
   function toggleCrew(id: string, set: Set<string>, setter: (s: Set<string>) => void, field: keyof FieldErrors) {
     const member = crewMembers.find((c) => c.id === id)
@@ -346,6 +345,28 @@ export default function AddJobOrderForm() {
 
   const isPPF    = selectedServiceType === "Paint Protection Film"
   const todayStr = new Date().toISOString().split("T")[0]
+
+  // Day-of-week label derived from scheduled date — used to filter crew by available_days
+  const scheduledDayLabel: string | null = useMemo(() => {
+    if (!scheduledAt) return null
+    const d = isPPF
+      ? (() => { const [y, mo, dd] = scheduledAt.split("-").map(Number); return new Date(y, mo - 1, dd) })()
+      : new Date(scheduledAt)
+    return ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"][d.getDay()]
+  }, [scheduledAt, isPPF])
+
+  const detailers = crewMembers.filter((c) =>
+    c.role === "detailer" &&
+    !c.on_job &&
+    c.is_available &&
+    (!scheduledDayLabel || (c.available_days ?? []).includes(scheduledDayLabel))
+  )
+  const installers = crewMembers.filter((c) =>
+    c.role === "installer" &&
+    !c.on_job &&
+    c.is_available &&
+    (!scheduledDayLabel || (c.available_days ?? []).includes(scheduledDayLabel))
+  )
 
   // Resolve a full ISO datetime from scheduledAt regardless of whether it's
   // a date-only string (PPF) or a full datetime string (other services).
@@ -366,13 +387,13 @@ export default function AddJobOrderForm() {
     })
   }
 
-  // Calculates expected completion respecting working hours (10 AM – 7 PM).
+  // Calculates expected completion respecting working hours (10 AM – 8 PM).
   // If a day's remaining work time is exhausted, the job continues the next
   // calendar day starting at 10 AM.
   function calculateCompletion(raw: string, durationMins: number, ppf: boolean): string {
     if (!raw || durationMins <= 0) return "—"
     const WORK_START = 10 * 60   // 600  mins
-    const WORK_END   = 19 * 60   // 1140 mins
+    const WORK_END   = 20 * 60   // 1200 mins
 
     let current   = resolveStartDate(raw, ppf)
     let remaining = durationMins
@@ -382,7 +403,7 @@ export default function AddJobOrderForm() {
       const availToday   = WORK_END - nowMins
 
       if (availToday <= 0) {
-        // Already at or past 7 PM — jump to next day at 10 AM
+        // Already at or past 8 PM — jump to next day at 10 AM
         current.setDate(current.getDate() + 1)
         current.setHours(10, 0, 0, 0)
         continue
@@ -721,7 +742,7 @@ export default function AddJobOrderForm() {
                   type="date"
                   min={todayStr}
                   value={scheduledAt}
-                  onChange={(e) => { setScheduledAt(e.target.value); clearField("scheduledAt") }}
+                  onChange={(e) => { setScheduledAt(e.target.value); clearField("scheduledAt"); setSelectedDetailerIds(new Set()); setSelectedInstallerIds(new Set()) }}
                   className={inputCls(!!fieldErrors.scheduledAt)}
                 />
               ) : (
@@ -730,7 +751,7 @@ export default function AddJobOrderForm() {
                   type="datetime-local"
                   min={`${todayStr}T10:00`}
                   value={scheduledAt}
-                  onChange={(e) => { setScheduledAt(e.target.value); clearField("scheduledAt") }}
+                  onChange={(e) => { setScheduledAt(e.target.value); clearField("scheduledAt"); setSelectedDetailerIds(new Set()); setSelectedInstallerIds(new Set()) }}
                   className={inputCls(!!fieldErrors.scheduledAt)}
                 />
               )}
@@ -814,26 +835,46 @@ export default function AddJobOrderForm() {
             </div>
           </div>
 
-          <div className="grid grid-cols-2 gap-4">
-            <CrewCheckboxList
-              label="Detailers"
-              required
-              members={detailers}
-              selected={selectedDetailerIds}
-              onToggle={(id) => toggleCrew(id, selectedDetailerIds, setSelectedDetailerIds, "detailers")}
-              loading={loadingRefs}
-              error={fieldErrors.detailers}
-            />
-            <CrewCheckboxList
-              label="Installers"
-              required
-              members={installers}
-              selected={selectedInstallerIds}
-              onToggle={(id) => toggleCrew(id, selectedInstallerIds, setSelectedInstallerIds, "installers")}
-              loading={loadingRefs}
-              error={fieldErrors.installers}
-            />
-          </div>
+          {!scheduledAt ? (
+            <div className="grid grid-cols-2 gap-4">
+              {(["Detailers", "Installers"] as const).map((label) => (
+                <div key={label} className="flex flex-col gap-1.5">
+                  <label className="text-xs font-medium text-gray-600">
+                    {label} <span className="text-red-500">*</span>
+                  </label>
+                  <div className="border border-dashed border-gray-200 rounded-lg px-4 py-5 flex flex-col items-center gap-1.5 bg-gray-50/60 select-none">
+                    <svg className="w-4 h-4 text-gray-300" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                    </svg>
+                    <p className="text-xs text-gray-400 text-center leading-snug">
+                      Set a scheduled date &amp; time first to see available {label.toLowerCase()}.
+                    </p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="grid grid-cols-2 gap-4">
+              <CrewCheckboxList
+                label="Detailers"
+                required
+                members={detailers}
+                selected={selectedDetailerIds}
+                onToggle={(id) => toggleCrew(id, selectedDetailerIds, setSelectedDetailerIds, "detailers")}
+                loading={loadingRefs}
+                error={fieldErrors.detailers}
+              />
+              <CrewCheckboxList
+                label="Installers"
+                required
+                members={installers}
+                selected={selectedInstallerIds}
+                onToggle={(id) => toggleCrew(id, selectedInstallerIds, setSelectedInstallerIds, "installers")}
+                loading={loadingRefs}
+                error={fieldErrors.installers}
+              />
+            </div>
+          )}
         </div>
 
         {/* Footer */}
