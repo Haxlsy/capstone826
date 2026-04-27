@@ -5,7 +5,7 @@ import {
   MessageCircle, ArrowRightLeft, Clock,
   CheckCircle2, ChevronRight, User, Car,
   Phone, Hash, CheckCheck, CircleDot, X, Search,
-  AlertCircle,
+  AlertCircle, Mail,
 } from "lucide-react"
 
 type InquiryStatus = "open" | "resolved" | "recorded"
@@ -21,6 +21,7 @@ interface Inquiry {
   status:            InquiryStatus
   extractedName:     string | null
   extractedContact:  string | null
+  extractedEmail:    string | null
   extractedPlate:    string | null
   extractedVehicle:  string | null
   lastMessage:       string | null
@@ -116,6 +117,7 @@ export default function InquiryManagement() {
         status:           i.status as InquiryStatus,
         extractedName:    i.extracted_name    ?? null,
         extractedContact: i.extracted_contact ?? null,
+        extractedEmail:   i.extracted_email   ?? null,
         extractedPlate:   i.extracted_plate   ?? null,
         extractedVehicle: i.extracted_vehicle ?? null,
         lastMessage:      i.last_message      ?? null,
@@ -132,7 +134,7 @@ export default function InquiryManagement() {
   const filtered    = search.trim()
     ? tabFiltered.filter((i) => {
         const q = search.toLowerCase()
-        return [i.messengerName, i.extractedName, i.extractedVehicle, i.extractedPlate, i.extractedContact]
+        return [i.messengerName, i.extractedName, i.extractedVehicle, i.extractedPlate, i.extractedContact, i.extractedEmail]
           .some((f) => f?.toLowerCase().includes(q))
       })
     : tabFiltered
@@ -147,7 +149,7 @@ export default function InquiryManagement() {
     setRecordForm({
       full_name:      inq.extractedName    ?? "",
       contact_number: inq.extractedContact ?? "",
-      email:          "",
+      email:          inq.extractedEmail   ?? "",
       plate_number:   inq.extractedPlate   ?? "",
       vehicle_unit:   inq.extractedVehicle ?? "",
     })
@@ -345,6 +347,7 @@ export default function InquiryManagement() {
                 <FieldRow label="Full name"      value={selected.extractedName}    icon={<User  className="w-3.5 h-3.5 text-gray-400" />} />
                 <FieldRow label="Plate number"   value={selected.extractedPlate}   icon={<Car   className="w-3.5 h-3.5 text-gray-400" />} />
                 <FieldRow label="Contact number" value={selected.extractedContact} icon={<Phone className="w-3.5 h-3.5 text-gray-400" />} />
+                <FieldRow label="Email"          value={selected.extractedEmail}   icon={<Mail  className="w-3.5 h-3.5 text-gray-400" />} />
               </div>
             </div>
 

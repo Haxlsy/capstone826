@@ -18,7 +18,7 @@ export async function GET(request: Request) {
       .select(
         `id, messenger_name, psid, inquiry_type, status,
          escalated_at, resolved_at,
-         extracted_name, extracted_contact, extracted_plate, extracted_vehicle,
+         extracted_name, extracted_contact, extracted_plate, extracted_vehicle, extracted_email,
          last_message,
          resolver:resolved_by_id(full_name)`
       )

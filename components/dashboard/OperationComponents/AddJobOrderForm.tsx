@@ -644,7 +644,7 @@ export default function AddJobOrderForm() {
                 <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 space-y-1.5">
                   <p className="text-sm font-semibold text-blue-900">{selectedCustomer.full_name}</p>
                   <p className="text-xs text-blue-700">📞 {selectedCustomer.contact_number}</p>
-                  {selectedCustomer.email && <p className="text-xs text-blue-700">✉️ {selectedCustomer.email}</p>}
+                  <p className="text-xs text-blue-700">✉️ {selectedCustomer.email ?? "—"}</p>
                   <p className="text-xs text-blue-700">🚗 {selectedCustomer.plate_number}</p>
                   {selectedCustomer.vehicle_unit && <p className="text-xs text-blue-700">Unit: {selectedCustomer.vehicle_unit}</p>}
                 </div>

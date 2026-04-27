@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect, useRef, useCallback } from "react"
-import { Search, Car, Phone, Pencil, X, Check } from "lucide-react"
+import { Search, Car, Phone, Mail, Pencil, X, Check } from "lucide-react"
 import { getInitials } from "@/lib/hooks/useCurrentUser"
 
 interface CustomerRecord {
@@ -143,7 +143,7 @@ export default function CustomerRecords() {
         <table className="w-full text-sm">
           <thead>
             <tr className="border-b border-gray-100 bg-gray-50">
-              {["Customer", "Vehicle", "Plate Number", "Contact", "Recorded", ""].map((h) => (
+              {["Customer", "Vehicle", "Plate Number", "Contact", "Email", "Recorded", ""].map((h) => (
                 <th key={h} className="text-left px-5 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">
                   {h}
                 </th>
@@ -153,15 +153,15 @@ export default function CustomerRecords() {
           <tbody className="divide-y divide-gray-50">
             {loading ? (
               <tr>
-                <td colSpan={6} className="text-center py-10 text-sm text-gray-400">Loading records…</td>
+                <td colSpan={7} className="text-center py-10 text-sm text-gray-400">Loading records…</td>
               </tr>
             ) : fetchErr ? (
               <tr>
-                <td colSpan={6} className="text-center py-10 text-sm text-red-500">{fetchErr}</td>
+                <td colSpan={7} className="text-center py-10 text-sm text-red-500">{fetchErr}</td>
               </tr>
             ) : records.length === 0 ? (
               <tr>
-                <td colSpan={6} className="text-center py-10 text-sm text-gray-400">No records found.</td>
+                <td colSpan={7} className="text-center py-10 text-sm text-gray-400">No records found.</td>
               </tr>
             ) : (
               records.map((record) => {
@@ -236,6 +236,24 @@ export default function CustomerRecords() {
                         <div className="flex items-center gap-2">
                           <Phone className="w-3.5 h-3.5 text-gray-400 shrink-0" />
                           <span className="text-gray-700">{record.contactNumber}</span>
+                        </div>
+                      )}
+                    </td>
+
+                    {/* Email */}
+                    <td className="px-5 py-4">
+                      {isEditing ? (
+                        <input
+                          aria-label="Email"
+                          type="email"
+                          className={`${EDIT_INPUT} w-44`}
+                          value={editDraft.email ?? ""}
+                          onChange={(e) => setEditDraft((d) => ({ ...d, email: e.target.value }))}
+                        />
+                      ) : (
+                        <div className="flex items-center gap-2">
+                          <Mail className="w-3.5 h-3.5 text-gray-400 shrink-0" />
+                          <span className="text-gray-700 text-sm">{record.email ?? <span className="text-gray-400">—</span>}</span>
                         </div>
                       )}
                     </td>
