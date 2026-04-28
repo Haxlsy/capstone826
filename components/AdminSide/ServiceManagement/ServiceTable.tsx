@@ -50,6 +50,7 @@ export default function ServiceTable({ canWrite = true }: { canWrite?: boolean }
   const [loading, setLoading]     = useState(true)
   const [fetchError, setError]    = useState<string | null>(null)
 
+  const [searchInput, setSearchInput]   = useState("")
   const [search, setSearch]             = useState("")
   const [statusFilter, setStatusFilter] = useState<"all" | "active" | "archived">("all")
   const [durationMin, setDurationMin]   = useState("")
@@ -75,6 +76,12 @@ export default function ServiceTable({ canWrite = true }: { canWrite?: boolean }
     document.addEventListener("mousedown", handleClick)
     return () => document.removeEventListener("mousedown", handleClick)
   }, [])
+
+  // Debounce search input — wait 300ms after last keystroke before firing API
+  useEffect(() => {
+    const t = setTimeout(() => setSearch(searchInput), 300)
+    return () => clearTimeout(t)
+  }, [searchInput])
 
   useEffect(() => { setPage(1) }, [search, statusFilter, durationMin, durationMax, pageSize])
 
@@ -146,8 +153,8 @@ export default function ServiceTable({ canWrite = true }: { canWrite?: boolean }
           <input
             type="text"
             placeholder="Search services..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
+            value={searchInput}
+            onChange={(e) => setSearchInput(e.target.value)}
             className="pl-9 pr-4 py-2 text-sm border border-gray-200 rounded-lg w-72 focus:outline-none focus:ring-2 focus:ring-blue-100 focus:border-blue-400 bg-white"
           />
         </div>
