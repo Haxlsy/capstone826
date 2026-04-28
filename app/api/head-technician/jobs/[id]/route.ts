@@ -195,13 +195,15 @@ export async function GET(
     // Build a lookup from jsp id → computed is_unlocked
     const unlockedMap = new Map(computedStages.map((s: any) => [s.id as string, s.is_unlocked as boolean]))
 
-    // Compute expected_end_at per stage using working-hours-aware accumulation
-    const expectedEndMap = new Map<string, string>()
+    // Compute expected_end_at and is_delayed per stage using working-hours-aware accumulation
+    const expectedEndMap  = new Map<string, string>()
+    const isDelayedMap    = new Map<string, boolean>()
     if (j.actual_start_at) {
       const sorted = [...stagesWithInfo].sort(
         (a: any, b: any) => (a.stageInfo.sequence_order as number) - (b.stageInfo.sequence_order as number)
       )
       const jobStart = new Date(j.actual_start_at as string)
+      const nowMs    = Date.now()
       let cumulativeMins = 0
       for (const s of sorted as any[]) {
         const overrideDuration = s.stage_duration_mins as number | null
@@ -209,7 +211,9 @@ export async function GET(
         const durationMins     = overrideDuration != null ? overrideDuration : serviceDuration
         cumulativeMins += durationMins
         if (durationMins > 0) {
-          expectedEndMap.set(s.id as string, addWorkingMins(jobStart, cumulativeMins).toISOString())
+          const expectedEnd = addWorkingMins(jobStart, cumulativeMins)
+          expectedEndMap.set(s.id as string, expectedEnd.toISOString())
+          isDelayedMap.set(s.id as string, (s.status as string) !== "done" && nowMs > expectedEnd.getTime())
         }
       }
     }
@@ -245,6 +249,7 @@ export async function GET(
           category_color:       s.stageInfo?.category_color ?? null,
           stage_duration_mins:  (s.stage_duration_mins as number | null) ?? s.stageInfo?.stage_duration_mins ?? 0,
           expected_end_at:      expectedEndMap.get(s.id as string) ?? null,
+          is_delayed:           isDelayedMap.get(s.id as string) ?? false,
           is_unlocked:          unlockedMap.get(s.id as string) ?? true,
           status:               s.status,
           rework_instructions:  s.rework_instructions  ?? null,
@@ -331,24 +336,19 @@ export async function PATCH(
         })
       }
 
-      // Recalculate expected_completion_at from remaining stage durations
-      const { data: allStages } = await admin
+      // Recalculate expected_completion_at from remaining stage durations (prefer per-job override over template)
+      const { data: remainingStages } = await admin
         .from("job_stage_progress")
-        .select("status, service_stage_id")
+        .select("stage_duration_mins, service_stage:service_stage_id(stage_duration_mins)")
         .eq("job_order_id", jobId)
+        .neq("status", "done")
 
-      const remainingServiceStageIds = (allStages ?? [])
-        .filter((s: any) => s.status !== "done" && s.service_stage_id)
-        .map((s: any) => s.service_stage_id as string)
-
-      if (remainingServiceStageIds.length > 0) {
-        const { data: durations } = await admin
-          .from("service_stage")
-          .select("stage_duration_mins")
-          .in("id", remainingServiceStageIds)
-        const remainingMins = (durations ?? []).reduce(
-          (acc: number, d: any) => acc + (d.stage_duration_mins ?? 0), 0
-        )
+      if ((remainingStages ?? []).length > 0) {
+        const remainingMins = (remainingStages ?? []).reduce((acc: number, s: any) => {
+          const override = s.stage_duration_mins as number | null
+          const base     = (s.service_stage as any)?.stage_duration_mins ?? 0
+          return acc + (override != null ? override : base)
+        }, 0)
         if (remainingMins > 0) {
           const newCompletion = addWorkingMins(new Date(), remainingMins)
           await admin.from("job_order").update({ expected_completion_at: newCompletion.toISOString() }).eq("id", jobId)

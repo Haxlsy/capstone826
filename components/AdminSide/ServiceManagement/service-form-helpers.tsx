@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useRef, useState } from "react"
-import { GripVertical, Trash2, Pencil, Plus, ChevronDown, ChevronUp, Check, X } from "lucide-react"
+import { GripVertical, Trash2, Pencil, Plus, ChevronDown, ChevronUp, Check, X, AlertTriangle } from "lucide-react"
 
 export type ServiceType = string
 
@@ -69,17 +69,20 @@ export function ServiceTypeCombobox({
   value,
   serviceTypes,
   onChange,
+  onDeleteType,
   error,
 }: {
   value: string
   serviceTypes: string[]
   onChange: (v: string) => void
+  onDeleteType?: (type: string) => void
   error?: string
 }) {
-  const [open, setOpen]     = useState(false)
-  const [query, setQuery]   = useState("")
-  const containerRef        = useRef<HTMLDivElement>(null)
-  const inputRef            = useRef<HTMLInputElement>(null)
+  const [open, setOpen]           = useState(false)
+  const [query, setQuery]         = useState("")
+  const [confirmType, setConfirmType] = useState<string | null>(null)
+  const containerRef              = useRef<HTMLDivElement>(null)
+  const inputRef                  = useRef<HTMLInputElement>(null)
 
   const trimmed  = query.trim()
   const filtered = serviceTypes.filter((t) =>
@@ -95,6 +98,7 @@ export function ServiceTypeCombobox({
       if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
         setOpen(false)
         setQuery("")
+        setConfirmType(null)
       }
     }
     document.addEventListener("mousedown", handleClick)
@@ -107,6 +111,7 @@ export function ServiceTypeCombobox({
     onChange(type)
     setOpen(false)
     setQuery("")
+    setConfirmType(null)
   }
 
   return (
@@ -129,7 +134,7 @@ export function ServiceTypeCombobox({
           type="button"
           onClick={() => {
             setOpen((v) => !v)
-            if (!open) { setQuery(""); setTimeout(() => inputRef.current?.focus(), 0) }
+            if (!open) { setQuery(""); setConfirmType(null); setTimeout(() => inputRef.current?.focus(), 0) }
           }}
           className="px-3 text-gray-400 hover:text-gray-600 transition-colors"
         >
@@ -139,17 +144,57 @@ export function ServiceTypeCombobox({
 
       {open && (
         <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-gray-100 rounded-xl shadow-lg z-20 overflow-hidden">
-          {filtered.map((type) => (
-            <button
-              key={type}
-              type="button"
-              onClick={() => selectType(type)}
-              className="w-full flex items-center justify-between px-3 py-2.5 text-sm text-left hover:bg-gray-50 transition-colors"
-            >
-              <span className={value === type ? "text-gray-900 font-medium" : "text-gray-700"}>{type}</span>
-              {value === type && <Check className="w-4 h-4 text-blue-500 shrink-0" />}
-            </button>
-          ))}
+          {filtered.map((type) => {
+            if (confirmType === type) {
+              return (
+                <div key={type} className="px-3 py-2.5 bg-red-50 border-t border-red-100">
+                  <div className="flex items-center gap-1.5 mb-2">
+                    <AlertTriangle className="w-3.5 h-3.5 text-red-500 shrink-0" />
+                    <p className="text-xs font-semibold text-red-700 truncate">Delete &ldquo;{type}&rdquo;?</p>
+                  </div>
+                  <p className="text-xs text-red-600 mb-2">This cannot be undone.</p>
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      onClick={() => { onDeleteType?.(type); setConfirmType(null); setOpen(false) }}
+                      className="flex-1 text-xs font-semibold py-1 rounded-lg bg-red-600 text-white hover:bg-red-700 transition-colors"
+                    >
+                      Delete
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setConfirmType(null)}
+                      className="flex-1 text-xs font-semibold py-1 rounded-lg bg-white border border-gray-200 text-gray-600 hover:bg-gray-50 transition-colors"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+              )
+            }
+            return (
+              <div key={type} className="flex items-center gap-1 px-3 py-2 hover:bg-gray-50 transition-colors">
+                <button
+                  type="button"
+                  onClick={() => selectType(type)}
+                  className="flex-1 flex items-center justify-between text-sm text-left"
+                >
+                  <span className={value === type ? "text-gray-900 font-medium" : "text-gray-700"}>{type}</span>
+                  {value === type && <Check className="w-4 h-4 text-blue-500 shrink-0" />}
+                </button>
+                {onDeleteType && (
+                  <button
+                    type="button"
+                    onClick={(e) => { e.stopPropagation(); setConfirmType(type) }}
+                    className="p-1 text-gray-300 hover:text-red-400 transition-colors rounded shrink-0"
+                    title="Delete service type"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                  </button>
+                )}
+              </div>
+            )
+          })}
           {showCreate && (
             <button
               type="button"
@@ -308,20 +353,25 @@ export function AddCategoryDropdown({
   usedCategoryIds,
   onSelect,
   onCreateNew,
+  onDelete,
 }: {
   globalCategories: WorkflowCategory[]
   usedCategoryIds: Set<string>
   onSelect: (cat: WorkflowCategory) => void
   onCreateNew: () => void
+  onDelete?: (cat: WorkflowCategory) => void
 }) {
-  const [open, setOpen] = useState(false)
+  const [open, setOpen]           = useState(false)
+  const [confirmId, setConfirmId] = useState<string | null>(null)
   const ref = useRef<HTMLDivElement>(null)
 
-  const available = globalCategories.filter((c) => !usedCategoryIds.has(c.id))
 
   useEffect(() => {
     function handleClick(e: MouseEvent) {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false)
+      if (ref.current && !ref.current.contains(e.target as Node)) {
+        setOpen(false)
+        setConfirmId(null)
+      }
     }
     document.addEventListener("mousedown", handleClick)
     return () => document.removeEventListener("mousedown", handleClick)
@@ -331,7 +381,7 @@ export function AddCategoryDropdown({
     <div ref={ref} className="relative inline-block">
       <button
         type="button"
-        onClick={() => setOpen((v) => !v)}
+        onClick={() => { setOpen((v) => !v); setConfirmId(null) }}
         className="flex items-center gap-1.5 text-sm font-medium text-gray-600 border border-dashed border-gray-300 rounded-lg px-3 py-2 hover:border-gray-400 hover:bg-gray-50 transition-colors"
       >
         <Plus className="w-4 h-4" />
@@ -340,26 +390,72 @@ export function AddCategoryDropdown({
       </button>
 
       {open && (
-        <div className="absolute top-full left-0 mt-1 w-64 bg-white border border-gray-100 rounded-xl shadow-lg z-20 overflow-hidden">
-          {available.length > 0 && (
+        <div className="absolute top-full left-0 mt-1 w-72 bg-white border border-gray-100 rounded-xl shadow-lg z-20 overflow-hidden">
+          {globalCategories.length > 0 && (
             <>
               <p className="px-3 pt-2.5 pb-1 text-xs font-medium text-gray-400 uppercase tracking-wide">
                 Existing categories
               </p>
-              {available.map((cat) => {
-                const styles = colorStyles(cat.display_color)
+              {globalCategories.map((cat) => {
+                const styles    = colorStyles(cat.display_color)
+                const isUsed    = usedCategoryIds.has(cat.id)
+                const confirming = confirmId === cat.id
+
+                if (confirming) {
+                  return (
+                    <div key={cat.id} className="px-3 py-2.5 bg-red-50 border-t border-red-100">
+                      <div className="flex items-center gap-1.5 mb-2">
+                        <AlertTriangle className="w-3.5 h-3.5 text-red-500 shrink-0" />
+                        <p className="text-xs font-semibold text-red-700">Delete &ldquo;{cat.name}&rdquo;?</p>
+                      </div>
+                      <p className="text-xs text-red-600 mb-2">This cannot be undone.</p>
+                      <div className="flex gap-2">
+                        <button
+                          type="button"
+                          onClick={() => { onDelete?.(cat); setConfirmId(null); setOpen(false) }}
+                          className="flex-1 text-xs font-semibold py-1 rounded-lg bg-red-600 text-white hover:bg-red-700 transition-colors"
+                        >
+                          Delete
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setConfirmId(null)}
+                          className="flex-1 text-xs font-semibold py-1 rounded-lg bg-white border border-gray-200 text-gray-600 hover:bg-gray-50 transition-colors"
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    </div>
+                  )
+                }
+
                 return (
-                  <button
+                  <div
                     key={cat.id}
-                    type="button"
-                    onClick={() => { onSelect(cat); setOpen(false) }}
-                    className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-left hover:bg-gray-50 transition-colors"
+                    className="flex items-center gap-1 px-3 py-2 hover:bg-gray-50 transition-colors"
                   >
-                    <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${styles.badge}`}>
-                      {cat.name}
-                    </span>
-                    <span className="text-xs text-gray-400 capitalize">{cat.technician_role}s</span>
-                  </button>
+                    <button
+                      type="button"
+                      onClick={() => { if (!isUsed) { onSelect(cat); setOpen(false) } }}
+                      disabled={isUsed}
+                      className="flex-1 flex items-center gap-2.5 text-sm text-left disabled:opacity-40 disabled:cursor-not-allowed"
+                    >
+                      <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${styles.badge}`}>
+                        {cat.name}
+                      </span>
+                      <span className="text-xs text-gray-400 capitalize">{cat.technician_role}s</span>
+                    </button>
+                    {onDelete && (
+                      <button
+                        type="button"
+                        onClick={(e) => { e.stopPropagation(); setConfirmId(cat.id) }}
+                        className="p-1 text-gray-300 hover:text-red-400 transition-colors rounded shrink-0"
+                        title="Delete category"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    )}
+                  </div>
                 )
               })}
               <div className="border-t border-gray-100 my-1" />

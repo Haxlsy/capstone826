@@ -1,7 +1,7 @@
 "use client"
 
 import { useRouter } from "next/navigation"
-import { Car, User, ChevronRight, Clock } from "lucide-react"
+import { Car, User, ChevronRight, Clock, AlertCircle } from "lucide-react"
 import { HeadTechJob, STATUS_STYLES } from "./types"
 
 type HeadTechJobCardProps = {
@@ -29,6 +29,12 @@ export function HeadTechJobCard({ job }: HeadTechJobCardProps) {
           {job.job_id}
         </span>
         <div className="flex items-center gap-1.5">
+          {job.has_delayed_stage && (
+            <span className="flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full font-semibold bg-red-100 text-red-600">
+              <AlertCircle size={10} />
+              Stage Delayed
+            </span>
+          )}
           <span className={`text-[11px] px-2.5 py-0.5 rounded-full font-semibold ${STATUS_STYLES[job.status]}`}>
             {job.status}
           </span>

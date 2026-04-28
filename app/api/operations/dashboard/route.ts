@@ -1,6 +1,23 @@
 import { NextResponse } from "next/server"
 import { createAdminClient } from "@/lib/supabase/admin"
 
+function addWorkingMins(from: Date, mins: number): Date {
+  const WORK_START = 10 * 60
+  const WORK_END   = 20 * 60
+  const WORK_DAY   = WORK_END - WORK_START
+  const result = new Date(from)
+  let startMins = result.getHours() * 60 + result.getMinutes()
+  if (startMins < WORK_START) { result.setHours(10, 0, 0, 0); startMins = WORK_START }
+  if (startMins >= WORK_END)  { result.setDate(result.getDate() + 1); result.setHours(10, 0, 0, 0); startMins = WORK_START }
+  let remaining = mins
+  while (remaining > 0) {
+    const availableToday = WORK_END - startMins
+    if (remaining <= availableToday) { result.setMinutes(result.getMinutes() + remaining); remaining = 0 }
+    else { remaining -= availableToday; result.setDate(result.getDate() + 1); result.setHours(10, 0, 0, 0); startMins = WORK_START }
+  }
+  return result
+}
+
 export async function GET() {
   try {
     const supabase = createAdminClient()
@@ -53,6 +70,68 @@ export async function GET() {
       const key = STATUS_LABEL_TO_KEY[row.status as string]
       if (key) status_counts[key]++
     }
+
+    // Auto-detect overdue — two signals, each job counted at most once:
+    // 1. Job-level: Ongoing with expected_completion_at already past
+    // 2. Stage-level: any incomplete stage past its expected end
+    const nowMs = Date.now()
+    const overdueJobIds = new Set<string>()
+
+    // Signal 1: job-level expected_completion_at
+    for (const row of rows) {
+      if (
+        row.status === "Ongoing" &&
+        row.expected_completion_at &&
+        new Date(row.expected_completion_at as string).getTime() < nowMs
+      ) {
+        overdueJobIds.add(row.id as string)
+      }
+    }
+
+    // Signal 2: stage-level — check incomplete stages against cumulative expected end
+    const activeJobs = rows.filter(
+      (r: any) => ["Ongoing", "For Rework", "Pending"].includes(r.status as string) && r.actual_start_at
+    )
+    const activeJobIds = activeJobs.map((r: any) => r.id as string)
+
+    if (activeJobIds.length > 0) {
+      const { data: stageRows } = await supabase
+        .from("job_stage_progress")
+        .select("job_order_id, status, stage_duration_mins, service_stage:service_stage_id(stage_duration_mins, sequence_order)")
+        .in("job_order_id", activeJobIds)
+
+      const jobStagesMap = new Map<string, any[]>()
+      for (const s of stageRows ?? []) {
+        if (!jobStagesMap.has(s.job_order_id)) jobStagesMap.set(s.job_order_id, [])
+        jobStagesMap.get(s.job_order_id)!.push(s)
+      }
+      const startMap = new Map(activeJobs.map((r: any) => [r.id as string, r.actual_start_at as string]))
+
+      for (const [jobId, stages] of jobStagesMap) {
+        if (overdueJobIds.has(jobId)) continue // already counted
+        const startAt = startMap.get(jobId)
+        if (!startAt) continue
+        const sorted = [...stages].sort((a: any, b: any) =>
+          ((a.service_stage as any)?.sequence_order ?? 0) - ((b.service_stage as any)?.sequence_order ?? 0)
+        )
+        const jobStart = new Date(startAt)
+        let cumMins = 0
+        for (const s of sorted) {
+          const override = s.stage_duration_mins as number | null
+          const base     = (s.service_stage as any)?.stage_duration_mins ?? 0
+          const mins     = override != null ? override : base
+          cumMins += mins
+          if (mins > 0 && (s.status as string) !== "done") {
+            if (nowMs > addWorkingMins(jobStart, cumMins).getTime()) {
+              overdueJobIds.add(jobId)
+              break
+            }
+          }
+        }
+      }
+    }
+
+    for (const _ of overdueJobIds) status_counts["delayed"]++
 
     // Open concern count
     const { count: concern_count } = await supabase

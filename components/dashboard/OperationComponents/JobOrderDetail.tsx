@@ -319,6 +319,20 @@ export default function JobOrderDetail({ jobId }: { jobId: string }) {
             <p className="text-xs text-gray-400 uppercase tracking-wide mb-0.5">Est. Completion</p>
             <p className="font-medium text-gray-700">{fmtDate(job.expected_completion_at)}</p>
           </div>
+          {(() => {
+            const lastExpected = job.stages
+              .map((s) => s.expected_end_at)
+              .filter(Boolean)
+              .sort()
+              .at(-1)
+            if (!lastExpected || lastExpected === job.expected_completion_at) return null
+            return (
+              <div>
+                <p className="text-xs text-gray-400 uppercase tracking-wide mb-0.5">Updated Est.</p>
+                <p className="font-medium text-orange-600">{fmtDate(lastExpected)}</p>
+              </div>
+            )
+          })()}
         </div>
       </div>
 

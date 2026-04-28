@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import {
   ChevronLeft, CheckCircle2, Circle, ImagePlus, Video,
-  ThumbsUp, AlertTriangle, Loader2, Info, RefreshCw, Play, X, Users, ChevronDown, Clock,
+  ThumbsUp, AlertTriangle, Loader2, Info, RefreshCw, Play, X, Users, ChevronDown, Clock, AlarmClock,
 } from "lucide-react";
 import { BottomNav } from "./components/BottomNav";
 
@@ -44,6 +44,7 @@ interface StageDoc {
   category_color:      string | null;
   stage_duration_mins: number;
   expected_end_at:     string | null;
+  is_delayed:          boolean;
   is_unlocked:         boolean;
   status:              "pending" | "in_progress" | "done" | "for_rework";
   rework_instructions: string | null;
@@ -501,6 +502,35 @@ export default function HeadTechJobHistoryPage({ jobId }: { jobId: string }) {
             </span>
           )}
         </div>
+
+        {/* Delay summary card — shown only when stages are overdue */}
+        {(() => {
+          const delayedStages = job.stages.filter((s) => s.is_delayed)
+          if (delayedStages.length === 0) return null
+          return (
+            <div className="bg-red-50 rounded-2xl p-4 flex gap-3 border border-red-100">
+              <AlarmClock size={15} className="text-red-500 mt-0.5 shrink-0" />
+              <div className="flex-1 min-w-0">
+                <p className="text-xs font-semibold text-red-700 mb-1.5">
+                  {delayedStages.length} Stage{delayedStages.length > 1 ? "s" : ""} Delayed
+                </p>
+                <ul className="space-y-1">
+                  {delayedStages.map((s) => (
+                    <li key={s.id} className="text-xs text-red-700 flex items-center gap-1.5">
+                      <span className="w-1 h-1 rounded-full bg-red-400 shrink-0" />
+                      <span className="font-medium">{s.order}. {s.name}</span>
+                      {s.expected_end_at && (
+                        <span className="text-red-400 truncate">
+                          · was due {new Date(s.expected_end_at).toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}
+                        </span>
+                      )}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            </div>
+          )
+        })()}
 
         {/* Job info card */}
         <div className="bg-white rounded-2xl border border-gray-100 shadow-[0_2px_12px_-4px_rgba(0,0,0,0.06)] divide-y divide-gray-50">
@@ -1110,15 +1140,20 @@ function StageCard({
                     <Circle       size={18} className="text-gray-300" />}
         </div>
         <div className="flex-1 min-w-0">
-          <p className={`text-sm font-semibold leading-snug ${
-            done ? "text-gray-400 line-through decoration-gray-300" :
-            rework ? "text-orange-800" :
-            "text-gray-900"
-          }`}>
-            {stage.order}. {stage.name}
-          </p>
+          <div className="flex items-center gap-1.5 flex-wrap">
+            <p className={`text-sm font-semibold leading-snug ${
+              done ? "text-gray-400 line-through decoration-gray-300" :
+              rework ? "text-orange-800" :
+              "text-gray-900"
+            }`}>
+              {stage.order}. {stage.name}
+            </p>
+            {!done && stage.is_delayed && (
+              <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-red-100 text-red-600 font-medium">Delayed</span>
+            )}
+          </div>
           {!done && (stage.expected_end_at || stage.stage_duration_mins > 0) && (
-            <p className="flex items-center gap-1 text-[11px] text-gray-400 mt-0.5">
+            <p className={`flex items-center gap-1 text-[11px] mt-0.5 ${stage.is_delayed ? "text-red-500" : "text-gray-400"}`}>
               <Clock size={10} />
               {stage.expected_end_at && (
                 <span>Due by {new Date(stage.expected_end_at).toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}</span>

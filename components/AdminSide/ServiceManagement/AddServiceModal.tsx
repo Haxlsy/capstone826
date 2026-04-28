@@ -39,6 +39,8 @@ export default function AddServiceModal({ open, onClose, onSuccess }: AddService
   const [showCreateForm, setShowCreateForm]     = useState(false)
   const [creatingCategory, setCreatingCategory] = useState(false)
   const [createCategoryError, setCreateCategoryError] = useState("")
+  const [deleteError, setDeleteError]           = useState("")
+  const [typeDeleteError, setTypeDeleteError]   = useState("")
 
   useEffect(() => {
     if (!open) return
@@ -88,6 +90,32 @@ export default function AddServiceModal({ open, onClose, onSuccess }: AddService
 
   function removeSection(categoryId: string) {
     setSections((prev) => prev.filter((s) => s.categoryId !== categoryId))
+  }
+
+  async function handleDeleteType(type: string) {
+    setTypeDeleteError("")
+    try {
+      const res  = await fetch(`/api/admin/service-types/${encodeURIComponent(type)}`, { method: "DELETE" })
+      const json = await res.json()
+      if (!res.ok) { setTypeDeleteError(json.error ?? "Failed to delete service type."); return }
+      setServiceTypes((prev) => prev.filter((t) => t !== type))
+      if (form.serviceType === type) setField("serviceType", "")
+    } catch {
+      setTypeDeleteError("Network error. Please try again.")
+    }
+  }
+
+  async function handleDeleteCategory(cat: WorkflowCategory) {
+    setDeleteError("")
+    try {
+      const res  = await fetch(`/api/admin/workflow-categories/${cat.id}`, { method: "DELETE" })
+      const json = await res.json()
+      if (!res.ok) { setDeleteError(json.error ?? "Failed to delete category."); return }
+      setGlobalCategories((prev) => prev.filter((c) => c.id !== cat.id))
+      setSections((prev) => prev.filter((s) => s.categoryId !== cat.id))
+    } catch {
+      setDeleteError("Network error. Please try again.")
+    }
   }
 
   async function handleCreateCategory(name: string, role: "detailer" | "installer", color: string) {
@@ -285,8 +313,10 @@ export default function AddServiceModal({ open, onClose, onSuccess }: AddService
                 setForm((p) => ({ ...p, serviceType: v }))
                 if (errors.serviceType) setErrors((p) => ({ ...p, serviceType: undefined as unknown as string }))
               }}
+              onDeleteType={handleDeleteType}
               error={errors.serviceType}
             />
+            {typeDeleteError && <p className="text-xs text-red-500 mt-0.5">{typeDeleteError}</p>}
           </div>
 
           {/* Service Name */}
@@ -413,12 +443,16 @@ export default function AddServiceModal({ open, onClose, onSuccess }: AddService
                   error={createCategoryError}
                 />
               ) : (
-                <AddCategoryDropdown
-                  globalCategories={globalCategories}
-                  usedCategoryIds={usedCategoryIds}
-                  onSelect={addSection}
-                  onCreateNew={() => setShowCreateForm(true)}
-                />
+                <>
+                  <AddCategoryDropdown
+                    globalCategories={globalCategories}
+                    usedCategoryIds={usedCategoryIds}
+                    onSelect={addSection}
+                    onCreateNew={() => setShowCreateForm(true)}
+                    onDelete={handleDeleteCategory}
+                  />
+                  {deleteError && <p className="text-xs text-red-500 mt-1">{deleteError}</p>}
+                </>
               )}
             </div>
           </div>

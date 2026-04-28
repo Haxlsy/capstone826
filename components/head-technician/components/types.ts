@@ -27,6 +27,7 @@ export type HeadTechJob = {
   status: Status;
   progress: number;
   stage_groups: StageGroup[];
+  has_delayed_stage: boolean;
 };
 
 export const STATUS_STYLES: Record<Status, string> = {
