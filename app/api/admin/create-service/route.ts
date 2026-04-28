@@ -2,6 +2,7 @@ import { NextResponse } from "next/server"
 import { cookies } from "next/headers"
 import { createClient } from "@/lib/supabase/server"
 import { createAdminClient } from "@/lib/supabase/admin"
+import { logAudit } from "@/lib/audit"
 
 interface Stage {
   name:               string
@@ -19,7 +20,7 @@ export async function POST(request: Request) {
   const admin = createAdminClient()
   const { data: profile } = await admin
     .from("user_account")
-    .select("role")
+    .select("full_name, role")
     .eq("id", user.id)
     .single()
 
@@ -83,6 +84,15 @@ export async function POST(request: Request) {
       )
     }
   }
+
+  logAudit({
+    user_id:   user.id,
+    user_name: profile.full_name,
+    role:      profile.role,
+    category:  "create",
+    action:    "Created service",
+    target:    serviceName.trim(),
+  })
 
   return NextResponse.json({ success: true, serviceId: service.id })
 }

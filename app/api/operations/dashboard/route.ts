@@ -1,22 +1,6 @@
 import { NextResponse } from "next/server"
 import { createAdminClient } from "@/lib/supabase/admin"
-
-function addWorkingMins(from: Date, mins: number): Date {
-  const WORK_START = 10 * 60
-  const WORK_END   = 20 * 60
-  const WORK_DAY   = WORK_END - WORK_START
-  const result = new Date(from)
-  let startMins = result.getHours() * 60 + result.getMinutes()
-  if (startMins < WORK_START) { result.setHours(10, 0, 0, 0); startMins = WORK_START }
-  if (startMins >= WORK_END)  { result.setDate(result.getDate() + 1); result.setHours(10, 0, 0, 0); startMins = WORK_START }
-  let remaining = mins
-  while (remaining > 0) {
-    const availableToday = WORK_END - startMins
-    if (remaining <= availableToday) { result.setMinutes(result.getMinutes() + remaining); remaining = 0 }
-    else { remaining -= availableToday; result.setDate(result.getDate() + 1); result.setHours(10, 0, 0, 0); startMins = WORK_START }
-  }
-  return result
-}
+import { addWorkingMins } from "@/lib/time-utils"
 
 export async function GET() {
   try {

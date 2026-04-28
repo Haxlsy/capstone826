@@ -2,6 +2,7 @@ import { NextResponse } from "next/server"
 import { cookies } from "next/headers"
 import { createClient } from "@/lib/supabase/server"
 import { createAdminClient } from "@/lib/supabase/admin"
+import { logAudit } from "@/lib/audit"
 
 // DELETE /api/admin/workflow-categories/[id]
 // Soft-deletes a workflow category (sets is_active = false).
@@ -21,7 +22,7 @@ export async function DELETE(
     const admin = createAdminClient()
     const { data: profile } = await admin
       .from("user_account")
-      .select("role")
+      .select("full_name, role")
       .eq("id", user.id)
       .single()
 
@@ -30,10 +31,10 @@ export async function DELETE(
     }
 
     // Guard: reject if any service_stage still references this category
-    const { count: stageCount } = await admin
-      .from("service_stage")
-      .select("id", { count: "exact", head: true })
-      .eq("category_id", id)
+    const [{ count: stageCount }, { data: category }] = await Promise.all([
+      admin.from("service_stage").select("id", { count: "exact", head: true }).eq("category_id", id),
+      admin.from("workflow_category").select("name").eq("id", id).single(),
+    ])
 
     if ((stageCount ?? 0) > 0) {
       return NextResponse.json(
@@ -48,6 +49,15 @@ export async function DELETE(
       .eq("id", id)
 
     if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+
+    logAudit({
+      user_id:   user.id,
+      user_name: profile.full_name,
+      role:      profile.role,
+      category:  "delete",
+      action:    "Deleted workflow category",
+      target:    category?.name ?? id,
+    })
 
     return NextResponse.json({ success: true })
   } catch (err: unknown) {

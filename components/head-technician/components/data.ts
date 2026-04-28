@@ -13,6 +13,7 @@ export const ACTIVE_JOBS: HeadTechJob[] = [
     status: "Ongoing",
     progress: 60,
     stage_groups: [],
+    has_delayed_stage: false,
   },
   {
     job_id: "JO-2026-010",
@@ -26,6 +27,7 @@ export const ACTIVE_JOBS: HeadTechJob[] = [
     status: "For Release",
     progress: 100,
     stage_groups: [],
+    has_delayed_stage: false,
   },
   {
     job_id: "JO-2026-009",
@@ -39,6 +41,7 @@ export const ACTIVE_JOBS: HeadTechJob[] = [
     status: "Ongoing",
     progress: 33,
     stage_groups: [],
+    has_delayed_stage: false,
   },
   {
     job_id: "JO-2026-006",
@@ -52,6 +55,7 @@ export const ACTIVE_JOBS: HeadTechJob[] = [
     status: "For Release",
     progress: 100,
     stage_groups: [],
+    has_delayed_stage: false,
   },
   {
     job_id: "JO-2026-005",
@@ -65,6 +69,7 @@ export const ACTIVE_JOBS: HeadTechJob[] = [
     status: "Pending",
     progress: 0,
     stage_groups: [],
+    has_delayed_stage: false,
   },
   {
     job_id: "JO-2026-004",
@@ -78,6 +83,7 @@ export const ACTIVE_JOBS: HeadTechJob[] = [
     status: "Delayed",
     progress: 60,
     stage_groups: [],
+    has_delayed_stage: false,
   },
 ];
 

@@ -2,6 +2,7 @@ import { NextResponse } from "next/server"
 import { cookies } from "next/headers"
 import { createClient } from "@/lib/supabase/server"
 import { createAdminClient } from "@/lib/supabase/admin"
+import { logAudit } from "@/lib/audit"
 
 // POST /api/operations/job-orders/[id]/rework
 // Body: { stage_ids: string[], rework_instructions: string }
@@ -75,6 +76,18 @@ export async function POST(
 
     if (notifRows.length > 0) {
       await admin.from("notification").insert(notifRows)
+    }
+
+    const { data: profile } = await admin.from("user_account").select("full_name, role").eq("id", user.id).single()
+    if (profile) {
+      logAudit({
+        user_id:   user.id,
+        user_name: profile.full_name,
+        role:      profile.role,
+        category:  "flag",
+        action:    "Flagged job for rework",
+        target:    jobId,
+      })
     }
 
     return NextResponse.json({ success: true })

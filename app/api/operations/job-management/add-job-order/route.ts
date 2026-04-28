@@ -2,6 +2,7 @@ import { NextResponse } from "next/server"
 import { cookies } from "next/headers"
 import { createClient } from "@/lib/supabase/server"
 import { createAdminClient } from "@/lib/supabase/admin"
+import { logAudit } from "@/lib/audit"
 
 interface CustomStage {
   service_stage_id:      string | null   // null for stages added only for this job
@@ -54,11 +55,10 @@ export async function POST(request: Request) {
     const admin = createAdminClient()
 
     console.log("[add-job-order] step: fetch service", service_id)
-    const { data: svc, error: svcErr } = await admin
-      .from("service")
-      .select("estimated_duration_mins")
-      .eq("id", service_id)
-      .single()
+    const [{ data: svc, error: svcErr }, { data: callerProfile }] = await Promise.all([
+      admin.from("service").select("estimated_duration_mins").eq("id", service_id).single(),
+      admin.from("user_account").select("full_name, role").eq("id", user.id).single(),
+    ])
 
     if (svcErr || !svc) {
       console.error("[add-job-order] service fetch error:", svcErr?.message)
@@ -255,6 +255,17 @@ export async function POST(request: Request) {
       changed_by_id: user.id,
     })
     if (histErr) console.error("[add-job-order] history insert error:", histErr.message)
+
+    if (callerProfile) {
+      logAudit({
+        user_id:   user.id,
+        user_name: callerProfile.full_name,
+        role:      callerProfile.role,
+        category:  "create",
+        action:    "Created job order",
+        target:    resolvedCustomerName ?? job.id,
+      })
+    }
 
     return NextResponse.json({ success: true, job }, { status: 201 })
   } catch (err: unknown) {

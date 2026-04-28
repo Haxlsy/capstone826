@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import {
   ChevronLeft, CheckCircle2, Circle, ImagePlus, Video,
@@ -108,6 +108,11 @@ export default function HeadTechJobHistoryPage({ jobId }: { jobId: string }) {
   const [markingId,    setMarkingId]    = useState<string | null>(null);
   const [startingJob,  setStartingJob]  = useState(false);
   const [rejectionAlert, setRejectionAlert] = useState<{ message: string } | null>(null);
+
+  const delayedStages = useMemo(
+    () => (job?.stages ?? []).filter((s) => s.is_delayed),
+    [job]
+  );
 
   // Approve state (shared across phases)
   const [showApprove,  setShowApprove]  = useState(false);
@@ -504,33 +509,29 @@ export default function HeadTechJobHistoryPage({ jobId }: { jobId: string }) {
         </div>
 
         {/* Delay summary card — shown only when stages are overdue */}
-        {(() => {
-          const delayedStages = job.stages.filter((s) => s.is_delayed)
-          if (delayedStages.length === 0) return null
-          return (
-            <div className="bg-red-50 rounded-2xl p-4 flex gap-3 border border-red-100">
-              <AlarmClock size={15} className="text-red-500 mt-0.5 shrink-0" />
-              <div className="flex-1 min-w-0">
-                <p className="text-xs font-semibold text-red-700 mb-1.5">
-                  {delayedStages.length} Stage{delayedStages.length > 1 ? "s" : ""} Delayed
-                </p>
-                <ul className="space-y-1">
-                  {delayedStages.map((s) => (
-                    <li key={s.id} className="text-xs text-red-700 flex items-center gap-1.5">
-                      <span className="w-1 h-1 rounded-full bg-red-400 shrink-0" />
-                      <span className="font-medium">{s.order}. {s.name}</span>
-                      {s.expected_end_at && (
-                        <span className="text-red-400 truncate">
-                          · was due {new Date(s.expected_end_at).toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}
-                        </span>
-                      )}
-                    </li>
-                  ))}
-                </ul>
-              </div>
+        {delayedStages.length > 0 && (
+          <div className="bg-red-50 rounded-2xl p-4 flex gap-3 border border-red-100">
+            <AlarmClock size={15} className="text-red-500 mt-0.5 shrink-0" />
+            <div className="flex-1 min-w-0">
+              <p className="text-xs font-semibold text-red-700 mb-1.5">
+                {delayedStages.length} Stage{delayedStages.length > 1 ? "s" : ""} Delayed
+              </p>
+              <ul className="space-y-1">
+                {delayedStages.map((s) => (
+                  <li key={s.id} className="text-xs text-red-700 flex items-center gap-1.5">
+                    <span className="w-1 h-1 rounded-full bg-red-400 shrink-0" />
+                    <span className="font-medium">{s.order}. {s.name}</span>
+                    {s.expected_end_at && (
+                      <span className="text-red-400 truncate">
+                        · was due {new Date(s.expected_end_at).toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}
+                      </span>
+                    )}
+                  </li>
+                ))}
+              </ul>
             </div>
-          )
-        })()}
+          </div>
+        )}
 
         {/* Job info card */}
         <div className="bg-white rounded-2xl border border-gray-100 shadow-[0_2px_12px_-4px_rgba(0,0,0,0.06)] divide-y divide-gray-50">

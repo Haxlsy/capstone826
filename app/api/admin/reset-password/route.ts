@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server"
 import { randomBytes } from "crypto"
 import { createAdminClient } from "@/lib/supabase/admin"
+import { logAudit } from "@/lib/audit"
 
 function generatePassword(): string {
   // 12 chars from an unambiguous alphabet (no 0/O, 1/l/I)
@@ -39,20 +40,15 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: error.message }, { status: 500 })
     }
 
-    // Audit log (fire-and-forget)
     if (profile) {
-      Promise.resolve(
-        admin
-          .from("audit_log")
-          .insert({
-            user_id:   userId,
-            user_name: profile.full_name,
-            role:      profile.role,
-            category:  "account",
-            action:    "Password reset",
-            target:    profile.full_name,
-          })
-      ).catch(() => {})
+      logAudit({
+        user_id:   userId,
+        user_name: profile.full_name,
+        role:      profile.role,
+        category:  "auth",
+        action:    "Password reset",
+        target:    profile.full_name,
+      })
     }
 
     return NextResponse.json({ password: newPassword })

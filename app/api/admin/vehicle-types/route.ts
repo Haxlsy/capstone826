@@ -1,5 +1,8 @@
 import { NextResponse } from "next/server"
+import { cookies } from "next/headers"
+import { createClient } from "@/lib/supabase/server"
 import { createAdminClient } from "@/lib/supabase/admin"
+import { logAudit } from "@/lib/audit"
 
 export async function GET() {
   console.log("[/api/admin/vehicle-types] GET")
@@ -39,6 +42,23 @@ export async function POST(request: Request) {
     console.error("[/api/admin/vehicle-types] insert error:", error.message)
     const msg = error.message.includes("unique") ? "A vehicle type with that name already exists." : error.message
     return NextResponse.json({ error: msg }, { status: 500 })
+  }
+
+  const cookieStore = await cookies()
+  const userClient  = createClient(cookieStore)
+  const { data: { user } } = await userClient.auth.getUser()
+  if (user) {
+    const { data: prof } = await supabase.from("user_account").select("full_name, role").eq("id", user.id).single()
+    if (prof) {
+      logAudit({
+        user_id:   user.id,
+        user_name: prof.full_name,
+        role:      prof.role,
+        category:  "create",
+        action:    "Created vehicle type",
+        target:    data.type_name,
+      })
+    }
   }
 
   return NextResponse.json({ vehicle_type: data })

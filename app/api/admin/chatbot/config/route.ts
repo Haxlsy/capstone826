@@ -2,6 +2,7 @@ import { NextResponse } from "next/server"
 import { cookies } from "next/headers"
 import { createClient } from "@/lib/supabase/server"
 import { createAdminClient } from "@/lib/supabase/admin"
+import { logAudit } from "@/lib/audit"
 
 export async function GET() {
   const supabase = createAdminClient()
@@ -47,5 +48,19 @@ export async function POST(request: Request) {
     .eq("id", config.id)
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+
+  if (user) {
+    const { data: prof } = await supabase.from("user_account").select("full_name, role").eq("id", user.id).single()
+    if (prof) {
+      logAudit({
+        user_id:   user.id,
+        user_name: prof.full_name,
+        role:      prof.role,
+        category:  "update",
+        action:    "Updated chatbot system prompt",
+      })
+    }
+  }
+
   return NextResponse.json({ success: true })
 }

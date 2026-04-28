@@ -2,6 +2,7 @@ import { NextResponse } from "next/server"
 import { cookies } from "next/headers"
 import { createClient } from "@/lib/supabase/server"
 import { createAdminClient } from "@/lib/supabase/admin"
+import { logAudit } from "@/lib/audit"
 
 export async function GET(request: Request) {
   try {
@@ -76,6 +77,21 @@ export async function PATCH(request: Request) {
 
     if (error) {
       return NextResponse.json({ error: error.message }, { status: 500 })
+    }
+
+    if (status !== undefined) {
+      const { data: profile } = await admin.from("user_account").select("full_name, role").eq("id", user.id).single()
+      if (profile) {
+        const stageName = (data as any).custom_name ?? `Stage ${id}`
+        logAudit({
+          user_id:   user.id,
+          user_name: profile.full_name,
+          role:      profile.role,
+          category:  "update",
+          action:    status === "done" ? "Marked stage as done" : `Updated stage status to ${status}`,
+          target:    stageName,
+        })
+      }
     }
 
     return NextResponse.json({ success: true, stage: data })

@@ -2,31 +2,8 @@ import { NextResponse } from "next/server"
 import { cookies } from "next/headers"
 import { createClient } from "@/lib/supabase/server"
 import { createAdminClient } from "@/lib/supabase/admin"
-
-function addWorkingMins(from: Date, mins: number): Date {
-  const WORK_START = 10 * 60 // 10 AM
-  const WORK_END   = 20 * 60 // 8 PM
-  let current   = new Date(from)
-  let remaining = mins
-  while (remaining > 0) {
-    const nowMins    = current.getHours() * 60 + current.getMinutes()
-    const availToday = WORK_END - nowMins
-    if (availToday <= 0) {
-      current.setDate(current.getDate() + 1)
-      current.setHours(10, 0, 0, 0)
-      continue
-    }
-    if (remaining <= availToday) {
-      current = new Date(current.getTime() + remaining * 60_000)
-      remaining = 0
-    } else {
-      remaining -= availToday
-      current.setDate(current.getDate() + 1)
-      current.setHours(10, 0, 0, 0)
-    }
-  }
-  return current
-}
+import { logAudit } from "@/lib/audit"
+import { addWorkingMins } from "@/lib/time-utils"
 
 export async function GET(
   _request: Request,
@@ -273,12 +250,39 @@ export async function PATCH(
     // Log status change
     const newStatus = updates.status
     if (newStatus && current?.status !== newStatus) {
-      await admin.from("job_order_history").insert({
-        job_order_id:  id,
-        status:        newStatus,
-        changed_by_id: user.id,
-        ...(reason?.trim() ? { reason: reason.trim() } : {}),
-      })
+      const [{ data: profile }] = await Promise.all([
+        admin.from("user_account").select("full_name, role").eq("id", user.id).single(),
+        admin.from("job_order_history").insert({
+          job_order_id:  id,
+          status:        newStatus,
+          changed_by_id: user.id,
+          ...(reason?.trim() ? { reason: reason.trim() } : {}),
+        }),
+      ])
+
+      if (profile) {
+        const isApproval = ["Completed", "Released", "Approved"].includes(newStatus)
+        logAudit({
+          user_id:   user.id,
+          user_name: profile.full_name,
+          role:      profile.role,
+          category:  isApproval ? "approve" : "update",
+          action:    `Updated job status to ${newStatus}`,
+          target:    id,
+        })
+      }
+    } else if (head_detailer_id !== undefined || head_installer_id !== undefined || scheduled_at !== undefined) {
+      const { data: profile } = await admin.from("user_account").select("full_name, role").eq("id", user.id).single()
+      if (profile) {
+        logAudit({
+          user_id:   user.id,
+          user_name: profile.full_name,
+          role:      profile.role,
+          category:  "update",
+          action:    "Updated job assignment",
+          target:    id,
+        })
+      }
     }
 
     return NextResponse.json({ success: true })

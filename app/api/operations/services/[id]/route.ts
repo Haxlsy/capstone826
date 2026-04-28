@@ -2,6 +2,7 @@ import { NextResponse } from "next/server"
 import { cookies } from "next/headers"
 import { createClient } from "@/lib/supabase/server"
 import { createAdminClient } from "@/lib/supabase/admin"
+import { logAudit } from "@/lib/audit"
 
 
 // GET /api/operations/services/[id]
@@ -76,7 +77,7 @@ export async function PATCH(
 
     const { data: profile } = await supabase
       .from("user_account")
-      .select("role")
+      .select("full_name, role")
       .eq("id", user.id)
       .single()
 
@@ -86,11 +87,21 @@ export async function PATCH(
 
     // Archive toggle
     if (typeof body.is_archived === "boolean") {
-      const { error } = await supabase
+      const { data: svc, error } = await supabase
         .from("service")
         .update({ is_archived: body.is_archived })
         .eq("id", id)
+        .select("name")
+        .single()
       if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+      logAudit({
+        user_id:   user.id,
+        user_name: profile.full_name,
+        role:      profile.role,
+        category:  "delete",
+        action:    body.is_archived ? "Archived service" : "Restored service",
+        target:    svc?.name ?? id,
+      })
       return NextResponse.json({ success: true })
     }
 
@@ -182,6 +193,15 @@ export async function PATCH(
         })))
       if (insErr) return NextResponse.json({ error: insErr.message }, { status: 500 })
     }
+
+    logAudit({
+      user_id:   user.id,
+      user_name: profile.full_name,
+      role:      profile.role,
+      category:  "update",
+      action:    "Updated service",
+      target:    serviceName.trim(),
+    })
 
     return NextResponse.json({ success: true })
   } catch (err: unknown) {

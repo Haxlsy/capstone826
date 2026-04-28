@@ -2,6 +2,7 @@ import { NextResponse } from "next/server"
 import { cookies } from "next/headers"
 import { createClient } from "@/lib/supabase/server"
 import { createAdminClient } from "@/lib/supabase/admin"
+import { logAudit } from "@/lib/audit"
 
 // DELETE /api/admin/service-types/[type]
 // Rejects if any service (including archived) still uses this type.
@@ -22,7 +23,7 @@ export async function DELETE(
     const admin = createAdminClient()
     const { data: profile } = await admin
       .from("user_account")
-      .select("role")
+      .select("full_name, role")
       .eq("id", user.id)
       .single()
 
@@ -41,6 +42,15 @@ export async function DELETE(
         { status: 409 }
       )
     }
+
+    logAudit({
+      user_id:   user.id,
+      user_name: profile.full_name,
+      role:      profile.role,
+      category:  "delete",
+      action:    "Deleted service type",
+      target:    decoded,
+    })
 
     return NextResponse.json({ success: true })
   } catch (err: unknown) {

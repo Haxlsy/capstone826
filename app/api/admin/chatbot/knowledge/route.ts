@@ -1,5 +1,8 @@
 import { NextResponse } from "next/server"
+import { cookies } from "next/headers"
+import { createClient } from "@/lib/supabase/server"
 import { createAdminClient } from "@/lib/supabase/admin"
+import { logAudit } from "@/lib/audit"
 
 export async function GET() {
   const supabase = createAdminClient()
@@ -39,5 +42,23 @@ export async function POST(request: Request) {
     .single()
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+
+  const cookieStore = await cookies()
+  const userClient  = createClient(cookieStore)
+  const { data: { user } } = await userClient.auth.getUser()
+  if (user) {
+    const { data: prof } = await supabase.from("user_account").select("full_name, role").eq("id", user.id).single()
+    if (prof) {
+      logAudit({
+        user_id:   user.id,
+        user_name: prof.full_name,
+        role:      prof.role,
+        category:  "create",
+        action:    "Added knowledge entry",
+        target:    topic,
+      })
+    }
+  }
+
   return NextResponse.json({ entry: data }, { status: 201 })
 }

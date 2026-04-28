@@ -2,6 +2,7 @@ import { NextResponse } from "next/server"
 import { cookies } from "next/headers"
 import { createClient } from "@/lib/supabase/server"
 import { createAdminClient } from "@/lib/supabase/admin"
+import { logAudit } from "@/lib/audit"
 
 const ALLOWED_ROLES = [
   "admin",
@@ -26,36 +27,30 @@ export async function POST(request: Request) {
     )
   }
 
-  // Only super_admin can create admin accounts
-  if (role === "admin") {
-    const cookieStore = await cookies()
-    const supabase = createClient(cookieStore)
-    const { data: { user: caller } } = await supabase.auth.getUser()
+  const cookieStore = await cookies()
+  const userClient  = createClient(cookieStore)
+  const { data: { user: caller } } = await userClient.auth.getUser()
 
-    if (!caller) {
-      return NextResponse.json(
-        { error: "Authentication required." },
-        { status: 401 }
-      )
-    }
-
-    // Use admin client to bypass RLS — user_account has no read policies for authenticated role
-    const adminClient = createAdminClient()
-    const { data: callerProfile } = await adminClient
-      .from("user_account")
-      .select("role")
-      .eq("id", caller.id)
-      .single()
-
-    if (callerProfile?.role !== "super_admin") {
-      return NextResponse.json(
-        { error: "Only a Super Admin can create Admin accounts." },
-        { status: 403 }
-      )
-    }
+  if (!caller) {
+    return NextResponse.json({ error: "Authentication required." }, { status: 401 })
   }
 
-  const supabase = createAdminClient()
+  const adminClient = createAdminClient()
+  const { data: callerProfile } = await adminClient
+    .from("user_account")
+    .select("full_name, role")
+    .eq("id", caller.id)
+    .single()
+
+  // Only super_admin can create admin accounts
+  if (role === "admin" && callerProfile?.role !== "super_admin") {
+    return NextResponse.json(
+      { error: "Only a Super Admin can create Admin accounts." },
+      { status: 403 }
+    )
+  }
+
+  const supabase = adminClient
 
   // Check username uniqueness
   const { data: existing } = await supabase
@@ -102,6 +97,17 @@ export async function POST(request: Request) {
     // Rollback auth user
     await supabase.auth.admin.deleteUser(authData.user.id)
     return NextResponse.json({ error: profileError.message }, { status: 500 })
+  }
+
+  if (callerProfile) {
+    logAudit({
+      user_id:   caller.id,
+      user_name: callerProfile.full_name,
+      role:      callerProfile.role,
+      category:  "create",
+      action:    "Created account",
+      target:    fullName.trim(),
+    })
   }
 
   return NextResponse.json({ success: true })

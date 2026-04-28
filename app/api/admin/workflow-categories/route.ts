@@ -2,6 +2,7 @@ import { NextResponse } from "next/server"
 import { cookies } from "next/headers"
 import { createClient } from "@/lib/supabase/server"
 import { createAdminClient } from "@/lib/supabase/admin"
+import { logAudit } from "@/lib/audit"
 
 // GET /api/admin/workflow-categories
 // Returns all active workflow categories ordered by creation date.
@@ -34,7 +35,7 @@ export async function POST(request: Request) {
     const admin = createAdminClient()
     const { data: profile } = await admin
       .from("user_account")
-      .select("role")
+      .select("full_name, role")
       .eq("id", user.id)
       .single()
 
@@ -69,6 +70,15 @@ export async function POST(request: Request) {
       }
       return NextResponse.json({ error: error.message }, { status: 500 })
     }
+
+    logAudit({
+      user_id:   user.id,
+      user_name: profile.full_name,
+      role:      profile.role,
+      category:  "create",
+      action:    "Created workflow category",
+      target:    data.name,
+    })
 
     return NextResponse.json({ category: data }, { status: 201 })
   } catch (err: unknown) {

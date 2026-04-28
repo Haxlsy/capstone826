@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useCallback } from "react"
+import { useState, useEffect, useCallback, useMemo } from "react"
 import Link from "next/link"
 import { ArrowLeft, PackageCheck, ChevronDown, Users, RefreshCw, CheckCircle2, XCircle, Clock } from "lucide-react"
 
@@ -111,6 +111,12 @@ export default function JobOrderDetail({ jobId }: { jobId: string }) {
   const [resendingId, setResendingId] = useState<string | null>(null)
   // Per-stage optimistic send status override after a resend attempt
   const [resendStatus, setResendStatus] = useState<Record<string, boolean | null>>({})
+
+  const updatedEst = useMemo(() => {
+    if (!job) return null
+    const last = job.stages.map((s) => s.expected_end_at).filter(Boolean).sort().at(-1)
+    return last && last !== job.expected_completion_at ? last : null
+  }, [job])
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -319,20 +325,12 @@ export default function JobOrderDetail({ jobId }: { jobId: string }) {
             <p className="text-xs text-gray-400 uppercase tracking-wide mb-0.5">Est. Completion</p>
             <p className="font-medium text-gray-700">{fmtDate(job.expected_completion_at)}</p>
           </div>
-          {(() => {
-            const lastExpected = job.stages
-              .map((s) => s.expected_end_at)
-              .filter(Boolean)
-              .sort()
-              .at(-1)
-            if (!lastExpected || lastExpected === job.expected_completion_at) return null
-            return (
-              <div>
-                <p className="text-xs text-gray-400 uppercase tracking-wide mb-0.5">Updated Est.</p>
-                <p className="font-medium text-orange-600">{fmtDate(lastExpected)}</p>
-              </div>
-            )
-          })()}
+          {updatedEst && (
+            <div>
+              <p className="text-xs text-gray-400 uppercase tracking-wide mb-0.5">Updated Est.</p>
+              <p className="font-medium text-orange-600">{fmtDate(updatedEst)}</p>
+            </div>
+          )}
         </div>
       </div>
 

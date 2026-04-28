@@ -2,23 +2,7 @@ import { NextResponse } from "next/server"
 import { cookies } from "next/headers"
 import { createClient } from "@/lib/supabase/server"
 import { createAdminClient } from "@/lib/supabase/admin"
-
-
-function addWorkingMins(from: Date, mins: number): Date {
-  const WORK_START = 10 * 60
-  const WORK_END   = 20 * 60
-  const result = new Date(from)
-  let startMins = result.getHours() * 60 + result.getMinutes()
-  if (startMins < WORK_START) { result.setHours(10, 0, 0, 0); startMins = WORK_START }
-  if (startMins >= WORK_END)  { result.setDate(result.getDate() + 1); result.setHours(10, 0, 0, 0); startMins = WORK_START }
-  let remaining = mins
-  while (remaining > 0) {
-    const availableToday = WORK_END - startMins
-    if (remaining <= availableToday) { result.setMinutes(result.getMinutes() + remaining); remaining = 0 }
-    else { remaining -= availableToday; result.setDate(result.getDate() + 1); result.setHours(10, 0, 0, 0); startMins = WORK_START }
-  }
-  return result
-}
+import { addWorkingMins } from "@/lib/time-utils"
 
 function fmtDate(iso: string | null): string {
   if (!iso) return "—"
@@ -118,11 +102,17 @@ export async function GET() {
     }
     const catMap = new Map(catRows.map((r) => [r.id, r]))
 
-    // Build per-job, per-category progress
+    // Build per-job, per-category progress and collect stages per job in a single pass
     type StageGroup = { label: string; color: string; done: number; total: number }
-    const groupsMap = new Map<string, Map<string, StageGroup>>()
+    const groupsMap   = new Map<string, Map<string, StageGroup>>()
+    const jobStagesMap = new Map<string, any[]>()
 
     for (const s of stageProg ?? []) {
+      // Collect for delay detection
+      if (!jobStagesMap.has(s.job_order_id)) jobStagesMap.set(s.job_order_id, [])
+      jobStagesMap.get(s.job_order_id)!.push(s)
+
+      // Build category progress groups
       const ss = s.service_stage_id ? ssMap.get(s.service_stage_id) : null
       if (!ss?.category_id) continue
       const cat = catMap.get(ss.category_id)
@@ -141,11 +131,6 @@ export async function GET() {
     // Compute has_delayed_stage per job using working-hours-aware stage accumulation
     const nowMs = Date.now()
     const delayedJobIds = new Set<string>()
-    const jobStagesMap = new Map<string, any[]>()
-    for (const s of stageProg ?? []) {
-      if (!jobStagesMap.has(s.job_order_id)) jobStagesMap.set(s.job_order_id, [])
-      jobStagesMap.get(s.job_order_id)!.push(s)
-    }
     for (const j of jobs ?? []) {
       if (!j.actual_start_at) continue
       const stages = jobStagesMap.get(j.id) ?? []
