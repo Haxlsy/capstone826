@@ -290,6 +290,7 @@ export async function PATCH(
 
     if (action === "mark_stage_done") {
       if (!stage_id) return NextResponse.json({ error: "stage_id is required." }, { status: 400 })
+      if (!completion_notes?.trim()) return NextResponse.json({ error: "Completion notes are required." }, { status: 400 })
 
       await admin
         .from("job_stage_progress")
@@ -360,51 +361,46 @@ export async function PATCH(
         })
       }
 
-      // Save handoff notes to the last preparation stage (head_detailer only)
-      if (handoff_notes && !isInstaller) {
-        // Two-step: get service_stage_ids → look up their category_ids → look up names.
-        const { data: prepJspRows } = await admin
+      // Save handoff notes to the last stage owned by this role's category
+      if (handoff_notes) {
+        const { data: jspRows } = await admin
           .from("job_stage_progress")
-          .select("id, service_stage_id")
+          .select("id, service_stage_id, custom_sequence_order")
           .eq("job_order_id", jobId)
-          .order("service_stage_id")
+          .order("custom_sequence_order")
 
-        const prepSsIds = (prepJspRows ?? [])
+        const ssIds = (jspRows ?? [])
           .map((s: any) => s.service_stage_id as string | null)
           .filter(Boolean) as string[]
 
-        let prepCategoryMap: Map<string, string> = new Map()
-        if (prepSsIds.length > 0) {
-          const { data: prepSsRows } = await admin
+        if (ssIds.length > 0) {
+          const { data: ssRows } = await admin
             .from("service_stage")
             .select("id, category_id")
-            .in("id", prepSsIds)
+            .in("id", ssIds)
 
-          const prepCatIds = [...new Set(
-            (prepSsRows ?? []).map((s: any) => s.category_id as string | null).filter(Boolean)
+          const catIds = [...new Set(
+            (ssRows ?? []).map((s: any) => s.category_id as string | null).filter(Boolean)
           )] as string[]
 
-          if (prepCatIds.length > 0) {
-            const { data: prepCatRows } = await admin
+          if (catIds.length > 0) {
+            const { data: catRows } = await admin
               .from("workflow_category")
-              .select("id, name")
-              .in("id", prepCatIds)
-            const catNameMap = new Map((prepCatRows ?? []).map((c: any) => [c.id as string, c.name as string]))
-            for (const ss of (prepSsRows ?? []) as any[]) {
-              prepCategoryMap.set(ss.id, catNameMap.get(ss.category_id) ?? "")
+              .select("id, technician_role")
+              .in("id", catIds)
+
+            const catRoleMap = new Map((catRows ?? []).map((c: any) => [c.id as string, c.technician_role as string]))
+            const ssRoleMap  = new Map((ssRows ?? []).map((s: any) => [s.id as string, catRoleMap.get(s.category_id) ?? ""]))
+
+            const myRole      = isInstaller ? "installer" : "detailer"
+            const myLastStage = (jspRows ?? [])
+              .filter((s: any) => s.service_stage_id && ssRoleMap.get(s.service_stage_id) === myRole)
+              .at(-1)
+
+            if (myLastStage) {
+              await admin.from("job_stage_progress").update({ handoff_notes }).eq("id", myLastStage.id)
             }
           }
-        }
-
-        const lastPrep = (prepJspRows ?? [])
-          .filter((s: any) => s.service_stage_id && prepCategoryMap.get(s.service_stage_id) === "preparation")
-          .at(-1)
-
-        if (lastPrep) {
-          await admin
-            .from("job_stage_progress")
-            .update({ handoff_notes })
-            .eq("id", lastPrep.id)
         }
       }
 

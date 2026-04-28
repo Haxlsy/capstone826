@@ -1,4 +1,4 @@
-const WORK_START = 10 * 60 // 10 AM in minutes
+const WORK_START = 8 * 60  // 8 AM in minutes
 const WORK_END   = 20 * 60 // 8 PM in minutes
 
 export function addWorkingMins(from: Date, mins: number): Date {
@@ -9,7 +9,7 @@ export function addWorkingMins(from: Date, mins: number): Date {
     const availToday = WORK_END - nowMins
     if (availToday <= 0) {
       current.setDate(current.getDate() + 1)
-      current.setHours(10, 0, 0, 0)
+      current.setHours(WORK_START / 60, 0, 0, 0)
       continue
     }
     if (remaining <= availToday) {
@@ -18,7 +18,7 @@ export function addWorkingMins(from: Date, mins: number): Date {
     } else {
       remaining -= availToday
       current.setDate(current.getDate() + 1)
-      current.setHours(10, 0, 0, 0)
+      current.setHours(WORK_START / 60, 0, 0, 0)
     }
   }
   return current

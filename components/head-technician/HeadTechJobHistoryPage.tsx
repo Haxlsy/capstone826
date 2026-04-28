@@ -200,16 +200,15 @@ export default function HeadTechJobHistoryPage({ jobId }: { jobId: string }) {
     ? (isInstaller ? job.last_stage_role === "installer" : job.last_stage_role === "detailer")
     : false;
 
-  // Locked stages remain ahead — used to decide whether to show "Complete Installation".
-  const hasLockedStagesAhead = myStages.some((s) => !s.is_unlocked);
-
   const finishingAlreadyApproved = Boolean(job?.finishing_approved_at);
 
   // Approved banner: shown when the user completed their current phase handoff.
-  const approvedPhase: "prep" | "finishing" | null = (() => {
+  // Installer handoff is detected from server state: after approval, other roles' stages become unlocked.
+  const approvedPhase: "prep" | "installation" | "finishing" | null = (() => {
     if (!job || !userRole) return null;
     if (Boolean(job.finishing_approved_at)) return "finishing";
-    if (job.preparation_finished && !isInstaller && hasLockedStagesAhead) return "prep";
+    if (isInstaller && allDone && (job.stages ?? []).some(s => s.is_unlocked && !myStages.find(m => m.id === s.id))) return "installation";
+    if (job.preparation_finished && !isInstaller && !allJobStagesDone) return "prep";
     return null;
   })();
   const approved = approvedPhase !== null;
@@ -458,7 +457,8 @@ export default function HeadTechJobHistoryPage({ jobId }: { jobId: string }) {
 
   // ── Approve banner text based on which phase ──
   function approveBannerText() {
-    if (approvedPhase === "finishing") return "All stages complete — passed to Operations.";
+    if (approvedPhase === "finishing")     return "All stages complete — passed to Operations.";
+    if (approvedPhase === "installation")  return "Installation complete — handed off to finishing team.";
     return "Preparation approved — handed off to Installation.";
   }
 
@@ -701,14 +701,18 @@ export default function HeadTechJobHistoryPage({ jobId }: { jobId: string }) {
         })()}
 
         {/* ── Installer: Flag for Rework + Complete Installation (only when locked detailer stages remain) ── */}
-        {isInstaller && !finishingAlreadyApproved && !approved && allDone && hasLockedStagesAhead && (
+        {isInstaller && !finishingAlreadyApproved && !approved && allDone && !allJobStagesDone && (
           <div className="space-y-2 pt-1">
             {showApprove ? (
               <div className="bg-white rounded-2xl p-4 space-y-3 border border-emerald-100 shadow-[0_2px_12px_-4px_rgba(0,0,0,0.06)]">
                 <p className="text-sm font-semibold text-gray-900">Complete Installation</p>
-                <p className="text-xs text-gray-500">
-                  This will hand off the job to the Head Detailer for finishing stages.
-                </p>
+                <textarea
+                  value={handoffNotes}
+                  onChange={(e) => setHandoffNotes(e.target.value)}
+                  placeholder="Optional handoff notes for the finishing team…"
+                  rows={3}
+                  className="w-full text-sm border border-gray-200 rounded-xl px-3.5 py-3 resize-none focus:outline-none focus:ring-2 focus:ring-gray-200 bg-gray-50 text-gray-800 placeholder-gray-400 transition"
+                />
                 <div className="flex gap-2">
                   <button
                     onClick={() => setShowApprove(false)}
@@ -748,7 +752,7 @@ export default function HeadTechJobHistoryPage({ jobId }: { jobId: string }) {
         )}
 
         {/* ── Head Detailer (Prep phase): Flag for Rework + Approve Preparation ── */}
-        {!isInstaller && allDone && hasLockedStagesAhead && !finishingAlreadyApproved && !approved && (
+        {!isInstaller && allDone && !allJobStagesDone && !finishingAlreadyApproved && !approved && (
           <div className="space-y-2 pt-1">
             {showApprove ? (
               <div className="bg-white rounded-2xl p-4 space-y-3 border border-emerald-100 shadow-[0_2px_12px_-4px_rgba(0,0,0,0.06)]">
@@ -859,7 +863,7 @@ export default function HeadTechJobHistoryPage({ jobId }: { jobId: string }) {
             <ThumbsUp size={16} className="text-emerald-600 mt-0.5 shrink-0" />
             <div>
               <p className="text-sm font-semibold text-emerald-800">{approveBannerText()}</p>
-              {handoffNotes && approvedPhase === "prep" && (
+              {handoffNotes && (
                 <p className="text-xs text-emerald-700 mt-1">Notes: {handoffNotes}</p>
               )}
             </div>
@@ -1247,7 +1251,7 @@ function StageCard({
             <textarea
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
-              placeholder="Optional completion notes…"
+              placeholder="Add completion notes… (required)"
               rows={2}
               className="w-full text-xs border border-gray-200 rounded-xl px-3 py-2 resize-none focus:outline-none focus:ring-2 focus:ring-gray-200 bg-gray-50 text-gray-800 placeholder-gray-400 transition"
             />
@@ -1290,7 +1294,7 @@ function StageCard({
             {!done && (
               <button
                 onClick={() => onMarkDone(notes)}
-                disabled={isMarking || isUploading || stage.media.length === 0}
+                disabled={isMarking || isUploading || stage.media.length === 0 || !notes.trim()}
                 className="flex-1 flex items-center justify-center gap-1.5 text-xs font-semibold text-white bg-gray-900 rounded-xl py-2.5 hover:bg-gray-700 active:scale-[0.98] transition-all disabled:opacity-40 disabled:cursor-not-allowed"
               >
                 {isMarking ? <Loader2 size={12} className="animate-spin" /> : <CheckCircle2 size={12} />}

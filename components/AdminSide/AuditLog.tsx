@@ -356,6 +356,21 @@ const ALL_ROLES: AuditRole[] = [
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
+type TimePeriod = "week" | "month" | "all"
+
+function startOfPeriod(period: TimePeriod): Date | null {
+  if (period === "all") return null
+  const now = new Date()
+  if (period === "week") {
+    const d = new Date(now)
+    d.setDate(d.getDate() - d.getDay()) // Sunday
+    d.setHours(0, 0, 0, 0)
+    return d
+  }
+  // month
+  return new Date(now.getFullYear(), now.getMonth(), 1)
+}
+
 function fmtTime(iso: string): string {
   return new Date(iso).toLocaleString("en-US", {
     month: "short", day: "numeric",
@@ -381,16 +396,18 @@ interface ApiLog {
 
 export default function AuditLog() {
   // Login/Logout table filters
-  const [authRoleFilter,  setAuthRoleFilter]  = useState<AuditRole | "all">("all")
-  const [authEventFilter, setAuthEventFilter] = useState<string>("all")
-  const [authPageSize,    setAuthPageSize]    = useState<PageSize>(10)
-  const [authPage,        setAuthPage]        = useState(1)
+  const [authRoleFilter,   setAuthRoleFilter]   = useState<AuditRole | "all">("all")
+  const [authEventFilter,  setAuthEventFilter]  = useState<string>("all")
+  const [authPeriodFilter, setAuthPeriodFilter] = useState<TimePeriod>("all")
+  const [authPageSize,     setAuthPageSize]     = useState<PageSize>(10)
+  const [authPage,         setAuthPage]         = useState(1)
 
   // Audit Trail table filters
-  const [actRoleFilter, setActRoleFilter] = useState<AuditRole | "all">("all")
-  const [actCatFilter,  setActCatFilter]  = useState<AuditCategory | "all">("all")
-  const [actPageSize,   setActPageSize]   = useState<PageSize>(10)
-  const [actPage,       setActPage]       = useState(1)
+  const [actRoleFilter,   setActRoleFilter]   = useState<AuditRole | "all">("all")
+  const [actCatFilter,    setActCatFilter]    = useState<AuditCategory | "all">("all")
+  const [actPeriodFilter, setActPeriodFilter] = useState<TimePeriod>("all")
+  const [actPageSize,     setActPageSize]     = useState<PageSize>(10)
+  const [actPage,         setActPage]         = useState(1)
 
   const [logs,    setLogs]    = useState<ApiLog[]>([])
   const [loading, setLoading] = useState(true)
@@ -420,13 +437,17 @@ export default function AuditLog() {
   const actAll  = sorted.filter((e) => e.action !== "Logged in" && e.action !== "Logged out")
 
   // Apply filters per table
+  const authPeriodStart = startOfPeriod(authPeriodFilter)
   const filteredAuth = authAll
-    .filter((e) => authRoleFilter  === "all" || e.role   === authRoleFilter)
-    .filter((e) => authEventFilter === "all" || e.action === authEventFilter)
+    .filter((e) => authRoleFilter   === "all" || e.role   === authRoleFilter)
+    .filter((e) => authEventFilter  === "all" || e.action === authEventFilter)
+    .filter((e) => !authPeriodStart || new Date(e.created_at) >= authPeriodStart)
 
+  const actPeriodStart = startOfPeriod(actPeriodFilter)
   const filteredAct = actAll
-    .filter((e) => actRoleFilter === "all" || e.role     === actRoleFilter)
-    .filter((e) => actCatFilter  === "all" || e.category === actCatFilter)
+    .filter((e) => actRoleFilter  === "all" || e.role     === actRoleFilter)
+    .filter((e) => actCatFilter   === "all" || e.category === actCatFilter)
+    .filter((e) => !actPeriodStart || new Date(e.created_at) >= actPeriodStart)
 
   // Auth pagination
   const authTotalPages = Math.max(1, Math.ceil(filteredAuth.length / authPageSize))
@@ -550,6 +571,14 @@ export default function AuditLog() {
               <option value="Logged in">Logged in</option>
               <option value="Logged out">Logged out</option>
             </select>
+            <select aria-label="Period filter" value={authPeriodFilter}
+              onChange={(e) => { setAuthPeriodFilter(e.target.value as TimePeriod); setAuthPage(1) }}
+              className={SELECT_CLS}
+            >
+              <option value="all">All time</option>
+              <option value="week">This week</option>
+              <option value="month">This month</option>
+            </select>
           </div>
         </div>
         <div className="overflow-x-auto">
@@ -606,6 +635,14 @@ export default function AuditLog() {
               <option value="flag">Flag / Rework</option>
               <option value="delete">Delete / Archive</option>
               <option value="message">Message</option>
+            </select>
+            <select aria-label="Period filter" value={actPeriodFilter}
+              onChange={(e) => { setActPeriodFilter(e.target.value as TimePeriod); setActPage(1) }}
+              className={SELECT_CLS}
+            >
+              <option value="all">All time</option>
+              <option value="week">This week</option>
+              <option value="month">This month</option>
             </select>
           </div>
         </div>

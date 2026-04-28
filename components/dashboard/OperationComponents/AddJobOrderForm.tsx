@@ -318,8 +318,8 @@ export default function AddJobOrderForm() {
           errs.scheduledAt = "Scheduled date and time cannot be in the past."
         } else {
           const totalMins = selected.getHours() * 60 + selected.getMinutes()
-          if (totalMins < 10 * 60 || totalMins > 20 * 60) {
-            errs.scheduledAt = "Start time must be within working hours (10:00 AM – 8:00 PM)."
+          if (totalMins < 8 * 60 || totalMins > 20 * 60) {
+            errs.scheduledAt = "Start time must be within working hours (8:00 AM – 8:00 PM)."
           }
         }
       }
@@ -373,7 +373,7 @@ export default function AddJobOrderForm() {
   function resolveStartDate(raw: string, ppf: boolean): Date {
     if (ppf) {
       const [y, m, d] = raw.split("-").map(Number)
-      return new Date(y, m - 1, d, 10, 0, 0)
+      return new Date(y, m - 1, d, 8, 0, 0)
     }
     return new Date(raw)
   }
@@ -387,12 +387,12 @@ export default function AddJobOrderForm() {
     })
   }
 
-  // Calculates expected completion respecting working hours (10 AM – 8 PM).
+  // Calculates expected completion respecting working hours (8 AM – 8 PM).
   // If a day's remaining work time is exhausted, the job continues the next
-  // calendar day starting at 10 AM.
+  // calendar day starting at 8 AM.
   function calculateCompletion(raw: string, durationMins: number, ppf: boolean): string {
     if (!raw || durationMins <= 0) return "—"
-    const WORK_START = 10 * 60   // 600  mins
+    const WORK_START = 8 * 60    // 480  mins
     const WORK_END   = 20 * 60   // 1200 mins
 
     let current   = resolveStartDate(raw, ppf)
@@ -403,9 +403,9 @@ export default function AddJobOrderForm() {
       const availToday   = WORK_END - nowMins
 
       if (availToday <= 0) {
-        // Already at or past 8 PM — jump to next day at 10 AM
+        // Already at or past 8 PM — jump to next day at 8 AM
         current.setDate(current.getDate() + 1)
-        current.setHours(10, 0, 0, 0)
+        current.setHours(WORK_START / 60, 0, 0, 0)
         continue
       }
 
@@ -482,7 +482,7 @@ export default function AddJobOrderForm() {
 
       const payload: Record<string, unknown> = {
         service_id:           selectedServiceId,
-        scheduled_at:         isPPF ? `${scheduledAt}T10:00:00` : scheduledAt,
+        scheduled_at:         isPPF ? `${scheduledAt}T08:00:00` : scheduledAt,
         head_detailer_id:     selectedHeadDetailerId  ?? null,
         head_installer_id:    selectedHeadInstallerId ?? null,
         detailer_ids:         [...selectedDetailerIds],
@@ -749,14 +749,14 @@ export default function AddJobOrderForm() {
                 <input
                   aria-label="Scheduled Date and Time"
                   type="datetime-local"
-                  min={`${todayStr}T10:00`}
+                  min={`${todayStr}T08:00`}
                   value={scheduledAt}
                   onChange={(e) => { setScheduledAt(e.target.value); clearField("scheduledAt"); setSelectedDetailerIds(new Set()); setSelectedInstallerIds(new Set()) }}
                   className={inputCls(!!fieldErrors.scheduledAt)}
                 />
               )}
               {!fieldErrors.scheduledAt && !isPPF && (
-                <p className="text-[10px] text-gray-400">Working hours: 10:00 AM – 8:00 PM</p>
+                <p className="text-[10px] text-gray-400">Working hours: 8:00 AM – 8:00 PM</p>
               )}
               <FieldError msg={fieldErrors.scheduledAt} />
             </div>
@@ -770,7 +770,7 @@ export default function AddJobOrderForm() {
                   {formatScheduledStart(scheduledAt, isPPF)}
                 </p>
                 {isPPF && (
-                  <p className="text-[10px] text-gray-400 mt-0.5">Starts at 10:00 AM</p>
+                  <p className="text-[10px] text-gray-400 mt-0.5">Starts at 8:00 AM</p>
                 )}
               </div>
               <div>
