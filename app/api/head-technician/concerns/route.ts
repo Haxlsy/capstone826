@@ -21,29 +21,68 @@ export async function GET() {
 
     const admin = createAdminClient()
 
-    const { data, error } = await admin
+    let data:  any[] | null = null
+    let error: any          = null
+
+    const primary = await admin
       .from("concern")
       .select(`
         id, title, description, status, response_note,
         submitted_at, resolved_at,
-        job:job_order_id(id, status),
+        job:job_order_id(id, created_at),
+        stage:stage_id(id, custom_name, custom_sequence_order,
+          service_stage:service_stage_id(name, sequence_order)),
         media:concern_media(id, file_url, media_type)
       `)
       .eq("submitted_by_id", user.id)
       .order("submitted_at", { ascending: false })
 
+    data  = primary.data as any[] | null
+    error = primary.error
+
+    // Fallback: stage_id column may not exist yet (migration pending)
+    if (error?.message?.includes("stage_id")) {
+      const fallback = await admin
+        .from("concern")
+        .select(`
+          id, title, description, status, response_note,
+          submitted_at, resolved_at,
+          job:job_order_id(id, created_at),
+          media:concern_media(id, file_url, media_type)
+        `)
+        .eq("submitted_by_id", user.id)
+        .order("submitted_at", { ascending: false })
+      data  = fallback.data as any[] | null
+      error = fallback.error
+    }
+
     if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
-    const shaped = (data ?? []).map((c: any) => ({
-      id:            c.id,
-      title:         c.title,
-      description:   c.description,
-      status:        c.status,
-      response_note: c.response_note ?? null,
-      submitted_at:  fmtDate(c.submitted_at),
-      job_id:        c.job?.id ?? null,
-      media:         (c.media ?? []).map((m: any) => ({ id: m.id, url: m.file_url, type: m.media_type })),
-    }))
+    const shaped = (data ?? []).map((c: any) => {
+      const stageRow = c.stage as any
+      const stageName =
+        stageRow?.custom_name ??
+        stageRow?.service_stage?.name ??
+        null
+      const stageOrder =
+        stageRow?.custom_sequence_order ??
+        stageRow?.service_stage?.sequence_order ??
+        null
+
+      return {
+        id:              c.id,
+        title:           c.title,
+        description:     c.description,
+        status:          c.status,
+        response_note:   c.response_note ?? null,
+        submitted_at:    fmtDate(c.submitted_at),
+        job_display_id:  c.job?.id
+          ? `JO-${new Date(c.job.created_at).getFullYear()}-${(c.job.id as string).slice(-4).toUpperCase()}`
+          : null,
+        stage_name:      stageOrder != null && stageName ? `${stageOrder}. ${stageName}` : stageName,
+        media:           (c.media ?? []).map((m: any) => ({ id: m.id, url: m.file_url, type: m.media_type })),
+      }
+    })
 
     return NextResponse.json({ concerns: shaped })
   } catch (err: unknown) {
@@ -61,31 +100,65 @@ export async function POST(request: Request) {
     if (!user) return NextResponse.json({ error: "Unauthorized." }, { status: 401 })
 
     const body = await request.json()
-    const { title, description, job_order_id } = body as {
-      title?: string
-      description?: string
+    const { description, job_order_id, stage_id } = body as {
+      description?:  string
       job_order_id?: string
+      stage_id?:     string
     }
 
-    if (!title?.trim())         return NextResponse.json({ error: "Title is required." },         { status: 400 })
-    if (!description?.trim())   return NextResponse.json({ error: "Description is required." },   { status: 400 })
+    if (!description?.trim()) return NextResponse.json({ error: "Description is required." }, { status: 400 })
+    if (!job_order_id?.trim()) return NextResponse.json({ error: "A related job is required." }, { status: 400 })
 
     const admin = createAdminClient()
 
-    const { data, error } = await admin
+    // Auto-generate title from job + optional stage
+    let autoTitle = "Job Concern"
+    const { data: jobRow } = await admin
+      .from("job_order")
+      .select("id, created_at")
+      .eq("id", job_order_id.trim())
+      .single()
+    if (jobRow) {
+      const yr     = new Date((jobRow as any).created_at).getFullYear()
+      const suffix = ((jobRow as any).id as string).slice(-4).toUpperCase()
+      autoTitle    = `JO-${yr}-${suffix} Concern`
+    }
+    if (stage_id?.trim()) {
+      const { data: stageRow } = await admin
+        .from("job_stage_progress")
+        .select("service_stage:service_stage_id(name)")
+        .eq("id", stage_id.trim())
+        .single()
+      const stageName = (stageRow as any)?.service_stage?.name
+      if (stageName) autoTitle = `${autoTitle} — ${stageName}`
+    }
+
+    const basePayload = {
+      title:           autoTitle,
+      description:     description.trim(),
+      job_order_id:    job_order_id.trim(),
+      submitted_by_id: user.id,
+      status:          "Pending",
+      submitted_at:    new Date().toISOString(),
+    }
+
+    let result = await admin
       .from("concern")
-      .insert({
-        title:           title.trim(),
-        description:     description.trim(),
-        ...(job_order_id?.trim() ? { job_order_id: job_order_id.trim() } : {}),
-        submitted_by_id: user.id,
-        status:          "Pending",
-        submitted_at:    new Date().toISOString(),
-      })
+      .insert({ ...basePayload, ...(stage_id?.trim() ? { stage_id: stage_id.trim() } : {}) })
       .select("id")
       .single()
 
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+    // Fallback: stage_id column may not exist yet (migration pending)
+    if (result.error?.message?.includes("stage_id")) {
+      result = await admin
+        .from("concern")
+        .insert(basePayload)
+        .select("id")
+        .single()
+    }
+
+    if (result.error) return NextResponse.json({ error: result.error.message }, { status: 500 })
+    const data = result.data
 
     return NextResponse.json({ success: true, id: (data as any)?.id })
   } catch (err: unknown) {

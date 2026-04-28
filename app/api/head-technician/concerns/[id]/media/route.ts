@@ -28,10 +28,9 @@ export async function POST(
       return NextResponse.json({ error: "Only image or video files are supported." }, { status: 400 })
     }
 
-    const maxBytes = isPhoto ? 5 * 1024 * 1024 : 50 * 1024 * 1024
+    const maxBytes = 50 * 1024 * 1024
     if (file.size > maxBytes) {
-      const limit = isPhoto ? "5 MB" : "50 MB"
-      return NextResponse.json({ error: `File too large. Maximum is ${limit}.` }, { status: 400 })
+      return NextResponse.json({ error: "File too large. Maximum is 50 MB." }, { status: 400 })
     }
 
     const ext         = file.name.split(".").pop() ?? (isPhoto ? "jpg" : "mp4")

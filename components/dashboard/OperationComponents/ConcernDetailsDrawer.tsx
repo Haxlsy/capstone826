@@ -13,6 +13,7 @@ export interface ConcernRecord {
   jobId:         string       // display ID
   submitterName: string
   submitterRole: string
+  stage_name?:   string | null
   media:         { id: string; file_url: string; media_type: string }[]
 }
 
@@ -89,6 +90,15 @@ export default function ConcernDetailsDrawer({ record, onClose, onResolve }: Con
                 <p className="text-xs text-gray-400 mb-0.5">Submitted</p>
                 <p className="text-sm text-gray-700">{record.submitted_at}</p>
               </div>
+
+              {record.stage_name && (
+                <div>
+                  <p className="text-xs text-gray-400 mb-1">Stage</p>
+                  <span className="inline-flex items-center text-xs font-semibold bg-blue-50 text-blue-600 px-2.5 py-1 rounded-full">
+                    {record.stage_name}
+                  </span>
+                </div>
+              )}
 
               <div>
                 <p className="text-xs text-gray-400 mb-1">Title</p>

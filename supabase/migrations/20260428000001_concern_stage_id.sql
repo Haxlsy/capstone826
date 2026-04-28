@@ -1,0 +1,2 @@
+ALTER TABLE concern
+  ADD COLUMN IF NOT EXISTS stage_id UUID REFERENCES job_stage_progress(id) ON DELETE SET NULL;

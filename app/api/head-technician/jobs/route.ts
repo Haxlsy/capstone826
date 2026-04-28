@@ -150,7 +150,7 @@ export async function GET() {
       }
     })
 
-    return NextResponse.json({ jobs: result })
+    return NextResponse.json({ jobs: result, user_role: role })
   } catch (err: any) {
     return NextResponse.json({ error: err?.message ?? String(err) }, { status: 500 })
   }

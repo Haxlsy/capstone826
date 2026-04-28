@@ -174,6 +174,7 @@ export default function SalesConcerns() {
           : "—",
         submitterName: c.submitter?.full_name ?? "—",
         submitterRole: c.submitter?.role ?? "—",
+        stage_name:    c.stage_name ?? null,
         media:         (c.media ?? []).map((m: any) => ({
           id:         m.id,
           file_url:   m.file_url,
