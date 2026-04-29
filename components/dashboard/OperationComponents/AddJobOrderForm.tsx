@@ -482,7 +482,9 @@ export default function AddJobOrderForm() {
 
       const payload: Record<string, unknown> = {
         service_id:           selectedServiceId,
-        scheduled_at:         isPPF ? `${scheduledAt}T08:00:00` : scheduledAt,
+        scheduled_at:         isPPF
+          ? new Date(`${scheduledAt}T08:00:00`).toISOString()
+          : new Date(scheduledAt).toISOString(),
         head_detailer_id:     selectedHeadDetailerId  ?? null,
         head_installer_id:    selectedHeadInstallerId ?? null,
         detailer_ids:         [...selectedDetailerIds],

@@ -538,7 +538,7 @@ export default function HeadTechJobHistoryPage({ jobId }: { jobId: string }) {
           <InfoRow label="Customer"  value={job.customer_name} />
           <InfoRow label="Vehicle"   value={`${job.plate_number}${job.car_make ? ` · ${job.car_make}` : ""}`} />
           <InfoRow label="Service"   value={job.service} accent="orange" />
-          <InfoRow label="Scheduled" value={job.scheduled_start} />
+          <InfoRow label="Scheduled Start" value={job.scheduled_start} />
           {!isInstaller && job.detailers.length > 0 && (
             <CrewRow label="Detailers"  members={job.detailers} />
           )}

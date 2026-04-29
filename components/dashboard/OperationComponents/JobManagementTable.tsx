@@ -27,8 +27,8 @@ interface JobOrder {
   is_overdue:    boolean
 }
 
-type TabType = "All" | "Pending" | "Ongoing" | "For Rework" | "For Inspection" | "For Release" | "Delayed" | "Cancelled"
-const TABS: TabType[] = ["All", "Pending", "Ongoing", "For Rework", "For Inspection", "For Release", "Delayed", "Cancelled"]
+type TabType = "All" | "Pending" | "Ongoing" | "For Rework" | "For Inspection" | "For Release" | "Delayed"
+const TABS: TabType[] = ["All", "Pending", "Ongoing", "For Rework", "For Inspection", "For Release", "Delayed"]
 
 function fmtDate(iso: string | null | undefined): string {
   if (!iso) return "—"

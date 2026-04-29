@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback, useMemo } from "react"
 import Link from "next/link"
-import { ArrowLeft, PackageCheck, ChevronDown, Users, RefreshCw, CheckCircle2, XCircle, Clock } from "lucide-react"
+import { ArrowLeft, PackageCheck, ChevronDown, Users, RefreshCw, CheckCircle2, XCircle, Clock, RotateCcw } from "lucide-react"
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -112,6 +112,12 @@ export default function JobOrderDetail({ jobId }: { jobId: string }) {
   // Per-stage optimistic send status override after a resend attempt
   const [resendStatus, setResendStatus] = useState<Record<string, boolean | null>>({})
 
+  // Stage rework modal
+  const [reworkModal, setReworkModal] = useState<{ stageId: string; stageName: string } | null>(null)
+  const [reworkNotes, setReworkNotes] = useState("")
+  const [submittingRework, setSubmittingRework] = useState(false)
+  const [reworkError, setReworkError] = useState<string | null>(null)
+
   const updatedEst = useMemo(() => {
     if (!job) return null
     const last = job.stages.map((s) => s.expected_end_at).filter(Boolean).sort().at(-1)
@@ -189,6 +195,39 @@ export default function JobOrderDetail({ jobId }: { jobId: string }) {
       setResendStatus((prev) => ({ ...prev, [stageId]: false }))
     } finally {
       setResendingId(null)
+    }
+  }
+
+  async function flagStageForRework() {
+    if (!reworkModal || !reworkNotes.trim()) return
+    setSubmittingRework(true)
+    setReworkError(null)
+    try {
+      const res  = await fetch(`/api/operations/job-orders/${jobId}/stage-rework`, {
+        method:  "POST",
+        headers: { "Content-Type": "application/json" },
+        body:    JSON.stringify({ stage_id: reworkModal.stageId, rework_notes: reworkNotes.trim() }),
+      })
+      const json = await res.json()
+      if (!res.ok) throw new Error(json?.error ?? "Failed to flag stage for rework")
+      // Optimistically update the stage in local state
+      setJob((prev) => {
+        if (!prev) return prev
+        return {
+          ...prev,
+          stages: prev.stages.map((s) =>
+            s.id === reworkModal.stageId
+              ? { ...s, status: "for_rework", rework_instructions: reworkNotes.trim() }
+              : s
+          ),
+        }
+      })
+      setReworkModal(null)
+      setReworkNotes("")
+    } catch (err: unknown) {
+      setReworkError(err instanceof Error ? err.message : String(err))
+    } finally {
+      setSubmittingRework(false)
     }
   }
 
@@ -279,7 +318,7 @@ export default function JobOrderDetail({ jobId }: { jobId: string }) {
               className="flex items-center gap-2 bg-green-600 text-white text-sm font-semibold px-4 py-2 rounded-lg hover:bg-green-700 disabled:opacity-60 transition-colors"
             >
               <PackageCheck className="w-4 h-4" />
-              {releasing ? "Releasing…" : "Mark as Released"}
+              {releasing ? "Completing…" : "Mark as Completed"}
             </button>
           )}
         </div>
@@ -312,7 +351,7 @@ export default function JobOrderDetail({ jobId }: { jobId: string }) {
             <p className="font-medium text-gray-700">{job.service}</p>
           </div>
           <div>
-            <p className="text-xs text-gray-400 uppercase tracking-wide mb-0.5">Scheduled</p>
+            <p className="text-xs text-gray-400 uppercase tracking-wide mb-0.5">Scheduled Start</p>
             <p className="font-medium text-gray-700">{fmtDate(job.scheduled_at)}</p>
           </div>
           <CrewCell label="Head Detailer" lead={job.head_detailer?.full_name ?? "Unassigned"} crew={job.detailers} />
@@ -379,18 +418,30 @@ export default function JobOrderDetail({ jobId }: { jobId: string }) {
                       </div>
 
                       <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <span className="text-sm font-medium text-gray-800">{stage.name}</span>
-                          <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${STAGE_STATUS_PILL[stage.status]}`}>
-                            {stage.status.replace("_", " ")}
-                          </span>
-                          {stage.is_delayed && (
-                            <span className="text-xs px-2 py-0.5 rounded-full font-medium bg-red-100 text-red-600 flex items-center gap-1">
-                              <Clock className="w-3 h-3" /> Delayed
+                        <div className="flex items-center gap-2 flex-wrap justify-between">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="text-sm font-medium text-gray-800">{stage.name}</span>
+                            <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${STAGE_STATUS_PILL[stage.status]}`}>
+                              {stage.status.replace("_", " ")}
                             </span>
-                          )}
-                          {stage.completed_at && (
-                            <span className="text-xs text-gray-400">{fmtDate(stage.completed_at)}</span>
+                            {stage.is_delayed && (
+                              <span className="text-xs px-2 py-0.5 rounded-full font-medium bg-red-100 text-red-600 flex items-center gap-1">
+                                <Clock className="w-3 h-3" /> Delayed
+                              </span>
+                            )}
+                            {stage.completed_at && (
+                              <span className="text-xs text-gray-400">{fmtDate(stage.completed_at)}</span>
+                            )}
+                          </div>
+                          {job.status === "For Inspection" && stage.status !== "for_rework" && (
+                            <button
+                              type="button"
+                              onClick={() => { setReworkModal({ stageId: stage.id, stageName: stage.name }); setReworkNotes(""); setReworkError(null) }}
+                              className="flex items-center gap-1 text-xs font-medium text-orange-600 border border-orange-300 bg-orange-50 hover:bg-orange-100 rounded-md px-2 py-1 transition-colors shrink-0"
+                            >
+                              <RotateCcw className="w-3 h-3" />
+                              For Rework
+                            </button>
                           )}
                         </div>
                         {stage.status !== "done" && stage.expected_end_at && (
@@ -480,10 +531,10 @@ export default function JobOrderDetail({ jobId }: { jobId: string }) {
           ) : (
             job.history.map((h, idx) => (
               <div key={idx} className="flex items-center gap-3 text-sm">
-                <span className={`w-2 h-2 rounded-full flex-shrink-0 ${
+                <span className={`w-2 h-2 rounded-full shrink-0 ${
                   STATUS_COLORS[h.status] ? "bg-current" : "bg-gray-300"
                 }`} />
-                <span className="font-medium text-gray-700 w-28 flex-shrink-0">{h.status}</span>
+                <span className="font-medium text-gray-700 w-28 shrink-0">{h.status}</span>
                 <span className="text-gray-400 text-xs">{fmtDate(h.created_at)}</span>
                 <span className="text-gray-400 text-xs ml-auto">{h.changed_by}</span>
               </div>
@@ -491,6 +542,49 @@ export default function JobOrderDetail({ jobId }: { jobId: string }) {
           )}
         </div>
       </div>
+
+      {/* Stage Rework Modal */}
+      {reworkModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-md p-6">
+            <div className="flex items-center gap-2 mb-1">
+              <RotateCcw className="w-4 h-4 text-orange-500" />
+              <h3 className="text-sm font-semibold text-gray-800">Flag Stage for Rework</h3>
+            </div>
+            <p className="text-xs text-gray-500 mb-4">
+              Stage: <span className="font-medium text-gray-700">{reworkModal.stageName}</span>
+            </p>
+            <textarea
+              value={reworkNotes}
+              onChange={(e) => setReworkNotes(e.target.value)}
+              placeholder="Describe what needs to be fixed…"
+              rows={4}
+              className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-800 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-orange-300 resize-none"
+            />
+            {reworkError && (
+              <p className="text-xs text-red-500 mt-2">{reworkError}</p>
+            )}
+            <div className="flex justify-end gap-2 mt-4">
+              <button
+                type="button"
+                onClick={() => { setReworkModal(null); setReworkNotes(""); setReworkError(null) }}
+                disabled={submittingRework}
+                className="px-4 py-2 text-sm font-medium text-gray-600 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={flagStageForRework}
+                disabled={submittingRework || !reworkNotes.trim()}
+                className="px-4 py-2 text-sm font-medium text-white bg-orange-500 rounded-lg hover:bg-orange-600 transition-colors disabled:opacity-50"
+              >
+                {submittingRework ? "Flagging…" : "Flag for Rework"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
     </div>
   )
