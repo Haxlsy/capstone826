@@ -37,7 +37,7 @@ export async function GET(
     const { data: job, error } = await admin
       .from("job_order")
       .select(
-        `id, status, scheduled_at, actual_start_at, created_at, finishing_approved_at,
+        `id, status, scheduled_at, actual_start_at, created_at, finishing_approved_at, category_handoffs,
          customer:customer_record_id(full_name, plate_number, vehicle_unit),
          service:service_id(name),
          customer_name, plate_number, vehicle_unit`
@@ -74,7 +74,7 @@ export async function GET(
       .map((s: any) => s.service_stage_id as string | null)
       .filter(Boolean) as string[]
 
-    type SSInfo = { name: string; sequence_order: number; category: string; category_role: string; category_color: string; stage_duration_mins: number }
+    type SSInfo = { name: string; sequence_order: number; category: string; category_id: string; category_role: string; category_color: string; stage_duration_mins: number }
     const ssMap: Record<string, SSInfo> = {}
     if (ssIds.length > 0) {
       const { data: ssRows } = await admin
@@ -105,6 +105,7 @@ export async function GET(
           sequence_order:      ss.sequence_order,
           stage_duration_mins: (ss as any).stage_duration_mins ?? 0,
           category:            catInfo?.name  ?? "preparation",
+          category_id:         ss.category_id as string,
           category_role:       catInfo?.role  ?? "detailer",
           category_color:      catInfo?.color ?? "blue",
         }
@@ -146,15 +147,39 @@ export async function GET(
       preInstallDetailerStages.length === 0 ||
       preInstallDetailerStages.every((s: any) => s.status === "done")
 
-    // Per-stage unlock: a stage at seq N with role R is unlocked when all OTHER-role stages
-    // with seq < N are done. This correctly handles any interleaved role ordering.
+    // Build a map of categoryId → { role, minSeq, maxSeq } for handoff gating.
+    const catSeqMap = new Map<string, { role: string; maxSeq: number; minSeq: number }>()
+    for (const [, info] of Object.entries(ssMap)) {
+      const catId = info.category_id
+      const seq   = info.sequence_order
+      const cur   = catSeqMap.get(catId)
+      if (!cur) catSeqMap.set(catId, { role: info.category_role, maxSeq: seq, minSeq: seq })
+      else catSeqMap.set(catId, { role: info.category_role, maxSeq: Math.max(cur.maxSeq, seq), minSeq: Math.min(cur.minSeq, seq) })
+    }
+
+    const categoryHandoffs = ((j as any).category_handoffs ?? {}) as Record<string, string>
+
+    // Per-stage unlock: requires BOTH conditions:
+    // 1. All OTHER-role stages with lower sequence_order are done (work is complete).
+    // 2. All preceding OTHER-role categories have been explicitly approved via category_handoffs
+    //    (prevents auto-unlock as soon as the last stage is marked done).
     const computedStages = stagesWithInfo.map((s: any) => {
       const myRole = s.stageInfo.category_role as string
+      const mySeq  = s.stageInfo.sequence_order as number
+
       const otherRolePreceding = stagesWithInfo.filter((o: any) =>
         (o.stageInfo.category_role as string) !== myRole &&
-        (o.stageInfo.sequence_order as number) < (s.stageInfo.sequence_order as number)
+        (o.stageInfo.sequence_order as number) < mySeq
       )
-      const is_unlocked = otherRolePreceding.every((o: any) => o.status === "done")
+      const allPriorOtherDone = otherRolePreceding.every((o: any) => o.status === "done")
+
+      // All preceding other-role categories must have an explicit handoff approval entry.
+      const precedingOtherCats = [...catSeqMap.entries()].filter(
+        ([, info]) => info.role !== myRole && info.maxSeq < mySeq
+      )
+      const allPriorCatsApproved = precedingOtherCats.every(([catId]) => catId in categoryHandoffs)
+
+      const is_unlocked = allPriorOtherDone && allPriorCatsApproved
       return { ...s, is_unlocked }
     })
 
@@ -209,6 +234,7 @@ export async function GET(
         preparation_finished,
         last_stage_role,
         finishing_approved_at: j.finishing_approved_at ?? null,
+        category_handoffs:     categoryHandoffs,
         detailers,
         installers,
         timeline: (history ?? []).map((h: any) => ({
@@ -221,6 +247,7 @@ export async function GET(
           name:                 s.stageInfo?.name                ?? "Stage",
           order:                s.stageInfo?.sequence_order      ?? 0,
           category:             s.stageInfo?.category            ?? "preparation",
+          category_id:          s.stageInfo?.category_id         ?? null,
           category_role:        s.stageInfo?.category_role       ?? "detailer",
           category_color:       s.stageInfo?.category_color ?? null,
           stage_duration_mins:  (s.stage_duration_mins as number | null) ?? s.stageInfo?.stage_duration_mins ?? 0,
@@ -339,66 +366,37 @@ export async function PATCH(
     }
 
     if (action === "approve") {
-      const { data: profile } = await admin
-        .from("user_account")
-        .select("role")
-        .eq("id", user.id)
-        .single()
+      // category_id is required — identifies which category is being handed off.
+      const category_id = body.category_id as string | null
+      if (!category_id) return NextResponse.json({ error: "category_id is required." }, { status: 400 })
 
-      const isInstaller = (profile as any)?.role === "head_installer"
+      // Merge the approved category into category_handoffs.
+      const { data: jobRow } = await admin.from("job_order").select("category_handoffs").eq("id", jobId).single()
+      const currentHandoffs  = ((jobRow as any)?.category_handoffs ?? {}) as Record<string, string>
+      const updatedHandoffs  = { ...currentHandoffs, [category_id]: new Date().toISOString() }
+      await admin.from("job_order").update({ category_handoffs: updatedHandoffs }).eq("id", jobId)
 
-      // Installer completing installation always returns to Ongoing.
-      // Operations decides when to set For Release after inspecting the result.
-      const newStatus = "Ongoing"
-
-      await admin.from("job_order").update({ status: newStatus }).eq("id", jobId)
-
-      if (newStatus !== "Ongoing") {
-        await admin.from("job_order_history").insert({
-          job_order_id:  jobId,
-          status:        newStatus,
-          changed_by_id: user.id,
-        })
-      }
-
-      // Save handoff notes to the last stage owned by this role's category
+      // Save handoff notes to the last stage of this category.
       if (handoff_notes) {
         const { data: jspRows } = await admin
           .from("job_stage_progress")
-          .select("id, service_stage_id, custom_sequence_order")
+          .select("id, service_stage_id")
           .eq("job_order_id", jobId)
-          .order("custom_sequence_order")
 
-        const ssIds = (jspRows ?? [])
-          .map((s: any) => s.service_stage_id as string | null)
-          .filter(Boolean) as string[]
-
+        const ssIds = (jspRows ?? []).map((s: any) => s.service_stage_id as string | null).filter(Boolean) as string[]
         if (ssIds.length > 0) {
           const { data: ssRows } = await admin
             .from("service_stage")
-            .select("id, category_id")
+            .select("id, sequence_order")
             .in("id", ssIds)
+            .eq("category_id", category_id)
+            .order("sequence_order", { ascending: false })
+            .limit(1)
 
-          const catIds = [...new Set(
-            (ssRows ?? []).map((s: any) => s.category_id as string | null).filter(Boolean)
-          )] as string[]
-
-          if (catIds.length > 0) {
-            const { data: catRows } = await admin
-              .from("workflow_category")
-              .select("id, technician_role")
-              .in("id", catIds)
-
-            const catRoleMap = new Map((catRows ?? []).map((c: any) => [c.id as string, c.technician_role as string]))
-            const ssRoleMap  = new Map((ssRows ?? []).map((s: any) => [s.id as string, catRoleMap.get(s.category_id) ?? ""]))
-
-            const myRole      = isInstaller ? "installer" : "detailer"
-            const myLastStage = (jspRows ?? [])
-              .filter((s: any) => s.service_stage_id && ssRoleMap.get(s.service_stage_id) === myRole)
-              .at(-1)
-
-            if (myLastStage) {
-              await admin.from("job_stage_progress").update({ handoff_notes }).eq("id", myLastStage.id)
+          if (ssRows && ssRows.length > 0) {
+            const lastJsp = (jspRows ?? []).find((s: any) => s.service_stage_id === ssRows[0].id)
+            if (lastJsp) {
+              await admin.from("job_stage_progress").update({ handoff_notes }).eq("id", lastJsp.id)
             }
           }
         }
@@ -481,13 +479,22 @@ export async function PATCH(
       return NextResponse.json({ success: true })
     }
 
-    if (action === "flag_rework") {
+    // Unified flag_rework — handles all categories dynamically.
+    // Notifies the OTHER role's head tech based on who is calling.
+    if (action === "flag_rework" || action === "flag_prep_rework" || action === "flag_finishing_rework") {
       if (!Array.isArray(stage_ids) || stage_ids.length === 0) {
         return NextResponse.json({ error: "stage_ids is required." }, { status: 400 })
       }
       if (!rework_instructions?.trim()) {
         return NextResponse.json({ error: "rework_instructions is required." }, { status: 400 })
       }
+
+      const { data: callerProfile } = await admin
+        .from("user_account")
+        .select("role")
+        .eq("id", user.id)
+        .single()
+      const callerIsInstaller = (callerProfile as any)?.role === "head_installer"
 
       const { error: stageErr } = await admin
         .from("job_stage_progress")
@@ -515,113 +522,24 @@ export async function PATCH(
         changed_by_id: user.id,
       })
 
+      // Notify the other role's head technician.
+      const notifyRole = callerIsInstaller ? "head_detailer" : "head_installer"
       const { data: team } = await admin
         .from("job_order_team")
         .select("user_account_id, role_in_job")
         .eq("job_order_id", jobId)
-        .eq("role_in_job", "head_detailer")
+        .eq("role_in_job", notifyRole)
 
       const notifRows = (team ?? [])
         .filter((t: any) => t.user_account_id)
         .map((t: any) => ({
           user_id:      t.user_account_id,
           type:         "rework",
-          message:      `Installation stage(s) have been flagged for rework. Instructions: ${rework_instructions.trim()}`,
+          message:      `Stage(s) have been flagged for rework. Instructions: ${rework_instructions.trim()}`,
           job_order_id: jobId,
         }))
 
       if (notifRows.length > 0) await admin.from("notification").insert(notifRows)
-
-      return NextResponse.json({ success: true })
-    }
-
-    if (action === "flag_prep_rework") {
-      if (!Array.isArray(stage_ids) || stage_ids.length === 0) {
-        return NextResponse.json({ error: "stage_ids is required." }, { status: 400 })
-      }
-      if (!rework_instructions?.trim()) {
-        return NextResponse.json({ error: "rework_instructions is required." }, { status: 400 })
-      }
-
-      const { error: stageErr } = await admin
-        .from("job_stage_progress")
-        .update({
-          status:               "in_progress",
-          rework_instructions:  rework_instructions.trim(),
-          completed_at:         null,
-          completed_by_id:      null,
-        })
-        .in("id", stage_ids)
-        .eq("job_order_id", jobId)
-
-      if (stageErr) return NextResponse.json({ error: stageErr.message }, { status: 500 })
-
-      const { error: jobErr } = await admin
-        .from("job_order")
-        .update({ status: "For Rework" })
-        .eq("id", jobId)
-
-      if (jobErr) return NextResponse.json({ error: jobErr.message }, { status: 500 })
-
-      await admin.from("job_order_history").insert({
-        job_order_id:  jobId,
-        status:        "For Rework",
-        changed_by_id: user.id,
-      })
-
-      const { data: team } = await admin
-        .from("job_order_team")
-        .select("user_account_id, role_in_job")
-        .eq("job_order_id", jobId)
-        .eq("role_in_job", "head_installer")
-
-      const notifRows = (team ?? [])
-        .filter((t: any) => t.user_account_id)
-        .map((t: any) => ({
-          user_id:      t.user_account_id,
-          type:         "rework",
-          message:      `Preparation stage(s) have been flagged for rework. Instructions: ${rework_instructions.trim()}`,
-          job_order_id: jobId,
-        }))
-
-      if (notifRows.length > 0) await admin.from("notification").insert(notifRows)
-
-      return NextResponse.json({ success: true })
-    }
-
-    if (action === "flag_finishing_rework") {
-      if (!Array.isArray(stage_ids) || stage_ids.length === 0) {
-        return NextResponse.json({ error: "stage_ids is required." }, { status: 400 })
-      }
-      if (!rework_instructions?.trim()) {
-        return NextResponse.json({ error: "rework_instructions is required." }, { status: 400 })
-      }
-
-      const { error: stageErr } = await admin
-        .from("job_stage_progress")
-        .update({
-          status:               "in_progress",
-          rework_instructions:  rework_instructions.trim(),
-          completed_at:         null,
-          completed_by_id:      null,
-        })
-        .in("id", stage_ids)
-        .eq("job_order_id", jobId)
-
-      if (stageErr) return NextResponse.json({ error: stageErr.message }, { status: 500 })
-
-      const { error: jobErr } = await admin
-        .from("job_order")
-        .update({ status: "For Rework" })
-        .eq("id", jobId)
-
-      if (jobErr) return NextResponse.json({ error: jobErr.message }, { status: 500 })
-
-      await admin.from("job_order_history").insert({
-        job_order_id:  jobId,
-        status:        "For Rework",
-        changed_by_id: user.id,
-      })
 
       return NextResponse.json({ success: true })
     }

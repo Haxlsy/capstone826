@@ -31,14 +31,54 @@ export async function DELETE(
     }
 
     // Guard: reject if any service_stage still references this category
-    const [{ count: stageCount }, { data: category }] = await Promise.all([
+    const [{ count: stageCount }, { data: category }, { data: affectedStages }, { data: stageIds }] = await Promise.all([
       admin.from("service_stage").select("id", { count: "exact", head: true }).eq("category_id", id),
       admin.from("workflow_category").select("name").eq("id", id).single(),
+      admin.from("service_stage").select("service:service_id(name)").eq("category_id", id).limit(20),
+      admin.from("service_stage").select("id").eq("category_id", id),
     ])
 
     if ((stageCount ?? 0) > 0) {
+      const seen = new Set<string>()
+      const affectedServices: string[] = []
+      for (const row of (affectedStages ?? [])) {
+        const name = (row.service as { name: string } | null)?.name
+        if (name && !seen.has(name)) { seen.add(name); affectedServices.push(name) }
+      }
+
+      // Also check for live job orders using these stages
+      const LIVE = ["Pending", "Ongoing", "For Rework", "For Inspection", "For Release", "Delayed"]
+      const ids   = (stageIds ?? []).map((s) => s.id as string)
+      let liveJobs: string[] = []
+      if (ids.length > 0) {
+        const { data: progressRows } = await admin
+          .from("job_stage_progress")
+          .select("job_order_id")
+          .in("service_stage_id", ids)
+        const jobOrderIds = [...new Set((progressRows ?? []).map((p) => p.job_order_id as string).filter(Boolean))]
+        if (jobOrderIds.length > 0) {
+          const { data: liveJobRows } = await admin
+            .from("job_order")
+            .select("id, status, customer_name, created_at")
+            .in("id", jobOrderIds)
+            .in("status", LIVE)
+            .limit(5)
+          liveJobs = (liveJobRows ?? []).map((j) => {
+            const year    = new Date(j.created_at).getFullYear()
+            const shortId = (j.id as string).slice(-4).toUpperCase()
+            return `JO-${year}-${shortId} (${j.customer_name}) — ${j.status}`
+          })
+        }
+      }
+
       return NextResponse.json(
-        { error: `Cannot delete — ${stageCount} service stage(s) still use this category. Remove or reassign them first.` },
+        {
+          error: liveJobs.length > 0
+            ? "Cannot delete — this category is used by existing services and active job orders."
+            : "Cannot delete — this category is used by existing services. Remove or reassign the stages first.",
+          affectedServices,
+          liveJobs,
+        },
         { status: 409 }
       )
     }

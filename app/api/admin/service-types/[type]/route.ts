@@ -31,14 +31,41 @@ export async function DELETE(
       return NextResponse.json({ error: "Forbidden. Admin access required." }, { status: 403 })
     }
 
-    const { count } = await admin
-      .from("service")
-      .select("id", { count: "exact", head: true })
-      .eq("service_type", decoded)
+    const [{ count }, { data: affected }, { data: serviceIds }] = await Promise.all([
+      admin.from("service").select("id", { count: "exact", head: true }).eq("service_type", decoded),
+      admin.from("service").select("name").eq("service_type", decoded).limit(5),
+      admin.from("service").select("id").eq("service_type", decoded),
+    ])
 
     if ((count ?? 0) > 0) {
+      const affectedServices = (affected ?? []).map((s: { name: string }) => s.name)
+
+      // Check for live job orders using services of this type
+      const LIVE = ["Pending", "Ongoing", "For Rework", "For Inspection", "For Release", "Delayed"]
+      const svcIds = (serviceIds ?? []).map((s) => s.id as string)
+      let liveJobs: string[] = []
+      if (svcIds.length > 0) {
+        const { data: liveJobRows } = await admin
+          .from("job_order")
+          .select("id, status, customer_name, created_at")
+          .in("service_id", svcIds)
+          .in("status", LIVE)
+          .limit(5)
+        liveJobs = (liveJobRows ?? []).map((j) => {
+          const year    = new Date(j.created_at).getFullYear()
+          const shortId = (j.id as string).slice(-4).toUpperCase()
+          return `JO-${year}-${shortId} (${j.customer_name}) — ${j.status}`
+        })
+      }
+
       return NextResponse.json(
-        { error: `Cannot delete — ${count} service(s) still use this type. Archive or reassign them first.` },
+        {
+          error: liveJobs.length > 0
+            ? "Cannot delete — this type is used by existing services and active job orders."
+            : "Cannot delete — this type is used by existing services. Archive or reassign them first.",
+          affectedServices,
+          liveJobs,
+        },
         { status: 409 }
       )
     }
