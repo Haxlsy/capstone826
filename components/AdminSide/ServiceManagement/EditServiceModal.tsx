@@ -43,6 +43,12 @@ export default function EditServiceModal({ serviceId, open, onClose, onSuccess }
   const [createCategoryError, setCreateCategoryError] = useState("")
   const [deleteError,        setDeleteError]        = useState("")
   const [typeDeleteError,    setTypeDeleteError]    = useState("")
+  const [typeDeleteAffected, setTypeDeleteAffected] = useState<string[]>([])
+  const [typeDeleteLiveJobs, setTypeDeleteLiveJobs] = useState<string[]>([])
+  const [catDeleteAffected,  setCatDeleteAffected]  = useState<string[]>([])
+  const [catDeleteLiveJobs,  setCatDeleteLiveJobs]  = useState<string[]>([])
+  const [saveWarning,        setSaveWarning]        = useState("")
+  const [blockedStageNames,  setBlockedStageNames]  = useState<string[]>([])
 
   useEffect(() => {
     document.body.style.overflow = open ? "hidden" : ""
@@ -164,11 +170,16 @@ export default function EditServiceModal({ serviceId, open, onClose, onSuccess }
   }
 
   async function handleDeleteType(type: string) {
-    setTypeDeleteError("")
+    setTypeDeleteError(""); setTypeDeleteAffected([]); setTypeDeleteLiveJobs([])
     try {
       const res  = await fetch(`/api/admin/service-types/${encodeURIComponent(type)}`, { method: "DELETE" })
       const json = await res.json()
-      if (!res.ok) { setTypeDeleteError(json.error ?? "Failed to delete service type."); return }
+      if (!res.ok) {
+        setTypeDeleteError(json.error ?? "Failed to delete service type.")
+        setTypeDeleteAffected(json.affectedServices ?? [])
+        setTypeDeleteLiveJobs(json.liveJobs ?? [])
+        return
+      }
       setServiceTypes((prev) => prev.filter((t) => t !== type))
       if (serviceType === type) setServiceType("")
     } catch {
@@ -177,11 +188,16 @@ export default function EditServiceModal({ serviceId, open, onClose, onSuccess }
   }
 
   async function handleDeleteCategory(cat: WorkflowCategory) {
-    setDeleteError("")
+    setDeleteError(""); setCatDeleteAffected([]); setCatDeleteLiveJobs([])
     try {
       const res  = await fetch(`/api/admin/workflow-categories/${cat.id}`, { method: "DELETE" })
       const json = await res.json()
-      if (!res.ok) { setDeleteError(json.error ?? "Failed to delete category."); return }
+      if (!res.ok) {
+        setDeleteError(json.error ?? "Failed to delete category.")
+        setCatDeleteAffected(json.affectedServices ?? [])
+        setCatDeleteLiveJobs(json.liveJobs ?? [])
+        return
+      }
       setGlobalCategories((prev) => prev.filter((c) => c.id !== cat.id))
       setSections((prev) => prev.filter((s) => s.categoryId !== cat.id))
     } catch {
@@ -308,7 +324,12 @@ export default function EditServiceModal({ serviceId, open, onClose, onSuccess }
       const json = await res.json()
       if (!res.ok) { setServerError(json.error ?? "Something went wrong."); return }
       onSuccess()
-      onClose()
+      if (json.warning) {
+        setSaveWarning(json.warning)
+        setBlockedStageNames(json.blockedStageNames ?? [])
+      } else {
+        onClose()
+      }
     } catch {
       setServerError("Network error. Please try again.")
     } finally {
@@ -358,6 +379,26 @@ export default function EditServiceModal({ serviceId, open, onClose, onSuccess }
         {/* Scrollable body */}
         {!fetching && !fetchError && (
           <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto px-6 py-5 space-y-5">
+            {saveWarning && (
+              <div className="bg-amber-50 border border-amber-200 rounded-lg px-4 py-3 space-y-2">
+                <p className="text-sm font-medium text-amber-700">{saveWarning}</p>
+                {blockedStageNames.length > 0 && (
+                  <ul className="space-y-0.5 pl-3">
+                    {blockedStageNames.map((n) => (
+                      <li key={n} className="text-xs text-amber-600 list-disc">{n}</li>
+                    ))}
+                  </ul>
+                )}
+                <button
+                  type="button"
+                  onClick={() => { setSaveWarning(""); setBlockedStageNames([]); onClose() }}
+                  className="text-xs font-medium text-amber-700 underline hover:no-underline"
+                >
+                  Close anyway
+                </button>
+              </div>
+            )}
+
             {serverError && (
               <div className="bg-red-50 border border-red-200 text-red-600 text-sm rounded-lg px-4 py-3">
                 {serverError}
@@ -376,7 +417,24 @@ export default function EditServiceModal({ serviceId, open, onClose, onSuccess }
                 onDeleteType={handleDeleteType}
                 error={errors.serviceType}
               />
-              {typeDeleteError && <p className="text-xs text-red-500 mt-0.5">{typeDeleteError}</p>}
+              {typeDeleteError && (
+                <div className="mt-1">
+                  <p className="text-xs text-red-500">{typeDeleteError}</p>
+                  {typeDeleteAffected.length > 0 && (
+                    <ul className="mt-0.5 space-y-0.5 pl-3">
+                      {typeDeleteAffected.map((n) => <li key={n} className="text-xs text-red-400 list-disc">{n}</li>)}
+                    </ul>
+                  )}
+                  {typeDeleteLiveJobs.length > 0 && (
+                    <>
+                      <p className="text-xs font-medium text-amber-600 mt-1">Active job orders:</p>
+                      <ul className="mt-0.5 space-y-0.5 pl-3">
+                        {typeDeleteLiveJobs.map((j) => <li key={j} className="text-xs text-amber-500 list-disc">{j}</li>)}
+                      </ul>
+                    </>
+                  )}
+                </div>
+              )}
             </div>
 
             {/* Service Name */}
@@ -511,7 +569,24 @@ export default function EditServiceModal({ serviceId, open, onClose, onSuccess }
                       onCreateNew={() => setShowCreateForm(true)}
                       onDelete={handleDeleteCategory}
                     />
-                    {deleteError && <p className="text-xs text-red-500 mt-1">{deleteError}</p>}
+                    {deleteError && (
+                      <div className="mt-1">
+                        <p className="text-xs text-red-500">{deleteError}</p>
+                        {catDeleteAffected.length > 0 && (
+                          <ul className="mt-0.5 space-y-0.5 pl-3">
+                            {catDeleteAffected.map((n) => <li key={n} className="text-xs text-red-400 list-disc">{n}</li>)}
+                          </ul>
+                        )}
+                        {catDeleteLiveJobs.length > 0 && (
+                          <>
+                            <p className="text-xs font-medium text-amber-600 mt-1">Active job orders:</p>
+                            <ul className="mt-0.5 space-y-0.5 pl-3">
+                              {catDeleteLiveJobs.map((j) => <li key={j} className="text-xs text-amber-500 list-disc">{j}</li>)}
+                            </ul>
+                          </>
+                        )}
+                      </div>
+                    )}
                   </>
                 )}
               </div>

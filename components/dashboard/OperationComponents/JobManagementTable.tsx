@@ -123,7 +123,10 @@ export default function JobManagementTable() {
 
   // Unique values for filter dropdowns
   const uniqueServices    = useMemo(() => [...new Set(jobOrders.map((j) => j.service).filter((s) => s !== "—"))].sort(), [jobOrders])
-  const uniqueTechnicians = useMemo(() => [...new Set(jobOrders.map((j) => j.headDetailer).filter((t) => t !== "Unassigned"))].sort(), [jobOrders])
+  const uniqueTechnicians = useMemo(() => {
+    const names = jobOrders.flatMap((j) => [j.headDetailer, j.headInstaller]).filter((t) => t !== "Unassigned")
+    return [...new Set(names)].sort()
+  }, [jobOrders])
 
   const filtered = useMemo(() => jobOrders.filter((job) => {
     const matchesTab    = activeTab === "All" || job.status === activeTab
@@ -134,9 +137,10 @@ export default function JobManagementTable() {
       job.plate.toLowerCase().includes(q) ||
       job.vehicle.toLowerCase().includes(q) ||
       job.service.toLowerCase().includes(q) ||
-      job.headDetailer.toLowerCase().includes(q)
+      job.headDetailer.toLowerCase().includes(q) ||
+      job.headInstaller.toLowerCase().includes(q)
     const matchesService     = !filterService    || job.service === filterService
-    const matchesTechnician  = !filterTechnician || job.headDetailer === filterTechnician
+    const matchesTechnician  = !filterTechnician || job.headDetailer === filterTechnician || job.headInstaller === filterTechnician
     const jobDate            = job.scheduledRaw ? job.scheduledRaw.slice(0, 10) : ""
     const matchesDateFrom    = !filterDateFrom   || jobDate >= filterDateFrom
     const matchesDateTo      = !filterDateTo     || jobDate <= filterDateTo

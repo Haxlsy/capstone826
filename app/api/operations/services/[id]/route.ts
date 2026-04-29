@@ -87,6 +87,29 @@ export async function PATCH(
 
     // Archive toggle
     if (typeof body.is_archived === "boolean") {
+      // Guard: block archiving if live job orders reference this service
+      if (body.is_archived) {
+        const LIVE = ["Pending", "Ongoing", "For Rework", "For Inspection", "For Release", "Delayed"]
+        const { data: liveJobRows } = await supabase
+          .from("job_order")
+          .select("id, status, customer_name, created_at")
+          .eq("service_id", id)
+          .in("status", LIVE)
+          .limit(5)
+
+        if ((liveJobRows ?? []).length > 0) {
+          const liveJobs = (liveJobRows ?? []).map((j) => {
+            const year    = new Date(j.created_at).getFullYear()
+            const shortId = (j.id as string).slice(-4).toUpperCase()
+            return `JO-${year}-${shortId} (${j.customer_name}) — ${j.status}`
+          })
+          return NextResponse.json(
+            { error: "Cannot archive — this service is being used in active job orders.", liveJobs },
+            { status: 409 }
+          )
+        }
+      }
+
       const { data: svc, error } = await supabase
         .from("service")
         .update({ is_archived: body.is_archived })
@@ -147,6 +170,7 @@ export async function PATCH(
       .filter((sid) => !keptDbIds.has(sid))
 
     // 2. Delete only removed stages that have no job_stage_progress references
+    let blockedStageIds: string[] = []
     if (removedIds.length > 0) {
       const { data: referenced } = await supabase
         .from("job_stage_progress")
@@ -155,6 +179,7 @@ export async function PATCH(
 
       const referencedSet = new Set((referenced ?? []).map((r) => r.service_stage_id as string))
       const safeToDelete  = removedIds.filter((sid) => !referencedSet.has(sid))
+      blockedStageIds     = removedIds.filter((sid) => referencedSet.has(sid))
 
       if (safeToDelete.length > 0) {
         const { error: delErr } = await supabase
@@ -202,6 +227,20 @@ export async function PATCH(
       action:    "Updated service",
       target:    serviceName.trim(),
     })
+
+    // If some stages couldn't be removed because of active job references, surface them
+    if (blockedStageIds.length > 0) {
+      const { data: blockedRows } = await supabase
+        .from("service_stage")
+        .select("name")
+        .in("id", blockedStageIds)
+      const blockedStageNames = (blockedRows ?? []).map((s) => s.name as string)
+      return NextResponse.json({
+        success: true,
+        warning: "Some stages could not be removed because they are referenced by active job orders.",
+        blockedStageNames,
+      })
+    }
 
     return NextResponse.json({ success: true })
   } catch (err: unknown) {

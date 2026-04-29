@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { Wrench, SlidersHorizontal, X } from "lucide-react"
+import { Wrench, SlidersHorizontal, X, Search } from "lucide-react"
 import { HeadTechJob, Status } from "./components/types"
 import { HeadTechJobCard } from "./components/HeadTechJobCard"
 import { BottomNav } from "./components/BottomNav"
@@ -16,6 +16,7 @@ const STATUS_OPTIONS: Status[] = [
 export default function HeadTechnicianPage() {
   const [jobs, setJobs] = useState<HeadTechJob[]>([])
   const [loading, setLoading] = useState(true)
+  const [searchQuery, setSearchQuery] = useState("")
   const [statusFilter, setStatusFilter] = useState("all")
   const [showFilters, setShowFilters] = useState(false)
 
@@ -48,12 +49,21 @@ export default function HeadTechnicianPage() {
 
   const filteredJobs = jobs.filter((job) => {
     if (statusFilter !== "all" && job.status !== (statusFilter as Status)) return false
+    if (searchQuery.trim()) {
+      const q = searchQuery.toLowerCase()
+      const matches =
+        job.customer_name?.toLowerCase().includes(q) ||
+        job.plate_number?.toLowerCase().includes(q) ||
+        job.car_make?.toLowerCase().includes(q) ||
+        job.service?.toLowerCase().includes(q)
+      if (!matches) return false
+    }
     return true
   })
 
   const ongoingCount = jobs.filter((j) => j.status === "Ongoing").length
-  const reworkCount = jobs.filter((j) => j.status === "For Rework").length
-  const isFiltered = statusFilter !== "all"
+  const reworkCount  = jobs.filter((j) => j.status === "For Rework").length
+  const isFiltered   = statusFilter !== "all" || searchQuery.trim() !== ""
 
   return (
     <>
@@ -119,6 +129,26 @@ export default function HeadTechnicianPage() {
           </div>
         )}
 
+        {/* ── Search bar ──────────────────────────────────────────── */}
+        <div className="relative">
+          <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+          <input
+            type="text"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            placeholder="Search by customer, plate, vehicle, service…"
+            className="w-full pl-8 pr-8 py-2.5 text-sm bg-white border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-gray-200 focus:border-gray-300 transition-all placeholder-gray-400"
+          />
+          {searchQuery && (
+            <button
+              onClick={() => setSearchQuery("")}
+              className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 transition-colors"
+            >
+              <X size={14} />
+            </button>
+          )}
+        </div>
+
         {/* ── Filter panel (collapsible) ──────────────────────────── */}
         {showFilters && (
           <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4 space-y-3">
@@ -128,10 +158,10 @@ export default function HeadTechnicianPage() {
               </p>
               {isFiltered && (
                 <button
-                  onClick={() => setStatusFilter("all")}
+                  onClick={() => { setStatusFilter("all"); setSearchQuery("") }}
                   className="flex items-center gap-1 text-[11px] font-medium text-gray-400 hover:text-gray-600 transition-colors"
                 >
-                  <X size={12} /> Clear
+                  <X size={12} /> Clear all
                 </button>
               )}
             </div>
@@ -180,7 +210,7 @@ export default function HeadTechnicianPage() {
               <p className="text-sm font-medium text-gray-500">No jobs found</p>
               {isFiltered && (
                 <p className="text-xs text-gray-400">
-                  Try clearing the filter to see all jobs.
+                  Try adjusting your search or clearing the filter.
                 </p>
               )}
             </div>

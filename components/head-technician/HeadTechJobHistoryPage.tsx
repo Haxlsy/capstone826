@@ -40,6 +40,7 @@ interface StageDoc {
   name:                string;
   order:               number;
   category:            string;
+  category_id:         string | null;
   category_role:       string;
   category_color:      string | null;
   stage_duration_mins: number;
@@ -74,10 +75,21 @@ interface JobDetail {
   preparation_finished:  boolean;
   last_stage_role:       string;
   finishing_approved_at: string | null;
+  category_handoffs:     Record<string, string>;
   detailers:             string[];
   installers:            string[];
   timeline:              TimelineEntry[];
   stages:                StageDoc[];
+}
+
+// Category group derived from stages
+interface CategoryGroup {
+  id:     string;
+  name:   string;
+  role:   string;
+  color:  string;
+  stages: StageDoc[];
+  minOrder: number;
 }
 
 const STATUS_BADGE: Record<string, string> = {
@@ -109,36 +121,18 @@ export default function HeadTechJobHistoryPage({ jobId }: { jobId: string }) {
   const [startingJob,  setStartingJob]  = useState(false);
   const [rejectionAlert, setRejectionAlert] = useState<{ message: string } | null>(null);
 
-  const delayedStages = useMemo(
-    () => (job?.stages ?? []).filter((s) => s.is_delayed),
-    [job]
-  );
-
-  // Approve state (shared across phases)
-  const [showApprove,  setShowApprove]  = useState(false);
+  // Unified approve state — tracks which category is being approved
+  const [approvingCategoryId, setApprovingCategoryId] = useState<string | null>(null);
   const [handoffNotes, setHandoffNotes] = useState("");
   const [approving,    setApproving]    = useState(false);
 
-  // Rework — head_installer (installation stages)
-  const [reworkOpen,         setReworkOpen]         = useState(false);
-  const [selectedRework,     setSelectedRework]     = useState<string | null>(null);
-  const [reworkNote,         setReworkNote]         = useState("");
-  const [submittingRework,   setSubmittingRework]   = useState(false);
-  const [reworkError,        setReworkError]        = useState<string | null>(null);
-
-  // Rework — head_detailer prep
-  const [prepReworkOpen,       setPrepReworkOpen]       = useState(false);
-  const [selectedPrepRework,   setSelectedPrepRework]   = useState<string | null>(null);
-  const [prepReworkNote,       setPrepReworkNote]       = useState("");
-  const [submittingPrepRework, setSubmittingPrepRework] = useState(false);
-  const [prepReworkError,      setPrepReworkError]      = useState<string | null>(null);
-
-  // Rework — head_detailer finishing
-  const [finishReworkOpen,       setFinishReworkOpen]       = useState(false);
-  const [selectedFinishRework,   setSelectedFinishRework]   = useState<string | null>(null);
-  const [finishReworkNote,       setFinishReworkNote]       = useState("");
-  const [submittingFinishRework, setSubmittingFinishRework] = useState(false);
-  const [finishReworkError,      setFinishReworkError]      = useState<string | null>(null);
+  // Unified rework state — tracks which category's stages are being flagged
+  const [reworkOpen,       setReworkOpen]       = useState(false);
+  const [reworkCategoryId, setReworkCategoryId] = useState<string | null>(null);
+  const [selectedRework,   setSelectedRework]   = useState<string | null>(null);
+  const [reworkNote,       setReworkNote]        = useState("");
+  const [submittingRework, setSubmittingRework]  = useState(false);
+  const [reworkError,      setReworkError]       = useState<string | null>(null);
 
   // ── Load ──────────────────────────────────────────────────────────────────
 
@@ -170,48 +164,65 @@ export default function HeadTechJobHistoryPage({ jobId }: { jobId: string }) {
   // ── Derived ───────────────────────────────────────────────────────────────
 
   const isInstaller = userRole === "head_installer";
+  const myRole      = isInstaller ? "installer" : "detailer";
 
-  // All stages for my role — both locked and unlocked are shown; locked ones are readonly.
-  const installerStages = (job?.stages ?? []).filter((s) => s.category_role === "installer");
-  const detailerStages  = (job?.stages ?? []).filter((s) => s.category_role === "detailer");
-  const myStages        = isInstaller ? installerStages : detailerStages;
+  const delayedStages = useMemo(
+    () => (job?.stages ?? []).filter((s) => s.is_delayed),
+    [job]
+  );
 
-  // Detailer prep stages (before first installer stage) — shown read-only to installer.
-  const minInstallerOrder = installerStages.length > 0
-    ? Math.min(...installerStages.map((s) => s.order))
-    : 999999;
-  const prepStages = detailerStages.filter((s) => s.order < minInstallerOrder);
+  // Build ordered category groups from all stages.
+  const allCategoryGroups: CategoryGroup[] = useMemo(() => {
+    const map = new Map<string, CategoryGroup>();
+    for (const s of job?.stages ?? []) {
+      const key = s.category_id ?? s.category;
+      if (!map.has(key)) {
+        map.set(key, {
+          id:       s.category_id ?? s.category,
+          name:     s.category,
+          role:     s.category_role,
+          color:    s.category_color ?? "blue",
+          stages:   [],
+          minOrder: s.order,
+        });
+      }
+      const g = map.get(key)!;
+      g.stages.push(s);
+      g.minOrder = Math.min(g.minOrder, s.order);
+    }
+    return [...map.values()].sort((a, b) => a.minOrder - b.minOrder);
+  }, [job]);
 
-  // Unlocked = gate met; locked stages render as readonly.
-  const activeMyStages = myStages.filter((s) => s.is_unlocked);
-  const allDone = activeMyStages.length > 0 && activeMyStages.every((s) => s.status === "done");
+  // Categories belonging to the current user's role.
+  const myGroups = useMemo(
+    () => allCategoryGroups.filter((g) => g.role === myRole),
+    [allCategoryGroups, myRole]
+  );
 
-  // Progress counts only unlocked stages.
-  const progressDone = activeMyStages.filter((s) => s.status === "done").length;
-  const progress     = activeMyStages.length > 0
-    ? Math.round((progressDone / activeMyStages.length) * 100)
-    : 0;
+  // Categories from the other role, shown read-only.
+  const otherGroups = useMemo(
+    () => allCategoryGroups.filter((g) => g.role !== myRole),
+    [allCategoryGroups, myRole]
+  );
 
-  // All job stages done — gates "Pass to Operations".
-  const allJobStagesDone = (job?.stages ?? []).length > 0 && (job?.stages ?? []).every((s) => s.status === "done");
-
-  // "Pass to Operations" belongs to whoever owns the last stage.
-  const isLastRole = job
-    ? (isInstaller ? job.last_stage_role === "installer" : job.last_stage_role === "detailer")
-    : false;
-
+  const categoryHandoffs = job?.category_handoffs ?? {};
   const finishingAlreadyApproved = Boolean(job?.finishing_approved_at);
 
-  // Approved banner: shown when the user completed their current phase handoff.
-  // Installer handoff is detected from server state: after approval, other roles' stages become unlocked.
-  const approvedPhase: "prep" | "installation" | "finishing" | null = (() => {
-    if (!job || !userRole) return null;
-    if (Boolean(job.finishing_approved_at)) return "finishing";
-    if (isInstaller && allDone && (job.stages ?? []).some(s => s.is_unlocked && !myStages.find(m => m.id === s.id))) return "installation";
-    if (job.preparation_finished && !isInstaller && !allJobStagesDone) return "prep";
-    return null;
-  })();
-  const approved = approvedPhase !== null;
+  // All of my stages (unlocked) done.
+  const myUnlockedStages = myGroups.flatMap((g) => g.stages.filter((s) => s.is_unlocked));
+
+  // All stages across all groups done.
+  const allJobStagesDone = (job?.stages ?? []).length > 0 && (job?.stages ?? []).every((s) => s.status === "done");
+
+  // The last category group overall determines who gets "Pass to Operations".
+  const lastGroup  = allCategoryGroups.at(-1);
+  const isLastRole = lastGroup?.role === myRole;
+
+  // Progress counts across all my unlocked stages.
+  const progressDone = myUnlockedStages.filter((s) => s.status === "done").length;
+  const progress     = myUnlockedStages.length > 0
+    ? Math.round((progressDone / myUnlockedStages.length) * 100)
+    : 0;
 
   // ── Actions ───────────────────────────────────────────────────────────────
 
@@ -357,24 +368,20 @@ export default function HeadTechJobHistoryPage({ jobId }: { jobId: string }) {
     setRemovingId(null);
   }
 
-  async function handleApprove() {
+  // Approve a category handoff (or pass to operations for the last category).
+  async function handleApprove(categoryId: string) {
     setApproving(true);
-    // "Pass to Operations" uses approve_finishing; handoff between phases uses approve.
-    const actionName = (isLastRole && allJobStagesDone) ? "approve_finishing" : "approve";
+    const action = (isLastRole && allJobStagesDone) ? "approve_finishing" : "approve";
     try {
       const res  = await fetch(`/api/head-technician/jobs/${jobId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: actionName, handoff_notes: handoffNotes }),
+        body: JSON.stringify({ action, category_id: categoryId, handoff_notes: handoffNotes }),
       });
       const json = await res.json();
       if (!res.ok) throw new Error(json?.error ?? "Failed to approve.");
-      setShowApprove(false);
-      setJob((prev) => {
-        if (!prev) return prev;
-        if (actionName === "approve_finishing") return { ...prev, finishing_approved_at: new Date().toISOString() };
-        return { ...prev, preparation_finished: true };
-      });
+      setApprovingCategoryId(null);
+      setHandoffNotes("");
       await load();
     } catch (err: unknown) {
       alert(err instanceof Error ? err.message : "Failed to approve.");
@@ -395,49 +402,27 @@ export default function HeadTechJobHistoryPage({ jobId }: { jobId: string }) {
       });
       const json = await res.json();
       if (!res.ok) throw new Error(json?.error ?? "Failed to flag rework");
-      setReworkOpen(false); setSelectedRework(null); setReworkNote("");
+      closeRework();
       await load();
     } catch (err: unknown) {
       setReworkError(err instanceof Error ? err.message : String(err));
     } finally { setSubmittingRework(false); }
   }
 
-  async function handleFlagPrepRework() {
-    if (!selectedPrepRework || !prepReworkNote.trim()) return;
-    setSubmittingPrepRework(true);
-    setPrepReworkError(null);
-    try {
-      const res  = await fetch(`/api/head-technician/jobs/${jobId}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "flag_prep_rework", stage_ids: [selectedPrepRework], rework_instructions: prepReworkNote.trim() }),
-      });
-      const json = await res.json();
-      if (!res.ok) throw new Error(json?.error ?? "Failed to flag rework");
-      setPrepReworkOpen(false); setSelectedPrepRework(null); setPrepReworkNote("");
-      await load();
-    } catch (err: unknown) {
-      setPrepReworkError(err instanceof Error ? err.message : String(err));
-    } finally { setSubmittingPrepRework(false); }
+  function openRework(categoryId: string) {
+    setReworkCategoryId(categoryId);
+    setSelectedRework(null);
+    setReworkNote("");
+    setReworkError(null);
+    setReworkOpen(true);
   }
 
-  async function handleFlagFinishRework() {
-    if (!selectedFinishRework || !finishReworkNote.trim()) return;
-    setSubmittingFinishRework(true);
-    setFinishReworkError(null);
-    try {
-      const res  = await fetch(`/api/head-technician/jobs/${jobId}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "flag_finishing_rework", stage_ids: [selectedFinishRework], rework_instructions: finishReworkNote.trim() }),
-      });
-      const json = await res.json();
-      if (!res.ok) throw new Error(json?.error ?? "Failed to flag rework");
-      setFinishReworkOpen(false); setSelectedFinishRework(null); setFinishReworkNote("");
-      await load();
-    } catch (err: unknown) {
-      setFinishReworkError(err instanceof Error ? err.message : String(err));
-    } finally { setSubmittingFinishRework(false); }
+  function closeRework() {
+    setReworkOpen(false);
+    setReworkCategoryId(null);
+    setSelectedRework(null);
+    setReworkNote("");
+    setReworkError(null);
   }
 
   // ── Render states ─────────────────────────────────────────────────────────
@@ -455,20 +440,27 @@ export default function HeadTechJobHistoryPage({ jobId }: { jobId: string }) {
     </main>
   );
 
-  // ── Approve banner text based on which phase ──
-  function approveBannerText() {
-    if (approvedPhase === "finishing")     return "All stages complete — passed to Operations.";
-    if (approvedPhase === "installation")  return "Installation complete — handed off to finishing team.";
-    return "Preparation approved — handed off to Installation.";
-  }
-
-  // ── readOnly conditions ────────────────────────────────────────
   function isReadOnly(stage: StageDoc): boolean {
     if (job!.status === "Pending") return true;
     if (finishingAlreadyApproved) return true;
     if (!stage.is_unlocked) return true;
     return false;
   }
+
+  // Find handoff notes left for my current category from the preceding other-role category.
+  function getPrecedingHandoffNotes(group: CategoryGroup): string | null {
+    const groupIdx = allCategoryGroups.findIndex((g) => g.id === group.id);
+    if (groupIdx <= 0) return null;
+    const preceding = allCategoryGroups[groupIdx - 1];
+    if (preceding.role === myRole) return null;
+    const lastStage = [...preceding.stages].sort((a, b) => b.order - a.order)[0];
+    return lastStage?.handoff_notes ?? null;
+  }
+
+  // Stages available for rework flagging (done stages in the category).
+  const reworkableStages = reworkCategoryId
+    ? (allCategoryGroups.find((g) => g.id === reworkCategoryId)?.stages ?? []).filter((s) => s.status === "done")
+    : [];
 
   // ── Render ────────────────────────────────────────────────────────────────
 
@@ -493,14 +485,12 @@ export default function HeadTechJobHistoryPage({ jobId }: { jobId: string }) {
           <span className={`text-xs font-semibold px-3 py-1 rounded-full ${STATUS_BADGE[job.status] ?? "bg-gray-100 text-gray-500"}`}>
             {job.status}
           </span>
-          {approved && (
+          {finishingAlreadyApproved && (
             <span className="text-xs font-semibold px-3 py-1 rounded-full bg-emerald-50 text-emerald-600 border border-emerald-100">
-              {approvedPhase === "finishing"
-                ? "Passed to Operations"
-                : "Preparation Approved"}
+              Passed to Operations
             </span>
           )}
-          {job.status === "For Rework" && !approved && (
+          {job.status === "For Rework" && (
             <span className="text-xs font-semibold px-3 py-1 rounded-full bg-orange-50 text-orange-600 border border-orange-100 flex items-center gap-1">
               <AlertTriangle size={11} />
               Rework Required
@@ -508,7 +498,7 @@ export default function HeadTechJobHistoryPage({ jobId }: { jobId: string }) {
           )}
         </div>
 
-        {/* Delay summary card — shown only when stages are overdue */}
+        {/* Delay summary */}
         {delayedStages.length > 0 && (
           <div className="bg-red-50 rounded-2xl p-4 flex gap-3 border border-red-100">
             <AlarmClock size={15} className="text-red-500 mt-0.5 shrink-0" />
@@ -533,21 +523,17 @@ export default function HeadTechJobHistoryPage({ jobId }: { jobId: string }) {
           </div>
         )}
 
-        {/* Job info card */}
+        {/* Job info */}
         <div className="bg-white rounded-2xl border border-gray-100 shadow-[0_2px_12px_-4px_rgba(0,0,0,0.06)] divide-y divide-gray-50">
-          <InfoRow label="Customer"  value={job.customer_name} />
-          <InfoRow label="Vehicle"   value={`${job.plate_number}${job.car_make ? ` · ${job.car_make}` : ""}`} />
-          <InfoRow label="Service"   value={job.service} accent="orange" />
+          <InfoRow label="Customer"       value={job.customer_name} />
+          <InfoRow label="Vehicle"        value={`${job.plate_number}${job.car_make ? ` · ${job.car_make}` : ""}`} />
+          <InfoRow label="Service"        value={job.service} accent="orange" />
           <InfoRow label="Scheduled Start" value={job.scheduled_start} />
-          {!isInstaller && job.detailers.length > 0 && (
-            <CrewRow label="Detailers"  members={job.detailers} />
-          )}
-          {isInstaller && job.installers.length > 0 && (
-            <CrewRow label="Installers" members={job.installers} />
-          )}
+          {!isInstaller && job.detailers.length > 0 && <CrewRow label="Detailers"  members={job.detailers} />}
+          {isInstaller  && job.installers.length > 0 && <CrewRow label="Installers" members={job.installers} />}
         </div>
 
-        {/* Start Job button */}
+        {/* Start Job */}
         {job.status === "Pending" && (
           <div className="space-y-2">
             <button
@@ -568,49 +554,36 @@ export default function HeadTechJobHistoryPage({ jobId }: { jobId: string }) {
           </div>
         )}
 
-        {/* Handoff notes (head_installer: from detailer) */}
-        {isInstaller && job.handoff_notes && (
-          <div className="bg-blue-50 rounded-2xl p-4 flex gap-3 border border-blue-100">
-            <Info size={15} className="text-blue-500 mt-0.5 shrink-0" />
+        {/* Finishing passed notice */}
+        {!isInstaller && finishingAlreadyApproved && (
+          <div className="bg-emerald-50 rounded-2xl p-4 flex gap-3 border border-emerald-100">
+            <ThumbsUp size={15} className="text-emerald-500 mt-0.5 shrink-0" />
             <div>
-              <p className="text-xs font-semibold text-blue-700 mb-1">Handoff Notes from Head Detailer</p>
-              <p className="text-sm text-blue-700 leading-snug">{job.handoff_notes}</p>
+              <p className="text-xs font-semibold text-emerald-700 mb-1">Passed to Operations</p>
+              <p className="text-sm text-emerald-700 leading-snug">All stages are complete and the job has been handed off to Operations.</p>
             </div>
           </div>
         )}
 
-        {/* Notice: some stages are still locked (waiting on other role) */}
-        {myStages.some((s) => !s.is_unlocked) && (
+        {/* Locked stages notice */}
+        {myGroups.some((g) => g.stages.some((s) => !s.is_unlocked)) && (
           <div className="bg-amber-50 rounded-2xl p-4 flex gap-3 border border-amber-100">
             <Clock size={15} className="text-amber-500 mt-0.5 shrink-0" />
             <div>
               <p className="text-xs font-semibold text-amber-700 mb-1">Stages Pending</p>
               <p className="text-sm text-amber-700 leading-snug">
-                Some of your stages are locked until the other team completes their preceding work.
-              </p>
-            </div>
-          </div>
-        )}
-
-        {/* Notice: finishing already passed to ops */}
-        {!isInstaller && finishingAlreadyApproved && (
-          <div className="bg-emerald-50 rounded-2xl p-4 flex gap-3 border border-emerald-100">
-            <ThumbsUp size={15} className="text-emerald-500 mt-0.5 shrink-0" />
-            <div>
-              <p className="text-xs font-semibold text-emerald-700 mb-1">Finishing Passed to Operations</p>
-              <p className="text-sm text-emerald-700 leading-snug">
-                You have already passed the finishing stages to Operations for release.
+                Some of your stages are locked until the other team completes and approves their preceding work.
               </p>
             </div>
           </div>
         )}
 
         {/* Progress bar */}
-        {myStages.length > 0 && (
+        {myUnlockedStages.length > 0 && (
           <div className="space-y-2">
             <div className="flex justify-between text-xs font-medium text-gray-500">
               <span>Progress</span>
-              <span>{progressDone} / {activeMyStages.length} stages · {progress}%</span>
+              <span>{progressDone} / {myUnlockedStages.length} stages · {progress}%</span>
             </div>
             <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
               <div
@@ -623,20 +596,19 @@ export default function HeadTechJobHistoryPage({ jobId }: { jobId: string }) {
           </div>
         )}
 
-        {/* Preparation stages read-only (head_installer view) — grouped by category */}
-        {isInstaller && prepStages.length > 0 && (() => {
-          const prepGroups = prepStages.reduce((map, s) => {
-            if (!map.has(s.category)) map.set(s.category, { color: s.category_color ?? "blue", stages: [] as StageDoc[] });
-            map.get(s.category)!.stages.push(s);
-            return map;
-          }, new Map<string, { color: string; stages: StageDoc[] }>());
-          return (
-            <section className="space-y-4">
-              <SectionLabel>Preparation Stages</SectionLabel>
-              {Array.from(prepGroups.entries()).map(([catName, { color, stages: catStages }]) => (
-                <div key={catName} className="space-y-2">
-                  <CategoryBadge name={catName} color={color} />
-                  {catStages.map((stage) => (
+        {/* Other-role stages shown read-only */}
+        {otherGroups.some((g) => g.stages.some((s) => s.status === "done")) && (
+          <section className="space-y-4">
+            <SectionLabel>
+              {isInstaller ? "Preparation Stages" : "Installation Stages"}
+            </SectionLabel>
+            {otherGroups.map((g) => {
+              const doneStages = g.stages.filter((s) => s.status === "done");
+              if (doneStages.length === 0) return null;
+              return (
+                <div key={g.id} className="space-y-2">
+                  <CategoryBadge name={g.name} color={g.color} />
+                  {doneStages.map((stage) => (
                     <StageCard
                       key={stage.id}
                       stage={stage}
@@ -651,35 +623,64 @@ export default function HeadTechJobHistoryPage({ jobId }: { jobId: string }) {
                       onPreview={(url, type) => setPreview({ url, type })}
                     />
                   ))}
+                  {/* Handoff notes left by this other-role category */}
+                  {(() => {
+                    const lastStage = [...g.stages].sort((a, b) => b.order - a.order)[0];
+                    return lastStage?.handoff_notes ? (
+                      <div className="bg-blue-50 rounded-2xl p-3 flex gap-2 border border-blue-100">
+                        <Info size={13} className="text-blue-500 mt-0.5 shrink-0" />
+                        <div>
+                          <p className="text-[11px] font-semibold text-blue-700 mb-0.5">Handoff Notes</p>
+                          <p className="text-xs text-blue-700 leading-snug">{lastStage.handoff_notes}</p>
+                        </div>
+                      </div>
+                    ) : null;
+                  })()}
                 </div>
-              ))}
-            </section>
-          );
-        })()}
+              );
+            })}
+          </section>
+        )}
 
-        {/* My active stages — grouped by category with lock indicators */}
-        {myStages.length === 0 ? (
+        {/* My stages — grouped by category */}
+        {myGroups.length === 0 ? (
           <p className="text-sm text-gray-400 text-center py-8">No stages assigned for your role.</p>
-        ) : (() => {
-          const myGroups = myStages.reduce((map, s) => {
-            if (!map.has(s.category)) map.set(s.category, { color: s.category_color ?? "blue", stages: [] as StageDoc[] });
-            map.get(s.category)!.stages.push(s);
-            return map;
-          }, new Map<string, { color: string; stages: StageDoc[] }>());
-          const lastCatName = myStages.reduce((max, s) => s.order > max.order ? s : max, myStages[0])?.category;
-          return (
-            <section className="space-y-4">
-              {Array.from(myGroups.entries()).map(([catName, { color, stages: catStages }]) => (
-                <div key={catName} className="space-y-2">
+        ) : (
+          <section className="space-y-4">
+            {myGroups.map((g, idx) => {
+              const precedingNotes = getPrecedingHandoffNotes(g);
+              const isApproved     = g.id in categoryHandoffs;
+              const isLastOverall  = g.id === lastGroup?.id;
+              const allGroupDone   = g.stages.every((s) => s.status === "done");
+
+              return (
+                <div key={g.id} className="space-y-2">
                   <div className="flex items-center gap-2 flex-wrap">
-                    <CategoryBadge name={catName} color={color} />
-                    {catName === lastCatName && isLastRole && (
+                    <CategoryBadge name={g.name} color={g.color} />
+                    {isLastOverall && isLastRole && (
                       <span className="text-[11px] font-medium px-2 py-0.5 rounded-full bg-violet-50 text-violet-700 border border-violet-200">
                         Last stage before Operations Inspection
                       </span>
                     )}
+                    {isApproved && !isLastOverall && (
+                      <span className="text-[11px] font-medium px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200">
+                        ✓ Handed off
+                      </span>
+                    )}
                   </div>
-                  {catStages.map((stage) => (
+
+                  {/* Handoff notes received from the preceding other-role category */}
+                  {precedingNotes && idx === myGroups.findIndex((gg) => gg.id === g.id) && (
+                    <div className="bg-blue-50 rounded-2xl p-3 flex gap-2 border border-blue-100">
+                      <Info size={13} className="text-blue-500 mt-0.5 shrink-0" />
+                      <div>
+                        <p className="text-[11px] font-semibold text-blue-700 mb-0.5">Handoff Notes</p>
+                        <p className="text-xs text-blue-700 leading-snug">{precedingNotes}</p>
+                      </div>
+                    </div>
+                  )}
+
+                  {g.stages.map((stage) => (
                     <StageCard
                       key={stage.id}
                       stage={stage}
@@ -694,122 +695,77 @@ export default function HeadTechJobHistoryPage({ jobId }: { jobId: string }) {
                       onPreview={(url, type) => setPreview({ url, type })}
                     />
                   ))}
-                </div>
-              ))}
-            </section>
-          );
-        })()}
 
-        {/* ── Installer: Flag for Rework + Complete Installation (only when locked detailer stages remain) ── */}
-        {isInstaller && !finishingAlreadyApproved && !approved && allDone && !allJobStagesDone && (
-          <div className="space-y-2 pt-1">
-            {showApprove ? (
-              <div className="bg-white rounded-2xl p-4 space-y-3 border border-emerald-100 shadow-[0_2px_12px_-4px_rgba(0,0,0,0.06)]">
-                <p className="text-sm font-semibold text-gray-900">Complete Installation</p>
-                <textarea
-                  value={handoffNotes}
-                  onChange={(e) => setHandoffNotes(e.target.value)}
-                  placeholder="Optional handoff notes for the finishing team…"
-                  rows={3}
-                  className="w-full text-sm border border-gray-200 rounded-xl px-3.5 py-3 resize-none focus:outline-none focus:ring-2 focus:ring-gray-200 bg-gray-50 text-gray-800 placeholder-gray-400 transition"
-                />
-                <div className="flex gap-2">
-                  <button
-                    onClick={() => setShowApprove(false)}
-                    className="flex-1 text-sm font-semibold text-gray-600 border border-gray-200 rounded-xl py-3 hover:bg-gray-50 transition-colors"
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    onClick={handleApprove}
-                    disabled={approving}
-                    className="flex-1 flex items-center justify-center gap-2 text-sm font-semibold text-white bg-emerald-600 rounded-xl py-3 hover:bg-emerald-700 active:scale-[0.98] transition-all disabled:opacity-50"
-                  >
-                    {approving ? <Loader2 size={14} className="animate-spin" /> : <ThumbsUp size={14} />}
-                    Confirm
-                  </button>
+                  {/* Per-category approve/rework panel */}
+                  {allGroupDone && !isApproved && !finishingAlreadyApproved && !isLastOverall && (
+                    <div className="pt-1">
+                      {approvingCategoryId === g.id ? (
+                        <div className="bg-white rounded-2xl p-4 space-y-3 border border-emerald-100 shadow-[0_2px_12px_-4px_rgba(0,0,0,0.06)]">
+                          <p className="text-sm font-semibold text-gray-900">Approve {g.name}</p>
+                          <textarea
+                            value={handoffNotes}
+                            onChange={(e) => setHandoffNotes(e.target.value)}
+                            placeholder={`Optional handoff notes for the next team…`}
+                            rows={3}
+                            className="w-full text-sm border border-gray-200 rounded-xl px-3.5 py-3 resize-none focus:outline-none focus:ring-2 focus:ring-gray-200 bg-gray-50 text-gray-800 placeholder-gray-400 transition"
+                          />
+                          <div className="flex gap-2">
+                            <button
+                              onClick={() => { setApprovingCategoryId(null); setHandoffNotes(""); }}
+                              className="flex-1 text-sm font-semibold text-gray-600 border border-gray-200 rounded-xl py-3 hover:bg-gray-50 transition-colors"
+                            >
+                              Cancel
+                            </button>
+                            <button
+                              onClick={() => handleApprove(g.id)}
+                              disabled={approving}
+                              className="flex-1 flex items-center justify-center gap-2 text-sm font-semibold text-white bg-emerald-600 rounded-xl py-3 hover:bg-emerald-700 active:scale-[0.98] transition-all disabled:opacity-50"
+                            >
+                              {approving ? <Loader2 size={14} className="animate-spin" /> : <ThumbsUp size={14} />}
+                              Confirm
+                            </button>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="flex gap-2">
+                          <button
+                            onClick={() => openRework(g.id)}
+                            className="flex-1 flex items-center justify-center gap-2 text-sm font-semibold text-white bg-orange-500 rounded-2xl py-3.5 hover:bg-orange-600 active:scale-[0.98] transition-all"
+                          >
+                            <AlertTriangle size={15} />
+                            Flag for Rework
+                          </button>
+                          <button
+                            onClick={() => { setApprovingCategoryId(g.id); setHandoffNotes(""); }}
+                            className="flex-1 flex items-center justify-center gap-2 text-sm font-semibold text-white bg-emerald-600 rounded-2xl py-3.5 hover:bg-emerald-700 active:scale-[0.98] transition-all"
+                          >
+                            <ThumbsUp size={15} />
+                            Approve {g.name}
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Approved success banner for this category */}
+                  {isApproved && !isLastOverall && (
+                    <div className="bg-emerald-50 border border-emerald-100 rounded-2xl p-3 flex items-start gap-2">
+                      <ThumbsUp size={14} className="text-emerald-600 mt-0.5 shrink-0" />
+                      <p className="text-xs font-semibold text-emerald-800">
+                        {g.name} approved — handed off to the next team.
+                      </p>
+                    </div>
+                  )}
                 </div>
-              </div>
-            ) : (
-              <div className="flex gap-2">
-                <button
-                  onClick={() => setReworkOpen(true)}
-                  className="flex-1 flex items-center justify-center gap-2 text-sm font-semibold text-white bg-orange-500 rounded-2xl py-3.5 hover:bg-orange-600 active:scale-[0.98] transition-all"
-                >
-                  <AlertTriangle size={15} />
-                  Flag for Rework
-                </button>
-                <button
-                  onClick={() => setShowApprove(true)}
-                  className="flex-1 flex items-center justify-center gap-2 text-sm font-semibold text-white bg-emerald-600 rounded-2xl py-3.5 hover:bg-emerald-700 active:scale-[0.98] transition-all"
-                >
-                  <ThumbsUp size={15} />
-                  Complete Installation
-                </button>
-              </div>
-            )}
-          </div>
+              );
+            })}
+          </section>
         )}
 
-        {/* ── Head Detailer (Prep phase): Flag for Rework + Approve Preparation ── */}
-        {!isInstaller && allDone && !allJobStagesDone && !finishingAlreadyApproved && !approved && (
-          <div className="space-y-2 pt-1">
-            {showApprove ? (
-              <div className="bg-white rounded-2xl p-4 space-y-3 border border-emerald-100 shadow-[0_2px_12px_-4px_rgba(0,0,0,0.06)]">
-                <p className="text-sm font-semibold text-gray-900">Approve Preparation</p>
-                <textarea
-                  value={handoffNotes}
-                  onChange={(e) => setHandoffNotes(e.target.value)}
-                  placeholder="Optional handoff notes for the Installation team…"
-                  rows={3}
-                  className="w-full text-sm border border-gray-200 rounded-xl px-3.5 py-3 resize-none focus:outline-none focus:ring-2 focus:ring-gray-200 bg-gray-50 text-gray-800 placeholder-gray-400 transition"
-                />
-                <div className="flex gap-2">
-                  <button
-                    type="button"
-                    onClick={() => setShowApprove(false)}
-                    className="flex-1 text-sm font-semibold text-gray-600 border border-gray-200 rounded-xl py-3 hover:bg-gray-50 transition-colors"
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    type="button"
-                    onClick={handleApprove}
-                    disabled={approving}
-                    className="flex-1 flex items-center justify-center gap-2 text-sm font-semibold text-white bg-emerald-600 rounded-xl py-3 hover:bg-emerald-700 active:scale-[0.98] transition-all disabled:opacity-50"
-                  >
-                    {approving ? <Loader2 size={14} className="animate-spin" /> : <ThumbsUp size={14} />}
-                    Confirm
-                  </button>
-                </div>
-              </div>
-            ) : (
-              <div className="flex gap-2">
-                <button
-                  type="button"
-                  onClick={() => setPrepReworkOpen(true)}
-                  className="flex-1 flex items-center justify-center gap-2 text-sm font-semibold text-white bg-orange-500 rounded-2xl py-3.5 hover:bg-orange-600 active:scale-[0.98] transition-all"
-                >
-                  <AlertTriangle size={15} />
-                  Flag for Rework
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setShowApprove(true)}
-                  className="flex-1 flex items-center justify-center gap-2 text-sm font-semibold text-white bg-emerald-600 rounded-2xl py-3.5 hover:bg-emerald-700 active:scale-[0.98] transition-all"
-                >
-                  <ThumbsUp size={15} />
-                  Approve Preparation
-                </button>
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* ── Pass to Operations — whoever owns the last stage by sequence order ── */}
+        {/* Pass to Operations — last category, all done */}
         {isLastRole && allJobStagesDone && !finishingAlreadyApproved && (
-          <div className="space-y-2 pt-1">
-            {showApprove ? (
+          <div className="pt-1">
+            {approvingCategoryId === "__finishing__" ? (
               <div className="bg-white rounded-2xl p-4 space-y-3 border border-emerald-100 shadow-[0_2px_12px_-4px_rgba(0,0,0,0.06)]">
                 <p className="text-sm font-semibold text-gray-900">Pass to Operations</p>
                 <p className="text-xs text-gray-500">
@@ -817,15 +773,13 @@ export default function HeadTechJobHistoryPage({ jobId }: { jobId: string }) {
                 </p>
                 <div className="flex gap-2">
                   <button
-                    type="button"
-                    onClick={() => setShowApprove(false)}
+                    onClick={() => { setApprovingCategoryId(null); setHandoffNotes(""); }}
                     className="flex-1 text-sm font-semibold text-gray-600 border border-gray-200 rounded-xl py-3 hover:bg-gray-50 transition-colors"
                   >
                     Cancel
                   </button>
                   <button
-                    type="button"
-                    onClick={handleApprove}
+                    onClick={() => handleApprove(lastGroup?.id ?? "__finishing__")}
                     disabled={approving}
                     className="flex-1 flex items-center justify-center gap-2 text-sm font-semibold text-white bg-emerald-600 rounded-xl py-3 hover:bg-emerald-700 active:scale-[0.98] transition-all disabled:opacity-50"
                   >
@@ -837,16 +791,14 @@ export default function HeadTechJobHistoryPage({ jobId }: { jobId: string }) {
             ) : (
               <div className="flex gap-2">
                 <button
-                  type="button"
-                  onClick={() => setFinishReworkOpen(true)}
+                  onClick={() => openRework(lastGroup?.id ?? "__finishing__")}
                   className="flex-1 flex items-center justify-center gap-2 text-sm font-semibold text-white bg-orange-500 rounded-2xl py-3.5 hover:bg-orange-600 active:scale-[0.98] transition-all"
                 >
                   <AlertTriangle size={15} />
                   Flag for Rework
                 </button>
                 <button
-                  type="button"
-                  onClick={() => setShowApprove(true)}
+                  onClick={() => setApprovingCategoryId("__finishing__")}
                   className="flex-1 flex items-center justify-center gap-2 text-sm font-semibold text-white bg-emerald-600 rounded-2xl py-3.5 hover:bg-emerald-700 active:scale-[0.98] transition-all"
                 >
                   <ThumbsUp size={15} />
@@ -857,26 +809,13 @@ export default function HeadTechJobHistoryPage({ jobId }: { jobId: string }) {
           </div>
         )}
 
-        {/* Approved success banner */}
-        {approved && (
-          <div className="bg-emerald-50 border border-emerald-100 rounded-2xl p-4 flex items-start gap-3">
-            <ThumbsUp size={16} className="text-emerald-600 mt-0.5 shrink-0" />
-            <div>
-              <p className="text-sm font-semibold text-emerald-800">{approveBannerText()}</p>
-              {handoffNotes && (
-                <p className="text-xs text-emerald-700 mt-1">Notes: {handoffNotes}</p>
-              )}
-            </div>
-          </div>
-        )}
-
       </main>
 
-      {/* ── Flag for Rework modal (head_installer — installation) ── */}
-      {reworkOpen && job && (
+      {/* Unified rework modal */}
+      {reworkOpen && (
         <ReworkModal
-          title="Flag Installation Stages for Rework"
-          stages={myStages}
+          title={`Flag ${allCategoryGroups.find((g) => g.id === reworkCategoryId)?.name ?? "Stages"} for Rework`}
+          stages={reworkableStages}
           selected={selectedRework}
           note={reworkNote}
           submitting={submittingRework}
@@ -884,39 +823,7 @@ export default function HeadTechJobHistoryPage({ jobId }: { jobId: string }) {
           onSelect={(id) => setSelectedRework((prev) => prev === id ? null : id)}
           onNoteChange={setReworkNote}
           onSubmit={handleFlagRework}
-          onClose={() => { setReworkOpen(false); setSelectedRework(null); setReworkNote(""); setReworkError(null); }}
-        />
-      )}
-
-      {/* ── Flag for Rework modal (head_detailer — preparation) ── */}
-      {prepReworkOpen && job && (
-        <ReworkModal
-          title="Flag Preparation Stages for Rework"
-          stages={myStages}
-          selected={selectedPrepRework}
-          note={prepReworkNote}
-          submitting={submittingPrepRework}
-          error={prepReworkError}
-          onSelect={(id) => setSelectedPrepRework((prev) => prev === id ? null : id)}
-          onNoteChange={setPrepReworkNote}
-          onSubmit={handleFlagPrepRework}
-          onClose={() => { setPrepReworkOpen(false); setSelectedPrepRework(null); setPrepReworkNote(""); setPrepReworkError(null); }}
-        />
-      )}
-
-      {/* ── Flag for Rework modal (head_detailer — finishing) ── */}
-      {finishReworkOpen && job && (
-        <ReworkModal
-          title="Flag Finishing Stages for Rework"
-          stages={myStages}
-          selected={selectedFinishRework}
-          note={finishReworkNote}
-          submitting={submittingFinishRework}
-          error={finishReworkError}
-          onSelect={(id) => setSelectedFinishRework((prev) => prev === id ? null : id)}
-          onNoteChange={setFinishReworkNote}
-          onSubmit={handleFlagFinishRework}
-          onClose={() => { setFinishReworkOpen(false); setSelectedFinishRework(null); setFinishReworkNote(""); setFinishReworkError(null); }}
+          onClose={closeRework}
         />
       )}
 
@@ -935,20 +842,9 @@ export default function HeadTechJobHistoryPage({ jobId }: { jobId: string }) {
             <X size={20} />
           </button>
           {preview.type === "video" ? (
-            <video
-              src={preview.url}
-              controls
-              autoPlay
-              className="max-w-full max-h-full rounded-lg"
-              onClick={(e) => e.stopPropagation()}
-            />
+            <video src={preview.url} controls autoPlay className="max-w-full max-h-full rounded-lg" onClick={(e) => e.stopPropagation()} />
           ) : (
-            <img
-              src={preview.url}
-              alt=""
-              className="max-w-full max-h-full object-contain rounded-lg"
-              onClick={(e) => e.stopPropagation()}
-            />
+            <img src={preview.url} alt="" className="max-w-full max-h-full object-contain rounded-lg" onClick={(e) => e.stopPropagation()} />
           )}
         </div>
       )}
@@ -1000,7 +896,6 @@ function ReworkModal({
   onSubmit:     () => void;
   onClose:      () => void;
 }) {
-  const doneable = stages.filter((s) => s.status === "done");
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
       <div className="bg-white rounded-2xl shadow-xl w-full max-w-md p-5 space-y-4">
@@ -1013,7 +908,7 @@ function ReworkModal({
         </p>
 
         <div className="flex flex-col gap-1 max-h-48 overflow-y-auto">
-          {doneable.map((s) => (
+          {stages.map((s) => (
             <label key={s.id} className="flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-gray-50 cursor-pointer">
               <input
                 type="radio"
@@ -1025,7 +920,7 @@ function ReworkModal({
               <span className="text-sm text-gray-700 flex-1">{s.order}. {s.name}</span>
             </label>
           ))}
-          {doneable.length === 0 && (
+          {stages.length === 0 && (
             <p className="text-xs text-gray-400 text-center py-4">No completed stages to flag.</p>
           )}
         </div>
@@ -1046,11 +941,7 @@ function ReworkModal({
         {error && <p className="text-xs text-red-500">{error}</p>}
 
         <div className="flex gap-2">
-          <button
-            type="button"
-            onClick={onClose}
-            className="flex-1 text-sm font-semibold text-gray-600 border border-gray-200 rounded-xl py-3 hover:bg-gray-50 transition-colors"
-          >
+          <button type="button" onClick={onClose} className="flex-1 text-sm font-semibold text-gray-600 border border-gray-200 rounded-xl py-3 hover:bg-gray-50 transition-colors">
             Cancel
           </button>
           <button
@@ -1163,12 +1054,8 @@ function StageCard({
               {stage.expected_end_at && (
                 <span>Due by {new Date(stage.expected_end_at).toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}</span>
               )}
-              {stage.expected_end_at && stage.stage_duration_mins > 0 && (
-                <span className="text-gray-300">·</span>
-              )}
-              {stage.stage_duration_mins > 0 && (
-                <span>{fmtDuration(stage.stage_duration_mins)}</span>
-              )}
+              {stage.expected_end_at && stage.stage_duration_mins > 0 && <span className="text-gray-300">·</span>}
+              {stage.stage_duration_mins > 0 && <span>{fmtDuration(stage.stage_duration_mins)}</span>}
             </p>
           )}
           {stage.completed_at && (
@@ -1196,40 +1083,21 @@ function StageCard({
         <div className="flex flex-wrap gap-2 px-4 pb-3">
           {stage.media.map((m) => (
             <div key={m.id} className="relative w-16 h-16">
-              <button
-                className="w-16 h-16 rounded-xl overflow-hidden block focus:outline-none"
-                onClick={() => !m.pending && onPreview(m.url, m.type)}
-              >
+              <button className="w-16 h-16 rounded-xl overflow-hidden block focus:outline-none" onClick={() => !m.pending && onPreview(m.url, m.type)}>
                 {m.type === "video" ? (
-                  <div className="w-full h-full bg-gray-200 flex items-center justify-center text-gray-500">
-                    <Play size={20} />
-                  </div>
+                  <div className="w-full h-full bg-gray-200 flex items-center justify-center text-gray-500"><Play size={20} /></div>
                 ) : (
-                  <img
-                    src={m.url}
-                    alt=""
-                    className="w-full h-full object-cover bg-gray-100"
-                    onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = "none"; }}
-                  />
+                  <img src={m.url} alt="" className="w-full h-full object-cover bg-gray-100" onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = "none"; }} />
                 )}
               </button>
-
               {m.pending && (
                 <div className="absolute inset-0 rounded-xl bg-black/40 flex items-center justify-center pointer-events-none">
                   <Loader2 size={16} className="text-white animate-spin" />
                 </div>
               )}
-
               {!m.pending && !readOnly && !done && (
-                <button
-                  onClick={() => onRemoveMedia(m.id)}
-                  disabled={removingId === m.id}
-                  className="absolute -top-1.5 -right-1.5 w-5 h-5 bg-gray-900 rounded-full flex items-center justify-center shadow"
-                >
-                  {removingId === m.id
-                    ? <Loader2 size={9} className="text-white animate-spin" />
-                    : <X size={9} className="text-white" />
-                  }
+                <button onClick={() => onRemoveMedia(m.id)} disabled={removingId === m.id} className="absolute -top-1.5 -right-1.5 w-5 h-5 bg-gray-900 rounded-full flex items-center justify-center shadow">
+                  {removingId === m.id ? <Loader2 size={9} className="text-white animate-spin" /> : <X size={9} className="text-white" />}
                 </button>
               )}
             </div>
@@ -1244,9 +1112,7 @@ function StageCard({
           {!done && !rework && stage.media.length === 0 && (
             <p className="text-[11px] text-gray-400">Upload a photo or video before marking done.</p>
           )}
-          {rework && (
-            <p className="text-[11px] text-orange-500">Media locked — stage is flagged for rework.</p>
-          )}
+          {rework && <p className="text-[11px] text-orange-500">Media locked — stage is flagged for rework.</p>}
           {!done && !rework && (
             <textarea
               value={notes}
@@ -1264,14 +1130,7 @@ function StageCard({
             }`}>
               <ImagePlus size={13} />
               Photo {photoCount > 0 && `(${photoCount}/5)`}
-              <input
-                type="file"
-                accept="image/*"
-                capture="environment"
-                className="hidden"
-                disabled={isUploading || photoFull || done || rework}
-                onChange={(e) => onFileChange(e.target.files)}
-              />
+              <input type="file" accept="image/*" capture="environment" className="hidden" disabled={isUploading || photoFull || done || rework} onChange={(e) => onFileChange(e.target.files)} />
             </label>
 
             <label className={`flex-1 flex items-center justify-center gap-1.5 text-xs font-semibold border rounded-xl py-2.5 transition-colors ${
@@ -1281,14 +1140,7 @@ function StageCard({
             }`}>
               <Video size={13} />
               Video {videoFull ? "(1/1)" : ""}
-              <input
-                type="file"
-                accept="video/*"
-                capture="environment"
-                className="hidden"
-                onChange={(e) => onFileChange(e.target.files)}
-                disabled={done || rework}
-              />
+              <input type="file" accept="video/*" capture="environment" className="hidden" onChange={(e) => onFileChange(e.target.files)} disabled={done || rework} />
             </label>
 
             {!done && (
@@ -1314,9 +1166,7 @@ function InfoRow({ label, value, accent }: { label: string; value: string; accen
   return (
     <div className="flex justify-between items-start gap-4 px-4 py-3">
       <span className="text-xs font-medium text-gray-400 shrink-0">{label}</span>
-      <span className={`text-sm font-semibold text-right ${accent === "orange" ? "text-orange-500" : "text-gray-800"}`}>
-        {value}
-      </span>
+      <span className={`text-sm font-semibold text-right ${accent === "orange" ? "text-orange-500" : "text-gray-800"}`}>{value}</span>
     </div>
   );
 }
@@ -1326,26 +1176,18 @@ function InfoRow({ label, value, accent }: { label: string; value: string; accen
 function CrewRow({ label, members }: { label: string; members: string[] }) {
   const [open, setOpen] = useState(false);
   const collapsible = members.length >= 2;
-
   return (
     <div className="flex justify-between items-start gap-4 px-4 py-3">
       <span className="text-xs font-medium text-gray-400 shrink-0">{label}</span>
       <div className="text-right">
         {collapsible ? (
           <>
-            <button
-              onClick={() => setOpen((v) => !v)}
-              className="flex items-center gap-1 text-sm font-semibold text-gray-800 ml-auto"
-            >
+            <button onClick={() => setOpen((v) => !v)} className="flex items-center gap-1 text-sm font-semibold text-gray-800 ml-auto">
               <Users size={12} className="text-gray-400" />
               {members.length} members
               <ChevronDown size={12} className={`text-gray-400 transition-transform duration-200 ${open ? "rotate-180" : ""}`} />
             </button>
-            {open && (
-              <ul className="mt-1 space-y-0.5">
-                {members.map((name, i) => <li key={i} className="text-xs text-gray-500">{name}</li>)}
-              </ul>
-            )}
+            {open && <ul className="mt-1 space-y-0.5">{members.map((name, i) => <li key={i} className="text-xs text-gray-500">{name}</li>)}</ul>}
           </>
         ) : (
           <span className="text-sm font-semibold text-gray-800">{members[0]}</span>

@@ -41,7 +41,7 @@ export interface CategorySection {
   technicianRole: "detailer" | "installer"
   displayColor: string
   stages: Stage[]
-  dragIndex: React.MutableRefObject<number | null>
+  dragIndex: React.RefObject<number | null>
 }
 
 export const COLOR_STYLES: Record<string, { badge: string; button: string }> = {
@@ -78,20 +78,18 @@ export function ServiceTypeCombobox({
   onDeleteType?: (type: string) => void
   error?: string
 }) {
-  const [open, setOpen]           = useState(false)
-  const [query, setQuery]         = useState("")
+  const [open, setOpen]               = useState(false)
+  const [query, setQuery]             = useState("")
   const [confirmType, setConfirmType] = useState<string | null>(null)
-  const containerRef              = useRef<HTMLDivElement>(null)
-  const inputRef                  = useRef<HTMLInputElement>(null)
+  const [createOpen, setCreateOpen]   = useState(false)
+  const [newTypeName, setNewTypeName] = useState("")
+  const [newTypeErr, setNewTypeErr]   = useState("")
+  const containerRef                  = useRef<HTMLDivElement>(null)
+  const inputRef                      = useRef<HTMLInputElement>(null)
 
-  const trimmed  = query.trim()
   const filtered = serviceTypes.filter((t) =>
     t.toLowerCase().includes(query.toLowerCase())
   )
-  const exactMatch = serviceTypes.some(
-    (t) => t.toLowerCase() === trimmed.toLowerCase()
-  )
-  const showCreate = trimmed.length > 0 && !exactMatch
 
   useEffect(() => {
     function handleClick(e: MouseEvent) {
@@ -114,105 +112,164 @@ export function ServiceTypeCombobox({
     setConfirmType(null)
   }
 
-  return (
-    <div ref={containerRef} className="relative">
-      <div
-        className={`flex items-center border rounded-lg transition-colors ${
-          error ? "border-red-400 bg-red-50" : open ? "border-blue-400 ring-2 ring-blue-100" : "border-gray-200"
-        }`}
-      >
-        <input
-          ref={inputRef}
-          type="text"
-          value={displayValue}
-          onChange={(e) => { setQuery(e.target.value); if (!open) setOpen(true) }}
-          onFocus={() => { setOpen(true); setQuery("") }}
-          placeholder="Select or type a service type..."
-          className="flex-1 px-3 py-2.5 text-sm bg-transparent focus:outline-none"
-        />
-        <button
-          type="button"
-          onClick={() => {
-            setOpen((v) => !v)
-            if (!open) { setQuery(""); setConfirmType(null); setTimeout(() => inputRef.current?.focus(), 0) }
-          }}
-          className="px-3 text-gray-400 hover:text-gray-600 transition-colors"
-        >
-          <ChevronDown className={`w-4 h-4 transition-transform ${open ? "rotate-180" : ""}`} />
-        </button>
-      </div>
+  function openCreateDialog() {
+    setCreateOpen(true)
+    setNewTypeName("")
+    setNewTypeErr("")
+    setOpen(false)
+  }
 
-      {open && (
-        <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-gray-100 rounded-xl shadow-lg z-20 overflow-hidden">
-          {filtered.map((type) => {
-            if (confirmType === type) {
+  function saveNewType() {
+    const trimmed = newTypeName.trim()
+    if (!trimmed) { setNewTypeErr("Type name is required."); return }
+    onChange(trimmed)
+    setCreateOpen(false)
+    setNewTypeName("")
+    setNewTypeErr("")
+  }
+
+  return (
+    <>
+      <div ref={containerRef} className="relative">
+        <div
+          className={`flex items-center border rounded-lg transition-colors ${
+            error ? "border-red-400 bg-red-50" : open ? "border-blue-400 ring-2 ring-blue-100" : "border-gray-200"
+          }`}
+        >
+          <input
+            ref={inputRef}
+            type="text"
+            value={displayValue}
+            onChange={(e) => { setQuery(e.target.value); if (!open) setOpen(true) }}
+            onFocus={() => { setOpen(true); setQuery("") }}
+            placeholder="Select a service type..."
+            className="flex-1 px-3 py-2.5 text-sm bg-transparent focus:outline-none"
+          />
+          <button
+            type="button"
+            onClick={() => {
+              setOpen((v) => !v)
+              if (!open) { setQuery(""); setConfirmType(null); setTimeout(() => inputRef.current?.focus(), 0) }
+            }}
+            className="px-3 text-gray-400 hover:text-gray-600 transition-colors"
+          >
+            <ChevronDown className={`w-4 h-4 transition-transform ${open ? "rotate-180" : ""}`} />
+          </button>
+        </div>
+
+        {open && (
+          <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-gray-100 rounded-xl shadow-lg z-20 overflow-hidden">
+            {filtered.map((type) => {
+              if (confirmType === type) {
+                return (
+                  <div key={type} className="px-3 py-2.5 bg-red-50 border-t border-red-100">
+                    <div className="flex items-center gap-1.5 mb-2">
+                      <AlertTriangle className="w-3.5 h-3.5 text-red-500 shrink-0" />
+                      <p className="text-xs font-semibold text-red-700 truncate">Delete &ldquo;{type}&rdquo;?</p>
+                    </div>
+                    <p className="text-xs text-red-600 mb-2">This cannot be undone.</p>
+                    <div className="flex gap-2">
+                      <button
+                        type="button"
+                        onClick={() => { onDeleteType?.(type); setConfirmType(null); setOpen(false) }}
+                        className="flex-1 text-xs font-semibold py-1 rounded-lg bg-red-600 text-white hover:bg-red-700 transition-colors"
+                      >
+                        Delete
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setConfirmType(null)}
+                        className="flex-1 text-xs font-semibold py-1 rounded-lg bg-white border border-gray-200 text-gray-600 hover:bg-gray-50 transition-colors"
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  </div>
+                )
+              }
               return (
-                <div key={type} className="px-3 py-2.5 bg-red-50 border-t border-red-100">
-                  <div className="flex items-center gap-1.5 mb-2">
-                    <AlertTriangle className="w-3.5 h-3.5 text-red-500 shrink-0" />
-                    <p className="text-xs font-semibold text-red-700 truncate">Delete &ldquo;{type}&rdquo;?</p>
-                  </div>
-                  <p className="text-xs text-red-600 mb-2">This cannot be undone.</p>
-                  <div className="flex gap-2">
-                    <button
-                      type="button"
-                      onClick={() => { onDeleteType?.(type); setConfirmType(null); setOpen(false) }}
-                      className="flex-1 text-xs font-semibold py-1 rounded-lg bg-red-600 text-white hover:bg-red-700 transition-colors"
-                    >
-                      Delete
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setConfirmType(null)}
-                      className="flex-1 text-xs font-semibold py-1 rounded-lg bg-white border border-gray-200 text-gray-600 hover:bg-gray-50 transition-colors"
-                    >
-                      Cancel
-                    </button>
-                  </div>
-                </div>
-              )
-            }
-            return (
-              <div key={type} className="flex items-center gap-1 px-3 py-2 hover:bg-gray-50 transition-colors">
-                <button
-                  type="button"
-                  onClick={() => selectType(type)}
-                  className="flex-1 flex items-center justify-between text-sm text-left"
-                >
-                  <span className={value === type ? "text-gray-900 font-medium" : "text-gray-700"}>{type}</span>
-                  {value === type && <Check className="w-4 h-4 text-blue-500 shrink-0" />}
-                </button>
-                {onDeleteType && (
+                <div key={type} className="flex items-center gap-1 px-3 py-2 hover:bg-gray-50 transition-colors">
                   <button
                     type="button"
-                    onClick={(e) => { e.stopPropagation(); setConfirmType(type) }}
-                    className="p-1 text-gray-300 hover:text-red-400 transition-colors rounded shrink-0"
-                    title="Delete service type"
+                    onClick={() => selectType(type)}
+                    className="flex-1 flex items-center justify-between text-sm text-left"
                   >
-                    <Trash2 className="w-3.5 h-3.5" />
+                    <span className={value === type ? "text-gray-900 font-medium" : "text-gray-700"}>{type}</span>
+                    {value === type && <Check className="w-4 h-4 text-blue-500 shrink-0" />}
                   </button>
-                )}
-              </div>
-            )
-          })}
-          {showCreate && (
-            <button
-              type="button"
-              onClick={() => selectType(trimmed)}
-              className="w-full flex items-center gap-2 px-3 py-2.5 text-sm text-left text-blue-600 hover:bg-blue-50 transition-colors font-medium border-t border-gray-100"
-            >
-              <Plus className="w-4 h-4 shrink-0" />
-              Create &ldquo;{trimmed}&rdquo;
-            </button>
-          )}
-          {filtered.length === 0 && !showCreate && (
-            <p className="px-3 py-2.5 text-sm text-gray-400">No match found.</p>
-          )}
+                  {onDeleteType && (
+                    <button
+                      type="button"
+                      onClick={(e) => { e.stopPropagation(); setConfirmType(type) }}
+                      className="p-1 text-gray-300 hover:text-red-400 transition-colors rounded shrink-0"
+                      title="Delete service type"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                  )}
+                </div>
+              )
+            })}
+            {filtered.length === 0 && (
+              <p className="px-3 py-2.5 text-sm text-gray-400">No service types yet.</p>
+            )}
+          </div>
+        )}
+
+        {/* Dedicated create button — always visible, no typing required */}
+        <button
+          type="button"
+          onClick={openCreateDialog}
+          className="mt-1.5 flex items-center gap-1 text-xs font-medium text-blue-600 hover:text-blue-800 transition-colors"
+        >
+          <Plus className="w-3.5 h-3.5" />
+          Create service type
+        </button>
+
+        {error && <p className="text-xs text-red-500 mt-0.5">{error}</p>}
+      </div>
+
+      {/* Create Service Type dialog */}
+      {createOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-sm p-6">
+            <h3 className="text-sm font-semibold text-gray-800 mb-4">Create Service Type</h3>
+            <div className="space-y-1">
+              <label className="text-xs font-medium text-gray-600">Type Name <span className="text-red-500">*</span></label>
+              <input
+                autoFocus
+                type="text"
+                value={newTypeName}
+                onChange={(e) => { setNewTypeName(e.target.value); setNewTypeErr("") }}
+                onKeyDown={(e) => { if (e.key === "Enter") saveNewType() }}
+                placeholder="e.g. Paint Protection Film"
+                className={`w-full px-3 py-2 text-sm border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-100 focus:border-blue-400 transition-colors ${newTypeErr ? "border-red-400 bg-red-50" : "border-gray-200"}`}
+              />
+              {newTypeErr && <p className="text-xs text-red-500">{newTypeErr}</p>}
+            </div>
+            <p className="text-xs text-gray-400 mt-3">
+              This type will be saved once you save the service.
+            </p>
+            <div className="flex justify-end gap-2 mt-3">
+              <button
+                type="button"
+                onClick={() => setCreateOpen(false)}
+                className="px-4 py-2 text-sm font-medium text-gray-600 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={saveNewType}
+                className="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors"
+              >
+                Save & Select
+              </button>
+            </div>
+          </div>
         </div>
       )}
-
-      {error && <p className="text-xs text-red-500 mt-0.5">{error}</p>}
-    </div>
+    </>
   )
 }
 
@@ -363,8 +420,8 @@ export function AddCategoryDropdown({
 }) {
   const [open, setOpen]           = useState(false)
   const [confirmId, setConfirmId] = useState<string | null>(null)
-  const ref = useRef<HTMLDivElement>(null)
-
+  const ref        = useRef<HTMLDivElement>(null)
+  const dropdownRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     function handleClick(e: MouseEvent) {
@@ -377,12 +434,20 @@ export function AddCategoryDropdown({
     return () => document.removeEventListener("mousedown", handleClick)
   }, [])
 
+  useEffect(() => {
+    if (open) {
+      setTimeout(() => {
+        dropdownRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" })
+      }, 50)
+    }
+  }, [open])
+
   return (
-    <div ref={ref} className="relative inline-block">
+    <div ref={ref} className="relative w-full">
       <button
         type="button"
         onClick={() => { setOpen((v) => !v); setConfirmId(null) }}
-        className="flex items-center gap-1.5 text-sm font-medium text-gray-600 border border-dashed border-gray-300 rounded-lg px-3 py-2 hover:border-gray-400 hover:bg-gray-50 transition-colors"
+        className="w-full flex items-center justify-center gap-1.5 text-sm font-medium text-gray-600 border border-dashed border-gray-300 rounded-lg px-3 py-2 hover:border-gray-400 hover:bg-gray-50 transition-colors"
       >
         <Plus className="w-4 h-4" />
         Add Category Section
@@ -390,7 +455,7 @@ export function AddCategoryDropdown({
       </button>
 
       {open && (
-        <div className="absolute top-full left-0 mt-1 w-72 bg-white border border-gray-100 rounded-xl shadow-lg z-20 overflow-hidden">
+        <div ref={dropdownRef} className="absolute top-full left-0 right-0 mt-1 bg-white border border-gray-100 rounded-xl shadow-lg z-20 overflow-hidden">
           {globalCategories.length > 0 && (
             <>
               <p className="px-3 pt-2.5 pb-1 text-xs font-medium text-gray-400 uppercase tracking-wide">
@@ -492,7 +557,7 @@ export function CreateCategoryForm({
   const [color, setColor]     = useState("blue")
   const [nameErr, setNameErr] = useState("")
 
-  function handleSubmit(e: React.FormEvent) {
+  function handleSubmit(e: React.SyntheticEvent) {
     e.preventDefault()
     if (!name.trim()) { setNameErr("Name is required."); return }
     onSubmit(name.trim(), role, color)

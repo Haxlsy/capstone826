@@ -39,8 +39,12 @@ export default function AddServiceModal({ open, onClose, onSuccess }: AddService
   const [showCreateForm, setShowCreateForm]     = useState(false)
   const [creatingCategory, setCreatingCategory] = useState(false)
   const [createCategoryError, setCreateCategoryError] = useState("")
-  const [deleteError, setDeleteError]           = useState("")
-  const [typeDeleteError, setTypeDeleteError]   = useState("")
+  const [deleteError, setDeleteError]               = useState("")
+  const [typeDeleteError, setTypeDeleteError]       = useState("")
+  const [typeDeleteAffected, setTypeDeleteAffected] = useState<string[]>([])
+  const [typeDeleteLiveJobs, setTypeDeleteLiveJobs] = useState<string[]>([])
+  const [catDeleteAffected,  setCatDeleteAffected]  = useState<string[]>([])
+  const [catDeleteLiveJobs,  setCatDeleteLiveJobs]  = useState<string[]>([])
 
   useEffect(() => {
     if (!open) return
@@ -50,6 +54,10 @@ export default function AddServiceModal({ open, onClose, onSuccess }: AddService
     setErrors({})
     setServerError("")
     setShowCreateForm(false)
+    setDeleteError("")
+    setTypeDeleteError("")
+    setTypeDeleteAffected([]); setTypeDeleteLiveJobs([])
+    setCatDeleteAffected([]);  setCatDeleteLiveJobs([])
 
     fetch("/api/admin/workflow-categories")
       .then((r) => r.json())
@@ -93,11 +101,16 @@ export default function AddServiceModal({ open, onClose, onSuccess }: AddService
   }
 
   async function handleDeleteType(type: string) {
-    setTypeDeleteError("")
+    setTypeDeleteError(""); setTypeDeleteAffected([]); setTypeDeleteLiveJobs([])
     try {
       const res  = await fetch(`/api/admin/service-types/${encodeURIComponent(type)}`, { method: "DELETE" })
       const json = await res.json()
-      if (!res.ok) { setTypeDeleteError(json.error ?? "Failed to delete service type."); return }
+      if (!res.ok) {
+        setTypeDeleteError(json.error ?? "Failed to delete service type.")
+        setTypeDeleteAffected(json.affectedServices ?? [])
+        setTypeDeleteLiveJobs(json.liveJobs ?? [])
+        return
+      }
       setServiceTypes((prev) => prev.filter((t) => t !== type))
       if (form.serviceType === type) setField("serviceType", "")
     } catch {
@@ -106,11 +119,16 @@ export default function AddServiceModal({ open, onClose, onSuccess }: AddService
   }
 
   async function handleDeleteCategory(cat: WorkflowCategory) {
-    setDeleteError("")
+    setDeleteError(""); setCatDeleteAffected([]); setCatDeleteLiveJobs([])
     try {
       const res  = await fetch(`/api/admin/workflow-categories/${cat.id}`, { method: "DELETE" })
       const json = await res.json()
-      if (!res.ok) { setDeleteError(json.error ?? "Failed to delete category."); return }
+      if (!res.ok) {
+        setDeleteError(json.error ?? "Failed to delete category.")
+        setCatDeleteAffected(json.affectedServices ?? [])
+        setCatDeleteLiveJobs(json.liveJobs ?? [])
+        return
+      }
       setGlobalCategories((prev) => prev.filter((c) => c.id !== cat.id))
       setSections((prev) => prev.filter((s) => s.categoryId !== cat.id))
     } catch {
@@ -316,7 +334,28 @@ export default function AddServiceModal({ open, onClose, onSuccess }: AddService
               onDeleteType={handleDeleteType}
               error={errors.serviceType}
             />
-            {typeDeleteError && <p className="text-xs text-red-500 mt-0.5">{typeDeleteError}</p>}
+            {typeDeleteError && (
+              <div className="mt-1">
+                <p className="text-xs text-red-500">{typeDeleteError}</p>
+                {typeDeleteAffected.length > 0 && (
+                  <ul className="mt-1 space-y-0.5 pl-3">
+                    {typeDeleteAffected.map((name) => (
+                      <li key={name} className="text-xs text-red-400 list-disc">{name}</li>
+                    ))}
+                  </ul>
+                )}
+                {typeDeleteLiveJobs.length > 0 && (
+                  <>
+                    <p className="text-xs font-medium text-amber-600 mt-1">Active job orders:</p>
+                    <ul className="mt-0.5 space-y-0.5 pl-3">
+                      {typeDeleteLiveJobs.map((j) => (
+                        <li key={j} className="text-xs text-amber-500 list-disc">{j}</li>
+                      ))}
+                    </ul>
+                  </>
+                )}
+              </div>
+            )}
           </div>
 
           {/* Service Name */}
@@ -451,7 +490,28 @@ export default function AddServiceModal({ open, onClose, onSuccess }: AddService
                     onCreateNew={() => setShowCreateForm(true)}
                     onDelete={handleDeleteCategory}
                   />
-                  {deleteError && <p className="text-xs text-red-500 mt-1">{deleteError}</p>}
+                  {deleteError && (
+                    <div className="mt-1">
+                      <p className="text-xs text-red-500">{deleteError}</p>
+                      {catDeleteAffected.length > 0 && (
+                        <ul className="mt-1 space-y-0.5 pl-3">
+                          {catDeleteAffected.map((name) => (
+                            <li key={name} className="text-xs text-red-400 list-disc">{name}</li>
+                          ))}
+                        </ul>
+                      )}
+                      {catDeleteLiveJobs.length > 0 && (
+                        <>
+                          <p className="text-xs font-medium text-amber-600 mt-1">Active job orders:</p>
+                          <ul className="mt-0.5 space-y-0.5 pl-3">
+                            {catDeleteLiveJobs.map((j) => (
+                              <li key={j} className="text-xs text-amber-500 list-disc">{j}</li>
+                            ))}
+                          </ul>
+                        </>
+                      )}
+                    </div>
+                  )}
                 </>
               )}
             </div>
