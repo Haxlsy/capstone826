@@ -20,7 +20,22 @@ export async function GET(request: Request) {
 
     const { data, error } = await query
     if (error) return NextResponse.json({ error: error.message }, { status: 500 })
-    return NextResponse.json({ customers: data ?? [] })
+
+    // Determine which customer_records have an active job (Pending / Ongoing / For Rework)
+    const { data: activeJobs } = await supabase
+      .from("job_order")
+      .select("customer_record_id")
+      .in("status", ["Pending", "Ongoing", "For Rework"])
+      .not("customer_record_id", "is", null)
+
+    const activeSet = new Set((activeJobs ?? []).map((j) => j.customer_record_id as string))
+
+    const customers = (data ?? []).map((c) => ({
+      ...c,
+      is_in_service: activeSet.has(c.id),
+    }))
+
+    return NextResponse.json({ customers })
   } catch (err: any) {
     return NextResponse.json({ error: err?.message ?? String(err) }, { status: 500 })
   }

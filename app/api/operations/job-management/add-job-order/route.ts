@@ -151,6 +151,23 @@ export async function POST(request: Request) {
       resolvedVehicleUnit   = vehicle_unit?.trim()   ?? null
     }
 
+    // ── Guard: reject if the vehicle already has an active job ────────────────
+    if (resolvedCustomerRecordId) {
+      const { data: activeJob } = await admin
+        .from("job_order")
+        .select("id")
+        .eq("customer_record_id", resolvedCustomerRecordId)
+        .in("status", ["Pending", "Ongoing", "For Rework"])
+        .maybeSingle()
+
+      if (activeJob) {
+        return NextResponse.json(
+          { error: "This vehicle already has an active job order. It cannot be booked again until the current job is completed or cancelled." },
+          { status: 409 }
+        )
+      }
+    }
+
     // ── Insert job order ──────────────────────────────────────────────────────
     const jobPayload: Record<string, unknown> = {
       service_id,
