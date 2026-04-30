@@ -42,7 +42,10 @@ export async function DELETE(
       const seen = new Set<string>()
       const affectedServices: string[] = []
       for (const row of (affectedStages ?? [])) {
-        const name = (row.service as { name: string } | null)?.name
+        const svc = row.service
+        const name = Array.isArray(svc)
+          ? (svc[0] as { name: string } | undefined)?.name
+          : (svc as { name: string } | null)?.name
         if (name && !seen.has(name)) { seen.add(name); affectedServices.push(name) }
       }
 
