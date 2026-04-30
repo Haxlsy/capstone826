@@ -23,7 +23,7 @@ export async function POST(
     const body   = await request.json()
     const parsed = BodySchema.safeParse(body)
     if (!parsed.success) {
-      return NextResponse.json({ error: parsed.error.errors[0].message }, { status: 400 })
+      return NextResponse.json({ error: parsed.error.issues[0].message }, { status: 400 })
     }
     const { stage_id, rework_notes } = parsed.data
 
