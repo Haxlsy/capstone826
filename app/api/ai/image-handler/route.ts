@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { GoogleGenAI } from "@google/genai"
+import sharp from "sharp"
 
-const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY! });
 
 const PROMPT = `You are an image validator for a professional automotive detailing and installation workshop. Technicians upload photos to document their work on customer vehicles. Bad photos hurt the company's reputation with customers.
 Be strict about rejecting selfies. A face photo with no vehicle is always REJECTED.
@@ -40,19 +40,34 @@ Respond ONLY with valid JSON, no markdown, no extra text:
   "message": "One or two friendly sentences. If rejected, instruct them to upload a clear photo of the vehicle they are working on."
 }`
 
+if(!process.env.GEMINI_API_KEY){
+  console.warn("GEMINI_API_KEY is not set. Image validation will be unavailable.")
+}
+
+const ai = new GoogleGenAI({
+  apiKey: process.env.GEMINI_API_KEY!,
+})
+
 async function generateWithRetry(
-  ai: GoogleGenAI,
-  contents: Parameters<typeof ai.models.generateContent>[0]["contents"],
+  mimeType: string,
+  base64: string,
   retries = 3
 ) {
   for (let attempt = 0; attempt < retries; attempt++) {
     try {
       const response = await ai.models.generateContent({
         model: "gemini-3.1-flash-lite-preview",
-        contents,
+        contents:[
+          {
+            parts:[
+              {inlineData: {mimeType, data: base64}}
+            ]
+          }
+        ],
         config: {
+          systemInstruction: PROMPT,
           temperature: 0,
-          maxOutputTokens: 1024,
+          maxOutputTokens: 256,
           responseMimeType: "application/json",
         },
       })
@@ -104,12 +119,6 @@ export async function POST(request: NextRequest) {
       })
     }
 
-    const apiKey = process.env.GEMINI_API_KEY
-
-    if (!apiKey) {
-      return NextResponse.json({ error: "Gemini API key not configured" }, { status: 500 })
-    }
-
     if (isRateLimited()) {
       return serviceError() // auto-approve and skip validation
     }
@@ -131,19 +140,14 @@ export async function POST(request: NextRequest) {
     }
 
     const arrayBuffer = await file.arrayBuffer()
-    const base64 = Buffer.from(arrayBuffer).toString("base64")
+    const resized = await sharp(Buffer.from(arrayBuffer))
+      .resize({ width: 1024, height: 1024, fit: "inside", withoutEnlargement: true })
+      .toFormat("jpeg", { quality: 75 })
+      .toBuffer()
+    const base64 = resized.toString("base64")
 
-    const ai = new GoogleGenAI({ apiKey })
-
-    const response = await generateWithRetry(ai, [
-  {
-    parts: [
-      { text: PROMPT },
-      { inlineData: { mimeType: file.type, data: base64 } },
-    ],
-  },
-])
-
+    const response = await generateWithRetry("image/jpeg", base64);
+    
     const text = response.text ?? ""
 
     try {
