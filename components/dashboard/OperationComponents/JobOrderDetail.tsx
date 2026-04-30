@@ -2,7 +2,8 @@
 
 import { useState, useEffect, useCallback, useMemo } from "react"
 import Link from "next/link"
-import { ArrowLeft, PackageCheck, ChevronDown, Users, RefreshCw, CheckCircle2, XCircle, Clock, RotateCcw } from "lucide-react"
+import { useRouter } from "next/navigation"
+import { ArrowLeft, PackageCheck, ChevronDown, Users, RefreshCw, CheckCircle2, XCircle, Clock, RotateCcw, UserPlus, X, Loader2, Trash2 } from "lucide-react"
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -99,6 +100,8 @@ const STAGE_STATUS_PILL: Record<string, string> = {
 // ── Component ─────────────────────────────────────────────────────────────────
 
 export default function JobOrderDetail({ jobId }: { jobId: string }) {
+  const router = useRouter()
+
   const [job, setJob]             = useState<JobDetail | null>(null)
   const [loading, setLoading]     = useState(true)
   const [error, setError]         = useState<string | null>(null)
@@ -117,6 +120,20 @@ export default function JobOrderDetail({ jobId }: { jobId: string }) {
   const [reworkNotes, setReworkNotes] = useState("")
   const [submittingRework, setSubmittingRework] = useState(false)
   const [reworkError, setReworkError] = useState<string | null>(null)
+
+  // Cancel job
+  const [cancelConfirm, setCancelConfirm] = useState(false)
+  const [cancelling, setCancelling]       = useState(false)
+  const [cancelError, setCancelError]     = useState<string | null>(null)
+
+  // Substitute modal
+  const [subModal, setSubModal]           = useState(false)
+  const [subRole, setSubRole]             = useState<"detailer" | "installer">("detailer")
+  const [subTechs, setSubTechs]           = useState<{ id: string; name: string; role: string; on_job: boolean; is_available: boolean }[]>([])
+  const [subTechsLoading, setSubTechsLoading] = useState(false)
+  const [selectedSubId, setSelectedSubId] = useState<string | null>(null)
+  const [addingSub, setAddingSub]         = useState(false)
+  const [subError, setSubError]           = useState<string | null>(null)
 
   const updatedEst = useMemo(() => {
     if (!job) return null
@@ -231,6 +248,65 @@ export default function JobOrderDetail({ jobId }: { jobId: string }) {
     }
   }
 
+  async function openSubModal() {
+    setSubModal(true)
+    setSubRole("detailer")
+    setSelectedSubId(null)
+    setSubError(null)
+    setSubTechsLoading(true)
+    try {
+      const res  = await fetch("/api/operations/job-management/list-technicians")
+      const json = await res.json()
+      setSubTechs((json.crew_members ?? []).map((t: any) => ({
+        id:           t.id,
+        name:         t.full_name,
+        role:         t.role as string,
+        on_job:       t.on_job       as boolean,
+        is_available: t.is_available as boolean,
+      })))
+    } catch {
+      setSubError("Failed to load technicians.")
+    } finally {
+      setSubTechsLoading(false)
+    }
+  }
+
+  async function addSubstitute() {
+    if (!selectedSubId) return
+    setAddingSub(true)
+    setSubError(null)
+    try {
+      const res  = await fetch(`/api/operations/job-orders/${jobId}/add-substitute`, {
+        method:  "POST",
+        headers: { "Content-Type": "application/json" },
+        body:    JSON.stringify({ technician_id: selectedSubId, role: subRole }),
+      })
+      const json = await res.json()
+      if (!res.ok) throw new Error(json?.error ?? "Failed to add substitute")
+      setSubModal(false)
+      setSelectedSubId(null)
+      await load()
+    } catch (err: unknown) {
+      setSubError(err instanceof Error ? err.message : String(err))
+    } finally {
+      setAddingSub(false)
+    }
+  }
+
+  async function cancelJob() {
+    setCancelling(true)
+    setCancelError(null)
+    try {
+      const res  = await fetch(`/api/operations/job-orders/${jobId}`, { method: "DELETE" })
+      const json = await res.json()
+      if (!res.ok) throw new Error(json?.error ?? "Failed to cancel job")
+      router.push("/dashboard/job-management")
+    } catch (err: unknown) {
+      setCancelError(err instanceof Error ? err.message : String(err))
+      setCancelling(false)
+    }
+  }
+
   // ── Render ─────────────────────────────────────────────────────────────────
 
   if (loading) return (
@@ -287,6 +363,17 @@ export default function JobOrderDetail({ jobId }: { jobId: string }) {
           Back to Job Management
         </Link>
         <div className="flex items-center gap-3">
+          {/* Cancel — only when Pending */}
+          {job.status === "Pending" && (
+            <button
+              type="button"
+              onClick={() => setCancelConfirm(true)}
+              className="flex items-center gap-2 text-sm font-semibold px-4 py-2 rounded-lg border border-red-200 text-red-600 bg-red-50 hover:bg-red-100 transition-colors"
+            >
+              <Trash2 className="w-4 h-4" />
+              Cancel Job
+            </button>
+          )}
           {/* For Released — visible (but maybe disabled) when finishing stages exist and job not yet released */}
           {showForReleased && (
             <div className="relative group">
@@ -370,6 +457,16 @@ export default function JobOrderDetail({ jobId }: { jobId: string }) {
               <p className="font-medium text-orange-600">{fmtDate(updatedEst)}</p>
             </div>
           )}
+          <div className="col-span-2 md:col-span-4 pt-1">
+            <button
+              type="button"
+              onClick={openSubModal}
+              className="inline-flex items-center gap-1.5 text-xs font-medium text-blue-600 hover:text-blue-800 border border-blue-200 hover:border-blue-400 bg-blue-50 hover:bg-blue-100 px-3 py-1.5 rounded-lg transition-colors"
+            >
+              <UserPlus className="w-3.5 h-3.5" />
+              Add Substitute Technician
+            </button>
+          </div>
         </div>
       </div>
 
@@ -542,6 +639,133 @@ export default function JobOrderDetail({ jobId }: { jobId: string }) {
           )}
         </div>
       </div>
+
+      {/* Cancel Confirmation Modal */}
+      {cancelConfirm && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-sm p-6">
+            <div className="flex items-center gap-2 mb-2">
+              <Trash2 className="w-4 h-4 text-red-500" />
+              <h3 className="text-sm font-semibold text-gray-800">Cancel Job Order</h3>
+            </div>
+            <p className="text-sm text-gray-500 mb-1">
+              Are you sure you want to cancel <span className="font-semibold text-gray-700">{job.customer_name}</span>?
+            </p>
+            <p className="text-xs text-red-500 mb-5">This cannot be undone. The job and all its records will be permanently deleted.</p>
+            {cancelError && <p className="text-xs text-red-500 mb-3">{cancelError}</p>}
+            <div className="flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => { setCancelConfirm(false); setCancelError(null) }}
+                disabled={cancelling}
+                className="px-4 py-2 text-sm font-medium text-gray-600 border border-gray-200 rounded-lg hover:bg-gray-50 disabled:opacity-50"
+              >
+                Go Back
+              </button>
+              <button
+                type="button"
+                onClick={cancelJob}
+                disabled={cancelling}
+                className="px-4 py-2 text-sm font-medium text-white bg-red-600 rounded-lg hover:bg-red-700 disabled:opacity-50 transition-colors"
+              >
+                {cancelling ? <Loader2 className="w-4 h-4 animate-spin" /> : "Yes, Cancel Job"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Substitute Technician Modal */}
+      {subModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-sm p-6">
+            <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center gap-2">
+                <UserPlus className="w-4 h-4 text-blue-500" />
+                <h3 className="text-sm font-semibold text-gray-800">Add Substitute Technician</h3>
+              </div>
+              <button type="button" title="Close" onClick={() => { setSubModal(false); setSubError(null) }} className="text-gray-400 hover:text-gray-600">
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            <p className="text-xs text-gray-500 mb-4">The substitute is added alongside the existing team — no one is removed.</p>
+
+            {/* Role tabs */}
+            <div className="flex gap-2 mb-4">
+              {(["detailer", "installer"] as const).map((r) => (
+                <button
+                  key={r}
+                  type="button"
+                  onClick={() => { setSubRole(r); setSelectedSubId(null) }}
+                  className={`flex-1 py-1.5 rounded-lg text-xs font-semibold border transition-colors capitalize ${
+                    subRole === r
+                      ? "bg-blue-600 text-white border-blue-600"
+                      : "bg-white text-gray-600 border-gray-200 hover:bg-gray-50"
+                  }`}
+                >
+                  {r}
+                </button>
+              ))}
+            </div>
+
+            {/* Technician list */}
+            <div className="max-h-52 overflow-y-auto space-y-1 mb-4">
+              {subTechsLoading ? (
+                <div className="flex items-center justify-center py-6 text-gray-400">
+                  <Loader2 className="w-4 h-4 animate-spin mr-2" /> Loading…
+                </div>
+              ) : subTechs.filter((t) => t.role === subRole && t.is_available && !t.on_job).length === 0 ? (
+                <p className="text-xs text-gray-400 text-center py-6">No available technicians.</p>
+              ) : (
+                subTechs
+                  .filter((t) => t.role === subRole && t.is_available && !t.on_job)
+                  .map((t) => (
+                    <button
+                      key={t.id}
+                      type="button"
+                      onClick={() => setSelectedSubId(t.id)}
+                      className={`w-full flex items-center justify-between px-3 py-2 rounded-lg text-sm border transition-colors ${
+                        selectedSubId === t.id
+                          ? "bg-blue-50 border-blue-300 text-blue-800"
+                          : "bg-white border-gray-100 hover:bg-gray-50 text-gray-700"
+                      }`}
+                    >
+                      <span className="font-medium">{t.name}</span>
+                      <span className={`text-[11px] font-medium px-1.5 py-0.5 rounded-full ${
+                        t.on_job       ? "bg-orange-100 text-orange-600" :
+                        t.is_available ? "bg-green-100 text-green-600"   :
+                                         "bg-gray-100 text-gray-400"
+                      }`}>
+                        {t.on_job ? "On job" : t.is_available ? "Available" : "Unavailable"}
+                      </span>
+                    </button>
+                  ))
+              )}
+            </div>
+
+            {subError && <p className="text-xs text-red-500 mb-3">{subError}</p>}
+
+            <div className="flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => { setSubModal(false); setSubError(null) }}
+                disabled={addingSub}
+                className="px-4 py-2 text-sm font-medium text-gray-600 border border-gray-200 rounded-lg hover:bg-gray-50 disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={addSubstitute}
+                disabled={!selectedSubId || addingSub}
+                className="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 disabled:opacity-50 transition-colors"
+              >
+                {addingSub ? <Loader2 className="w-4 h-4 animate-spin" /> : "Add Substitute"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Stage Rework Modal */}
       {reworkModal && (

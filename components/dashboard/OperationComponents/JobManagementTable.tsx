@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
-import { Search, ChevronRight, Filter, X, Clock } from "lucide-react"
+import { Search, Filter, X } from "lucide-react"
 import StatusPickerModal, {
   type JobStatus,
   type StatusOption,
@@ -179,13 +179,6 @@ export default function JobManagementTable() {
   const allSameStatus  = uniqueStatuses.length === 1
   const commonStatus   = allSameStatus ? uniqueStatuses[0] : null
 
-  function openSinglePicker(job: JobOrder) {
-    setPickerJob(job)
-    setIsBulkMode(false)
-    setConfirmTarget(null)
-    setUpdateError(null)
-  }
-
   function openBulkPicker() {
     setBulkPickerOpen(true)
     setIsBulkMode(true)
@@ -301,6 +294,7 @@ export default function JobManagementTable() {
                 <div>
                   <p className="text-xs font-semibold text-gray-500 mb-1.5 uppercase tracking-wide">Service</p>
                   <select
+                  aria-label="Filter Service"
                     value={filterService}
                     onChange={(e) => setFilterService(e.target.value)}
                     className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm text-gray-700 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
@@ -314,6 +308,7 @@ export default function JobManagementTable() {
                 <div>
                   <p className="text-xs font-semibold text-gray-500 mb-1.5 uppercase tracking-wide">Head Technician</p>
                   <select
+                    aria-label="Filter Head Technician"
                     value={filterTechnician}
                     onChange={(e) => setFilterTechnician(e.target.value)}
                     className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm text-gray-700 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
@@ -334,11 +329,13 @@ export default function JobManagementTable() {
                         value={filterDateFrom}
                         onChange={(e) => setFilterDateFrom(e.target.value)}
                         className="flex-1 border border-gray-200 rounded-lg px-2 py-1.5 text-xs text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        aria-label="Filter Date From"
                       />
                     </div>
                     <div className="flex items-center gap-2">
                       <span className="text-xs text-gray-400 w-6 shrink-0">To</span>
                       <input
+                      aria-label="Date"
                         type="date"
                         value={filterDateTo}
                         onChange={(e) => setFilterDateTo(e.target.value)}
@@ -385,6 +382,7 @@ export default function JobManagementTable() {
               <tr className="border-b border-gray-100 bg-gray-50">
                 <th className="w-10 px-4 py-3">
                   <input
+                  aria-label="Select All"
                     type="checkbox"
                     className="w-4 h-4 rounded border-gray-300 cursor-pointer"
                     checked={allPageSelected}
@@ -459,22 +457,10 @@ export default function JobManagementTable() {
                       <td className="px-4 py-3">
                         <span className="text-sm text-gray-500">{job.scheduled}</span>
                       </td>
-                      <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
-                        <div className="flex items-center gap-1.5">
-                          <button
-                            onClick={() => openSinglePicker(job)}
-                            title="Click to update status"
-                            className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium cursor-pointer hover:opacity-80 active:scale-95 transition-all ${STATUS_BADGE_MAP[job.status]}`}
-                          >
-                            {job.status}
-                            <ChevronRight className="w-3 h-3 opacity-60" />
-                          </button>
-                          {job.is_overdue && (
-                            <span title="Stage overdue — past expected completion" className="text-red-500">
-                              <Clock className="w-3.5 h-3.5" />
-                            </span>
-                          )}
-                        </div>
+                      <td className="px-4 py-3">
+                        <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium ${STATUS_BADGE_MAP[job.is_overdue ? "Delayed" : job.status]}`}>
+                          {job.is_overdue ? "Delayed" : job.status}
+                        </span>
                       </td>
                       <td className="px-4 py-3">
                         <span className="text-[11px] text-gray-300 font-medium whitespace-nowrap">View details →</span>
@@ -491,7 +477,9 @@ export default function JobManagementTable() {
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2 text-sm text-gray-500">
             <span>Show Results:</span>
-            <select className="border border-gray-200 rounded-lg px-2 py-1 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500">
+            <select
+            aria-label="Show Results"
+             className="border border-gray-200 rounded-lg px-2 py-1 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500">
               <option value={15}>15</option>
               <option value={25}>25</option>
               <option value={50}>50</option>

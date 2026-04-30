@@ -290,3 +290,64 @@ export async function PATCH(
     return NextResponse.json({ error: err?.message ?? String(err) }, { status: 500 })
   }
 }
+
+// DELETE /api/operations/job-orders/[id]
+// Hard-deletes the job and all related records (cascades to team, stages, history, notifications).
+// Only allowed when job status is "Pending".
+export async function DELETE(
+  _request: Request,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  try {
+    const { id } = await params
+
+    const cookieStore = await cookies()
+    const supabase    = createClient(cookieStore)
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) return NextResponse.json({ error: "Unauthorized." }, { status: 401 })
+
+    const admin = createAdminClient()
+
+    const { data: job } = await admin
+      .from("job_order")
+      .select("status, customer_name")
+      .eq("id", id)
+      .single()
+
+    if (!job) return NextResponse.json({ error: "Job order not found." }, { status: 404 })
+    if (job.status !== "Pending") {
+      return NextResponse.json(
+        { error: "Only Pending jobs can be cancelled." },
+        { status: 400 }
+      )
+    }
+
+    const { error: delErr } = await admin
+      .from("job_order")
+      .delete()
+      .eq("id", id)
+
+    if (delErr) return NextResponse.json({ error: delErr.message }, { status: 500 })
+
+    const { data: profile } = await admin
+      .from("user_account")
+      .select("full_name, role")
+      .eq("id", user.id)
+      .single()
+
+    if (profile) {
+      logAudit({
+        user_id:   user.id,
+        user_name: profile.full_name,
+        role:      profile.role,
+        category:  "delete",
+        action:    `Cancelled and deleted job order for ${job.customer_name}`,
+        target:    id,
+      })
+    }
+
+    return NextResponse.json({ success: true })
+  } catch (err: any) {
+    return NextResponse.json({ error: err?.message ?? String(err) }, { status: 500 })
+  }
+}

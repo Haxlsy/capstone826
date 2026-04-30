@@ -449,6 +449,7 @@ export default function HeadTechJobHistoryPage({ jobId }: { jobId: string }) {
   );
 
   function isReadOnly(stage: StageDoc): boolean {
+    if (stage.status === "for_rework") return false;
     if (job!.status === "Pending") return true;
     if (finishingAlreadyApproved) return true;
     if (!stage.is_unlocked) return true;
@@ -1085,14 +1086,19 @@ function StageCard({
           {!done && !rework && stage.media.length === 0 && (
             <p className="text-[11px] text-gray-400">Upload a photo or video before marking done.</p>
           )}
-          {rework && <p className="text-[11px] text-orange-500">Media locked — stage is flagged for rework.</p>}
-          {!done && !rework && (
+          {rework && <p className="text-[11px] text-orange-500">Stage flagged for rework — mark done again to confirm.</p>}
+          {!done && (
             <textarea
               value={notes}
-              onChange={(e) => setNotes(e.target.value)}
+              onChange={rework ? undefined : (e) => setNotes(e.target.value)}
+              readOnly={rework}
               placeholder="Add completion notes… (required)"
               rows={2}
-              className="w-full text-xs border border-gray-200 rounded-xl px-3 py-2 resize-none focus:outline-none focus:ring-2 focus:ring-gray-200 bg-gray-50 text-gray-800 placeholder-gray-400 transition"
+              className={`w-full text-xs border rounded-xl px-3 py-2 resize-none focus:outline-none focus:ring-2 focus:ring-gray-200 placeholder-gray-400 transition ${
+                rework
+                  ? "opacity-40 cursor-not-allowed bg-gray-100 border-gray-200 text-gray-500"
+                  : "bg-gray-50 border-gray-200 text-gray-800 focus:ring-gray-200"
+              }`}
             />
           )}
           <div className="flex items-center gap-2">
@@ -1118,8 +1124,8 @@ function StageCard({
 
             {!done && (
               <button
-                onClick={() => onMarkDone(notes)}
-                disabled={isMarking || isUploading || stage.media.length === 0 || !notes.trim()}
+                onClick={() => onMarkDone(rework ? (stage.completion_notes ?? "Rework confirmed") : notes)}
+                disabled={isMarking || isUploading || (!rework && (stage.media.length === 0 || !notes.trim()))}
                 className="flex-1 flex items-center justify-center gap-1.5 text-xs font-semibold text-white bg-gray-900 rounded-xl py-2.5 hover:bg-gray-700 active:scale-[0.98] transition-all disabled:opacity-40 disabled:cursor-not-allowed"
               >
                 {isMarking ? <Loader2 size={12} className="animate-spin" /> : <CheckCircle2 size={12} />}
