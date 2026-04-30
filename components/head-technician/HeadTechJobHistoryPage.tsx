@@ -190,8 +190,16 @@ export default function HeadTechJobHistoryPage({ jobId }: { jobId: string }) {
       g.stages.push(s);
       g.minOrder = Math.min(g.minOrder, s.order);
     }
-    return [...map.values()].sort((a, b) => a.minOrder - b.minOrder);
+
+    const groups = [...map.values()].map((g) => ({
+    ...g,
+    stages: [...g.stages].sort((a, b) => a.order - b.order),
+  }));
+
+    return groups.sort((a, b) => a.minOrder - b.minOrder);
   }, [job]);
+
+  
 
   // Categories belonging to the current user's role.
   const myGroups = useMemo(
@@ -449,13 +457,19 @@ export default function HeadTechJobHistoryPage({ jobId }: { jobId: string }) {
 
   // Find handoff notes left for my current category from the preceding other-role category.
   function getPrecedingHandoffNotes(group: CategoryGroup): string | null {
-    const groupIdx = allCategoryGroups.findIndex((g) => g.id === group.id);
-    if (groupIdx <= 0) return null;
-    const preceding = allCategoryGroups[groupIdx - 1];
-    if (preceding.role === myRole) return null;
-    const lastStage = [...preceding.stages].sort((a, b) => b.order - a.order)[0];
-    return lastStage?.handoff_notes ?? null;
+  const groupIdx = allCategoryGroups.findIndex((g) => g.id === group.id);
+  if (groupIdx <= 0) return null;
+
+  // Walk backwards to find the closest other-role group
+  for (let i = groupIdx - 1; i >= 0; i--) {
+    const preceding = allCategoryGroups[i];
+    if (!(preceding.id in categoryHandoffs)) return null;
+      const lastStage = [...preceding.stages].sort((a, b) => b.order - a.order)[0];
+      return lastStage?.handoff_notes ?? null;
   }
+
+  return null;
+}
 
   // Stages available for rework flagging (done stages in the category).
   const reworkableStages = reworkCategoryId
@@ -596,171 +610,130 @@ export default function HeadTechJobHistoryPage({ jobId }: { jobId: string }) {
           </div>
         )}
 
-        {/* Other-role stages shown read-only */}
-        {otherGroups.some((g) => g.stages.some((s) => s.status === "done")) && (
-          <section className="space-y-4">
-            <SectionLabel>
-              {isInstaller ? "Preparation Stages" : "Installation Stages"}
-            </SectionLabel>
-            {otherGroups.map((g) => {
-              const doneStages = g.stages.filter((s) => s.status === "done");
-              if (doneStages.length === 0) return null;
-              return (
-                <div key={g.id} className="space-y-2">
-                  <CategoryBadge name={g.name} color={g.color} />
-                  {doneStages.map((stage) => (
-                    <StageCard
-                      key={stage.id}
-                      stage={stage}
-                      readOnly
-                      isMarking={false}
-                      isUploading={false}
-                      removingId={null}
-                      uploadError={null}
-                      onMarkDone={() => {}}
-                      onFileChange={() => {}}
-                      onRemoveMedia={() => {}}
-                      onPreview={(url, type) => setPreview({ url, type })}
-                    />
-                  ))}
-                  {/* Handoff notes left by this other-role category */}
-                  {(() => {
-                    const lastStage = [...g.stages].sort((a, b) => b.order - a.order)[0];
-                    return lastStage?.handoff_notes ? (
-                      <div className="bg-blue-50 rounded-2xl p-3 flex gap-2 border border-blue-100">
-                        <Info size={13} className="text-blue-500 mt-0.5 shrink-0" />
-                        <div>
-                          <p className="text-[11px] font-semibold text-blue-700 mb-0.5">Handoff Notes</p>
-                          <p className="text-xs text-blue-700 leading-snug">{lastStage.handoff_notes}</p>
-                        </div>
-                      </div>
-                    ) : null;
-                  })()}
-                </div>
-              );
-            })}
-          </section>
-        )}
+        {/* Single unified section — renders all categories in correct sequence order */}
+        {allCategoryGroups.map((g) => {
+          const isMine        = g.role === myRole;
+          const isApproved    = g.id in categoryHandoffs;
+          const isLastOverall = g.id === lastGroup?.id;
+          const allGroupDone  = g.stages.every((s) => s.status === "done");
+          const precedingNotes = isMine ? getPrecedingHandoffNotes(g) : null;
+          const doneStages    = g.stages.filter((s) => s.status === "done");
 
-        {/* My stages — grouped by category */}
-        {myGroups.length === 0 ? (
-          <p className="text-sm text-gray-400 text-center py-8">No stages assigned for your role.</p>
-        ) : (
-          <section className="space-y-4">
-            {myGroups.map((g, idx) => {
-              const precedingNotes = getPrecedingHandoffNotes(g);
-              const isApproved     = g.id in categoryHandoffs;
-              const isLastOverall  = g.id === lastGroup?.id;
-              const allGroupDone   = g.stages.every((s) => s.status === "done");
+          // Other-role group: only show if it has done stages
+          if (!isMine && doneStages.length === 0) return null;
 
-              return (
-                <div key={g.id} className="space-y-2">
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <CategoryBadge name={g.name} color={g.color} />
-                    {isLastOverall && isLastRole && (
-                      <span className="text-[11px] font-medium px-2 py-0.5 rounded-full bg-violet-50 text-violet-700 border border-violet-200">
-                        Last stage before Operations Inspection
-                      </span>
-                    )}
-                    {isApproved && !isLastOverall && (
-                      <span className="text-[11px] font-medium px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200">
-                        ✓ Handed off
-                      </span>
-                    )}
+          return (
+            <div key={g.id} className="space-y-2">
+              <div className="flex items-center gap-2 flex-wrap">
+                <CategoryBadge name={g.name} color={g.color} />
+                {isMine && isLastOverall && isLastRole && (
+                  <span className="text-[11px] font-medium px-2 py-0.5 rounded-full bg-violet-50 text-violet-700 border border-violet-200">
+                    Last stage before Operations Inspection
+                  </span>
+                )}
+                {isMine && isApproved && !isLastOverall && (
+                  <span className="text-[11px] font-medium px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200">
+                    ✓ Handed off
+                  </span>
+                )}
+                {!isMine && isApproved && (
+                  <span className="text-[11px] font-medium px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200">
+                    ✓ Handed off
+                  </span>
+                )}
+              </div>
+
+              {/* Handoff notes received from preceding other-role category (only for my groups) */}
+              {isMine && precedingNotes && (
+                <div className="bg-blue-50 rounded-2xl p-3 flex gap-2 border border-blue-100">
+                  <Info size={13} className="text-blue-500 mt-0.5 shrink-0" />
+                  <div>
+                    <p className="text-[11px] font-semibold text-blue-700 mb-0.5">Handoff Notes</p>
+                    <p className="text-xs text-blue-700 leading-snug">{precedingNotes}</p>
                   </div>
+                </div>
+              )}
 
-                  {/* Handoff notes received from the preceding other-role category */}
-                  {precedingNotes && idx === myGroups.findIndex((gg) => gg.id === g.id) && (
-                    <div className="bg-blue-50 rounded-2xl p-3 flex gap-2 border border-blue-100">
-                      <Info size={13} className="text-blue-500 mt-0.5 shrink-0" />
-                      <div>
-                        <p className="text-[11px] font-semibold text-blue-700 mb-0.5">Handoff Notes</p>
-                        <p className="text-xs text-blue-700 leading-snug">{precedingNotes}</p>
+              {/* Stages — read-only for other role, interactive for mine */}
+              {(isMine ? g.stages : doneStages).map((stage) => (
+                <StageCard
+                  key={stage.id}
+                  stage={stage}
+                  readOnly={!isMine || isReadOnly(stage)}
+                  isMarking={markingId === stage.id}
+                  isUploading={uploadingId === stage.id}
+                  removingId={removingId}
+                  uploadError={uploadError[stage.id] ?? null}
+                  onMarkDone={(notes) => markDone(stage, notes)}
+                  onFileChange={(files) => handleFileChange(stage, files)}
+                  onRemoveMedia={(mediaId) => removeMedia(stage, mediaId)}
+                  onPreview={(url, type) => setPreview({ url, type })}
+                />
+              ))}
+
+              {/* Approve/rework panel — only for my groups */}
+              {isMine && allGroupDone && !isApproved && !finishingAlreadyApproved && !isLastOverall && (
+                <div className="pt-1">
+                  {approvingCategoryId === g.id ? (
+                    <div className="bg-white rounded-2xl p-4 space-y-3 border border-emerald-100 shadow-[0_2px_12px_-4px_rgba(0,0,0,0.06)]">
+                      <p className="text-sm font-semibold text-gray-900">Approve {g.name}</p>
+                      <textarea
+                        value={handoffNotes}
+                        onChange={(e) => setHandoffNotes(e.target.value)}
+                        placeholder="Optional handoff notes for the next team…"
+                        rows={3}
+                        className="w-full text-sm border border-gray-200 rounded-xl px-3.5 py-3 resize-none focus:outline-none focus:ring-2 focus:ring-gray-200 bg-gray-50 text-gray-800 placeholder-gray-400 transition"
+                      />
+                      <div className="flex gap-2">
+                        <button
+                          onClick={() => { setApprovingCategoryId(null); setHandoffNotes(""); }}
+                          className="flex-1 text-sm font-semibold text-gray-600 border border-gray-200 rounded-xl py-3 hover:bg-gray-50 transition-colors"
+                        >
+                          Cancel
+                        </button>
+                        <button
+                          onClick={() => handleApprove(g.id)}
+                          disabled={approving}
+                          className="flex-1 flex items-center justify-center gap-2 text-sm font-semibold text-white bg-emerald-600 rounded-xl py-3 hover:bg-emerald-700 active:scale-[0.98] transition-all disabled:opacity-50"
+                        >
+                          {approving ? <Loader2 size={14} className="animate-spin" /> : <ThumbsUp size={14} />}
+                          Confirm
+                        </button>
                       </div>
                     </div>
-                  )}
-
-                  {g.stages.map((stage) => (
-                    <StageCard
-                      key={stage.id}
-                      stage={stage}
-                      readOnly={isReadOnly(stage)}
-                      isMarking={markingId === stage.id}
-                      isUploading={uploadingId === stage.id}
-                      removingId={removingId}
-                      uploadError={uploadError[stage.id] ?? null}
-                      onMarkDone={(notes) => markDone(stage, notes)}
-                      onFileChange={(files) => handleFileChange(stage, files)}
-                      onRemoveMedia={(mediaId) => removeMedia(stage, mediaId)}
-                      onPreview={(url, type) => setPreview({ url, type })}
-                    />
-                  ))}
-
-                  {/* Per-category approve/rework panel */}
-                  {allGroupDone && !isApproved && !finishingAlreadyApproved && !isLastOverall && (
-                    <div className="pt-1">
-                      {approvingCategoryId === g.id ? (
-                        <div className="bg-white rounded-2xl p-4 space-y-3 border border-emerald-100 shadow-[0_2px_12px_-4px_rgba(0,0,0,0.06)]">
-                          <p className="text-sm font-semibold text-gray-900">Approve {g.name}</p>
-                          <textarea
-                            value={handoffNotes}
-                            onChange={(e) => setHandoffNotes(e.target.value)}
-                            placeholder={`Optional handoff notes for the next team…`}
-                            rows={3}
-                            className="w-full text-sm border border-gray-200 rounded-xl px-3.5 py-3 resize-none focus:outline-none focus:ring-2 focus:ring-gray-200 bg-gray-50 text-gray-800 placeholder-gray-400 transition"
-                          />
-                          <div className="flex gap-2">
-                            <button
-                              onClick={() => { setApprovingCategoryId(null); setHandoffNotes(""); }}
-                              className="flex-1 text-sm font-semibold text-gray-600 border border-gray-200 rounded-xl py-3 hover:bg-gray-50 transition-colors"
-                            >
-                              Cancel
-                            </button>
-                            <button
-                              onClick={() => handleApprove(g.id)}
-                              disabled={approving}
-                              className="flex-1 flex items-center justify-center gap-2 text-sm font-semibold text-white bg-emerald-600 rounded-xl py-3 hover:bg-emerald-700 active:scale-[0.98] transition-all disabled:opacity-50"
-                            >
-                              {approving ? <Loader2 size={14} className="animate-spin" /> : <ThumbsUp size={14} />}
-                              Confirm
-                            </button>
-                          </div>
-                        </div>
-                      ) : (
-                        <div className="flex gap-2">
-                          <button
-                            onClick={() => openRework(g.id)}
-                            className="flex-1 flex items-center justify-center gap-2 text-sm font-semibold text-white bg-orange-500 rounded-2xl py-3.5 hover:bg-orange-600 active:scale-[0.98] transition-all"
-                          >
-                            <AlertTriangle size={15} />
-                            Flag for Rework
-                          </button>
-                          <button
-                            onClick={() => { setApprovingCategoryId(g.id); setHandoffNotes(""); }}
-                            className="flex-1 flex items-center justify-center gap-2 text-sm font-semibold text-white bg-emerald-600 rounded-2xl py-3.5 hover:bg-emerald-700 active:scale-[0.98] transition-all"
-                          >
-                            <ThumbsUp size={15} />
-                            Approve {g.name}
-                          </button>
-                        </div>
-                      )}
-                    </div>
-                  )}
-
-                  {/* Approved success banner for this category */}
-                  {isApproved && !isLastOverall && (
-                    <div className="bg-emerald-50 border border-emerald-100 rounded-2xl p-3 flex items-start gap-2">
-                      <ThumbsUp size={14} className="text-emerald-600 mt-0.5 shrink-0" />
-                      <p className="text-xs font-semibold text-emerald-800">
-                        {g.name} approved — handed off to the next team.
-                      </p>
+                  ) : (
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => openRework(g.id)}
+                        className="flex-1 flex items-center justify-center gap-2 text-sm font-semibold text-white bg-orange-500 rounded-2xl py-3.5 hover:bg-orange-600 active:scale-[0.98] transition-all"
+                      >
+                        <AlertTriangle size={15} />
+                        Flag for Rework
+                      </button>
+                      <button
+                        onClick={() => { setApprovingCategoryId(g.id); setHandoffNotes(""); }}
+                        className="flex-1 flex items-center justify-center gap-2 text-sm font-semibold text-white bg-emerald-600 rounded-2xl py-3.5 hover:bg-emerald-700 active:scale-[0.98] transition-all"
+                      >
+                        <ThumbsUp size={15} />
+                        Approve {g.name}
+                      </button>
                     </div>
                   )}
                 </div>
-              );
-            })}
-          </section>
-        )}
+              )}
+
+              {/* Approved banner */}
+              {isMine && isApproved && !isLastOverall && (
+                <div className="bg-emerald-50 border border-emerald-100 rounded-2xl p-3 flex items-start gap-2">
+                  <ThumbsUp size={14} className="text-emerald-600 mt-0.5 shrink-0" />
+                  <p className="text-xs font-semibold text-emerald-800">
+                    {g.name} approved — handed off to the next team.
+                  </p>
+                </div>
+              )}
+            </div>
+          );
+        })}
 
         {/* Pass to Operations — last category, all done */}
         {isLastRole && allJobStagesDone && !finishingAlreadyApproved && (
