@@ -12,6 +12,7 @@
     "@google/genai": "^1.50.1",
     "@supabase/ssr": "^0.10.0",
     "@supabase/supabase-js": "^2.101.0",
+    "@tanstack/react-table": "^8.21.3",
     "cloudinary": "^2.9.0",
     "dotenv": "^17.4.1",
     "lucide-react": "^1.7.0",
