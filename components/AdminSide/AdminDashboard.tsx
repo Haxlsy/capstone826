@@ -1,5 +1,3 @@
-
-
 export default function AdminDashboard() {
   const today = new Date().toLocaleDateString("en-US", {
     weekday: "long",
@@ -15,6 +13,7 @@ export default function AdminDashboard() {
         <h1 className="text-2xl font-bold text-gray-900">Dashboard</h1>
         <p className="text-sm text-gray-400 mt-0.5">{today}</p>
       </div>
+
     </div>
   )
 }
