@@ -9,12 +9,14 @@ import {
   Bot,
   Settings,
   LogOut,
+  ShieldHalf
 } from "lucide-react"
 
 const navItems = [
   { label: "Dashboard", href: "/dashboard/admin", icon: LayoutDashboard },
   { label: "Account Management", href: "/dashboard/admin/accounts", icon: Users },
   { label: "Service Management", href: "/dashboard/admin/services", icon: Wrench },
+  {label: "Security & Audit Center", href: "/dashboard/admin/security", icon: ShieldHalf },
   { label: "AI Chatbot", href: "/dashboard/admin/chatbot", icon: Bot },
 ]
 

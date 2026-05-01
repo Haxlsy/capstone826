@@ -28,7 +28,7 @@ export default function AdminDashboard({ totalAccounts, totalServices, totalCust
       <AdminStatCards totalAccounts={totalAccounts} totalServices={totalServices} totalCustomers={totalCustomers} activeCustomers={activeCustomers} />
 
       {/* Audit trail */}
-      <AuditLog />
+      
     </div>
   )
 }
