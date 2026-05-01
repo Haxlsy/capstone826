@@ -70,6 +70,9 @@ export async function DELETE(
       )
     }
 
+    // Remove from the service_type lookup table
+    await admin.from("service_type").delete().eq("name", decoded)
+
     logAudit({
       user_id:   user.id,
       user_name: profile.full_name,
