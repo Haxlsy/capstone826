@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react"
 import { Search, Filter, MoreHorizontal, ChevronLeft, ChevronRight } from "lucide-react"
 import AddServiceModal from "./AddServiceModal"
 import EditServiceModal from "./EditServiceModal"
+import AddServiceTypeModal from "./AddServiceTypeModal"
 
 interface Service {
   id:                      string
@@ -23,17 +24,6 @@ function truncate(text: string | null, max = 48) {
 }
 
 
-const SERVICE_TYPE_STYLES: Record<string, string> = {
-  "Paint Protection Film": "bg-orange-50 text-orange-700",
-  "Coating Services":      "bg-violet-50 text-violet-700",
-  "Auto Detailing":        "bg-sky-50 text-sky-700",
-  "Nano Ceramic Tint":     "bg-teal-50 text-teal-700",
-}
-
-function serviceTypeCls(type: string | null) {
-  if (!type) return ""
-  return SERVICE_TYPE_STYLES[type] ?? "bg-gray-100 text-gray-600"
-}
 
 function formatDuration(mins: number | null) {
   if (!mins) return "—"
@@ -62,8 +52,9 @@ export default function ServiceTable({ canWrite = true }: { canWrite?: boolean }
 
   const [selected, setSelected]         = useState<Set<string>>(new Set())
   const [actionMenu, setActionMenu]     = useState<string | null>(null)
-  const [addModalOpen, setAddModalOpen] = useState(false)
-  const [editServiceId, setEditServiceId] = useState<string | null>(null)
+  const [addModalOpen, setAddModalOpen]         = useState(false)
+  const [addTypeModalOpen, setAddTypeModalOpen] = useState(false)
+  const [editServiceId, setEditServiceId]       = useState<string | null>(null)
 
   const filterRef = useRef<HTMLDivElement>(null)
   const actionRef = useRef<HTMLDivElement>(null)
@@ -112,6 +103,7 @@ export default function ServiceTable({ canWrite = true }: { canWrite?: boolean }
   }, [search, statusFilter, durationMin, durationMax, page, pageSize])
 
   useEffect(() => { fetchServices() }, [fetchServices])
+
 
   async function handleArchiveToggle(service: Service) {
     setActionMenu(null)
@@ -227,12 +219,20 @@ export default function ServiceTable({ canWrite = true }: { canWrite?: boolean }
         </div>
 
         {canWrite && (
-          <button
-            onClick={() => setAddModalOpen(true)}
-            className="ml-auto flex items-center gap-1.5 bg-gray-900 text-white text-sm font-medium px-4 py-2 rounded-lg hover:bg-gray-700 transition-colors"
-          >
-            + Add Service
-          </button>
+          <div className="ml-auto flex items-center gap-2">
+            <button
+              onClick={() => setAddTypeModalOpen(true)}
+              className="flex items-center gap-1.5 bg-white border border-gray-200 text-gray-700 text-sm font-medium px-4 py-2 rounded-lg hover:bg-gray-50 transition-colors"
+            >
+              + Add Service Type
+            </button>
+            <button
+              onClick={() => setAddModalOpen(true)}
+              className="flex items-center gap-1.5 bg-gray-900 text-white text-sm font-medium px-4 py-2 rounded-lg hover:bg-gray-700 transition-colors"
+            >
+              + Add Service
+            </button>
+          </div>
         )}
       </div>
 
@@ -248,6 +248,11 @@ export default function ServiceTable({ canWrite = true }: { canWrite?: boolean }
             open={editServiceId !== null}
             onClose={() => setEditServiceId(null)}
             onSuccess={() => { setEditServiceId(null); fetchServices() }}
+          />
+          <AddServiceTypeModal
+            open={addTypeModalOpen}
+            onClose={() => setAddTypeModalOpen(false)}
+            onSuccess={() => setAddTypeModalOpen(false)}
           />
         </>
       )}
@@ -315,7 +320,7 @@ export default function ServiceTable({ canWrite = true }: { canWrite?: boolean }
                   </td>
                   <td className="px-4 py-3.5">
                     {service.service_type ? (
-                      <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium whitespace-nowrap ${serviceTypeCls(service.service_type)}`}>
+                      <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium whitespace-nowrap bg-teal-50 text-teal-700">
                         {service.service_type}
                       </span>
                     ) : (
