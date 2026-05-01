@@ -1,14 +1,6 @@
-import AdminStatCards from "./AdminStatCards"
-import AuditLog from "./AuditLog"
 
-interface AdminDashboardProps {
-  totalAccounts:  number
-  totalServices:  number
-  totalCustomers: number
-  activeCustomers: number
-}
 
-export default function AdminDashboard({ totalAccounts, totalServices, totalCustomers, activeCustomers }: AdminDashboardProps) {
+export default function AdminDashboard() {
   const today = new Date().toLocaleDateString("en-US", {
     weekday: "long",
     year: "numeric",
@@ -23,12 +15,6 @@ export default function AdminDashboard({ totalAccounts, totalServices, totalCust
         <h1 className="text-2xl font-bold text-gray-900">Dashboard</h1>
         <p className="text-sm text-gray-400 mt-0.5">{today}</p>
       </div>
-
-      {/* Stat cards */}
-      <AdminStatCards totalAccounts={totalAccounts} totalServices={totalServices} totalCustomers={totalCustomers} activeCustomers={activeCustomers} />
-
-      {/* Audit trail */}
-      
     </div>
   )
 }
