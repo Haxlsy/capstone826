@@ -69,23 +69,17 @@ export function ServiceTypeCombobox({
   value,
   serviceTypes,
   onChange,
-  onDeleteType,
   error,
 }: {
   value: string
   serviceTypes: string[]
   onChange: (v: string) => void
-  onDeleteType?: (type: string) => void
   error?: string
 }) {
-  const [open, setOpen]               = useState(false)
-  const [query, setQuery]             = useState("")
-  const [confirmType, setConfirmType] = useState<string | null>(null)
-  const [createOpen, setCreateOpen]   = useState(false)
-  const [newTypeName, setNewTypeName] = useState("")
-  const [newTypeErr, setNewTypeErr]   = useState("")
-  const containerRef                  = useRef<HTMLDivElement>(null)
-  const inputRef                      = useRef<HTMLInputElement>(null)
+  const [open, setOpen]   = useState(false)
+  const [query, setQuery] = useState("")
+  const containerRef      = useRef<HTMLDivElement>(null)
+  const inputRef          = useRef<HTMLInputElement>(null)
 
   const filtered = serviceTypes.filter((t) =>
     t.toLowerCase().includes(query.toLowerCase())
@@ -96,7 +90,6 @@ export function ServiceTypeCombobox({
       if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
         setOpen(false)
         setQuery("")
-        setConfirmType(null)
       }
     }
     document.addEventListener("mousedown", handleClick)
@@ -109,23 +102,6 @@ export function ServiceTypeCombobox({
     onChange(type)
     setOpen(false)
     setQuery("")
-    setConfirmType(null)
-  }
-
-  function openCreateDialog() {
-    setCreateOpen(true)
-    setNewTypeName("")
-    setNewTypeErr("")
-    setOpen(false)
-  }
-
-  function saveNewType() {
-    const trimmed = newTypeName.trim()
-    if (!trimmed) { setNewTypeErr("Type name is required."); return }
-    onChange(trimmed)
-    setCreateOpen(false)
-    setNewTypeName("")
-    setNewTypeErr("")
   }
 
   return (
@@ -149,7 +125,7 @@ export function ServiceTypeCombobox({
             type="button"
             onClick={() => {
               setOpen((v) => !v)
-              if (!open) { setQuery(""); setConfirmType(null); setTimeout(() => inputRef.current?.focus(), 0) }
+              if (!open) { setQuery(""); setTimeout(() => inputRef.current?.focus(), 0) }
             }}
             className="px-3 text-gray-400 hover:text-gray-600 transition-colors"
           >
@@ -159,116 +135,25 @@ export function ServiceTypeCombobox({
 
         {open && (
           <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-gray-100 rounded-xl shadow-lg z-20 overflow-hidden">
-            {filtered.map((type) => {
-              if (confirmType === type) {
-                return (
-                  <div key={type} className="px-3 py-2.5 bg-red-50 border-t border-red-100">
-                    <div className="flex items-center gap-1.5 mb-2">
-                      <AlertTriangle className="w-3.5 h-3.5 text-red-500 shrink-0" />
-                      <p className="text-xs font-semibold text-red-700 truncate">Delete &ldquo;{type}&rdquo;?</p>
-                    </div>
-                    <p className="text-xs text-red-600 mb-2">This cannot be undone.</p>
-                    <div className="flex gap-2">
-                      <button
-                        type="button"
-                        onClick={() => { onDeleteType?.(type); setConfirmType(null); setOpen(false) }}
-                        className="flex-1 text-xs font-semibold py-1 rounded-lg bg-red-600 text-white hover:bg-red-700 transition-colors"
-                      >
-                        Delete
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setConfirmType(null)}
-                        className="flex-1 text-xs font-semibold py-1 rounded-lg bg-white border border-gray-200 text-gray-600 hover:bg-gray-50 transition-colors"
-                      >
-                        Cancel
-                      </button>
-                    </div>
-                  </div>
-                )
-              }
-              return (
-                <div key={type} className="flex items-center gap-1 px-3 py-2 hover:bg-gray-50 transition-colors">
-                  <button
-                    type="button"
-                    onClick={() => selectType(type)}
-                    className="flex-1 flex items-center justify-between text-sm text-left"
-                  >
-                    <span className={value === type ? "text-gray-900 font-medium" : "text-gray-700"}>{type}</span>
-                    {value === type && <Check className="w-4 h-4 text-blue-500 shrink-0" />}
-                  </button>
-                  {onDeleteType && (
-                    <button
-                      type="button"
-                      onClick={(e) => { e.stopPropagation(); setConfirmType(type) }}
-                      className="p-1 text-gray-300 hover:text-red-400 transition-colors rounded shrink-0"
-                      title="Delete service type"
-                    >
-                      <Trash2 className="w-3.5 h-3.5" />
-                    </button>
-                  )}
-                </div>
-              )
-            })}
+            {filtered.map((type) => (
+              <button
+                key={type}
+                type="button"
+                onClick={() => selectType(type)}
+                className="w-full flex items-center justify-between px-3 py-2 text-sm text-left hover:bg-gray-50 transition-colors"
+              >
+                <span className={value === type ? "text-gray-900 font-medium" : "text-gray-700"}>{type}</span>
+                {value === type && <Check className="w-4 h-4 text-blue-500 shrink-0" />}
+              </button>
+            ))}
             {filtered.length === 0 && (
               <p className="px-3 py-2.5 text-sm text-gray-400">No service types yet.</p>
             )}
           </div>
         )}
 
-        {/* Dedicated create button — always visible, no typing required */}
-        <button
-          type="button"
-          onClick={openCreateDialog}
-          className="mt-1.5 flex items-center gap-1 text-xs font-medium text-blue-600 hover:text-blue-800 transition-colors"
-        >
-          <Plus className="w-3.5 h-3.5" />
-          Create service type
-        </button>
-
         {error && <p className="text-xs text-red-500 mt-0.5">{error}</p>}
       </div>
-
-      {/* Create Service Type dialog */}
-      {createOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
-          <div className="bg-white rounded-xl shadow-xl w-full max-w-sm p-6">
-            <h3 className="text-sm font-semibold text-gray-800 mb-4">Create Service Type</h3>
-            <div className="space-y-1">
-              <label className="text-xs font-medium text-gray-600">Type Name <span className="text-red-500">*</span></label>
-              <input
-                autoFocus
-                type="text"
-                value={newTypeName}
-                onChange={(e) => { setNewTypeName(e.target.value); setNewTypeErr("") }}
-                onKeyDown={(e) => { if (e.key === "Enter") saveNewType() }}
-                placeholder="e.g. Paint Protection Film"
-                className={`w-full px-3 py-2 text-sm border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-100 focus:border-blue-400 transition-colors ${newTypeErr ? "border-red-400 bg-red-50" : "border-gray-200"}`}
-              />
-              {newTypeErr && <p className="text-xs text-red-500">{newTypeErr}</p>}
-            </div>
-            <p className="text-xs text-gray-400 mt-3">
-              This type will be saved once you save the service.
-            </p>
-            <div className="flex justify-end gap-2 mt-3">
-              <button
-                type="button"
-                onClick={() => setCreateOpen(false)}
-                className="px-4 py-2 text-sm font-medium text-gray-600 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors"
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                onClick={saveNewType}
-                className="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors"
-              >
-                Save & Select
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </>
   )
 }
