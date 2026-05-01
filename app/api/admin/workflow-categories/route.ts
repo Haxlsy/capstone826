@@ -2,7 +2,7 @@ import { NextResponse } from "next/server"
 import { cookies } from "next/headers"
 import { createClient } from "@/lib/supabase/server"
 import { createAdminClient } from "@/lib/supabase/admin"
-import { logAudit } from "@/lib/audit"
+import { logAudit } from "@/lib/audit-helpers"
 
 // GET /api/admin/workflow-categories
 // Returns all active workflow categories ordered by creation date.

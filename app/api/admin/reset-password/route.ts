@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server"
 import { randomBytes } from "crypto"
 import { createAdminClient } from "@/lib/supabase/admin"
-import { logAudit } from "@/lib/audit"
+import { logAudit } from "@/lib/audit-helpers"
 
 function generatePassword(): string {
   // 12 chars from an unambiguous alphabet (no 0/O, 1/l/I)

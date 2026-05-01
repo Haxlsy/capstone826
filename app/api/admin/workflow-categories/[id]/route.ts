@@ -2,7 +2,7 @@ import { NextResponse } from "next/server"
 import { cookies } from "next/headers"
 import { createClient } from "@/lib/supabase/server"
 import { createAdminClient } from "@/lib/supabase/admin"
-import { logAudit } from "@/lib/audit"
+import { logAudit } from "@/lib/audit-helpers"
 
 // DELETE /api/admin/workflow-categories/[id]
 // Soft-deletes a workflow category (sets is_active = false).
