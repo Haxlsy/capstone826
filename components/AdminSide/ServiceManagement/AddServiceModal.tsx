@@ -331,7 +331,6 @@ export default function AddServiceModal({ open, onClose, onSuccess }: AddService
                 setForm((p) => ({ ...p, serviceType: v }))
                 if (errors.serviceType) setErrors((p) => ({ ...p, serviceType: undefined as unknown as string }))
               }}
-              onDeleteType={handleDeleteType}
               error={errors.serviceType}
             />
             {typeDeleteError && (

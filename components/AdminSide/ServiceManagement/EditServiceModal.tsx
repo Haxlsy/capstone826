@@ -414,7 +414,6 @@ export default function EditServiceModal({ serviceId, open, onClose, onSuccess }
                 value={serviceType}
                 serviceTypes={serviceTypes}
                 onChange={(v) => { setServiceType(v); clearError("serviceType") }}
-                onDeleteType={handleDeleteType}
                 error={errors.serviceType}
               />
               {typeDeleteError && (
