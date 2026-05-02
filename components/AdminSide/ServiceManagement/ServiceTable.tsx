@@ -136,7 +136,7 @@ export default function ServiceTable({ canWrite = true }: { canWrite?: boolean }
 
   return (
     <div className="flex-1 overflow-y-auto p-6 space-y-5">
-      <h1 className="text-xl font-bold text-gray-800">Service Management</h1>
+      <h1 className="text-xl font-bold text-gray-800">Service Catalog</h1>
 
       {/* Toolbar */}
       <div className="flex items-center gap-3">
