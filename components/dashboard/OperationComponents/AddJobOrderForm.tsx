@@ -140,6 +140,7 @@ function CrewCheckboxList({
 export default function AddJobOrderForm() {
   const router        = useRouter()
   const redirectTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const plateTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const [customers,   setCustomers]   = useState<CustomerRecord[]>([])
   const [services,    setServices]    = useState<Service[]>([])
@@ -170,6 +171,9 @@ export default function AddJobOrderForm() {
   const [selectedInstallerIds,    setSelectedInstallerIds]    = useState<Set<string>>(new Set())
   const [scheduledAt,             setScheduledAt] = useState("")
 
+  const [plateMatchWarning,  setPlateMatchWarning]  = useState<string | null>(null)
+  const [plateMatchedRecord, setPlateMatchedRecord] = useState<CustomerRecord | null>(null)
+
   const [loading,        setLoading]        = useState(false)
   const [fieldErrors,    setFieldErrors]    = useState<FieldErrors>({})
   const [apiError,       setApiError]       = useState<string | null>(null)
@@ -178,7 +182,10 @@ export default function AddJobOrderForm() {
   const [confirmSummary, setConfirmSummary] = useState<JobOrderSummary | null>(null)
 
   useEffect(() => {
-    return () => { if (redirectTimer.current) clearTimeout(redirectTimer.current) }
+    return () => {
+      if (redirectTimer.current) clearTimeout(redirectTimer.current)
+      if (plateTimerRef.current) clearTimeout(plateTimerRef.current)
+    }
   }, [])
 
   useEffect(() => {
@@ -297,6 +304,44 @@ export default function AddJobOrderForm() {
     setCustomStages(originalStages)
   }
 
+  function resetPlateMatch() {
+    setPlateMatchWarning(null)
+    setPlateMatchedRecord(null)
+    if (plateTimerRef.current) clearTimeout(plateTimerRef.current)
+  }
+
+  function handleManualPlateChange(value: string) {
+    setManualPlateNumber(value)
+    clearField("plateNumber")
+    resetPlateMatch()
+    if (!value.trim()) return
+
+    plateTimerRef.current = setTimeout(async () => {
+      try {
+        const res  = await fetch(`/api/operations/job-management/list-customers?search=${encodeURIComponent(value.trim())}`)
+        const json = await res.json()
+        const exact: CustomerRecord | undefined = (json.customers ?? []).find(
+          (c: CustomerRecord) => c.plate_number.toLowerCase() === value.trim().toLowerCase()
+        )
+        if (!exact) return
+
+        setManualCustomerName(exact.full_name)
+        setManualContactNumber(exact.contact_number)
+        setManualEmail(exact.email ?? "")
+        setManualVehicleUnit(exact.vehicle_unit ?? "")
+        setPlateMatchedRecord(exact)
+
+        setPlateMatchWarning(
+          exact.is_in_service
+            ? `Plate "${exact.plate_number}" is already on record and is currently in service. A new job order cannot be created for this vehicle right now.`
+            : `Plate "${exact.plate_number}" is already on record. Fields have been auto-filled from the existing customer. You may edit them if the details have changed.`
+        )
+      } catch {
+        // non-fatal — operator can still proceed manually
+      }
+    }, 500)
+  }
+
   const PHONE_RE = /^(09|\+639)\d{9}$/
 
   function validate(): FieldErrors {
@@ -313,6 +358,8 @@ export default function AddJobOrderForm() {
         errs.contactNumber = "Must be a valid PH mobile number (e.g., 09XX-XXX-XXXX)."
       if (!manualPlateNumber.trim())
         errs.plateNumber = "Plate number is required."
+      else if (plateMatchedRecord?.is_in_service)
+        errs.plateNumber = "This vehicle is currently in service and cannot receive a new job order."
       if (!manualVehicleUnit.trim())
         errs.vehicleUnit = "Vehicle unit is required."
     }
@@ -603,7 +650,7 @@ export default function AddJobOrderForm() {
                   <label className="text-xs font-medium text-gray-600">Customer <span className="text-red-500 ml-0.5">*</span></label>
                   <button
                     type="button"
-                    onClick={() => { setUseManualCustomer(true); setSelectedCustomerId(null); setFieldErrors({}); setMatchedPlateCustomer(null); setManualPlateNumber(""); setManualCustomerName(""); setManualContactNumber(""); setManualEmail(""); setManualVehicleUnit("") }}
+                    onClick={() => { setUseManualCustomer(true); setSelectedCustomerId(null); setFieldErrors({}) }}
                     className="text-xs text-blue-600 hover:underline"
                   >
                     Enter manually
@@ -638,27 +685,14 @@ export default function AddJobOrderForm() {
                           <button
                             key={c.id}
                             type="button"
-                            disabled={c.has_active_job}
-                            className={`w-full text-left px-4 py-3 text-sm transition-colors border-b last:border-none border-gray-50 flex flex-col ${
-                              c.has_active_job
-                                ? "opacity-50 cursor-not-allowed bg-gray-50"
-                                : "hover:bg-emerald-50 cursor-pointer"
-                            }`}
+                            className="w-full text-left px-4 py-3 text-sm hover:bg-emerald-50 transition-colors border-b last:border-none border-gray-50 flex flex-col"
                             onClick={() => {
-                              if (c.has_active_job) return;
                               setSelectedCustomerId(c.id);
                               setSearchQuery(c.full_name);
                               setIsOpen(false);
                             }}
                           >
-                            <span className="font-semibold text-gray-900 flex items-center gap-2">
-                              {c.full_name}
-                              {c.has_active_job && (
-                                <span className="text-[10px] font-medium bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded-full">
-                                  Being Serviced
-                                </span>
-                              )}
-                            </span>
+                            <span className="font-semibold text-gray-900">{c.full_name}</span>
                             <span className="text-[10px] text-gray-500 uppercase tracking-wider">{c.plate_number}</span>
                           </button>
                         ))
@@ -691,7 +725,7 @@ export default function AddJobOrderForm() {
                   <label className="text-xs font-medium text-gray-600">Customer Name *</label>
                   <button
                     type="button"
-                    onClick={() => { setUseManualCustomer(false); setFieldErrors({}); setMatchedPlateCustomer(null) }}
+                    onClick={() => { setUseManualCustomer(false); setFieldErrors({}) }}
                     className="text-xs text-blue-600 hover:underline"
                   >
                     Select from records
@@ -724,7 +758,7 @@ export default function AddJobOrderForm() {
                 <input
                   type="text"
                   value={manualPlateNumber}
-                  onChange={(e) => { setManualPlateNumber(e.target.value); clearField("plateNumber") }}
+                  onChange={(e) => handleManualPlateChange(e.target.value)}
                   placeholder="e.g., ABC-1234"
                   className={inputCls(!!fieldErrors.plateNumber)}
                 />
@@ -758,6 +792,16 @@ export default function AddJobOrderForm() {
                 />
                 <FieldError msg={fieldErrors.vehicleUnit} />
               </div>
+
+              {plateMatchWarning && (
+                <div className={`col-span-2 rounded-lg px-3 py-2.5 text-xs border ${
+                  plateMatchedRecord?.is_in_service
+                    ? "bg-red-50 text-red-700 border-red-200"
+                    : "bg-amber-50 text-amber-700 border-amber-200"
+                }`}>
+                  {plateMatchWarning}
+                </div>
+              )}
             </div>
           )}
         </div>
