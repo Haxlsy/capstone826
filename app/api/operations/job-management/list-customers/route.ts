@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server"
 import { createAdminClient } from "@/lib/supabase/admin"
 
+const ACTIVE_STATUSES = ["Pending", "Ongoing", "For Rework", "Delayed"]
+
 export async function GET(request: Request) {
   try {
     const { searchParams } = new URL(request.url)
@@ -18,10 +20,25 @@ export async function GET(request: Request) {
       )
     }
 
-    const { data, error } = await query
+    const [{ data, error }, { data: busyRows }] = await Promise.all([
+      query,
+      supabase
+        .from("job_order")
+        .select("customer_record_id")
+        .in("status", ACTIVE_STATUSES)
+        .not("customer_record_id", "is", null),
+    ])
+
     if (error) return NextResponse.json({ error: error.message }, { status: 500 })
-    return NextResponse.json({ customers: data ?? [] })
-  } catch (err: any) {
-    return NextResponse.json({ error: err?.message ?? String(err) }, { status: 500 })
+
+    const busySet = new Set((busyRows ?? []).map((r) => r.customer_record_id as string))
+    const customers = (data ?? []).map((c) => ({
+      ...c,
+      has_active_job: busySet.has(c.id),
+    }))
+
+    return NextResponse.json({ customers })
+  } catch (err: unknown) {
+    return NextResponse.json({ error: (err as Error)?.message ?? String(err) }, { status: 500 })
   }
 }

@@ -14,6 +14,7 @@ interface CustomerRecord {
   email:          string | null
   plate_number:   string
   vehicle_unit:   string | null
+  has_active_job: boolean
 }
 
 interface Service {
@@ -54,7 +55,8 @@ interface FieldErrors {
   installers?:    string
 }
 
-function inputCls(hasError?: boolean) {
+function inputCls(hasError?: boolean, locked?: boolean) {
+  if (locked) return "w-full border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-500 bg-gray-100 cursor-not-allowed focus:outline-none"
   return `w-full border ${hasError ? "border-red-400 focus:ring-red-500 bg-red-50/30" : "border-gray-300 focus:ring-blue-500 bg-white"} rounded-lg px-3 py-2 text-sm text-gray-700 focus:outline-none focus:ring-2`
 }
 
@@ -619,14 +621,27 @@ export default function AddJobOrderForm() {
                           <button
                             key={c.id}
                             type="button"
-                            className="w-full text-left px-4 py-3 text-sm hover:bg-emerald-50 transition-colors border-b last:border-none border-gray-50 flex flex-col"
+                            disabled={c.has_active_job}
+                            className={`w-full text-left px-4 py-3 text-sm transition-colors border-b last:border-none border-gray-50 flex flex-col ${
+                              c.has_active_job
+                                ? "opacity-50 cursor-not-allowed bg-gray-50"
+                                : "hover:bg-emerald-50 cursor-pointer"
+                            }`}
                             onClick={() => {
+                              if (c.has_active_job) return;
                               setSelectedCustomerId(c.id);
                               setSearchQuery(c.full_name);
                               setIsOpen(false);
                             }}
                           >
-                            <span className="font-semibold text-gray-900">{c.full_name}</span>
+                            <span className="font-semibold text-gray-900 flex items-center gap-2">
+                              {c.full_name}
+                              {c.has_active_job && (
+                                <span className="text-[10px] font-medium bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded-full">
+                                  Being Serviced
+                                </span>
+                              )}
+                            </span>
                             <span className="text-[10px] text-gray-500 uppercase tracking-wider">{c.plate_number}</span>
                           </button>
                         ))
