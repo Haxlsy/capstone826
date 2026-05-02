@@ -1,6 +1,6 @@
 "use client"
 
-import { fmtTime } from "@/lib/audit-helpers"
+import { fmtTime } from "@/hooks/audit-helpers"
 import { ApiLog, AuditCategory, AuditRole} from "@/types/audit"
 import { CATEGORY_ICON, ROLE_BADGE, ROLE_LABEL, CATEGORY_COLOR } from "../Constants/config"
 

@@ -2,7 +2,7 @@ import { NextResponse } from "next/server"
 import { cookies } from "next/headers"
 import { createClient } from "@/lib/supabase/server"
 import { createAdminClient } from "@/lib/supabase/admin"
-import { logAudit } from "@/lib/audit-helpers"
+import { logAudit } from "@/hooks/audit-helpers"
 
 // POST /api/operations/job-orders/[id]/rework
 // Body: { stage_ids: string[], rework_instructions: string }

@@ -16,30 +16,40 @@ export async function POST() {
     // Log the logout event after sign-out (fire-and-forget)
     if (user) {
       const admin = createAdminClient()
-      Promise.resolve(
-        admin
-          .from("user_account")
-          .select("full_name, role")
-          .eq("id", user.id)
-          .single()
-      ).then(({ data: profile }) => {
-        if (profile) {
-          Promise.resolve(
-            admin.from("audit_log").insert({
-              user_id:   user.id,
-              user_name: profile.full_name,
-              role:      profile.role,
-              category:  "auth",
-              action:    "Logged out",
-              target:    "",
-            })
-          ).catch(() => {})
-        }
-      }).catch(() => {})
+      await createAuditLogEntry(admin, user.id);
     }
 
     return NextResponse.json({ success: true })
   } catch (err: any) {
     return NextResponse.json({ error: err?.message ?? String(err) }, { status: 500 })
+  }
+}
+
+async function createAuditLogEntry(admin: any, userId: string) {
+  try {
+    const { data: profile, error: profileError } = await admin
+      .from("user_account")
+      .select("full_name, role")
+      .eq("id", userId)
+      .single()
+
+    if (profileError || !profile) {
+      console.warn(`Audit Log: Could not find profile for ${userId}`)
+      return
+    }
+
+    const { error: insertError } = await admin.from("audit_log").insert({
+      user_id:   userId,
+      user_name: profile.full_name,
+      role:      profile.role,
+      category:  "auth",
+      action:    "Logged out",
+      target:    "",
+    })
+
+    if (insertError) throw insertError
+
+  } catch (e) {
+    console.error("Audit Log DB Failure:", e)
   }
 }

@@ -2,8 +2,8 @@ import { NextResponse } from "next/server"
 import { cookies } from "next/headers"
 import { createClient } from "@/lib/supabase/server"
 import { createAdminClient } from "@/lib/supabase/admin"
-import { logAudit } from "@/lib/audit-helpers"
-import { addWorkingMins } from "@/lib/time-utils"
+import { logAudit } from "@/hooks/audit-helpers"
+import { addWorkingMins } from "@/hooks/time-utils"
 
 export async function GET(
   _request: Request,

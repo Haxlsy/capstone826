@@ -1,6 +1,6 @@
 "use client"
 
-import { useCurrentUser, getRoleLabel, getInitials } from "@/lib/hooks/useCurrentUser"
+import { useCurrentUser, getRoleLabel, getInitials } from "@/hooks/useCurrentUser"
 import NotificationBell, { NotificationItem } from "@/components/shared/NotificationBell"
 
 const MOCK_NOTIFICATIONS: NotificationItem[] = [

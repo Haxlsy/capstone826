@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback } from "react"
 import { Search, Car, Phone, Mail, Pencil, X, Check } from "lucide-react"
-import { getInitials } from "@/lib/hooks/useCurrentUser"
+import { getInitials } from "@/hooks/useCurrentUser"
 
 interface CustomerRecord {
   id:            string

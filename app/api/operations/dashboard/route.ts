@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server"
 import { createAdminClient } from "@/lib/supabase/admin"
-import { addWorkingMins } from "@/lib/time-utils"
+import { addWorkingMins } from "@/hooks/time-utils"
 
 export async function GET() {
   try {

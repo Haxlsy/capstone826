@@ -2,7 +2,7 @@ import { NextResponse } from "next/server"
 import { cookies } from "next/headers"
 import { createClient } from "@/lib/supabase/server"
 import { createAdminClient } from "@/lib/supabase/admin"
-import { logAudit } from "@/lib/audit-helpers"
+import { logAudit } from "@/hooks/audit-helpers"
 
 export async function POST(request: Request) {
   const { userId, isArchived } = await request.json()

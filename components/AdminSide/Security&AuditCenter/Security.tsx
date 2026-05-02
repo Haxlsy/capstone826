@@ -7,7 +7,7 @@ import {
 import {AuditRole, TimePeriod, PageSize} from "../../../types/audit"
 import {ROLE_LABEL, ALL_ROLES} from "../Constants/config"
 import PaginationBar from "./PaginationBar"
-import { startOfPeriod} from "@/lib/audit-helpers"
+import { startOfPeriod} from "@/hooks/audit-helpers"
 import renderRow from "./renderRow"
 import { useAuditLogs } from "@/hooks/use-audit-logs"
 

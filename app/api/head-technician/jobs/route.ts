@@ -2,7 +2,7 @@ import { NextResponse } from "next/server"
 import { cookies } from "next/headers"
 import { createClient } from "@/lib/supabase/server"
 import { createAdminClient } from "@/lib/supabase/admin"
-import { addWorkingMins } from "@/lib/time-utils"
+import { addWorkingMins } from "@/hooks/time-utils"
 
 function fmtDate(iso: string | null): string {
   if (!iso) return "—"
