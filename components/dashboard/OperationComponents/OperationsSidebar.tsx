@@ -24,7 +24,7 @@ const JOB_MGMT_PATHS = [
 
 const jobMgmtSubItems = [
   { label: "Job Order",               href: "/dashboard/job-management",          icon: ClipboardList },
-  { label: "Job Records",              href: "/dashboard/job-order-records",        icon: Archive },
+  { label: "Job Records",             href: "/dashboard/job-order-records",        icon: Archive },
   { label: "Technician Availability", href: "/dashboard/technician-availability",  icon: UserCheck },
 ]
 

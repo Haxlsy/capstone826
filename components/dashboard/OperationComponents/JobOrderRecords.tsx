@@ -23,6 +23,7 @@ function fmtDate(iso: string | null | undefined): string {
   if (!iso) return "—"
   return new Date(iso).toLocaleDateString("en-US", {
     month: "short", day: "numeric", year: "numeric",
+    hour: "numeric", minute: "2-digit", hour12: true,
   })
 }
 
@@ -111,12 +112,13 @@ export default function JobOrderRecords() {
   })
 
   function exportCSV() {
-    const headers = ["Job Order ID","Customer","Plate","Vehicle","Service","Head Detailer","Head Installer","Scheduled","Created"]
+    const headers = ["Job Order ID","Customer","Plate","Vehicle","Service","Head Detailer","Head Installer","Scheduled Start","Created", "Released"]
     const rows = filtered.map((r) => [
       r.displayId, r.customer, r.plate, r.vehicle, r.service,
       r.head_detailer, r.head_installer,
       r.scheduled_at ? fmtDate(r.scheduled_at) : "—",
       fmtDate(r.created_at),
+      r.released_at ? fmtDateTime(r.released_at) : "—"
     ])
     const csv = [headers, ...rows].map((row) => row.map((c) => `"${String(c).replace(/"/g, '""')}"`).join(",")).join("\n")
     const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" })
@@ -134,13 +136,15 @@ export default function JobOrderRecords() {
         <td>${r.head_detailer}</td><td>${r.head_installer}</td>
         <td>${r.scheduled_at ? fmtDate(r.scheduled_at) : "—"}</td>
         <td>${fmtDate(r.created_at)}</td>
+        <td>${r.released_at ? fmtDateTime(r.released_at) : "—"}</td>
       </tr>`).join("")
     const html = `<html><head><title>Job Order Records</title>
       <style>body{font-family:sans-serif;font-size:12px}table{width:100%;border-collapse:collapse}
       th,td{border:1px solid #ddd;padding:6px 8px;text-align:left}th{background:#f5f5f5;font-weight:600}</style>
       </head><body><h2>Job Order Records</h2>
       <table><thead><tr><th>Job ID</th><th>Customer</th><th>Plate</th><th>Vehicle</th>
-      <th>Service</th><th>Head Detailer</th><th>Head Installer</th><th>Scheduled</th><th>Created</th>
+      <th>Service</th><th>Head Detailer</th><th>Head Installer</th><th>Scheduled Start</th><th>Created</th>
+      <th>Released</th>
       </tr></thead><tbody>${rows}</tbody></table></body></html>`
     const blob = new Blob([html], { type: "text/html;charset=utf-8;" })
     const url  = URL.createObjectURL(blob)
@@ -224,7 +228,7 @@ export default function JobOrderRecords() {
         <table className="w-full text-sm">
           <thead>
             <tr className="border-b border-gray-100 bg-gray-50">
-              {["Job Order ID", "Customer", "Vehicle", "Service", "Head Detailer", "Head Installer", "Scheduled", "Released"].map((h) => (
+              {["Job Order ID", "Customer", "Vehicle", "Service", "Head Detailer", "Head Installer", "Scheduled Start", "Released"].map((h) => (
                 <th key={h} className="px-4 py-3 text-left text-[11px] font-semibold text-gray-400 uppercase tracking-wide">{h}</th>
               ))}
             </tr>
