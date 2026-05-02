@@ -154,6 +154,7 @@ export default function AddJobOrderForm() {
   const [manualEmail,          setManualEmail]          = useState("")
   const [manualPlateNumber,    setManualPlateNumber]    = useState("")
   const [manualVehicleUnit,    setManualVehicleUnit]    = useState("")
+  const [matchedPlateCustomer, setMatchedPlateCustomer] = useState<CustomerRecord | null>(null)
 
   const [selectedServiceType,     setSelectedServiceType]     = useState<string | null>(null)
   const [selectedServiceId,       setSelectedServiceId]       = useState<string | null>(null)
@@ -207,6 +208,22 @@ export default function AddJobOrderForm() {
     }
     loadRefs()
   }, [])
+
+  useEffect(() => {
+    if (!useManualCustomer) return
+    const plate = manualPlateNumber.trim().toLowerCase()
+    if (!plate) { setMatchedPlateCustomer(null); return }
+    const match = customers.find((c) => c.plate_number.toLowerCase() === plate)
+    if (match) {
+      setMatchedPlateCustomer(match)
+      setManualCustomerName(match.full_name)
+      setManualContactNumber(match.contact_number)
+      setManualEmail(match.email ?? "")
+      setManualVehicleUnit(match.vehicle_unit ?? "")
+    } else {
+      setMatchedPlateCustomer(null)
+    }
+  }, [manualPlateNumber, customers, useManualCustomer])
 
   function clearField(key: keyof FieldErrors) {
     setFieldErrors((prev) => { const next = { ...prev }; delete next[key]; return next })
@@ -586,7 +603,7 @@ export default function AddJobOrderForm() {
                   <label className="text-xs font-medium text-gray-600">Customer <span className="text-red-500 ml-0.5">*</span></label>
                   <button
                     type="button"
-                    onClick={() => { setUseManualCustomer(true); setSelectedCustomerId(null); setFieldErrors({}) }}
+                    onClick={() => { setUseManualCustomer(true); setSelectedCustomerId(null); setFieldErrors({}); setMatchedPlateCustomer(null); setManualPlateNumber(""); setManualCustomerName(""); setManualContactNumber(""); setManualEmail(""); setManualVehicleUnit("") }}
                     className="text-xs text-blue-600 hover:underline"
                   >
                     Enter manually
@@ -674,7 +691,7 @@ export default function AddJobOrderForm() {
                   <label className="text-xs font-medium text-gray-600">Customer Name *</label>
                   <button
                     type="button"
-                    onClick={() => { setUseManualCustomer(false); setFieldErrors({}) }}
+                    onClick={() => { setUseManualCustomer(false); setFieldErrors({}); setMatchedPlateCustomer(null) }}
                     className="text-xs text-blue-600 hover:underline"
                   >
                     Select from records
@@ -683,9 +700,10 @@ export default function AddJobOrderForm() {
                 <input
                   type="text"
                   value={manualCustomerName}
-                  onChange={(e) => { setManualCustomerName(e.target.value); clearField("customerName") }}
+                  readOnly={!!matchedPlateCustomer}
+                  onChange={(e) => { if (!matchedPlateCustomer) { setManualCustomerName(e.target.value); clearField("customerName") } }}
                   placeholder="e.g., Juan dela Cruz"
-                  className={inputCls(!!fieldErrors.customerName)}
+                  className={inputCls(!!fieldErrors.customerName, !!matchedPlateCustomer)}
                 />
                 <FieldError msg={fieldErrors.customerName} />
               </div>
@@ -694,9 +712,10 @@ export default function AddJobOrderForm() {
                 <input
                   type="tel"
                   value={manualContactNumber}
-                  onChange={(e) => { setManualContactNumber(e.target.value); clearField("contactNumber") }}
+                  readOnly={!!matchedPlateCustomer}
+                  onChange={(e) => { if (!matchedPlateCustomer) { setManualContactNumber(e.target.value); clearField("contactNumber") } }}
                   placeholder="e.g., 09XX-XXX-XXXX"
-                  className={inputCls(!!fieldErrors.contactNumber)}
+                  className={inputCls(!!fieldErrors.contactNumber, !!matchedPlateCustomer)}
                 />
                 <FieldError msg={fieldErrors.contactNumber} />
               </div>
@@ -709,20 +728,33 @@ export default function AddJobOrderForm() {
                   placeholder="e.g., ABC-1234"
                   className={inputCls(!!fieldErrors.plateNumber)}
                 />
+                {matchedPlateCustomer && (
+                  <p className="text-[11px] text-amber-700 bg-amber-50 border border-amber-200 rounded-md px-2 py-1 mt-0.5">
+                    Existing record found — customer info auto-filled and locked.
+                  </p>
+                )}
                 <FieldError msg={fieldErrors.plateNumber} />
               </div>
               <div className="flex flex-col gap-1.5 col-span-2">
                 <label className="text-xs font-medium text-gray-600">Email</label>
-                <input type="email" value={manualEmail} onChange={(e) => setManualEmail(e.target.value)} placeholder="e.g., juan@email.com" className={inputCls()} />
+                <input
+                  type="email"
+                  value={manualEmail}
+                  readOnly={!!matchedPlateCustomer}
+                  onChange={(e) => { if (!matchedPlateCustomer) setManualEmail(e.target.value) }}
+                  placeholder="e.g., juan@email.com"
+                  className={inputCls(false, !!matchedPlateCustomer)}
+                />
               </div>
               <div className="flex flex-col gap-1.5 col-span-2">
                 <label className="text-xs font-medium text-gray-600">Vehicle Unit <span className="text-red-500 ml-0.5">*</span></label>
                 <input
                   type="text"
                   value={manualVehicleUnit}
-                  onChange={(e) => { setManualVehicleUnit(e.target.value); clearField("vehicleUnit") }}
+                  readOnly={!!matchedPlateCustomer}
+                  onChange={(e) => { if (!matchedPlateCustomer) { setManualVehicleUnit(e.target.value); clearField("vehicleUnit") } }}
                   placeholder="e.g., Toyota Vios 2020"
-                  className={inputCls(!!fieldErrors.vehicleUnit)}
+                  className={inputCls(!!fieldErrors.vehicleUnit, !!matchedPlateCustomer)}
                 />
                 <FieldError msg={fieldErrors.vehicleUnit} />
               </div>
