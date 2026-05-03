@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect, useCallback, useRef } from "react"
-import { UserCheck, UserX, Users, Search, Plus, X, Wrench, Pencil, Trash2, Filter, Clock } from "lucide-react"
+import { UserCheck, UserX, Users, Search, Plus, X, Wrench, Pencil, Trash2, Filter, Clock, AlertTriangle } from "lucide-react"
 
 interface ActiveJob {
   job_id:   string
@@ -118,6 +118,7 @@ export default function TechnicianAvailability() {
   const [newEndTime, setNewEndTime]     = useState("20:00")
   const [adding, setAdding]             = useState(false)
   const [addError, setAddError]         = useState<string | null>(null)
+  const [addDuplicate, setAddDuplicate] = useState<Technician | null>(null)
 
   // Edit technician modal
   const [editOpen, setEditOpen]             = useState(false)
@@ -129,6 +130,7 @@ export default function TechnicianAvailability() {
   const [editEndTime, setEditEndTime]       = useState("20:00")
   const [updating, setUpdating]             = useState(false)
   const [editError, setEditError]           = useState<string | null>(null)
+  const [editDuplicate, setEditDuplicate]   = useState<Technician | null>(null)
 
   // Delete confirm dialog
   const [deleteTarget, setDeleteTarget] = useState<Technician | null>(null)
@@ -189,15 +191,16 @@ export default function TechnicianAvailability() {
       setAddError("End time must be after start time.")
       return
     }
-    const duplicate = technicians.some(
-      (t) => t.role === newRole && t.full_name.toLowerCase() === newName.trim().toLowerCase()
+    const duplicate = technicians.find(
+      (t) => t.full_name.trim().toLowerCase() === newName.trim().toLowerCase()
     )
     if (duplicate) {
-      setAddError(`A ${ROLE_LABEL[newRole].toLowerCase()} named "${newName.trim()}" already exists.`)
+      setAddDuplicate(duplicate)
       return
     }
     setAdding(true)
     setAddError(null)
+    setAddDuplicate(null)
     try {
       const res  = await fetch("/api/operations/technician-availability", {
         method: "POST",
@@ -226,8 +229,16 @@ export default function TechnicianAvailability() {
       setEditError("End time must be after start time.")
       return
     }
+    const duplicate = technicians.find(
+      (t) => t.id !== editingTech.id && t.full_name.trim().toLowerCase() === editName.trim().toLowerCase()
+    )
+    if (duplicate) {
+      setEditDuplicate(duplicate)
+      return
+    }
     setUpdating(true)
     setEditError(null)
+    setEditDuplicate(null)
     try {
       const res  = await fetch("/api/operations/technician-availability", {
         method: "PATCH",
@@ -533,7 +544,7 @@ export default function TechnicianAvailability() {
                 <input
                   type="text"
                   value={newName}
-                  onChange={(e) => setNewName(e.target.value)}
+                  onChange={(e) => { setNewName(e.target.value); setAddDuplicate(null) }}
                   placeholder="e.g. Juan Dela Cruz"
                   className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
@@ -562,11 +573,22 @@ export default function TechnicianAvailability() {
               </div>
             </div>
 
+            {addDuplicate && (
+              <div className="flex items-center gap-3 mt-3 px-3 py-2.5 bg-amber-50 border border-amber-200 rounded-xl">
+                <AlertTriangle className="w-4 h-4 text-amber-500 shrink-0" />
+                <p className="text-xs text-amber-700">
+                  <span className="font-semibold">{addDuplicate.full_name}</span> already exists as a{" "}
+                  <span className={`inline-flex px-1.5 py-0.5 rounded-full text-[10px] font-semibold ${ROLE_BADGE[addDuplicate.role]}`}>
+                    {ROLE_LABEL[addDuplicate.role]}
+                  </span>
+                </p>
+              </div>
+            )}
             {addError && <p className="text-xs text-red-500 mt-3">{addError}</p>}
 
             <div className="flex gap-3 mt-5">
               <button
-                onClick={() => { setAddOpen(false); setNewName(""); setNewRole("detailer"); setNewDays(ALL_DAYS); setNewStartTime("08:00"); setNewEndTime("20:00"); setAddError(null) }}
+                onClick={() => { setAddOpen(false); setNewName(""); setNewRole("detailer"); setNewDays(ALL_DAYS); setNewStartTime("08:00"); setNewEndTime("20:00"); setAddError(null); setAddDuplicate(null) }}
                 className="flex-1 py-2 text-sm font-medium text-gray-600 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors"
               >
                 Cancel
@@ -644,7 +666,7 @@ export default function TechnicianAvailability() {
                 <input
                   type="text"
                   value={editName}
-                  onChange={(e) => setEditName(e.target.value)}
+                  onChange={(e) => { setEditName(e.target.value); setEditDuplicate(null) }}
                   placeholder="e.g. Juan Dela Cruz"
                   className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
@@ -673,6 +695,17 @@ export default function TechnicianAvailability() {
               </div>
             </div>
 
+            {editDuplicate && (
+              <div className="flex items-center gap-3 mt-3 px-3 py-2.5 bg-amber-50 border border-amber-200 rounded-xl">
+                <AlertTriangle className="w-4 h-4 text-red-400 shrink-0" />
+                <p className="text-xs text-amber-700">
+                  <span className="font-semibold">{editDuplicate.full_name}</span> already exists as a{" "}
+                  <span className={`inline-flex px-1.5 py-0.5 rounded-full text-[10px] font-semibold ${ROLE_BADGE[editDuplicate.role]}`}>
+                    {ROLE_LABEL[editDuplicate.role]}
+                  </span>
+                </p>
+              </div>
+            )}
             {editError && <p className="text-xs text-red-500 mt-3">{editError}</p>}
 
             <div className="flex gap-3 mt-5">
@@ -680,6 +713,7 @@ export default function TechnicianAvailability() {
                 onClick={() => {
                   setEditOpen(false)
                   setEditingTech(null)
+                  setEditDuplicate(null)
                 }}
                 className="flex-1 py-2 text-sm font-medium text-gray-600 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors"
               >
