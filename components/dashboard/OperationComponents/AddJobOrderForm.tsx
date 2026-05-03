@@ -33,12 +33,14 @@ interface HeadTech {
 }
 
 interface CrewMember {
-  id:             string
-  full_name:      string
-  role:           "detailer" | "installer"
-  is_available:   boolean
-  on_job:         boolean
-  available_days: string[]
+  id:               string
+  full_name:        string
+  role:             "detailer" | "installer"
+  is_available:     boolean
+  on_job:           boolean
+  available_days:   string[]
+  work_start_time:  string
+  work_end_time:    string
 }
 
 interface FieldErrors {
@@ -379,17 +381,31 @@ export default function AddJobOrderForm() {
     return ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"][d.getDay()]
   }, [scheduledAt, isPPF])
 
+  // Minutes-since-midnight for the scheduled time (null for PPF date-only or no schedule)
+  const scheduledTimeMins: number | null = useMemo(() => {
+    if (!scheduledAt || isPPF) return null
+    const d = new Date(scheduledAt)
+    if (isNaN(d.getTime())) return null
+    return d.getHours() * 60 + d.getMinutes()
+  }, [scheduledAt, isPPF])
+
+  function crewAvailable(c: CrewMember): boolean {
+    if (c.on_job || !c.is_available) return false
+    if (scheduledDayLabel && !(c.available_days ?? []).includes(scheduledDayLabel)) return false
+    if (scheduledTimeMins !== null) {
+      const toMins = (t: string) => { const [h, m] = t.split(":").map(Number); return h * 60 + (m || 0) }
+      const start = toMins(c.work_start_time ?? "08:00")
+      const end   = toMins(c.work_end_time   ?? "20:00")
+      if (scheduledTimeMins < start || scheduledTimeMins > end) return false
+    }
+    return true
+  }
+
   const detailers = crewMembers.filter((c) =>
-    c.role === "detailer" &&
-    !c.on_job &&
-    c.is_available &&
-    (!scheduledDayLabel || (c.available_days ?? []).includes(scheduledDayLabel))
+    c.role === "detailer" && crewAvailable(c)
   )
   const installers = crewMembers.filter((c) =>
-    c.role === "installer" &&
-    !c.on_job &&
-    c.is_available &&
-    (!scheduledDayLabel || (c.available_days ?? []).includes(scheduledDayLabel))
+    c.role === "installer" && crewAvailable(c)
   )
 
   // Resolve a full ISO datetime from scheduledAt regardless of whether it's
