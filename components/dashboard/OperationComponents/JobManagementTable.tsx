@@ -10,7 +10,6 @@ import StatusPickerModal, {
   STATUS_BADGE_MAP,
 } from "./StatusPickerModal"
 import StatusConfirmDialog from "./StatusConfirmDialog"
-import BulkStatusButton from "./BulkStatusButton"
 
 interface JobOrder {
   id:            string
@@ -45,20 +44,11 @@ export default function JobManagementTable() {
   const [currentPage]                 = useState(1)
   const pageSize = 15
 
-  // Selection state (UUID strings)
-  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
-
   // Single-row picker modal state
   const [pickerJob, setPickerJob]         = useState<JobOrder | null>(null)
-
-  // Shared confirm state (used for both single and bulk)
   const [confirmTarget, setConfirmTarget] = useState<StatusOption | null>(null)
-  const [isBulkMode, setIsBulkMode]       = useState(false)
   const [updating, setUpdating]           = useState(false)
   const [updateError, setUpdateError]     = useState<string | null>(null)
-
-  // Bulk picker state
-  const [bulkPickerOpen, setBulkPickerOpen] = useState(false)
 
   // Filter state
   const [filterOpen,       setFilterOpen]       = useState(false)
@@ -110,7 +100,6 @@ export default function JobManagementTable() {
 
   useEffect(() => { load() }, [load])
 
-  // Close filter panel on outside click
   useEffect(() => {
     function handleClick(e: MouseEvent) {
       if (filterRef.current && !filterRef.current.contains(e.target as Node)) {
@@ -121,7 +110,6 @@ export default function JobManagementTable() {
     return () => document.removeEventListener("mousedown", handleClick)
   }, [])
 
-  // Unique values for filter dropdowns
   const uniqueServices    = useMemo(() => [...new Set(jobOrders.map((j) => j.service).filter((s) => s !== "—"))].sort(), [jobOrders])
   const uniqueTechnicians = useMemo(() => {
     const names = jobOrders.flatMap((j) => [j.headDetailer, j.headInstaller]).filter((t) => t !== "Unassigned")
@@ -150,83 +138,27 @@ export default function JobManagementTable() {
   const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize))
   const paginated  = filtered.slice((currentPage - 1) * pageSize, currentPage * pageSize)
 
-  const paginatedIds     = paginated.map((j) => j.id)
-  const allPageSelected  = paginatedIds.length > 0 && paginatedIds.every((id) => selectedIds.has(id))
-  const somePageSelected = paginatedIds.some((id) => selectedIds.has(id))
-
-  function toggleSelectAll() {
-    setSelectedIds((prev) => {
-      const next = new Set(prev)
-      if (allPageSelected) {
-        paginatedIds.forEach((id) => next.delete(id))
-      } else {
-        paginatedIds.forEach((id) => next.add(id))
-      }
-      return next
-    })
-  }
-
-  function toggleRow(id: string) {
-    setSelectedIds((prev) => {
-      const next = new Set(prev)
-      next.has(id) ? next.delete(id) : next.add(id)
-      return next
-    })
-  }
-
-  const selectedJobs   = jobOrders.filter((j) => selectedIds.has(j.id))
-  const uniqueStatuses = [...new Set(selectedJobs.map((j) => j.status))]
-  const allSameStatus  = uniqueStatuses.length === 1
-  const commonStatus   = allSameStatus ? uniqueStatuses[0] : null
-
-  function openBulkPicker() {
-    setBulkPickerOpen(true)
-    setIsBulkMode(true)
-    setConfirmTarget(null)
-    setUpdateError(null)
-  }
-
   function closeAll() {
     setPickerJob(null)
-    setBulkPickerOpen(false)
-    setIsBulkMode(false)
     setConfirmTarget(null)
     setUpdateError(null)
   }
 
   async function confirmUpdate(reason: string) {
-    if (!confirmTarget) return
+    if (!confirmTarget || !pickerJob) return
     setUpdating(true)
     setUpdateError(null)
     try {
-      if (isBulkMode) {
-        const ids = [...selectedIds]
-        await Promise.all(
-          ids.map((id) =>
-            fetch(`/api/operations/job-orders/${id}`, {
-              method: "PATCH",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ status: confirmTarget.db, reason }),
-            })
-          )
-        )
-        setJobOrders((prev) =>
-          prev.map((j) => selectedIds.has(j.id) ? { ...j, status: confirmTarget.label } : j)
-        )
-        setSelectedIds(new Set())
-      } else {
-        if (!pickerJob) return
-        const res  = await fetch(`/api/operations/job-orders/${pickerJob.id}`, {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ status: confirmTarget.db, reason }),
-        })
-        const json = await res.json()
-        if (!res.ok) throw new Error(json?.error ?? "Failed to update status")
-        setJobOrders((prev) =>
-          prev.map((j) => j.id === pickerJob.id ? { ...j, status: confirmTarget.label } : j)
-        )
-      }
+      const res  = await fetch(`/api/operations/job-orders/${pickerJob.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: confirmTarget.db, reason }),
+      })
+      const json = await res.json()
+      if (!res.ok) throw new Error(json?.error ?? "Failed to update status")
+      setJobOrders((prev) =>
+        prev.map((j) => j.id === pickerJob.id ? { ...j, status: confirmTarget.label } : j)
+      )
       closeAll()
     } catch (err: unknown) {
       setUpdateError(err instanceof Error ? err.message : String(err))
@@ -241,19 +173,12 @@ export default function JobManagementTable() {
         {/* Header */}
         <div className="flex items-center justify-between">
           <h1 className="text-xl font-bold text-gray-800">Job Order</h1>
-          <div className="flex items-center gap-3">
-            <BulkStatusButton
-              count={selectedIds.size}
-              allSameStatus={allSameStatus}
-              onClick={openBulkPicker}
-            />
-            <Link
-              href="/dashboard/job-management/add"
-              className="flex items-center gap-2 bg-gray-900 text-white text-sm font-semibold px-4 py-2 rounded-lg hover:bg-gray-800 transition-colors"
-            >
-              + Add Job Order
-            </Link>
-          </div>
+          <Link
+            href="/dashboard/job-management/add"
+            className="flex items-center gap-2 bg-gray-900 text-white text-sm font-semibold px-4 py-2 rounded-lg hover:bg-gray-800 transition-colors"
+          >
+            + Add Job Order
+          </Link>
         </div>
 
         {/* Search + Filter */}
@@ -294,7 +219,7 @@ export default function JobManagementTable() {
                 <div>
                   <p className="text-xs font-semibold text-gray-500 mb-1.5 uppercase tracking-wide">Service</p>
                   <select
-                  aria-label="Filter Service"
+                    aria-label="Filter Service"
                     value={filterService}
                     onChange={(e) => setFilterService(e.target.value)}
                     className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm text-gray-700 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
@@ -335,7 +260,7 @@ export default function JobManagementTable() {
                     <div className="flex items-center gap-2">
                       <span className="text-xs text-gray-400 w-6 shrink-0">To</span>
                       <input
-                      aria-label="Date"
+                        aria-label="Date"
                         type="date"
                         value={filterDateTo}
                         onChange={(e) => setFilterDateTo(e.target.value)}
@@ -363,7 +288,7 @@ export default function JobManagementTable() {
           {TABS.map((tab) => (
             <button
               key={tab}
-              onClick={() => { setActiveTab(tab); setSelectedIds(new Set()) }}
+              onClick={() => setActiveTab(tab)}
               className={`px-4 py-2.5 text-sm font-medium transition-colors whitespace-nowrap ${
                 activeTab === tab
                   ? "text-blue-600 border-b-2 border-blue-500 -mb-px"
@@ -380,16 +305,6 @@ export default function JobManagementTable() {
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-gray-100 bg-gray-50">
-                <th className="w-10 px-4 py-3">
-                  <input
-                  aria-label="Select All"
-                    type="checkbox"
-                    className="w-4 h-4 rounded border-gray-300 cursor-pointer"
-                    checked={allPageSelected}
-                    ref={(el) => { if (el) el.indeterminate = somePageSelected && !allPageSelected }}
-                    onChange={toggleSelectAll}
-                  />
-                </th>
                 {["Job Order ID", "Customer", "Vehicle", "Service", "Head Detailer", "Head Installer", "Scheduled", "Status", ""].map((h) => (
                   <th key={h} className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">
                     {h}
@@ -400,74 +315,63 @@ export default function JobManagementTable() {
             <tbody>
               {loading ? (
                 <tr>
-                  <td colSpan={10} className="px-4 py-10 text-center text-sm text-gray-400">
+                  <td colSpan={9} className="px-4 py-10 text-center text-sm text-gray-400">
                     Loading job orders…
                   </td>
                 </tr>
               ) : paginated.length === 0 ? (
                 <tr>
-                  <td colSpan={10} className="px-4 py-10 text-center text-sm text-gray-400">
+                  <td colSpan={9} className="px-4 py-10 text-center text-sm text-gray-400">
                     {fetchError ? `Error: ${fetchError}` : "No job orders found."}
                   </td>
                 </tr>
               ) : (
-                paginated.map((job, idx) => {
-                  const isSelected = selectedIds.has(job.id)
-                  return (
-                    <tr
-                      key={job.id}
-                      onClick={() => router.push(`/dashboard/job-management/${job.id}`)}
-                      title="Click to view job details"
-                      className={`border-b border-gray-50 transition-colors cursor-pointer ${
-                        idx === paginated.length - 1 ? "border-b-0" : ""
-                      } ${isSelected ? "bg-blue-50/60" : "hover:bg-blue-50/30"}`}
-                    >
-                      <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
-                        <input
-                          type="checkbox"
-                          className="w-4 h-4 rounded border-gray-300 cursor-pointer"
-                          checked={isSelected}
-                          onChange={() => toggleRow(job.id)}
-                        />
-                      </td>
-                      <td className="px-4 py-3">
-                        <Link
-                          href={`/dashboard/job-management/${job.id}`}
-                          className="text-xs font-mono text-blue-600 hover:underline"
-                        >
-                          {job.displayId}
-                        </Link>
-                      </td>
-                      <td className="px-4 py-3">
-                        <span className="font-semibold text-gray-800">{job.customer}</span>
-                      </td>
-                      <td className="px-4 py-3">
-                        <span className="text-xs text-blue-500">{job.plate}</span>
-                        <span className="text-xs text-gray-400"> — {job.vehicle}</span>
-                      </td>
-                      <td className="px-4 py-3">
-                        <span className="text-sm text-gray-700">{job.service}</span>
-                      </td>
-                      <td className="px-4 py-3">
-                        <span className={`text-sm ${job.headDetailer === "Unassigned" ? "text-gray-400 italic" : "text-gray-700"}`}>{job.headDetailer}</span>
-                      </td>
-                      <td className="px-4 py-3">
-                        <span className={`text-sm ${job.headInstaller === "Unassigned" ? "text-gray-400 italic" : "text-gray-700"}`}>{job.headInstaller}</span>
-                      </td>
-                      <td className="px-4 py-3">
-                        <span className="text-sm text-gray-500">{job.scheduled}</span>
-                      </td>
-                      <td className="px-4 py-3">
-                        <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium ${STATUS_BADGE_MAP[job.is_overdue ? "Delayed" : job.status]}`}>
-                          {job.is_overdue ? "Delayed" : job.status}
-                        </span>
-                      </td>
-                      <td className="px-4 py-3">
-                        <span className="text-[11px] text-gray-300 font-medium whitespace-nowrap">View details →</span>
-                      </td>
-                    </tr>
-                  )
-                })
+                paginated.map((job, idx) => (
+                  <tr
+                    key={job.id}
+                    onClick={() => router.push(`/dashboard/job-management/${job.id}`)}
+                    title="Click to view job details"
+                    className={`border-b border-gray-50 transition-colors cursor-pointer hover:bg-blue-50/30 ${
+                      idx === paginated.length - 1 ? "border-b-0" : ""
+                    }`}
+                  >
+                    <td className="px-4 py-3">
+                      <Link
+                        href={`/dashboard/job-management/${job.id}`}
+                        className="text-xs font-mono text-blue-600 hover:underline"
+                      >
+                        {job.displayId}
+                      </Link>
+                    </td>
+                    <td className="px-4 py-3">
+                      <span className="font-semibold text-gray-800">{job.customer}</span>
+                    </td>
+                    <td className="px-4 py-3">
+                      <span className="text-xs text-blue-500">{job.plate}</span>
+                      <span className="text-xs text-gray-400"> — {job.vehicle}</span>
+                    </td>
+                    <td className="px-4 py-3">
+                      <span className="text-sm text-gray-700">{job.service}</span>
+                    </td>
+                    <td className="px-4 py-3">
+                      <span className={`text-sm ${job.headDetailer === "Unassigned" ? "text-gray-400 italic" : "text-gray-700"}`}>{job.headDetailer}</span>
+                    </td>
+                    <td className="px-4 py-3">
+                      <span className={`text-sm ${job.headInstaller === "Unassigned" ? "text-gray-400 italic" : "text-gray-700"}`}>{job.headInstaller}</span>
+                    </td>
+                    <td className="px-4 py-3">
+                      <span className="text-sm text-gray-500">{job.scheduled}</span>
+                    </td>
+                    <td className="px-4 py-3">
+                      <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium ${STATUS_BADGE_MAP[job.is_overdue ? "Delayed" : job.status]}`}>
+                        {job.is_overdue ? "Delayed" : job.status}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3">
+                      <span className="text-[11px] text-gray-300 font-medium whitespace-nowrap">View details →</span>
+                    </td>
+                  </tr>
+                ))
               )}
             </tbody>
           </table>
@@ -478,8 +382,9 @@ export default function JobManagementTable() {
           <div className="flex items-center gap-2 text-sm text-gray-500">
             <span>Show Results:</span>
             <select
-            aria-label="Show Results"
-             className="border border-gray-200 rounded-lg px-2 py-1 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500">
+              aria-label="Show Results"
+              className="border border-gray-200 rounded-lg px-2 py-1 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+            >
               <option value={15}>15</option>
               <option value={25}>25</option>
               <option value={50}>50</option>
@@ -519,27 +424,13 @@ export default function JobManagementTable() {
         />
       )}
 
-      {/* Bulk Status Picker */}
-      {bulkPickerOpen && commonStatus && !confirmTarget && (
-        <StatusPickerModal
-          jobId={`${selectedIds.size} jobs selected`}
-          customerName={`${selectedIds.size} selected job${selectedIds.size > 1 ? "s" : ""}`}
-          currentStatus={commonStatus}
-          onSelect={(opt) => setConfirmTarget(opt)}
-          onClose={closeAll}
-        />
-      )}
-
       {/* Confirm Dialog */}
       {confirmTarget && (
         <StatusConfirmDialog
-          customerName={isBulkMode
-            ? `${selectedIds.size} selected job${selectedIds.size > 1 ? "s" : ""}`
-            : (pickerJob?.customer ?? "")}
+          customerName={pickerJob?.customer ?? ""}
           target={confirmTarget}
           error={updateError}
           updating={updating}
-          count={isBulkMode ? selectedIds.size : undefined}
           onConfirm={confirmUpdate}
           onBack={() => setConfirmTarget(null)}
         />

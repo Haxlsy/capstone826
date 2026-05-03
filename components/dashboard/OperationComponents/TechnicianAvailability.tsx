@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect, useCallback, useRef } from "react"
-import { UserCheck, UserX, Users, Search, Plus, X, Wrench, Pencil, Trash2, Filter } from "lucide-react"
+import { UserCheck, UserX, Users, Search, Plus, X, Wrench, Pencil, Trash2, Filter, Clock } from "lucide-react"
 
 interface ActiveJob {
   job_id:   string
@@ -10,12 +10,14 @@ interface ActiveJob {
 }
 
 interface Technician {
-  id:             string
-  full_name:      string
-  role:           "detailer" | "installer"
-  is_available:   boolean
-  available_days: string[]
-  active_job:     ActiveJob | null
+  id:               string
+  full_name:        string
+  role:             "detailer" | "installer"
+  is_available:     boolean
+  available_days:   string[]
+  work_start_time:  string
+  work_end_time:    string
+  active_job:       ActiveJob | null
 }
 
 const DAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"] as const
@@ -41,6 +43,31 @@ function DayPicker({ value, onChange }: { value: string[]; onChange: (v: string[
       })}
     </div>
   )
+}
+
+function TimePicker({ label, value, onChange }: { label: string; value: string; onChange: (v: string) => void }) {
+  return (
+    <div className="flex-1">
+      <p className="text-[10px] font-medium text-gray-400 mb-1">{label}</p>
+      <input
+        type="time"
+        min="08:00"
+        max="20:00"
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+      />
+    </div>
+  )
+}
+
+function formatTime(t: string): string {
+  const [hStr, mStr] = t.split(":")
+  const h = parseInt(hStr, 10)
+  const m = mStr?.padStart(2, "0") ?? "00"
+  const period = h >= 12 ? "PM" : "AM"
+  const hour   = h % 12 === 0 ? 12 : h % 12
+  return `${hour}:${m} ${period}`
 }
 
 const ROLE_LABEL: Record<Technician["role"], string> = {
@@ -83,21 +110,25 @@ export default function TechnicianAvailability() {
   const [filterRole, setFilterRole]   = useState<Technician["role"] | "all">("all")
 
   // Add technician modal
-  const [addOpen, setAddOpen]       = useState(false)
-  const [newName, setNewName]       = useState("")
-  const [newRole, setNewRole]       = useState<Technician["role"]>("detailer")
-  const [newDays, setNewDays]       = useState<string[]>(ALL_DAYS)
-  const [adding, setAdding]         = useState(false)
-  const [addError, setAddError]     = useState<string | null>(null)
+  const [addOpen, setAddOpen]           = useState(false)
+  const [newName, setNewName]           = useState("")
+  const [newRole, setNewRole]           = useState<Technician["role"]>("detailer")
+  const [newDays, setNewDays]           = useState<string[]>(ALL_DAYS)
+  const [newStartTime, setNewStartTime] = useState("08:00")
+  const [newEndTime, setNewEndTime]     = useState("20:00")
+  const [adding, setAdding]             = useState(false)
+  const [addError, setAddError]         = useState<string | null>(null)
 
   // Edit technician modal
-  const [editOpen, setEditOpen]       = useState(false)
-  const [editingTech, setEditingTech] = useState<Technician | null>(null)
-  const [editName, setEditName]       = useState("")
-  const [editRole, setEditRole]       = useState<Technician["role"]>("detailer")
-  const [editDays, setEditDays]       = useState<string[]>(ALL_DAYS)
-  const [updating, setUpdating]       = useState(false)
-  const [editError, setEditError]     = useState<string | null>(null)
+  const [editOpen, setEditOpen]             = useState(false)
+  const [editingTech, setEditingTech]       = useState<Technician | null>(null)
+  const [editName, setEditName]             = useState("")
+  const [editRole, setEditRole]             = useState<Technician["role"]>("detailer")
+  const [editDays, setEditDays]             = useState<string[]>(ALL_DAYS)
+  const [editStartTime, setEditStartTime]   = useState("08:00")
+  const [editEndTime, setEditEndTime]       = useState("20:00")
+  const [updating, setUpdating]             = useState(false)
+  const [editError, setEditError]           = useState<string | null>(null)
 
   // Delete confirm dialog
   const [deleteTarget, setDeleteTarget] = useState<Technician | null>(null)
@@ -154,6 +185,10 @@ export default function TechnicianAvailability() {
 
   async function addTechnician() {
     if (!newName.trim()) return
+    if (newEndTime <= newStartTime) {
+      setAddError("End time must be after start time.")
+      return
+    }
     const duplicate = technicians.some(
       (t) => t.role === newRole && t.full_name.toLowerCase() === newName.trim().toLowerCase()
     )
@@ -167,7 +202,7 @@ export default function TechnicianAvailability() {
       const res  = await fetch("/api/operations/technician-availability", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ full_name: newName.trim(), role: newRole, available_days: newDays }),
+        body: JSON.stringify({ full_name: newName.trim(), role: newRole, available_days: newDays, work_start_time: newStartTime, work_end_time: newEndTime }),
       })
       const json = await res.json()
       if (!res.ok) throw new Error(json?.error ?? "Failed to add technician")
@@ -176,6 +211,8 @@ export default function TechnicianAvailability() {
       setNewName("")
       setNewRole("detailer")
       setNewDays(ALL_DAYS)
+      setNewStartTime("08:00")
+      setNewEndTime("20:00")
     } catch (err: unknown) {
       setAddError(err instanceof Error ? err.message : String(err))
     } finally {
@@ -185,17 +222,21 @@ export default function TechnicianAvailability() {
 
   async function updateTechnician() {
     if (!editingTech || !editName.trim()) return
+    if (editEndTime <= editStartTime) {
+      setEditError("End time must be after start time.")
+      return
+    }
     setUpdating(true)
     setEditError(null)
     try {
       const res  = await fetch("/api/operations/technician-availability", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id: editingTech.id, full_name: editName.trim(), role: editRole, available_days: editDays }),
+        body: JSON.stringify({ id: editingTech.id, full_name: editName.trim(), role: editRole, available_days: editDays, work_start_time: editStartTime, work_end_time: editEndTime }),
       })
       const json = await res.json()
       if (!res.ok) throw new Error(json?.error ?? "Failed to update technician")
-      setTechnicians((prev) => prev.map((t) => t.id === editingTech.id ? { ...t, full_name: editName.trim(), role: editRole, available_days: editDays } : t))
+      setTechnicians((prev) => prev.map((t) => t.id === editingTech.id ? { ...t, full_name: editName.trim(), role: editRole, available_days: editDays, work_start_time: editStartTime, work_end_time: editEndTime } : t))
       setEditOpen(false)
       setEditingTech(null)
     } catch (err: unknown) {
@@ -406,6 +447,12 @@ export default function TechnicianAvailability() {
                             </span>
                           ))}
                         </div>
+                        <div className="flex items-center gap-1 mt-1">
+                          <Clock className="w-3 h-3 text-gray-300 shrink-0" />
+                          <span className="text-[10px] text-gray-400">
+                            {formatTime(tech.work_start_time ?? "08:00:00")} – {formatTime(tech.work_end_time ?? "20:00:00")}
+                          </span>
+                        </div>
                       </div>
 
                       <div className="flex items-center gap-1 group/actions">
@@ -415,6 +462,8 @@ export default function TechnicianAvailability() {
                             setEditName(tech.full_name)
                             setEditRole(tech.role)
                             setEditDays(tech.available_days ?? ALL_DAYS)
+                            setEditStartTime(tech.work_start_time?.slice(0, 5) ?? "08:00")
+                            setEditEndTime(tech.work_end_time?.slice(0, 5)   ?? "20:00")
                             setEditOpen(true)
                             setEditError(null)
                           }}
@@ -504,13 +553,20 @@ export default function TechnicianAvailability() {
                 <label className="block text-xs font-medium text-gray-600 mb-2">Working Days</label>
                 <DayPicker value={newDays} onChange={setNewDays} />
               </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-2">Working Hours</label>
+                <div className="flex gap-3">
+                  <TimePicker label="Start" value={newStartTime} onChange={setNewStartTime} />
+                  <TimePicker label="End"   value={newEndTime}   onChange={setNewEndTime}   />
+                </div>
+              </div>
             </div>
 
             {addError && <p className="text-xs text-red-500 mt-3">{addError}</p>}
 
             <div className="flex gap-3 mt-5">
               <button
-                onClick={() => { setAddOpen(false); setNewName(""); setNewRole("detailer"); setNewDays(ALL_DAYS); setAddError(null) }}
+                onClick={() => { setAddOpen(false); setNewName(""); setNewRole("detailer"); setNewDays(ALL_DAYS); setNewStartTime("08:00"); setNewEndTime("20:00"); setAddError(null) }}
                 className="flex-1 py-2 text-sm font-medium text-gray-600 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors"
               >
                 Cancel
@@ -607,6 +663,13 @@ export default function TechnicianAvailability() {
               <div>
                 <label className="block text-xs font-medium text-gray-600 mb-2">Working Days</label>
                 <DayPicker value={editDays} onChange={setEditDays} />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-2">Working Hours</label>
+                <div className="flex gap-3">
+                  <TimePicker label="Start" value={editStartTime} onChange={setEditStartTime} />
+                  <TimePicker label="End"   value={editEndTime}   onChange={setEditEndTime}   />
+                </div>
               </div>
             </div>
 

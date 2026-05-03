@@ -37,7 +37,7 @@ export async function GET() {
       // Crew roster
       supabase
         .from("technician")
-        .select("id, full_name, role, is_available, available_days")
+        .select("id, full_name, role, is_available, available_days, work_start_time, work_end_time")
         .in("role", ["detailer", "installer"])
         .eq("is_archived", false)
         .order("role")
@@ -87,13 +87,15 @@ export async function GET() {
     }))
 
     const crew_members = (crew ?? []).map((c: any) => ({
-      id:             c.id,
-      full_name:      c.full_name,
-      role:           c.role as "detailer" | "installer",
-      source:         "technician" as const,
-      is_available:   c.is_available as boolean,
-      available_days: (c.available_days as string[]) ?? ["Mon","Tue","Wed","Thu","Fri","Sat","Sun"],
-      on_job:         onJobCrewIds.has(c.id),
+      id:               c.id,
+      full_name:        c.full_name,
+      role:             c.role as "detailer" | "installer",
+      source:           "technician" as const,
+      is_available:     c.is_available as boolean,
+      available_days:   (c.available_days as string[]) ?? ["Mon","Tue","Wed","Thu","Fri","Sat","Sun"],
+      work_start_time:  (c.work_start_time as string) ?? "08:00:00",
+      work_end_time:    (c.work_end_time   as string) ?? "20:00:00",
+      on_job:           onJobCrewIds.has(c.id),
     }))
 
     return NextResponse.json({ technicians, crew_members })
