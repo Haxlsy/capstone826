@@ -12,8 +12,9 @@ interface ChatbotSettings {
   enable_faq:       boolean
   booking_message:  string
   notify_sales:     boolean
-  scope_restricted: boolean
-  escalation_rules: string[]
+  language:                "english" | "filipino"
+  escalation_rules:        string[]
+  vehicle_status_template: string
 }
 
 const PERSONALITY_PREAMBLE: Record<ChatbotSettings["personality"], string> = {
@@ -56,15 +57,23 @@ function buildSystemPrompt(s: ChatbotSettings): string {
   if (s.enable_status) {
     lines.push("")
     lines.push("When a customer asks about their vehicle status:")
-    lines.push("1. Ask for their Plate Number, Full Name, and Contact Number.")
-    lines.push("2. Use the vehicle-status lookup tool to find their active job order.")
+    lines.push("1. Send them this exact message to collect their details:")
+    lines.push("---")
+    lines.push(s.vehicle_status_template)
+    lines.push("---")
+    if (s.language === "filipino") {
+      lines.push("Translate the above message to natural Filipino (Tagalog) before sending it.")
+    }
+    lines.push("2. Once they provide their plate number, use the vehicle-status lookup tool to find their active job order.")
     lines.push("3. Share the current status clearly and politely.")
     lines.push("4. If no active job is found, let them know and offer to help further.")
   }
 
-  if (s.scope_restricted) {
-    lines.push("")
-    lines.push("You must ONLY discuss topics related to 826 Auto Care's services. Politely decline any off-topic questions.")
+  lines.push("")
+  if (s.language === "filipino") {
+    lines.push("LANGUAGE: Always respond in Filipino (Tagalog). Use natural, conversational Filipino throughout every message.")
+  } else {
+    lines.push("LANGUAGE: Always respond in English.")
   }
 
   if (s.escalation_rules.length > 0) {

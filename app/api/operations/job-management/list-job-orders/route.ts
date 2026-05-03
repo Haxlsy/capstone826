@@ -99,7 +99,7 @@ export async function GET(request: Request) {
         released_at:             releasedAtMap.get(j.id) ?? null,
         created_at:              j.created_at,
         progress:                prog.total > 0 ? Math.round((prog.done / prog.total) * 100) : 0,
-        is_overdue:              j.status === "Ongoing" && !!j.expected_completion_at && new Date(j.expected_completion_at).getTime() < nowMs,
+        is_overdue:              ["Pending", "Ongoing", "For Rework", "For Inspection", "For Release"].includes(j.status) && !!j.expected_completion_at && new Date(j.expected_completion_at).getTime() < nowMs,
       }
     })
 

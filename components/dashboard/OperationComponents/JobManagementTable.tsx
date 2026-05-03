@@ -117,7 +117,9 @@ export default function JobManagementTable() {
   }, [jobOrders])
 
   const filtered = useMemo(() => jobOrders.filter((job) => {
-    const matchesTab    = activeTab === "All" || job.status === activeTab
+    const isDelayed  = job.status === "Delayed" || job.is_overdue
+    const matchesTab = activeTab === "All"
+      || (activeTab === "Delayed" ? isDelayed : job.status === activeTab)
     const q             = searchQuery.toLowerCase()
     const matchesSearch = q === "" ||
       job.customer.toLowerCase().includes(q) ||

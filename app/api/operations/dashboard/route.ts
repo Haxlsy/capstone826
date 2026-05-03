@@ -61,10 +61,12 @@ export async function GET() {
     const nowMs = Date.now()
     const overdueJobIds = new Set<string>()
 
+    const ACTIVE_STATUSES = ["Pending", "Ongoing", "For Rework", "For Inspection", "For Release"]
+
     // Signal 1: job-level expected_completion_at
     for (const row of rows) {
       if (
-        row.status === "Ongoing" &&
+        ACTIVE_STATUSES.includes(row.status as string) &&
         row.expected_completion_at &&
         new Date(row.expected_completion_at as string).getTime() < nowMs
       ) {
@@ -74,7 +76,7 @@ export async function GET() {
 
     // Signal 2: stage-level — check incomplete stages against cumulative expected end
     const activeJobs = rows.filter(
-      (r: any) => ["Ongoing", "For Rework", "Pending"].includes(r.status as string) && r.actual_start_at
+      (r: any) => ACTIVE_STATUSES.includes(r.status as string) && r.actual_start_at
     )
     const activeJobIds = activeJobs.map((r: any) => r.id as string)
 
