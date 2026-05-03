@@ -4,7 +4,7 @@ import { useState, useEffect } from "react"
 import {
   Bot, BookOpen, Save, Plus, Pencil, Trash2, X, Check,
   ChevronDown, ChevronUp, Car, Settings, AlertTriangle,
-  Info, Users, ClipboardList,
+  Info, Users, ClipboardList, Globe,
 } from "lucide-react"
 import VehicleStatusTemplate from "./VehicleStatusTemplate"
 import ChatbotPreview from "./ChatbotPreview"
@@ -12,28 +12,41 @@ import ChatbotPreview from "./ChatbotPreview"
 type Tab = "settings" | "knowledge_base" | "vehicle_template"
 type Personality = "friendly" | "formal" | "casual"
 
+const DEFAULT_VEHICLE_TEMPLATE = `Hello! Thank you for reaching out to 826 Auto Care. 🚗
+
+To check the status of your vehicle, please provide the following details:
+
+1. Full Name: [Your Full Name]
+2. Plate Number: [e.g., ABC-1234]
+3. Contact Number: [e.g., 09XX-XXX-XXXX]
+4. Email Address: [Your Email]
+
+Once we have your information, we'll look up your vehicle's current service status right away!`
+
 interface ChatbotSettings {
-  personality:      Personality
-  enable_services:  boolean
-  enable_booking:   boolean
-  enable_status:    boolean
-  enable_faq:       boolean
-  booking_message:  string
-  notify_sales:     boolean
-  scope_restricted: boolean
-  escalation_rules: string[]
+  personality:             Personality
+  enable_services:         boolean
+  enable_booking:          boolean
+  enable_status:           boolean
+  enable_faq:              boolean
+  booking_message:         string
+  notify_sales:            boolean
+  language:                "english" | "filipino"
+  escalation_rules:        string[]
+  vehicle_status_template: string
 }
 
 const DEFAULT_SETTINGS: ChatbotSettings = {
-  personality:      "friendly",
-  enable_services:  true,
-  enable_booking:   true,
-  enable_status:    true,
-  enable_faq:       true,
-  booking_message:  "Thank you! Your request has been sent to our Sales team. They will contact you shortly to confirm your appointment.",
-  notify_sales:     true,
-  scope_restricted: true,
-  escalation_rules: ["speak_to_human", "complaint", "unanswerable"],
+  personality:             "friendly",
+  enable_services:         true,
+  enable_booking:          true,
+  enable_status:           true,
+  enable_faq:              true,
+  booking_message:         "Thank you! Your request has been sent to our Sales team. They will contact you shortly to confirm your appointment.",
+  notify_sales:            true,
+  language:                "english",
+  escalation_rules:        ["speak_to_human", "complaint", "unanswerable"],
+  vehicle_status_template: DEFAULT_VEHICLE_TEMPLATE,
 }
 
 const ESCALATION_OPTIONS = [
@@ -267,41 +280,25 @@ export default function ChatbotManagement() {
             </Section>
           )}
 
-          {/* D — Status Lookup Setup */}
-          {settings.enable_status && (
-            <Section icon={<Car className="w-4 h-4" />} title="Vehicle Status Setup" subtitle="How the chatbot handles vehicle status inquiries.">
-              <div className="flex flex-col gap-4">
-                <div className="flex items-start gap-2.5 bg-blue-50 border border-blue-100 rounded-xl px-4 py-3">
-                  <Info className="w-4 h-4 text-blue-500 mt-0.5 shrink-0" />
-                  <p className="text-sm text-blue-700">
-                    The AI will ask for the customer's plate number, then automatically look up their active job order and share the current status.
-                  </p>
-                </div>
-
-                <div className="flex flex-col gap-1.5">
-                  <p className="text-sm font-medium text-gray-700">Information requested from customer</p>
-                  <div className="grid grid-cols-2 gap-2">
-                    {["Plate Number", "Full Name", "Contact Number"].map((f) => (
-                      <div key={f} className="flex items-center gap-2 px-3 py-2 bg-gray-50 rounded-lg border border-gray-200">
-                        <Check className="w-3.5 h-3.5 text-green-500 shrink-0" />
-                        <span className="text-sm text-gray-600">{f}</span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              </div>
-            </Section>
-          )}
-
-          {/* E — Scope Control */}
-          <Section icon={<Bot className="w-4 h-4" />} title="Scope Control" subtitle="Control what topics the chatbot is allowed to discuss.">
-            <div className="flex flex-col gap-1">
-              <Toggle
-                checked={settings.scope_restricted}
-                onChange={(v) => patch("scope_restricted", v)}
-                label="Only discuss topics related to 826 Auto Care"
-              />
-              <p className="text-xs text-gray-400 ml-12">When ON, the AI will politely decline off-topic questions.</p>
+          {/* E — Language */}
+          <Section icon={<Globe className="w-4 h-4" />} title="Response Language" subtitle="Choose the language the chatbot uses when talking to customers.">
+            <div className="flex gap-3">
+              {(["english", "filipino"] as const).map((lang) => {
+                const labels: Record<string, string> = { english: "English", filipino: "Filipino" }
+                return (
+                  <button
+                    key={lang}
+                    onClick={() => patch("language", lang)}
+                    className={`px-4 py-2 rounded-xl text-sm font-medium border transition-colors ${
+                      settings.language === lang
+                        ? "bg-gray-900 text-white border-gray-900"
+                        : "bg-white text-gray-600 border-gray-200 hover:border-gray-400"
+                    }`}
+                  >
+                    {labels[lang]}
+                  </button>
+                )
+              })}
             </div>
           </Section>
 
@@ -354,7 +351,15 @@ export default function ChatbotManagement() {
       )}
 
       {/* Vehicle Status Template Tab */}
-      {activeTab === "vehicle_template" && <VehicleStatusTemplate />}
+      {activeTab === "vehicle_template" && (
+        <VehicleStatusTemplate
+          value={settings.vehicle_status_template}
+          onChange={(v) => patch("vehicle_status_template", v)}
+          onSave={handleSave}
+          saved={settingsSaved}
+          saving={settingsDirty}
+        />
+      )}
 
       {/* Knowledge Base Tab */}
       {activeTab === "knowledge_base" && (
