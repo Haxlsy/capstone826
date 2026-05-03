@@ -11,8 +11,9 @@ interface ChatbotSettings {
   enable_faq:       boolean
   booking_message:  string
   notify_sales:     boolean
-  scope_restricted: boolean
-  escalation_rules: string[]
+  language:                "english" | "filipino"
+  escalation_rules:        string[]
+  vehicle_status_template: string
 }
 
 interface Message {
