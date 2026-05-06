@@ -1,7 +1,7 @@
 import { SummaryCards } from "./dashboard/SummaryCards"
 import { ShopPerformanceChart } from "./dashboard/ShopPerformanceChart"
 import { DelayedJobsTable } from "./dashboard/DelayedJobsTable"
-import { TechnicianAvailability } from "./dashboard/TechnicianAvailability"
+import { ReworkRateCard } from "./dashboard/ReworkRateCard"
 
 export default function AdminDashboard() {
   const today = new Date().toLocaleDateString("en-US", {
@@ -28,7 +28,7 @@ export default function AdminDashboard() {
       {/* Delayed jobs + technician availability */}
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
         <DelayedJobsTable />
-        <TechnicianAvailability />
+        <ReworkRateCard />
       </div>
     </div>
   )
