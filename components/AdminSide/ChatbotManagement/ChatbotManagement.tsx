@@ -31,7 +31,7 @@ interface ChatbotSettings {
   enable_faq:              boolean
   booking_message:         string
   notify_sales:            boolean
-  language:                "english" | "filipino"
+  language:                "english" | "filipino" | "both"
   escalation_rules:        string[]
   vehicle_status_template: string
 }
@@ -283,8 +283,8 @@ export default function ChatbotManagement() {
           {/* E — Language */}
           <Section icon={<Globe className="w-4 h-4" />} title="Response Language" subtitle="Choose the language the chatbot uses when talking to customers.">
             <div className="flex gap-3">
-              {(["english", "filipino"] as const).map((lang) => {
-                const labels: Record<string, string> = { english: "English", filipino: "Filipino" }
+              {(["english", "filipino", "both"] as const).map((lang) => {
+                const labels: Record<string, string> = { english: "English", filipino: "Filipino", both: "Both" }
                 return (
                   <button
                     key={lang}

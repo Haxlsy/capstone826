@@ -87,6 +87,25 @@ export async function GET(
     const catMap = new Map(catRows.map((r) => [r.id, r]))
 
     const j = job as any
+
+    // Total stage duration: prefer per-job override on job_stage_progress, fall back to service_stage
+    const totalDurationMins = (stages ?? []).reduce((acc: number, s: any) => {
+      const override = (s.stage_duration_mins as number | null) ?? null
+      const service  = s.service_stage_id ? (ssMap.get(s.service_stage_id)?.stage_duration_mins ?? 0) : 0
+      return acc + (override !== null ? override : service)
+    }, 0)
+
+    // EST. COMPLETION = scheduled_at + total stage duration (always recomputed, not from DB)
+    const expectedCompletionAt: string | null = j.scheduled_at
+      ? addWorkingMins(new Date(j.scheduled_at), totalDurationMins).toISOString()
+      : (j.expected_completion_at ?? null)
+
+    // UPDATED EST. = actual_start + total stage duration, only when job started late
+    let updatedEstAt: string | null = null
+    if (j.actual_start_at && expectedCompletionAt) {
+      const updated = addWorkingMins(new Date(j.actual_start_at), totalDurationMins)
+      if (updated.toISOString() > expectedCompletionAt) updatedEstAt = updated.toISOString()
+    }
     const headDetailer  = (team ?? []).find((t: any) => t.role_in_job === "head_detailer")
     const headInstaller = (team ?? []).find((t: any) => t.role_in_job === "head_installer")
     const detailers     = (team ?? [])
@@ -111,7 +130,8 @@ export async function GET(
         status:                  j.status,
         scheduled_at:            j.scheduled_at,
         actual_start_at:         j.actual_start_at,
-        expected_completion_at:  j.expected_completion_at,
+        expected_completion_at:  expectedCompletionAt,
+        updated_est:             updatedEstAt,
         created_at:              j.created_at,
         finishing_approved_at:   j.finishing_approved_at,
         history: (history ?? []).map((h: any) => ({

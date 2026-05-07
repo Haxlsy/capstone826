@@ -12,7 +12,7 @@ interface ChatbotSettings {
   enable_faq:       boolean
   booking_message:  string
   notify_sales:     boolean
-  language:                "english" | "filipino"
+  language:                "english" | "filipino" | "both"
   escalation_rules:        string[]
   vehicle_status_template: string
 }

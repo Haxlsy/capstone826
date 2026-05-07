@@ -5,6 +5,7 @@ import { Search, Filter, MoreHorizontal, ChevronLeft, ChevronRight } from "lucid
 import AddServiceModal from "./AddServiceModal"
 import EditServiceModal from "./EditServiceModal"
 import AddServiceTypeModal from "./AddServiceTypeModal"
+import CategoryPresetsPanel from "./CategoryPresetsPanel"
 
 interface Service {
   id:                      string
@@ -42,7 +43,7 @@ export default function ServiceTable({ canWrite = true }: { canWrite?: boolean }
 
   const [searchInput, setSearchInput]   = useState("")
   const [search, setSearch]             = useState("")
-  const [statusFilter, setStatusFilter] = useState<"all" | "active" | "archived">("all")
+  const [statusFilter, setStatusFilter] = useState<"all" | "active" | "archived">("active")
   const [durationMin, setDurationMin]   = useState("")
   const [durationMax, setDurationMax]   = useState("")
   const [filterOpen, setFilterOpen]     = useState(false)
@@ -54,6 +55,7 @@ export default function ServiceTable({ canWrite = true }: { canWrite?: boolean }
   const [actionMenu, setActionMenu]     = useState<string | null>(null)
   const [addModalOpen, setAddModalOpen]         = useState(false)
   const [addTypeModalOpen, setAddTypeModalOpen] = useState(false)
+  const [presetsOpen, setPresetsOpen]           = useState(false)
   const [editServiceId, setEditServiceId]       = useState<string | null>(null)
 
   const filterRef = useRef<HTMLDivElement>(null)
@@ -221,6 +223,12 @@ export default function ServiceTable({ canWrite = true }: { canWrite?: boolean }
         {canWrite && (
           <div className="ml-auto flex items-center gap-2">
             <button
+              onClick={() => setPresetsOpen(true)}
+              className="flex items-center gap-1.5 bg-white border border-gray-200 text-gray-700 text-sm font-medium px-4 py-2 rounded-lg hover:bg-gray-50 transition-colors"
+            >
+              Category Presets
+            </button>
+            <button
               onClick={() => setAddTypeModalOpen(true)}
               className="flex items-center gap-1.5 bg-white border border-gray-200 text-gray-700 text-sm font-medium px-4 py-2 rounded-lg hover:bg-gray-50 transition-colors"
             >
@@ -254,12 +262,17 @@ export default function ServiceTable({ canWrite = true }: { canWrite?: boolean }
             onClose={() => setAddTypeModalOpen(false)}
             onSuccess={() => setAddTypeModalOpen(false)}
           />
+          <CategoryPresetsPanel
+            open={presetsOpen}
+            onClose={() => setPresetsOpen(false)}
+          />
         </>
       )}
 
       {fetchError && (
         <p className="text-sm text-red-500">{fetchError}</p>
       )}
+
 
       {/* Table */}
       <div className="bg-white rounded-xl border border-gray-100 overflow-hidden">

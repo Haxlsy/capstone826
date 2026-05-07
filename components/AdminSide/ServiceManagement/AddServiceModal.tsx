@@ -6,13 +6,12 @@ import {
   ServiceTypeCombobox,
   StageList,
   AddCategoryDropdown,
-  CreateCategoryForm,
   colorStyles,
   makeId,
   minsToHHMM,
   sumStageDurations,
-  type WorkflowCategory,
   type CategorySection,
+  type PresetItem,
 } from "./service-form-helpers"
 
 interface AddServiceModalProps {
@@ -29,22 +28,16 @@ const EMPTY_FORM = {
 
 export default function AddServiceModal({ open, onClose, onSuccess }: AddServiceModalProps) {
   const [form, setForm]                         = useState(EMPTY_FORM)
-  const [globalCategories, setGlobalCategories] = useState<WorkflowCategory[]>([])
   const [serviceTypes, setServiceTypes]         = useState<string[]>([])
   const [sections, setSections]                 = useState<CategorySection[]>([])
   const [editingId, setEditingId]               = useState<string | null>(null)
   const [errors, setErrors]                     = useState<Record<string, string>>({})
   const [serverError, setServerError]           = useState("")
   const [submitting, setSubmitting]             = useState(false)
-  const [showCreateForm, setShowCreateForm]     = useState(false)
-  const [creatingCategory, setCreatingCategory] = useState(false)
-  const [createCategoryError, setCreateCategoryError] = useState("")
-  const [deleteError, setDeleteError]               = useState("")
+  const [presets, setPresets]   = useState<PresetItem[]>([])
   const [typeDeleteError, setTypeDeleteError]       = useState("")
   const [typeDeleteAffected, setTypeDeleteAffected] = useState<string[]>([])
   const [typeDeleteLiveJobs, setTypeDeleteLiveJobs] = useState<string[]>([])
-  const [catDeleteAffected,  setCatDeleteAffected]  = useState<string[]>([])
-  const [catDeleteLiveJobs,  setCatDeleteLiveJobs]  = useState<string[]>([])
 
   useEffect(() => {
     if (!open) return
@@ -53,15 +46,12 @@ export default function AddServiceModal({ open, onClose, onSuccess }: AddService
     setEditingId(null)
     setErrors({})
     setServerError("")
-    setShowCreateForm(false)
-    setDeleteError("")
     setTypeDeleteError("")
     setTypeDeleteAffected([]); setTypeDeleteLiveJobs([])
-    setCatDeleteAffected([]);  setCatDeleteLiveJobs([])
 
-    fetch("/api/admin/workflow-categories")
+    fetch("/api/admin/category-presets")
       .then((r) => r.json())
-      .then((json) => { if (json.categories) setGlobalCategories(json.categories) })
+      .then((json) => { if (json.presets) setPresets(json.presets) })
       .catch(() => {})
 
     fetch("/api/admin/service-types")
@@ -81,21 +71,6 @@ export default function AddServiceModal({ open, onClose, onSuccess }: AddService
   }
 
   // ── Section management ──────────────────────────────────────────
-  function addSection(cat: WorkflowCategory) {
-    setSections((prev) => [
-      ...prev,
-      {
-        categoryId:     cat.id,
-        categoryName:   cat.name,
-        technicianRole: cat.technician_role,
-        displayColor:   cat.display_color,
-        stages:         [],
-        dragIndex:      { current: null },
-      },
-    ])
-    if (errors.sections) setErrors((p) => ({ ...p, sections: undefined as unknown as string }))
-  }
-
   function removeSection(categoryId: string) {
     setSections((prev) => prev.filter((s) => s.categoryId !== categoryId))
   }
@@ -118,44 +93,32 @@ export default function AddServiceModal({ open, onClose, onSuccess }: AddService
     }
   }
 
-  async function handleDeleteCategory(cat: WorkflowCategory) {
-    setDeleteError(""); setCatDeleteAffected([]); setCatDeleteLiveJobs([])
-    try {
-      const res  = await fetch(`/api/admin/workflow-categories/${cat.id}`, { method: "DELETE" })
-      const json = await res.json()
-      if (!res.ok) {
-        setDeleteError(json.error ?? "Failed to delete category.")
-        setCatDeleteAffected(json.affectedServices ?? [])
-        setCatDeleteLiveJobs(json.liveJobs ?? [])
-        return
-      }
-      setGlobalCategories((prev) => prev.filter((c) => c.id !== cat.id))
-      setSections((prev) => prev.filter((s) => s.categoryId !== cat.id))
-    } catch {
-      setDeleteError("Network error. Please try again.")
-    }
-  }
-
-  async function handleCreateCategory(name: string, role: "detailer" | "installer", color: string) {
-    setCreatingCategory(true)
-    setCreateCategoryError("")
+  async function handleSelectPreset(preset: PresetItem) {
     try {
       const res  = await fetch("/api/admin/workflow-categories", {
         method:  "POST",
         headers: { "Content-Type": "application/json" },
-        body:    JSON.stringify({ name, technician_role: role, display_color: color }),
+        body:    JSON.stringify({ name: preset.name, technician_role: preset.technician_role, display_color: preset.display_color }),
       })
       const json = await res.json()
-      if (!res.ok) { setCreateCategoryError(json.error ?? "Failed to create category."); return }
-      const newCat: WorkflowCategory = json.category
-      setGlobalCategories((prev) => [...prev, newCat])
-      addSection(newCat)
-      setShowCreateForm(false)
-    } catch {
-      setCreateCategoryError("Network error. Please try again.")
-    } finally {
-      setCreatingCategory(false)
-    }
+      if (!res.ok) return
+      const cat = json.category
+      const presetStages = [...(preset.stages ?? [])]
+        .sort((a, b) => a.sequence_order - b.sequence_order)
+        .map((s) => ({ id: makeId(), name: s.name, stage_duration_mins: s.stage_duration_mins ?? 0 }))
+      setSections((prev) => [
+        ...prev,
+        {
+          categoryId:     cat.id,
+          categoryName:   cat.name,
+          technicianRole: cat.technician_role,
+          displayColor:   cat.display_color,
+          stages:         presetStages,
+          dragIndex:      { current: null },
+        },
+      ])
+      if (errors.sections) setErrors((p) => ({ ...p, sections: undefined as unknown as string }))
+    } catch {}
   }
 
   // ── Stage management ────────────────────────────────────────────
@@ -284,7 +247,7 @@ export default function AddServiceModal({ open, onClose, onSuccess }: AddService
     }
   }
 
-  const usedCategoryIds = new Set(sections.map((s) => s.categoryId))
+  const usedCategoryNames = new Set(sections.map((s) => s.categoryName.toLowerCase()))
 
   return (
     <>
@@ -473,46 +436,11 @@ export default function AddServiceModal({ open, onClose, onSuccess }: AddService
             })}
 
             <div className="space-y-3 pt-1">
-              {showCreateForm ? (
-                <CreateCategoryForm
-                  onSubmit={handleCreateCategory}
-                  onCancel={() => { setShowCreateForm(false); setCreateCategoryError("") }}
-                  submitting={creatingCategory}
-                  error={createCategoryError}
-                />
-              ) : (
-                <>
-                  <AddCategoryDropdown
-                    globalCategories={globalCategories}
-                    usedCategoryIds={usedCategoryIds}
-                    onSelect={addSection}
-                    onCreateNew={() => setShowCreateForm(true)}
-                    onDelete={handleDeleteCategory}
-                  />
-                  {deleteError && (
-                    <div className="mt-1">
-                      <p className="text-xs text-red-500">{deleteError}</p>
-                      {catDeleteAffected.length > 0 && (
-                        <ul className="mt-1 space-y-0.5 pl-3">
-                          {catDeleteAffected.map((name) => (
-                            <li key={name} className="text-xs text-red-400 list-disc">{name}</li>
-                          ))}
-                        </ul>
-                      )}
-                      {catDeleteLiveJobs.length > 0 && (
-                        <>
-                          <p className="text-xs font-medium text-amber-600 mt-1">Active job orders:</p>
-                          <ul className="mt-0.5 space-y-0.5 pl-3">
-                            {catDeleteLiveJobs.map((j) => (
-                              <li key={j} className="text-xs text-amber-500 list-disc">{j}</li>
-                            ))}
-                          </ul>
-                        </>
-                      )}
-                    </div>
-                  )}
-                </>
-              )}
+              <AddCategoryDropdown
+                presets={presets}
+                usedCategoryNames={usedCategoryNames}
+                onSelectPreset={handleSelectPreset}
+              />
             </div>
           </div>
 

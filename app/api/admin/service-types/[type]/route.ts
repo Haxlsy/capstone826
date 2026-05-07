@@ -32,9 +32,9 @@ export async function DELETE(
     }
 
     const [{ count }, { data: affected }, { data: serviceIds }] = await Promise.all([
-      admin.from("service").select("id", { count: "exact", head: true }).eq("service_type", decoded),
-      admin.from("service").select("name").eq("service_type", decoded).limit(5),
-      admin.from("service").select("id").eq("service_type", decoded),
+      admin.from("service").select("id", { count: "exact", head: true }).eq("service_type", decoded).eq("is_archived", false),
+      admin.from("service").select("name").eq("service_type", decoded).eq("is_archived", false).limit(5),
+      admin.from("service").select("id").eq("service_type", decoded).eq("is_archived", false),
     ])
 
     if ((count ?? 0) > 0) {
@@ -61,8 +61,8 @@ export async function DELETE(
       return NextResponse.json(
         {
           error: liveJobs.length > 0
-            ? "Cannot delete — this type is used by existing services and active job orders."
-            : "Cannot delete — this type is used by existing services. Archive or reassign them first.",
+            ? "Cannot delete — this type has active job orders in progress."
+            : "Cannot delete — this type is used by active services. Archive them first.",
           affectedServices,
           liveJobs,
         },

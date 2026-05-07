@@ -87,29 +87,6 @@ export async function PATCH(
 
     // Archive toggle
     if (typeof body.is_archived === "boolean") {
-      // Guard: block archiving if live job orders reference this service
-      if (body.is_archived) {
-        const LIVE = ["Pending", "Ongoing", "For Rework", "For Inspection", "For Release", "Delayed"]
-        const { data: liveJobRows } = await supabase
-          .from("job_order")
-          .select("id, status, customer_name, created_at")
-          .eq("service_id", id)
-          .in("status", LIVE)
-          .limit(5)
-
-        if ((liveJobRows ?? []).length > 0) {
-          const liveJobs = (liveJobRows ?? []).map((j) => {
-            const year    = new Date(j.created_at).getFullYear()
-            const shortId = (j.id as string).slice(-4).toUpperCase()
-            return `JO-${year}-${shortId} (${j.customer_name}) — ${j.status}`
-          })
-          return NextResponse.json(
-            { error: "Cannot archive — this service is being used in active job orders.", liveJobs },
-            { status: 409 }
-          )
-        }
-      }
-
       const { data: svc, error } = await supabase
         .from("service")
         .update({ is_archived: body.is_archived })
