@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useCallback, useMemo } from "react"
+import { useState, useEffect, useCallback } from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { ArrowLeft, PackageCheck, ChevronDown, Users, RefreshCw, CheckCircle2, XCircle, Clock, RotateCcw, UserPlus, X, Loader2, Trash2 } from "lucide-react"
@@ -63,6 +63,7 @@ interface JobDetail {
   scheduled_at:           string | null
   actual_start_at:        string | null
   expected_completion_at: string | null
+  updated_est:            string | null
   created_at:             string
   finishing_approved_at:  string | null
   history:                HistoryEntry[]
@@ -135,11 +136,7 @@ export default function JobOrderDetail({ jobId }: { jobId: string }) {
   const [addingSub, setAddingSub]         = useState(false)
   const [subError, setSubError]           = useState<string | null>(null)
 
-  const updatedEst = useMemo(() => {
-    if (!job) return null
-    const last = job.stages.map((s) => s.expected_end_at).filter(Boolean).sort().at(-1)
-    return last && last !== job.expected_completion_at ? last : null
-  }, [job])
+  const updatedEst = job?.updated_est ?? null
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -398,6 +395,16 @@ export default function JobOrderDetail({ jobId }: { jobId: string }) {
               )}
             </div>
           )}
+          <button
+            type="button"
+            onClick={() => load()}
+            disabled={loading}
+            title="Refresh"
+            className="flex items-center gap-1.5 text-sm font-semibold px-3 py-2 rounded-lg border border-gray-200 text-gray-500 hover:text-gray-800 hover:border-gray-300 transition-colors disabled:opacity-50"
+          >
+            <RefreshCw className={`w-4 h-4 ${loading ? "animate-spin" : ""}`} />
+            Refresh
+          </button>
           {canRelease && (
             <button
               onClick={markReleased}
