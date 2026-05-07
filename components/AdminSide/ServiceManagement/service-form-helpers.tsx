@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useRef, useState } from "react"
-import { GripVertical, Trash2, Pencil, Plus, ChevronDown, ChevronUp, Check, X, AlertTriangle } from "lucide-react"
+import { GripVertical, Trash2, Pencil, Plus, ChevronDown, ChevronUp, Check, X } from "lucide-react"
 
 export type ServiceType = string
 
@@ -33,6 +33,14 @@ export interface WorkflowCategory {
   name: string
   technician_role: "detailer" | "installer"
   display_color: string
+}
+
+export interface PresetItem {
+  id:              string
+  name:            string
+  technician_role: "detailer" | "installer"
+  display_color:   string
+  stages:          Array<{ id: string; name: string; sequence_order: number; stage_duration_mins: number }>
 }
 
 export interface CategorySection {
@@ -291,29 +299,21 @@ export function StageList({
 
 // ─── Add Category Dropdown ────────────────────────────────────────────────────
 export function AddCategoryDropdown({
-  globalCategories,
-  usedCategoryIds,
-  onSelect,
-  onCreateNew,
-  onDelete,
+  presets,
+  usedCategoryNames,
+  onSelectPreset,
 }: {
-  globalCategories: WorkflowCategory[]
-  usedCategoryIds: Set<string>
-  onSelect: (cat: WorkflowCategory) => void
-  onCreateNew: () => void
-  onDelete?: (cat: WorkflowCategory) => void
+  presets:           PresetItem[]
+  usedCategoryNames: Set<string>
+  onSelectPreset:    (preset: PresetItem) => void
 }) {
-  const [open, setOpen]           = useState(false)
-  const [confirmId, setConfirmId] = useState<string | null>(null)
+  const [open, setOpen] = useState(false)
   const ref        = useRef<HTMLDivElement>(null)
   const dropdownRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     function handleClick(e: MouseEvent) {
-      if (ref.current && !ref.current.contains(e.target as Node)) {
-        setOpen(false)
-        setConfirmId(null)
-      }
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false)
     }
     document.addEventListener("mousedown", handleClick)
     return () => document.removeEventListener("mousedown", handleClick)
@@ -331,94 +331,44 @@ export function AddCategoryDropdown({
     <div ref={ref} className="relative w-full">
       <button
         type="button"
-        onClick={() => { setOpen((v) => !v); setConfirmId(null) }}
+        onClick={() => setOpen((v) => !v)}
         className="w-full flex items-center justify-center gap-1.5 text-sm font-medium text-gray-600 border border-dashed border-gray-300 rounded-lg px-3 py-2 hover:border-gray-400 hover:bg-gray-50 transition-colors"
       >
         <Plus className="w-4 h-4" />
-        Add Category Section
+        Select Category Section
         {open ? <ChevronUp className="w-3.5 h-3.5 ml-0.5" /> : <ChevronDown className="w-3.5 h-3.5 ml-0.5" />}
       </button>
 
       {open && (
         <div ref={dropdownRef} className="absolute top-full left-0 right-0 mt-1 bg-white border border-gray-100 rounded-xl shadow-lg z-20 overflow-hidden">
-          {globalCategories.length > 0 && (
+          {presets.length > 0 ? (
             <>
               <p className="px-3 pt-2.5 pb-1 text-xs font-medium text-gray-400 uppercase tracking-wide">
                 Existing categories
               </p>
-              {globalCategories.map((cat) => {
-                const styles    = colorStyles(cat.display_color)
-                const isUsed    = usedCategoryIds.has(cat.id)
-                const confirming = confirmId === cat.id
-
-                if (confirming) {
-                  return (
-                    <div key={cat.id} className="px-3 py-2.5 bg-red-50 border-t border-red-100">
-                      <div className="flex items-center gap-1.5 mb-2">
-                        <AlertTriangle className="w-3.5 h-3.5 text-red-500 shrink-0" />
-                        <p className="text-xs font-semibold text-red-700">Delete &ldquo;{cat.name}&rdquo;?</p>
-                      </div>
-                      <p className="text-xs text-red-600 mb-2">This cannot be undone.</p>
-                      <div className="flex gap-2">
-                        <button
-                          type="button"
-                          onClick={() => { onDelete?.(cat); setConfirmId(null); setOpen(false) }}
-                          className="flex-1 text-xs font-semibold py-1 rounded-lg bg-red-600 text-white hover:bg-red-700 transition-colors"
-                        >
-                          Delete
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => setConfirmId(null)}
-                          className="flex-1 text-xs font-semibold py-1 rounded-lg bg-white border border-gray-200 text-gray-600 hover:bg-gray-50 transition-colors"
-                        >
-                          Cancel
-                        </button>
-                      </div>
-                    </div>
-                  )
-                }
-
+              {presets.map((preset) => {
+                const styles = colorStyles(preset.display_color)
+                const isUsed = usedCategoryNames.has(preset.name.toLowerCase())
                 return (
-                  <div
-                    key={cat.id}
-                    className="flex items-center gap-1 px-3 py-2 hover:bg-gray-50 transition-colors"
-                  >
+                  <div key={preset.id} className="flex items-center gap-1 px-3 py-2 hover:bg-gray-50 transition-colors">
                     <button
                       type="button"
-                      onClick={() => { if (!isUsed) { onSelect(cat); setOpen(false) } }}
+                      onClick={() => { if (!isUsed) { onSelectPreset(preset); setOpen(false) } }}
                       disabled={isUsed}
                       className="flex-1 flex items-center gap-2.5 text-sm text-left disabled:opacity-40 disabled:cursor-not-allowed"
                     >
                       <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${styles.badge}`}>
-                        {cat.name}
+                        {preset.name}
                       </span>
-                      <span className="text-xs text-gray-400 capitalize">{cat.technician_role}s</span>
+                      <span className="text-xs text-gray-400 capitalize">{preset.technician_role}s</span>
                     </button>
-                    {onDelete && (
-                      <button
-                        type="button"
-                        onClick={(e) => { e.stopPropagation(); setConfirmId(cat.id) }}
-                        className="p-1 text-gray-300 hover:text-red-400 transition-colors rounded shrink-0"
-                        title="Delete category"
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </button>
-                    )}
                   </div>
                 )
               })}
-              <div className="border-t border-gray-100 my-1" />
             </>
+          ) : (
+            <p className="px-3 py-3 text-xs text-gray-400">No presets yet. Create one via Category Presets.</p>
           )}
-          <button
-            type="button"
-            onClick={() => { onCreateNew(); setOpen(false) }}
-            className="w-full flex items-center gap-2 px-3 py-2.5 text-sm text-left text-blue-600 hover:bg-blue-50 transition-colors font-medium"
-          >
-            <Plus className="w-4 h-4" />
-            Create new category
-          </button>
         </div>
       )}
     </div>
