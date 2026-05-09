@@ -169,7 +169,7 @@ export default function JobOrderRecords() {
         <div className="flex items-center gap-2">
           <span className="flex items-center gap-1.5 bg-teal-50 text-teal-700 text-xs font-semibold px-3 py-1.5 rounded-full">
             <CheckCircle2 className="w-3.5 h-3.5" />
-            Released Only
+            Completed Only
           </span>
         </div>
       </div>
