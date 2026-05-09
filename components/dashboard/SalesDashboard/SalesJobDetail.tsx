@@ -153,7 +153,7 @@ export default function SalesJobDetail({ jobId }: { jobId: string }) {
       <div className="flex items-start justify-between gap-4">
         <div>
           <Link
-            href="/dashboard/sales/jobs"
+            href="/dashboard/sales/job-orders"
             className="inline-flex items-center gap-1.5 text-sm text-gray-500 hover:text-gray-800 mb-2 transition-colors"
           >
             <ArrowLeft className="w-4 h-4" />
