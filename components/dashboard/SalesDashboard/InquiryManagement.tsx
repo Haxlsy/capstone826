@@ -1,11 +1,11 @@
 "use client"
 
-import { useState, useEffect, useCallback } from "react"
+import { useState, useEffect, useCallback, useRef } from "react"
 import {
   MessageCircle, ArrowRightLeft, Clock,
   CheckCircle2, ChevronRight, User, Car,
   Phone, Hash, CheckCheck, CircleDot, X, Search,
-  AlertCircle, Mail,
+  AlertCircle, Mail, Layers,
 } from "lucide-react"
 
 type InquiryStatus = "open" | "resolved" | "recorded"
@@ -27,13 +27,14 @@ interface Inquiry {
   lastMessage:       string | null
 }
 
-type Tab = "all" | "open" | "recorded" | "resolved"
+type Tab = "all" | "unresolved" | "open" | "recorded" | "resolved"
 
 const TABS: { key: Tab; label: string }[] = [
-  { key: "all",      label: "All" },
-  { key: "open",     label: "Unrecorded" },
-  { key: "recorded", label: "Recorded" },
-  { key: "resolved", label: "Resolved" },
+  { key: "all",        label: "All" },
+  { key: "unresolved", label: "Unresolved" },
+  { key: "open",       label: "Unrecorded" },
+  { key: "recorded",   label: "Recorded" },
+  { key: "resolved",   label: "Resolved" },
 ]
 
 const STATUS_COLORS: Record<InquiryStatus, string> = {
@@ -84,6 +85,7 @@ function getInitials(name: string) {
 const INPUT_CLS = "w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
 
 export default function InquiryManagement() {
+  const tabBarRef = useRef<HTMLDivElement>(null)
   const [inquiries, setInquiries]   = useState<Inquiry[]>([])
   const [loading, setLoading]       = useState(true)
   const [activeTab, setActiveTab]   = useState<Tab>("all")
@@ -130,7 +132,23 @@ export default function InquiryManagement() {
 
   useEffect(() => { load() }, [load])
 
-  const tabFiltered = activeTab === "all" ? inquiries : inquiries.filter((i) => i.status === activeTab)
+  useEffect(() => {
+    const el = tabBarRef.current
+    if (!el) return
+    const onWheel = (e: WheelEvent) => {
+      if (e.deltaY === 0) return
+      e.preventDefault()
+      el.scrollLeft += e.deltaY
+    }
+    el.addEventListener("wheel", onWheel, { passive: false })
+    return () => el.removeEventListener("wheel", onWheel)
+  }, [])
+
+  const tabFiltered = activeTab === "all"
+    ? inquiries
+    : activeTab === "unresolved"
+      ? inquiries.filter((i) => i.status === "open" || i.status === "recorded")
+      : inquiries.filter((i) => i.status === activeTab)
   const filtered    = search.trim()
     ? tabFiltered.filter((i) => {
         const q = search.toLowerCase()
@@ -140,6 +158,7 @@ export default function InquiryManagement() {
     : tabFiltered
 
   const selected      = inquiries.find((i) => i.id === selectedId) ?? null
+  const totalCount    = inquiries.length
   const openCount     = inquiries.filter((i) => i.status === "open").length
   const recCount      = inquiries.filter((i) => i.status === "recorded").length
   const resCount      = inquiries.filter((i) => i.status === "resolved").length
@@ -215,11 +234,12 @@ export default function InquiryManagement() {
       </div>
 
       {/* Stats */}
-      <div className="grid grid-cols-4 gap-4">
+      <div className="grid grid-cols-5 gap-4">
+        <StatPill label="Total"       count={totalCount}    icon={Layers}         color="text-indigo-500" bg="bg-indigo-50"  border="border-indigo-200" />
         <StatPill label="Unresolved"  count={unresolvedCnt} icon={AlertCircle}    color="text-orange-500" bg="bg-orange-50"  border="border-orange-200" />
         <StatPill label="Unrecorded"  count={openCount}     icon={Clock}          color="text-amber-500"  bg="bg-amber-50"   border="border-amber-200" />
-        <StatPill label="Recorded"    count={recCount}      icon={ArrowRightLeft}  color="text-blue-600"   bg="bg-blue-50"    border="border-blue-200" />
-        <StatPill label="Resolved"    count={resCount}      icon={CheckCheck}      color="text-gray-500"   bg="bg-gray-100"   border="border-gray-200" />
+        <StatPill label="Recorded"    count={recCount}      icon={ArrowRightLeft} color="text-blue-600"   bg="bg-blue-50"    border="border-blue-200" />
+        <StatPill label="Resolved"    count={resCount}      icon={CheckCheck}     color="text-emerald-600" bg="bg-emerald-50" border="border-emerald-200" />
       </div>
 
       {/* Main Panel */}
@@ -227,13 +247,15 @@ export default function InquiryManagement() {
         {/* Left: List */}
         <div className="flex flex-col w-96 shrink-0 bg-white border border-gray-200 rounded-2xl overflow-hidden">
           {/* Tabs */}
-          <div className="flex border-b border-gray-100 px-3 pt-3 gap-1 flex-wrap">
+          <div ref={tabBarRef} className="flex border-b border-gray-100 px-3 pt-2 gap-0.5 overflow-x-auto overflow-y-hidden scrollbar-none">
             {TABS.map((tab) => (
               <button
                 key={tab.key}
                 onClick={() => setActiveTab(tab.key)}
-                className={`px-3 py-1.5 text-xs font-medium rounded-lg mb-2 transition-colors ${
-                  activeTab === tab.key ? "bg-gray-900 text-white" : "text-gray-500 hover:bg-gray-50"
+                className={`shrink-0 px-3 py-2 text-xs font-medium whitespace-nowrap transition-colors border-b-2 -mb-px ${
+                  activeTab === tab.key
+                    ? "border-gray-900 text-gray-900"
+                    : "border-transparent text-gray-400 hover:text-gray-600"
                 }`}
               >
                 {tab.label}
