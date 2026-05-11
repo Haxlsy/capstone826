@@ -21,15 +21,37 @@ export async function GET() {
     const rows   = jobs ?? []
     const jobIds = rows.map((j: any) => j.id)
 
-    // Head detailer + head installer for calendar tooltip enrichment
-    const { data: teamRows } = await supabase
-      .from("job_order_team")
-      .select("job_order_id, role_in_job, user_account:user_account_id(full_name)")
-      .in("job_order_id", jobIds)
-      .in("role_in_job", ["head_detailer", "head_installer"])
+    const ACTIVE_STATUSES = ["Pending", "Ongoing", "For Rework", "For Inspection", "For Release"]
+    const activeJobs    = rows.filter((r: any) => ACTIVE_STATUSES.includes(r.status as string) && r.actual_start_at)
+    const activeJobIds  = activeJobs.map((r: any) => r.id as string)
+
+    // Run remaining queries in parallel
+    const [teamResult, stageResult, concernResult] = await Promise.all([
+      supabase
+        .from("job_order_team")
+        .select("job_order_id, role_in_job, user_account:user_account_id(full_name)")
+        .in("job_order_id", jobIds)
+        .in("role_in_job", ["head_detailer", "head_installer"]),
+
+      activeJobIds.length > 0
+        ? supabase
+            .from("job_stage_progress")
+            .select("job_order_id, status, stage_duration_mins, service_stage:service_stage_id(stage_duration_mins, sequence_order)")
+            .in("job_order_id", activeJobIds)
+        : Promise.resolve({ data: [] }),
+
+      supabase
+        .from("concern")
+        .select("id", { count: "exact", head: true })
+        .eq("status", "Pending"),
+    ])
+
+    const teamRows = teamResult.data ?? []
+    const stageRows = stageResult.data ?? []
+    const concern_count = concernResult.count
 
     const teamMap = new Map<string, { head_detailer: string | null; head_installer: string | null }>()
-    for (const t of teamRows ?? []) {
+    for (const t of teamRows) {
       const entry = teamMap.get(t.job_order_id) ?? { head_detailer: null, head_installer: null }
       const name  = (t.user_account as any)?.full_name ?? null
       if (t.role_in_job === "head_detailer")  entry.head_detailer  = name
@@ -55,13 +77,9 @@ export async function GET() {
       if (key) status_counts[key]++
     }
 
-    // Auto-detect overdue — two signals, each job counted at most once:
-    // 1. Job-level: Ongoing with expected_completion_at already past
-    // 2. Stage-level: any incomplete stage past its expected end
+    // Auto-detect overdue — two signals, each job counted at most once
     const nowMs = Date.now()
     const overdueJobIds = new Set<string>()
-
-    const ACTIVE_STATUSES = ["Pending", "Ongoing", "For Rework", "For Inspection", "For Release"]
 
     // Signal 1: job-level expected_completion_at
     for (const row of rows) {
@@ -75,26 +93,16 @@ export async function GET() {
     }
 
     // Signal 2: stage-level — check incomplete stages against cumulative expected end
-    const activeJobs = rows.filter(
-      (r: any) => ACTIVE_STATUSES.includes(r.status as string) && r.actual_start_at
-    )
-    const activeJobIds = activeJobs.map((r: any) => r.id as string)
-
-    if (activeJobIds.length > 0) {
-      const { data: stageRows } = await supabase
-        .from("job_stage_progress")
-        .select("job_order_id, status, stage_duration_mins, service_stage:service_stage_id(stage_duration_mins, sequence_order)")
-        .in("job_order_id", activeJobIds)
-
+    if (stageRows.length > 0) {
       const jobStagesMap = new Map<string, any[]>()
-      for (const s of stageRows ?? []) {
+      for (const s of stageRows) {
         if (!jobStagesMap.has(s.job_order_id)) jobStagesMap.set(s.job_order_id, [])
         jobStagesMap.get(s.job_order_id)!.push(s)
       }
       const startMap = new Map(activeJobs.map((r: any) => [r.id as string, r.actual_start_at as string]))
 
       for (const [jobId, stages] of jobStagesMap) {
-        if (overdueJobIds.has(jobId)) continue // already counted
+        if (overdueJobIds.has(jobId)) continue
         const startAt = startMap.get(jobId)
         if (!startAt) continue
         const sorted = [...stages].sort((a: any, b: any) =>
@@ -118,12 +126,6 @@ export async function GET() {
     }
 
     for (const _ of overdueJobIds) status_counts["delayed"]++
-
-    // Open concern count
-    const { count: concern_count } = await supabase
-      .from("concern")
-      .select("id", { count: "exact", head: true })
-      .eq("status", "Pending")
 
     // Recent jobs (latest 5)
     const recent_jobs = rows.slice(0, 5).map((r: any) => ({
