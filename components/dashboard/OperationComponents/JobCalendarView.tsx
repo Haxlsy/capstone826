@@ -1,7 +1,8 @@
 "use client"
 
-import { useState, useEffect, useMemo } from "react"
+import { useState, useMemo } from "react"
 import { ChevronLeft, ChevronRight, Clock, CalendarClock, CheckCircle2, User, X } from "lucide-react"
+import { Sk } from "@/components/ui/skeleton"
 
 type DotColor = "blue" | "green" | "orange" | "red" | "teal" | "amber" | "gray"
 
@@ -210,21 +211,18 @@ function DayDetailModal({
   )
 }
 
-export default function JobCalendarView() {
+interface Props {
+  loading:      boolean
+  calendarJobs: CalendarJob[]
+}
+
+export default function JobCalendarView({ loading, calendarJobs }: Props) {
   const today = new Date()
   const [year, setYear]   = useState(today.getFullYear())
   const [month, setMonth] = useState(today.getMonth()) // 0-indexed
 
-  const [calendarJobs, setCalendarJobs] = useState<CalendarJob[]>([])
-  const [hoveredDay, setHoveredDay]     = useState<number | null>(null)
-  const [selectedDay, setSelectedDay]   = useState<number | null>(null)
-
-  useEffect(() => {
-    fetch("/api/operations/dashboard")
-      .then((r) => r.json())
-      .then((json) => { if (json.calendar_jobs) setCalendarJobs(json.calendar_jobs) })
-      .catch(() => {})
-  }, [])
+  const [hoveredDay, setHoveredDay] = useState<number | null>(null)
+  const [selectedDay, setSelectedDay] = useState<number | null>(null)
 
   function prevMonth() {
     if (month === 0) { setMonth(11); setYear((y) => y - 1) }
@@ -264,6 +262,20 @@ export default function JobCalendarView() {
   while (cells.length % 7 !== 0) cells.push(null)
 
   const isCurrentMonth = year === today.getFullYear() && month === today.getMonth()
+
+  if (loading) return (
+    <div className="bg-white rounded-xl border border-gray-100 p-5 flex flex-col gap-4 animate-pulse">
+      <div className="flex items-center justify-between">
+        <Sk className="h-5 w-24" />
+        <Sk className="h-7 w-40 rounded-lg" />
+      </div>
+      <div className="grid grid-cols-7 gap-1.5">
+        {Array.from({ length: 35 }).map((_, i) => (
+          <Sk key={i} className="h-20 rounded-lg" />
+        ))}
+      </div>
+    </div>
+  )
 
   return (
     <div className="bg-white rounded-xl border border-gray-100 p-5 flex flex-col gap-4">

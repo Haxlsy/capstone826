@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from "react"
 import { useRouter } from "next/navigation"
 import { Search, ChevronLeft, ChevronRight, FileText, FileSpreadsheet, CheckCircle2 } from "lucide-react"
+import { JobOrderRecordsSkeleton } from "@/app/dashboard/job-order-records/loading"
 
 interface JobRecord {
   id:                     string   // UUID
@@ -158,6 +159,8 @@ export default function JobOrderRecords() {
   const labelClass = "block text-xs font-medium text-gray-500 mb-1"
   const inputClass = "border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 appearance-none"
 
+  if (loading) return <JobOrderRecordsSkeleton />
+
   return (
     <div className="flex flex-col gap-5">
       {/* Header */}
@@ -169,7 +172,7 @@ export default function JobOrderRecords() {
         <div className="flex items-center gap-2">
           <span className="flex items-center gap-1.5 bg-teal-50 text-teal-700 text-xs font-semibold px-3 py-1.5 rounded-full">
             <CheckCircle2 className="w-3.5 h-3.5" />
-            Released Only
+            Completed Only
           </span>
         </div>
       </div>

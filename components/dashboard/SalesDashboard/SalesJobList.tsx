@@ -1,8 +1,8 @@
 "use client"
 
 import { useState, useEffect, useCallback, useRef } from "react"
-import Link from "next/link"
-import { Search, Filter, X, ChevronLeft, ChevronRight } from "lucide-react"
+import { useRouter } from "next/navigation"
+import { Search, Filter, X, ChevronLeft, ChevronRight, ArrowRight } from "lucide-react"
 
 interface JobOrder {
   id:            string
@@ -39,6 +39,7 @@ function fmtDate(iso: string | null | undefined): string {
 const PAGE_SIZE = 15
 
 export default function SalesJobList() {
+  const router = useRouter()
   const [jobOrders, setJobOrders]     = useState<JobOrder[]>([])
   const [loading, setLoading]         = useState(false)
   const [fetchError, setFetchError]   = useState<string | null>(null)
@@ -125,7 +126,7 @@ export default function SalesJobList() {
       </div>
 
       {/* Tabs */}
-      <div className="flex gap-1 border-b border-gray-100 overflow-x-auto">
+      <div className="flex gap-1 border-b border-gray-100 overflow-x-auto overflow-y-hidden">
         {TABS.map((t) => (
           <button
             key={t}
@@ -218,11 +219,12 @@ export default function SalesJobList() {
         <table className="w-full text-sm">
           <thead>
             <tr className="border-b border-gray-100 bg-gray-50">
-              {["Job ID", "Customer", "Plate", "Vehicle", "Service", "Head Detailer", "Head Installer", "Scheduled", "Status", ""].map((h) => (
+              {["Job ID", "Customer", "Plate", "Vehicle", "Service", "Head Detailer", "Head Installer", "Scheduled", "Status"].map((h) => (
                 <th key={h} className="px-4 py-3 text-left text-[11px] font-semibold text-gray-400 uppercase tracking-wide whitespace-nowrap">
                   {h}
                 </th>
               ))}
+              <th className="px-4 py-3 w-8" />
             </tr>
           </thead>
           <tbody>
@@ -236,7 +238,8 @@ export default function SalesJobList() {
               paginated.map((j, idx) => (
                 <tr
                   key={j.id}
-                  className={`border-b border-gray-50 hover:bg-blue-50/30 transition-colors ${idx === paginated.length - 1 ? "border-b-0" : ""}`}
+                  onClick={() => router.push(`/dashboard/sales/jobs/${j.id}`)}
+                  className={`border-b border-gray-50 hover:bg-blue-50/40 cursor-pointer transition-colors group ${idx === paginated.length - 1 ? "border-b-0" : ""}`}
                 >
                   <td className="px-4 py-3.5">
                     <span className="font-mono text-xs font-semibold text-gray-700">{j.displayId}</span>
@@ -267,13 +270,8 @@ export default function SalesJobList() {
                       {j.status}
                     </span>
                   </td>
-                  <td className="px-4 py-3.5">
-                    <Link
-                      href={`/dashboard/sales/jobs/${j.id}`}
-                      className="text-[11px] text-blue-500 hover:text-blue-700 font-medium whitespace-nowrap"
-                    >
-                      View →
-                    </Link>
+                  <td className="px-4 py-3.5 w-8">
+                    <ArrowRight className="w-4 h-4 text-gray-300 opacity-0 group-hover:opacity-100 transition-opacity" />
                   </td>
                 </tr>
               ))

@@ -1,8 +1,8 @@
 "use client"
 
-import { useState, useRef } from "react"
+import { useState, useRef, useEffect } from "react"
 import { useRouter } from "next/navigation"
-import { User, Lock, Eye, EyeOff, LogIn, AlertCircle, X } from "lucide-react"
+import { User, Lock, Eye, EyeOff, LogIn, AlertCircle, X, ShieldAlert } from "lucide-react"
 import styles from "./LoginPage.module.css"
 
 export default function LoginPage() {
@@ -13,7 +13,46 @@ export default function LoginPage() {
   const [errors, setErrors]             = useState<{ username?: string; password?: string }>({})
   const [isLoading, setIsLoading]       = useState(false)
   const [toast, setToast]               = useState<string | null>(null)
+  const [attempts, setAttempts]         = useState(0)
+  const [lockUntil, setLockUntil]       = useState<number | null>(null)
+  const [remaining, setRemaining]       = useState(0)
   const toastTimer                      = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  // Rehydrate lockout from localStorage on mount
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem("826_login_attempts")
+      if (!raw) return
+      const saved = JSON.parse(raw) as { attempts: number; lockUntil: number | null }
+      if (saved.lockUntil && Date.now() < saved.lockUntil) {
+        setAttempts(saved.attempts)
+        setLockUntil(saved.lockUntil)
+      } else {
+        localStorage.removeItem("826_login_attempts")
+      }
+    } catch { /* ignore */ }
+  }, [])
+
+  // Countdown ticker while locked
+  useEffect(() => {
+    if (!lockUntil) return
+    const tick = () => {
+      const secs = Math.ceil((lockUntil - Date.now()) / 1000)
+      if (secs <= 0) {
+        setLockUntil(null)
+        setAttempts(0)
+        setRemaining(0)
+        localStorage.removeItem("826_login_attempts")
+      } else {
+        setRemaining(secs)
+      }
+    }
+    tick()
+    const id = setInterval(tick, 1000)
+    return () => clearInterval(id)
+  }, [lockUntil])
+
+  const locked = lockUntil !== null && Date.now() < lockUntil
 
   function showToast(msg: string) {
     setToast(msg)
@@ -49,8 +88,25 @@ export default function LoginPage() {
       })
       const data = await res.json()
 
-      if (!res.ok) { showToast(data.error ?? "Something went wrong."); return }
+      if (!res.ok) {
+        const next = attempts + 1
+        setAttempts(next)
+        if (next >= 3) {
+          const until = Date.now() + 60_000
+          setLockUntil(until)
+          localStorage.setItem("826_login_attempts", JSON.stringify({ attempts: next, lockUntil: until }))
+          showToast("Too many failed attempts. Please wait 1 minute.")
+        } else {
+          localStorage.setItem("826_login_attempts", JSON.stringify({ attempts: next, lockUntil: null }))
+          const left = 3 - next
+          showToast(`Invalid credentials. ${left} attempt${left === 1 ? "" : "s"} remaining.`)
+        }
+        return
+      }
 
+      localStorage.removeItem("826_login_attempts")
+      setAttempts(0)
+      setLockUntil(null)
       try { localStorage.setItem("826_user", JSON.stringify(data.user)) } catch { }
 
       const roleRoutes: Record<string, string> = {
@@ -125,6 +181,7 @@ export default function LoginPage() {
                     if (errors.username) setErrors((p) => ({ ...p, username: undefined }))
                   }}
                   placeholder="Username"
+                  disabled={locked}
                   className={`${styles.input} ${errors.username ? styles.inputError : ""}`}
                 />
               </div>
@@ -144,6 +201,7 @@ export default function LoginPage() {
                     if (errors.password) setErrors((p) => ({ ...p, password: undefined }))
                   }}
                   placeholder="Password"
+                  disabled={locked}
                   className={`${styles.input} ${errors.password ? styles.inputError : ""}`}
                 />
                 <button
@@ -159,12 +217,19 @@ export default function LoginPage() {
                 {errors.password
                   ? <p className={styles.errorText}>{errors.password}</p>
                   : <span />}
-                <a href="#" className={styles.forgotLink}>Forgot password?</a>
+                {/*<a href="#" className={styles.forgotLink}>Forgot password?</a>*/}
               </div>
             </div>
 
-            <button type="submit" disabled={isLoading} className={styles.submitBtn}>
-              {isLoading ? "…" : <><span>Login</span><LogIn size={18} /></>}
+            {locked && (
+              <div className={styles.lockBanner}>
+                <ShieldAlert size={15} />
+                <span>Too many failed attempts. Try again in <strong>{remaining}s</strong>.</span>
+              </div>
+            )}
+
+            <button type="submit" disabled={isLoading || locked} className={styles.submitBtn}>
+              {isLoading ? "…" : locked ? `Locked · ${remaining}s` : <><span>Login</span><LogIn size={18} /></>}
             </button>
           </form>
         </div>

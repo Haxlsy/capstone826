@@ -4,7 +4,7 @@ import { useState, useEffect } from "react"
 import {
   Bot, BookOpen, Save, Plus, Pencil, Trash2, X, Check,
   ChevronDown, ChevronUp, Car, Settings, AlertTriangle,
-  Info, Users, ClipboardList, Globe,
+  Info, Users, ClipboardList, Globe, SlidersHorizontal,
 } from "lucide-react"
 import VehicleStatusTemplate from "./VehicleStatusTemplate"
 import ChatbotPreview from "./ChatbotPreview"
@@ -24,6 +24,8 @@ To check the status of your vehicle, please provide the following details:
 Once we have your information, we'll look up your vehicle's current service status right away!`
 
 interface ChatbotSettings {
+  enable_ai_chatbot:       boolean
+  enable_media_validation: boolean
   personality:             Personality
   enable_services:         boolean
   enable_booking:          boolean
@@ -37,6 +39,8 @@ interface ChatbotSettings {
 }
 
 const DEFAULT_SETTINGS: ChatbotSettings = {
+  enable_ai_chatbot:       true,
+  enable_media_validation: true,
   personality:             "friendly",
   enable_services:         true,
   enable_booking:          true,
@@ -201,6 +205,22 @@ export default function ChatbotManagement() {
         {/* Left — form */}
         <div className="flex flex-col gap-5 flex-1 min-w-0 max-w-2xl">
           {loading && <p className="text-sm text-gray-400">Loading settings…</p>}
+
+          {/* 0 — System Controls */}
+          <Section icon={<SlidersHorizontal className="w-4 h-4" />} title="System Controls" subtitle="Master switches for AI-powered features across the platform.">
+            <div className="flex flex-col gap-3">
+              <Toggle
+                checked={settings.enable_ai_chatbot}
+                onChange={(v) => patch("enable_ai_chatbot", v)}
+                label="Enable AI Chatbot — allow the Gemini-powered chatbot to respond to customer messages on Messenger"
+              />
+              <Toggle
+                checked={settings.enable_media_validation}
+                onChange={(v) => patch("enable_media_validation", v)}
+                label="Enable AI Media Validation — use Gemini to automatically verify that photos or videos uploaded by technicians are relevant to the stage being completed"
+              />
+            </div>
+          </Section>
 
           {/* A — Personality */}
           <Section icon={<Bot className="w-4 h-4" />} title="Bot Personality" subtitle="Choose the tone the chatbot uses when talking to customers.">

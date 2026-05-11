@@ -1,7 +1,7 @@
 "use client"
 
-import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
+import { Sk, SkRow } from "@/components/ui/skeleton"
 
 const DB_STATUS_LABEL: Record<string, string> = {
   pending:       "Pending",
@@ -24,55 +24,60 @@ const STATUS_BADGE: Record<string, string> = {
 }
 
 interface RecentJob {
-  id: string
+  id:       string
   customer: string
-  status: string
+  service:  string
+  status:   string
 }
 
-export default function QuickAccessPanel() {
-  const router = useRouter()
-  const [recentJobs, setRecentJobs] = useState<RecentJob[]>([])
-  const [loading, setLoading] = useState(true)
+interface Props {
+  loading:    boolean
+  recentJobs: RecentJob[]
+}
 
-  useEffect(() => {
-    fetch("/api/operations/dashboard")
-      .then((r) => r.json())
-      .then((json) => {
-        if (json.recent_jobs) {
-          setRecentJobs(
-            json.recent_jobs.map((j: any) => ({
-              id: j.id,
-              customer: j.customer,
-              status: DB_STATUS_LABEL[j.status] ?? j.status,
-            }))
-          )
-        }
-      })
-      .catch(() => {})
-      .finally(() => setLoading(false))
-  }, [])
+export default function QuickAccessPanel({ loading, recentJobs }: Props) {
+  const router = useRouter()
+
+  const mapped = recentJobs.map((j) => ({
+    ...j,
+    status: DB_STATUS_LABEL[j.status] ?? j.status,
+  }))
 
   return (
     <div className="bg-white rounded-xl border border-gray-100 p-4 flex flex-col gap-4">
-      {/* Section: Recent Job Orders */}
       <div>
         <div className="flex items-center justify-between mb-3">
           <span className="font-semibold text-sm text-gray-800">Recent Job Orders</span>
-          <button onClick={() => router.push("/dashboard/job-order-records")} className="text-xs text-blue-500 hover:text-blue-600 transition-colors">View All →</button>
+          <button
+            onClick={() => router.push("/dashboard/job-order-records")}
+            className="text-xs text-blue-500 hover:text-blue-600 transition-colors"
+          >
+            View All →
+          </button>
         </div>
         <div className="flex flex-col">
           {loading ? (
-            <p className="text-xs text-gray-400 py-2">Loading…</p>
-          ) : recentJobs.length === 0 ? (
+            <div className="space-y-3 animate-pulse">
+              {Array.from({ length: 5 }).map((_, i) => (
+                <SkRow key={i} className="justify-between py-1">
+                  <div className="space-y-1.5">
+                    <Sk className="h-3 w-24" />
+                    <Sk className="h-4 w-32" />
+                  </div>
+                  <Sk className="h-5 w-16 rounded-full" />
+                </SkRow>
+              ))}
+            </div>
+          ) : mapped.length === 0 ? (
             <p className="text-xs text-gray-400 py-2">No job orders yet.</p>
           ) : (
-            recentJobs.map((item, idx) => {
+            mapped.map((item, idx) => {
               const badgeClass = STATUS_BADGE[item.status] ?? "bg-gray-100 text-gray-600"
               return (
                 <div
                   key={item.id}
                   className={`py-2.5 flex items-center justify-between ${
-                    idx < recentJobs.length - 1 ? "border-b border-gray-50" : ""
+                    idx < mapped.length - 1 ? "border-b border-gray-50" : ""
                   }`}
                 >
                   <div>

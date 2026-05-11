@@ -34,7 +34,6 @@ const topItems = [
 
 const bottomItems = [
   { label: "Concerns",           href: "/dashboard/concerns", icon: AlertTriangle, showBadge: true },
-  { label: "Service Catalog", href: "/dashboard/services",  icon: Wrench },
 ]
 
 export default function OperationsSidebar() {

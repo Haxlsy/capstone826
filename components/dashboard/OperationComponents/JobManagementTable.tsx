@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback, useMemo, useRef } from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { Search, Filter, X } from "lucide-react"
+import { JobManagementSkeleton } from "@/app/dashboard/job-management/loading"
 import StatusPickerModal, {
   type JobStatus,
   type StatusOption,
@@ -39,7 +40,7 @@ export default function JobManagementTable() {
   const [activeTab, setActiveTab]     = useState<TabType>("All")
   const [searchQuery, setSearchQuery] = useState("")
   const [jobOrders, setJobOrders]     = useState<JobOrder[]>([])
-  const [loading, setLoading]         = useState(false)
+  const [loading, setLoading]         = useState(true)
   const [fetchError, setFetchError]   = useState<string | null>(null)
   const [currentPage]                 = useState(1)
   const pageSize = 15
@@ -168,6 +169,8 @@ export default function JobManagementTable() {
       setUpdating(false)
     }
   }
+
+  if (loading) return <JobManagementSkeleton />
 
   return (
     <>
