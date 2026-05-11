@@ -33,7 +33,7 @@ export async function GET(request: Request) {
 
     let query = admin
       .from("job_order")
-      .select("service:service_id ( name )")
+      .select("service:service_id ( name, service_type )")
       .eq("is_archived", false)
       .in("status", ["Pending", "Ongoing", "For Rework", "For Release", "Released"])
 
@@ -46,10 +46,10 @@ export async function GET(request: Request) {
     if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
     const countMap: Record<string, number> = {}
-    for (const row of (data ?? []) as unknown as { service: { name: string } | { name: string }[] | null }[]) {
-      const svc  = row.service
-      const name = Array.isArray(svc) ? (svc[0]?.name ?? "Unknown") : (svc?.name ?? "Unknown")
-      countMap[name] = (countMap[name] ?? 0) + 1
+    for (const row of (data ?? []) as unknown as { service: { name: string; service_type?: string | null } | { name: string; service_type?: string | null }[] | null }[]) {
+      const svcObj = Array.isArray(row.service) ? row.service[0] : row.service
+      const label  = svcObj?.service_type?.trim() || svcObj?.name || "Unknown"
+      countMap[label] = (countMap[label] ?? 0) + 1
     }
 
     const breakdown = Object.entries(countMap)
