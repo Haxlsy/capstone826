@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react"
 import { Search, Paperclip, ChevronLeft, ChevronRight } from "lucide-react"
+import { ConcernsSkeleton } from "@/app/dashboard/concerns/loading"
 import ConcernDetailsDrawer, { type ConcernRecord } from "./ConcernDetailsDrawer"
 
 type FilterType = "All" | "Pending" | "Resolved"
@@ -98,6 +99,8 @@ export default function JobConcerns() {
 
   function changeFilter(f: FilterType) { setActiveFilter(f); setCurrentPage(1) }
   function changeSearch(v: string)     { setSearchQuery(v); setCurrentPage(1) }
+
+  if (loading) return <ConcernsSkeleton />
 
   return (
     <>

@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef } from "react"
 import { UserCheck, UserX, Users, Search, Plus, X, Wrench, Pencil, Trash2, Filter, Clock, AlertTriangle } from "lucide-react"
+import { TechnicianAvailabilitySkeleton } from "@/app/dashboard/technician-availability/loading"
 
 interface ActiveJob {
   job_id:   string
@@ -293,6 +294,8 @@ export default function TechnicianAvailability() {
     if (members.length > 0) acc[role] = members
     return acc
   }, {})
+
+  if (loading) return <TechnicianAvailabilitySkeleton />
 
   return (
     <div className="flex-1 overflow-y-auto p-6 space-y-6">

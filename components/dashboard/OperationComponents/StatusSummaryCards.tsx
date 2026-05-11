@@ -1,6 +1,5 @@
 "use client"
 
-import { useState, useEffect } from "react"
 import {
   Clock,
   Wrench,
@@ -10,6 +9,7 @@ import {
   AlertTriangle,
   MessageCircleWarning,
 } from "lucide-react"
+import { Sk } from "@/components/ui/skeleton"
 
 const STATUS_CONFIG = [
   {
@@ -50,7 +50,7 @@ const STATUS_CONFIG = [
     countColor:  "text-green-600",
     bg:          "bg-green-50/40",
     iconBg:      "bg-green-100",
-    iconColor:   "text-green-500", 
+    iconColor:   "text-green-500",
   },
   {
     key:         "for_release",
@@ -74,21 +74,26 @@ const STATUS_CONFIG = [
   },
 ]
 
-export default function StatusSummaryCards() {
-  const [counts, setCounts]           = useState<Record<string, number>>({})
-  const [concernCount, setConcernCount] = useState<number>(0)
-  const [loading, setLoading]         = useState(true)
+interface Props {
+  loading:      boolean
+  counts:       Record<string, number>
+  concernCount: number
+}
 
-  useEffect(() => {
-    fetch("/api/operations/dashboard")
-      .then((r) => r.json())
-      .then((json) => {
-        if (json.status_counts) setCounts(json.status_counts)
-        if (typeof json.concern_count === "number") setConcernCount(json.concern_count)
-      })
-      .catch(() => {})
-      .finally(() => setLoading(false))
-  }, [])
+export default function StatusSummaryCards({ loading, counts, concernCount }: Props) {
+  if (loading) return (
+    <div className="grid grid-cols-7 gap-3 animate-pulse">
+      {Array.from({ length: 7 }).map((_, i) => (
+        <div key={i} className="bg-white rounded-xl border border-gray-100 border-l-4 border-l-gray-200 p-4 flex flex-col gap-3">
+          <Sk className="h-8 w-8 rounded-lg" />
+          <div className="space-y-2">
+            <Sk className="h-6 w-10" />
+            <Sk className="h-3 w-16" />
+          </div>
+        </div>
+      ))}
+    </div>
+  )
 
   return (
     <div className="grid grid-cols-7 gap-3">
@@ -102,7 +107,7 @@ export default function StatusSummaryCards() {
           </div>
           <div>
             <p className={`text-2xl font-bold leading-none ${countColor}`}>
-              {loading ? "—" : (counts[key] ?? 0)}
+              {counts[key] ?? 0}
             </p>
             <p className="text-xs text-gray-400 mt-1.5 font-medium">{label}</p>
           </div>
@@ -116,7 +121,7 @@ export default function StatusSummaryCards() {
         </div>
         <div>
           <p className="text-2xl font-bold leading-none text-purple-600">
-            {loading ? "—" : concernCount}
+            {concernCount}
           </p>
           <p className="text-xs text-gray-400 mt-1.5 font-medium">Concerns</p>
         </div>

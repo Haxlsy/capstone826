@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { ArrowLeft, PackageCheck, ChevronDown, Users, RefreshCw, CheckCircle2, XCircle, Clock, RotateCcw, UserPlus, X, Loader2, Trash2 } from "lucide-react"
+import { JobOrderDetailSkeleton } from "@/app/dashboard/job-management/[id]/loading"
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -306,11 +307,7 @@ export default function JobOrderDetail({ jobId }: { jobId: string }) {
 
   // ── Render ─────────────────────────────────────────────────────────────────
 
-  if (loading) return (
-    <div className="flex items-center justify-center py-20 text-sm text-gray-400">
-      Loading job details…
-    </div>
-  )
+  if (loading) return <JobOrderDetailSkeleton />
 
   if (error || !job) return (
     <div className="flex flex-col items-center justify-center py-20 gap-3">
