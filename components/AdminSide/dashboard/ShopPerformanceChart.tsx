@@ -56,7 +56,7 @@ export function ShopPerformanceChart() {
       <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
         <div className="flex items-center gap-2">
           <BarChart2 className="w-4 h-4 text-indigo-500" />
-          <h2 className="text-sm font-semibold text-gray-700">Shop Performance — Service Popularity</h2>
+          <h2 className="text-sm font-semibold text-gray-700">Shop Performance — Service Type Popularity</h2>
         </div>
 
         <div className="flex items-center gap-2">
