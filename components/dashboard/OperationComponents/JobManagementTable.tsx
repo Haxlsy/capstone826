@@ -101,6 +101,14 @@ export default function JobManagementTable() {
 
   useEffect(() => { load() }, [load])
 
+  // Reload when the browser tab/window regains focus so status changes made on
+  // other pages (e.g. technician marking rework done) are reflected immediately.
+  useEffect(() => {
+    const onFocus = () => load()
+    window.addEventListener("focus", onFocus)
+    return () => window.removeEventListener("focus", onFocus)
+  }, [load])
+
   useEffect(() => {
     function handleClick(e: MouseEvent) {
       if (filterRef.current && !filterRef.current.contains(e.target as Node)) {

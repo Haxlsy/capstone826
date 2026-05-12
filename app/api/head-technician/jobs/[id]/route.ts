@@ -359,8 +359,27 @@ export async function PATCH(
           await admin.from("job_order").update({ expected_completion_at: newCompletion.toISOString() }).eq("id", jobId)
         }
       } else {
-        // All stages done — set expected_completion_at to now
-        await admin.from("job_order").update({ expected_completion_at: new Date().toISOString() }).eq("id", jobId)
+        // All stages done — check current job status before updating
+        const { data: jobRow } = await admin
+          .from("job_order")
+          .select("status")
+          .eq("id", jobId)
+          .single()
+        const currentStatus = (jobRow as any)?.status as string | undefined
+
+        const jobUpdate: Record<string, unknown> = { expected_completion_at: new Date().toISOString() }
+        if (currentStatus === "For Rework") {
+          jobUpdate.status = "For Inspection"
+        }
+        await admin.from("job_order").update(jobUpdate).eq("id", jobId)
+
+        if (currentStatus === "For Rework") {
+          await admin.from("job_order_history").insert({
+            job_order_id:  jobId,
+            status:        "For Inspection",
+            changed_by_id: user.id,
+          })
+        }
       }
 
       return NextResponse.json({ success: true })

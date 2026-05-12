@@ -225,11 +225,12 @@ export default function JobOrderDetail({ jobId }: { jobId: string }) {
       })
       const json = await res.json()
       if (!res.ok) throw new Error(json?.error ?? "Failed to flag stage for rework")
-      // Optimistically update the stage in local state
+      // Optimistically update the stage and job status in local state
       setJob((prev) => {
         if (!prev) return prev
         return {
           ...prev,
+          status: "For Rework",
           stages: prev.stages.map((s) =>
             s.id === reworkModal.stageId
               ? { ...s, status: "for_rework", rework_instructions: reworkNotes.trim() }
