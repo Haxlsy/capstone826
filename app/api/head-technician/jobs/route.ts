@@ -147,7 +147,7 @@ export async function GET() {
         const base     = ss?.stage_duration_mins ?? 0
         const mins     = override != null ? override : base
         cumMins += mins
-        if (mins > 0 && (s.status as string) !== "done") {
+        if (mins > 0 && (s.status as string) !== "done" && (s.status as string) !== "for_rework") {
           if (nowMs > addWorkingMins(jobStart, cumMins).getTime()) {
             delayedJobIds.add(j.id as string)
             break
