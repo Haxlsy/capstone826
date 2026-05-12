@@ -93,7 +93,7 @@ export const STATUS_OPTIONS: StatusOption[] = [
 export const ALLOWED_NEXT: Record<JobStatus, JobStatus[]> = {
   "Pending":        ["Ongoing", "Delayed"],
   "Ongoing":        ["For Rework", "For Inspection", "For Release", "Delayed"],
-  "For Rework":     ["Ongoing", "For Inspection", "For Release", "Delayed"],
+  "For Rework":     ["Ongoing", "For Inspection", "Delayed"],
   "For Inspection": ["For Release", "Delayed"],
   "For Release":    ["Released"],
   "Released":       [],

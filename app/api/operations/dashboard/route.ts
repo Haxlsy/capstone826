@@ -81,10 +81,13 @@ export async function GET() {
     const nowMs = Date.now()
     const overdueJobIds = new Set<string>()
 
-    // Signal 1: job-level expected_completion_at
+    // Signal 1: job-level expected_completion_at.
+    // Only flag Pending/Ongoing — "For Rework", "For Inspection", "For Release"
+    // are specific action states and should not count as delayed.
+    const OVERDUE_STATUSES = ["Pending", "Ongoing"]
     for (const row of rows) {
       if (
-        ACTIVE_STATUSES.includes(row.status as string) &&
+        OVERDUE_STATUSES.includes(row.status as string) &&
         row.expected_completion_at &&
         new Date(row.expected_completion_at as string).getTime() < nowMs
       ) {
@@ -115,7 +118,7 @@ export async function GET() {
           const base     = (s.service_stage as any)?.stage_duration_mins ?? 0
           const mins     = override != null ? override : base
           cumMins += mins
-          if (mins > 0 && (s.status as string) !== "done") {
+          if (mins > 0 && (s.status as string) !== "done" && (s.status as string) !== "for_rework") {
             if (nowMs > addWorkingMins(jobStart, cumMins).getTime()) {
               overdueJobIds.add(jobId)
               break

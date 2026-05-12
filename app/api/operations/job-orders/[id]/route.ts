@@ -228,6 +228,21 @@ export async function PATCH(
       .eq("id", id)
       .single()
 
+    // Guard: "For Release" requires all stages to be done
+    if (status === "For Release") {
+      const { data: pendingStages } = await admin
+        .from("job_stage_progress")
+        .select("id")
+        .eq("job_order_id", id)
+        .neq("status", "done")
+      if ((pendingStages ?? []).length > 0) {
+        return NextResponse.json(
+          { error: "Cannot move to For Release — all stages must be completed first." },
+          { status: 400 }
+        )
+      }
+    }
+
     const updates: Record<string, any> = {}
     if (status !== undefined)      updates.status      = status
     if (scheduled_at !== undefined) updates.scheduled_at = scheduled_at
