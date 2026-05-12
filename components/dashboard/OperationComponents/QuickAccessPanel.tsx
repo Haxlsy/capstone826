@@ -9,7 +9,8 @@ const DB_STATUS_LABEL: Record<string, string> = {
   quality_check: "Quality Check",
   completed:     "Completed",
   delayed:       "Delayed",
-  released:      "Released",
+  released:      "Completed",
+  Released:      "Completed",
   cancelled:     "Cancelled",
 }
 
