@@ -183,7 +183,7 @@ export async function GET(
               if (durationMins > 0) {
                 const expectedEnd = addWorkingMins(jobStart, cumulativeMins)
                 stage.expected_end_at = expectedEnd.toISOString()
-                stage.is_delayed = stage.status !== "done" && nowMs > expectedEnd.getTime()
+                stage.is_delayed = stage.status !== "done" && stage.status !== "for_rework" && nowMs > expectedEnd.getTime()
               }
             }
           }
