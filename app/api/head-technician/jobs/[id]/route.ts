@@ -215,7 +215,8 @@ export async function GET(
         if (durationMins > 0) {
           const expectedEnd = addWorkingMins(jobStart, cumulativeMins)
           expectedEndMap.set(s.id as string, expectedEnd.toISOString())
-          isDelayedMap.set(s.id as string, (s.status as string) !== "done" && nowMs > expectedEnd.getTime())
+          const stStatus = s.status as string
+          isDelayedMap.set(s.id as string, stStatus !== "done" && stStatus !== "for_rework" && nowMs > expectedEnd.getTime())
         }
       }
     }
