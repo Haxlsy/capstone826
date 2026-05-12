@@ -338,12 +338,15 @@ export default function JobOrderDetail({ jobId }: { jobId: string }) {
     : null
 
   const canRelease      = job.status === "For Release"
+  const hasReworkStages = job.stages.some((s) => s.status === "for_rework")
   // Show the "For Release" button whenever the job is awaiting operations sign-off.
   // It's enabled once the head detailer has passed finishing to ops (For Inspection),
   // or for jobs with no finishing stages that operations want to release directly.
   const showForReleased = !["For Release", "Released"].includes(job.status)
-  const canForReleased  = job.status === "For Inspection" ||
+  const canForReleased  = !hasReworkStages && (
+    job.status === "For Inspection" ||
     (Boolean(job.finishing_approved_at) && !["For Release", "Released"].includes(job.status))
+  )
   const displayId     = `JO-${new Date(job.created_at).getFullYear()}-${job.id.slice(-4).toUpperCase()}`
 
   return (
@@ -386,8 +389,10 @@ export default function JobOrderDetail({ jobId }: { jobId: string }) {
               </button>
               {/* Tooltip when locked */}
               {!canForReleased && (
-                <div className="absolute right-0 top-full mt-2 w-56 bg-gray-900 text-white text-xs rounded-lg px-3 py-2 shadow-lg z-10 hidden group-hover:block">
-                  Waiting for the Head Detailer to complete finishing stages and pass to Operations.
+                <div className="absolute right-0 top-full mt-2 w-64 bg-gray-900 text-white text-xs rounded-lg px-3 py-2 shadow-lg z-10 hidden group-hover:block">
+                  {hasReworkStages
+                    ? "All stages flagged for rework must be resolved by the technician first."
+                    : "Waiting for the Head Detailer to complete finishing stages and pass to Operations."}
                   <div className="absolute -top-1.5 right-4 w-3 h-3 bg-gray-900 rotate-45" />
                 </div>
               )}
