@@ -58,6 +58,20 @@ export async function POST(
 
     if (stageErr) return NextResponse.json({ error: stageErr.message }, { status: 500 })
 
+    // Update job status to For Rework so it surfaces correctly in dashboards
+    const { error: jobErr } = await admin
+      .from("job_order")
+      .update({ status: "For Rework" })
+      .eq("id", jobId)
+
+    if (jobErr) return NextResponse.json({ error: jobErr.message }, { status: 500 })
+
+    await admin.from("job_order_history").insert({
+      job_order_id:  jobId,
+      status:        "For Rework",
+      changed_by_id: user.id,
+    })
+
     // Notify head detailer and head installer
     const { data: team } = await admin
       .from("job_order_team")
