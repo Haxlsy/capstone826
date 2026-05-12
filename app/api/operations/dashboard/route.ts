@@ -81,17 +81,26 @@ export async function GET() {
     const nowMs = Date.now()
     const overdueJobIds = new Set<string>()
 
+    // Build stage progress map from stageRows (already fetched for activeJobs)
+    const stageProgressMap = new Map<string, { total: number; done: number }>()
+    for (const s of stageRows) {
+      const entry = stageProgressMap.get(s.job_order_id) ?? { total: 0, done: 0 }
+      entry.total++
+      if ((s.status as string) === "done") entry.done++
+      stageProgressMap.set(s.job_order_id, entry)
+    }
+
     // Signal 1: job-level expected_completion_at.
-    // Only flag Pending/Ongoing — "For Rework", "For Inspection", "For Release"
-    // are specific action states and should not count as delayed.
-    const OVERDUE_STATUSES = ["Pending", "Ongoing"]
-    for (const row of rows) {
+    // Requires job to have been started (actual_start_at) and not all stages done.
+    for (const row of activeJobs) {
       if (
-        OVERDUE_STATUSES.includes(row.status as string) &&
         row.expected_completion_at &&
         new Date(row.expected_completion_at as string).getTime() < nowMs
       ) {
-        overdueJobIds.add(row.id as string)
+        const prog = stageProgressMap.get(row.id as string) ?? { total: 0, done: 0 }
+        if (prog.done < prog.total) {
+          overdueJobIds.add(row.id as string)
+        }
       }
     }
 
