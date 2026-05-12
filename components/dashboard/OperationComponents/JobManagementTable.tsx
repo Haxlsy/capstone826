@@ -118,7 +118,7 @@ export default function JobManagementTable() {
   }, [jobOrders])
 
   const filtered = useMemo(() => jobOrders.filter((job) => {
-    const isDelayed  = job.status === "Delayed" || job.is_overdue
+    const isDelayed  = job.status === "Delayed" || (job.is_overdue && (job.status === "Pending" || job.status === "Ongoing"))
     const matchesTab = activeTab === "All"
       || (activeTab === "Delayed" ? isDelayed : job.status === activeTab)
     const q             = searchQuery.toLowerCase()
@@ -368,8 +368,8 @@ export default function JobManagementTable() {
                       <span className="text-sm text-gray-500">{job.scheduled}</span>
                     </td>
                     <td className="px-4 py-3">
-                      <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium ${STATUS_BADGE_MAP[job.is_overdue ? "Delayed" : job.status]}`}>
-                        {job.is_overdue ? "Delayed" : job.status}
+                      <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium ${STATUS_BADGE_MAP[(job.is_overdue && (job.status === "Pending" || job.status === "Ongoing")) ? "Delayed" : job.status]}`}>
+                        {(job.is_overdue && (job.status === "Pending" || job.status === "Ongoing")) ? "Delayed" : job.status}
                       </span>
                     </td>
                     <td className="px-4 py-3">
