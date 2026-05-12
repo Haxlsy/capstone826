@@ -24,10 +24,11 @@ const STATUS_BADGE: Record<string, string> = {
 }
 
 interface RecentJob {
-  id:       string
-  customer: string
-  service:  string
-  status:   string
+  id:         string
+  display_id: string
+  customer:   string
+  service:    string
+  status:     string
 }
 
 interface Props {
@@ -81,7 +82,7 @@ export default function QuickAccessPanel({ loading, recentJobs }: Props) {
                   }`}
                 >
                   <div>
-                    <p className="text-xs text-gray-500 font-mono">{item.id}</p>
+                    <p className="text-xs text-gray-500 font-mono">{item.display_id}</p>
                     <p className="text-sm font-medium text-gray-800 mt-0.5">{item.customer}</p>
                   </div>
                   <span className={`px-2.5 py-1 rounded-full text-xs font-medium ${badgeClass}`}>

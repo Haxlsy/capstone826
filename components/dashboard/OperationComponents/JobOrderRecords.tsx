@@ -181,15 +181,15 @@ export default function JobOrderRecords() {
       <div className="bg-white rounded-xl border border-gray-100 px-5 py-4 flex items-end gap-4 flex-wrap">
         <div>
           <label className={labelClass}>Start Date</label>
-          <input type="date" value={pendingStart} onChange={(e) => setPendingStart(e.target.value)} className={inputClass} />
+          <input aria-label="Start Date" type="date" value={pendingStart} onChange={(e) => setPendingStart(e.target.value)} className={inputClass} />
         </div>
         <div>
           <label className={labelClass}>End Date</label>
-          <input type="date" value={pendingEnd} onChange={(e) => setPendingEnd(e.target.value)} className={inputClass} />
+          <input aria-label="End Date" type="date" value={pendingEnd} onChange={(e) => setPendingEnd(e.target.value)} className={inputClass} />
         </div>
         <div>
           <label className={labelClass}>Service Type</label>
-          <select value={pendingService} onChange={(e) => setPendingService(e.target.value)} className={inputClass}>
+          <select aria-label="Service Type" value={pendingService} onChange={(e) => setPendingService(e.target.value)} className={inputClass}>
             <option value="All">All</option>
             {serviceOptions.map((s) => <option key={s} value={s}>{s}</option>)}
           </select>
@@ -304,6 +304,7 @@ export default function JobOrderRecords() {
         <div className="flex items-center gap-2 text-sm text-gray-500">
           <span>Show Results:</span>
           <select
+            aria-label="Size Page"
             value={pageSize}
             onChange={(e) => { setPageSize(Number(e.target.value)); setCurrentPage(1) }}
             className="border border-gray-200 rounded-lg px-2 py-1 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
@@ -314,6 +315,7 @@ export default function JobOrderRecords() {
         </div>
         <div className="flex items-center gap-1">
           <button
+            aria-label="Previous Page"
             onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
             disabled={currentPage === 1}
             className="w-8 h-8 flex items-center justify-center rounded-md text-gray-500 hover:bg-gray-100 transition-colors disabled:opacity-40"
@@ -332,6 +334,7 @@ export default function JobOrderRecords() {
             </button>
           ))}
           <button
+            aria-label="Next Page"
             onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
             disabled={currentPage === totalPages}
             className="w-8 h-8 flex items-center justify-center rounded-md text-gray-500 hover:bg-gray-100 transition-colors disabled:opacity-40"

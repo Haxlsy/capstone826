@@ -8,7 +8,7 @@ import QuickAccessPanel from "./QuickAccessPanel"
 interface DashboardData {
   status_counts:  Record<string, number>
   concern_count:  number
-  recent_jobs:    { id: string; customer: string; service: string; status: string }[]
+  recent_jobs:    { id: string; display_id: string; customer: string; service: string; status: string }[]
   calendar_jobs:  any[]
 }
 

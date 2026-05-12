@@ -130,6 +130,7 @@ export async function GET() {
     // Recent jobs (latest 5)
     const recent_jobs = rows.slice(0, 5).map((r: any) => ({
       id:         r.id,
+      display_id: `JO-${new Date(r.created_at).getFullYear()}-${(r.id as string).slice(-4).toUpperCase()}`,
       customer:   r.customer?.full_name ?? "Manual Entry",
       service:    r.service?.name ?? "—",
       status:     r.status,
