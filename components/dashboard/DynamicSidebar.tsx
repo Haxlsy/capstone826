@@ -5,6 +5,8 @@ import Sidebar from "./SalesDashboard/Sidebar"
 import OperationsSidebar from "./OperationComponents/OperationsSidebar"
 import AdminSidebar from "@/components/AdminSide/AdminSidebar"
 
+
+//Dynamic Sidebar
 const OPERATIONS_PATHS = [
   "/dashboard/operations",
   "/dashboard/job-management",
