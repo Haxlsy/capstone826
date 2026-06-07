@@ -33,7 +33,7 @@ export async function POST(req:NextRequest) {
     const messageText = messaging.message?.text;
 
     const profileRes = await fetch(
-        `https://graph.facebook.com/${senderId}?fields=name,profile_pic&access_token=${process.env.PAGE_ACCESS_TOKEN}`
+        `https://graph.facebook.com/${senderId}?fields=name,profile_pic&access_token=${process.env.META_PAGE_ACCESS_TOKEN}`
     )
 
     const profile = await profileRes.json();
