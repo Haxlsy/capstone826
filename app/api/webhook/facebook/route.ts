@@ -37,6 +37,7 @@ export async function POST(req:NextRequest) {
     )
 
     const profile = await profileRes.json();
+    console.log("Profile API Response:", JSON.stringify(profile, null, 2))
 
     console.log("New Message Received");
     console.log("From (Sender ID): ", senderId);
