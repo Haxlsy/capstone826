@@ -21,7 +21,21 @@ export async function GET(req: NextRequest) {
 export async function POST(req:NextRequest) {
     const body = await req.json();
 
-    console.log(JSON.stringify(body, null, 2));
+    const entry = body.entry?.[0];
+    const messaging = entry.messaging?.[0];
+
+    if(!messaging){
+        return NextResponse.json({received: true});
+    }
+
+    const senderId = messaging.sender?.id;
+    const timestamp = new Date(messaging.timestamp).toISOString();
+    const messageText = messaging.message?.text;
+
+    console.log("New Message Received");
+    console.log("From (Sender ID): ", senderId);
+    console.log("Timestamp: ", timestamp);
+    console.log("Message: ", messageText);
     
     return NextResponse.json({received: true});
 }
