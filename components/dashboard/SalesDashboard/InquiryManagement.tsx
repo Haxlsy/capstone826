@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useEffect, useCallback, useRef } from "react"
+import { createClient } from "@/lib/supabase/client"
 import {
   MessageCircle, ArrowRightLeft, Clock,
   CheckCircle2, ChevronRight, User, Car,
@@ -131,6 +132,25 @@ export default function InquiryManagement() {
   }, [selectedId])
 
   useEffect(() => { load() }, [load])
+
+  useEffect(()=>{
+    const supabase = createClient();
+
+    const channel = supabase
+    .channel('inquiries-realtime')
+    .on(
+      "postgres_changes",
+      {event: "INSERT", schema: "public", table: "inquiry"},
+      ()=>{
+        load()
+      }
+    )
+    .subscribe()
+
+    return () =>{
+      supabase.removeChannel(channel);
+    }
+  }, [load])
 
   useEffect(() => {
     const el = tabBarRef.current
