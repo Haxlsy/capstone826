@@ -32,8 +32,16 @@ export async function POST(req:NextRequest) {
     const timestamp = new Date(messaging.timestamp).toISOString();
     const messageText = messaging.message?.text;
 
+    const profileRes = await fetch(
+        `https://graph.facebook.com/${senderId}?fields=name,profile_pic&access_token=${process.env.PAGE_ACCESS_TOKEN}`
+    )
+
+    const profile = await profileRes.json();
+
     console.log("New Message Received");
     console.log("From (Sender ID): ", senderId);
+    console.log("Name: ", profile.name);
+    console.log("Profile Pic: ", profile.profile_pic);
     console.log("Timestamp: ", timestamp);
     console.log("Message: ", messageText);
     
