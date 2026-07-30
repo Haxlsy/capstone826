@@ -1,10 +1,11 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState } from "react"
 import { Wrench, SlidersHorizontal, X, Search } from "lucide-react"
-import { HeadTechJob, Status } from "./components/types"
+import { Status } from "./components/types"
 import { HeadTechJobCard } from "./components/HeadTechJobCard"
 import { BottomNav } from "./components/BottomNav"
+import type { TechnicianJob } from "@/lib/head-technician/jobs-data"
 
 const STATUS_OPTIONS: Status[] = [
   "Pending",
@@ -13,39 +14,18 @@ const STATUS_OPTIONS: Status[] = [
   "Delayed",
 ]
 
-export default function HeadTechnicianPage() {
-  const [jobs, setJobs] = useState<HeadTechJob[]>([])
-  const [loading, setLoading] = useState(true)
+export default function HeadTechnicianPage({
+  initialJobs,
+  displayName,
+}: {
+  initialJobs: TechnicianJob[]
+  displayName: string
+}) {
+  const [jobs] = useState<TechnicianJob[]>(initialJobs)
+  const loading = false
   const [searchQuery, setSearchQuery] = useState("")
   const [statusFilter, setStatusFilter] = useState("all")
   const [showFilters, setShowFilters] = useState(false)
-
-  const [displayName, setDisplayName] = useState<string>("")
-  useEffect(() => {
-    try {
-      const stored = localStorage.getItem("826_user")
-      if (stored) {
-        const parsed = JSON.parse(stored)
-        setDisplayName(parsed?.full_name ?? parsed?.username ?? "")
-      }
-    } catch { }
-  }, [])
-
-  useEffect(() => {
-    async function load() {
-      setLoading(true)
-      try {
-        const res = await fetch("/api/head-technician/jobs")
-        const json = await res.json()
-        if (res.ok) setJobs(json.jobs ?? [])
-      } catch {
-        // leave empty
-      } finally {
-        setLoading(false)
-      }
-    }
-    load()
-  }, [])
 
   const filteredJobs = jobs.filter((job) => {
     if (statusFilter !== "all" && job.status !== (statusFilter as Status)) return false
@@ -203,7 +183,7 @@ export default function HeadTechnicianPage() {
           )}
 
           {!loading && filteredJobs.map((job) => (
-            <HeadTechJobCard key={job.job_id} job={job} />
+            <HeadTechJobCard key={job.job_id} job={job as any} />
           ))}
 
           {!loading && filteredJobs.length === 0 && (

@@ -5,7 +5,7 @@ import UserActivity from "./Security&AuditCenter/UserActivity"
 import Security from "./Security&AuditCenter/Security"
 type Tab = "security" | "audit"
 
-export default function AuditLog() {
+export default function AuditLog({ initialLogs }: { initialLogs: any[] }) {
   const [activeTab, setActiveTab] = useState<Tab>("audit");
   return (
     <div className="space-y-6">
@@ -25,7 +25,7 @@ export default function AuditLog() {
       </div>
 
       <div className="bg-white rounded-xl border border-gray-100">
-        {activeTab === 'audit' ? <UserActivity/> :<Security/>}
+        {activeTab === 'audit' ? <UserActivity initialLogs={initialLogs}/> :<Security initialLogs={initialLogs}/>}
       </div>
     </div>
   )

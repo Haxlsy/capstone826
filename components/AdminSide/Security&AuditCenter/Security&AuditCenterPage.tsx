@@ -2,12 +2,12 @@
 
 import AuditLog from "../AuditLog"
 
-export default function SecurityAuditCenter() {
+export default function SecurityAuditCenter({ initialLogs }: { initialLogs: any[] }) {
     return (
         <div>
             <h1 className="text-2xl font-bold mb-4">Security &amp; Audit Center</h1>
             <p className="text-gray-600 mb-6">Comprehensive logs of system access and actions.</p>
-            <AuditLog />
+            <AuditLog initialLogs={initialLogs} />
         </div>
     )
 }

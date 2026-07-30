@@ -1,8 +1,8 @@
 import { useState, useCallback, useEffect } from 'react';
 import { ApiLog } from  "@/types/audit"
-export function useAuditLogs() {
-      const [logs,    setLogs]    = useState<ApiLog[]>([])
-      const [loading, setLoading] = useState(true)
+export function useAuditLogs(initialLogs?: ApiLog[]) {
+      const [logs,    setLogs]    = useState<ApiLog[]>(initialLogs ?? [])
+      const [loading, setLoading] = useState(!initialLogs)
       const [fetchErr, setFetchErr] = useState<string | null>(null)
     
       const load = useCallback(async () => {
@@ -20,6 +20,6 @@ export function useAuditLogs() {
         }
       }, [])
     
-      useEffect(() => { load() }, [load])
+      useEffect(() => { if (!initialLogs) load() }, [load, initialLogs])
       return { logs, loading, fetchErr, reload: load };
 }

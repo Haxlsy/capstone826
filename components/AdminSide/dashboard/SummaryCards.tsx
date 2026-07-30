@@ -10,9 +10,9 @@ interface DashboardData {
   chatbotEfficiency: number
 }
 
-export function SummaryCards() {
-  const [data, setData] = useState<DashboardData | null>(null)
-  const [loading, setLoading] = useState(true)
+export function SummaryCards({ initialData }: { initialData?: DashboardData }) {
+  const [data, setData] = useState<DashboardData | null>(initialData ?? null)
+  const [loading, setLoading] = useState(!initialData)
 
   const fetchData = useCallback(async () => {
     try {
@@ -29,7 +29,7 @@ export function SummaryCards() {
     }
   }, [])
 
-  useEffect(() => { fetchData() }, [fetchData])
+  useEffect(() => { if (!initialData) fetchData() }, [fetchData, initialData])
   useRealtimeRefetch(["job_order", "inquiry", "shop_config"], fetchData)
 
   const capacityPct = data ? Math.min((data.activeJobCount / data.maxCapacity) * 100, 100) : 0
@@ -53,7 +53,6 @@ export function SummaryCards() {
 
   return (
     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-      {/* Active Jobs / Capacity */}
       <div className="bg-white rounded-xl border border-gray-200 p-5 space-y-3">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2 text-sm font-medium text-gray-500">
@@ -82,7 +81,6 @@ export function SummaryCards() {
         </div>
       </div>
 
-      {/* AI Chatbot Efficiency */}
       <div className="bg-white rounded-xl border border-gray-200 p-5 space-y-3">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2 text-sm font-medium text-gray-500">

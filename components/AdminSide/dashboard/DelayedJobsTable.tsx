@@ -29,9 +29,9 @@ function shortId(id: string): string {
   return id.slice(0, 8).toUpperCase()
 }
 
-export function DelayedJobsTable() {
-  const [jobs, setJobs] = useState<DelayedJob[]>([])
-  const [loading, setLoading] = useState(true)
+export function DelayedJobsTable({ initialData }: { initialData?: DelayedJob[] }) {
+  const [jobs, setJobs] = useState<DelayedJob[]>(initialData ?? [])
+  const [loading, setLoading] = useState(!initialData)
 
   const fetchData = useCallback(async () => {
     try {
@@ -44,7 +44,7 @@ export function DelayedJobsTable() {
     }
   }, [])
 
-  useEffect(() => { fetchData() }, [fetchData])
+  useEffect(() => { if (!initialData) fetchData() }, [fetchData, initialData])
   useRealtimeRefetch("job_order", fetchData)
 
   return (
