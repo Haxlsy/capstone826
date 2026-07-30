@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useCallback, useRef } from "react"
+import { useState, useMemo, useEffect, useRef } from "react"
 import { useRouter } from "next/navigation"
 import { Search, Filter, X, ChevronLeft, ChevronRight, ArrowRight } from "lucide-react"
 
@@ -38,11 +38,24 @@ function fmtDate(iso: string | null | undefined): string {
 
 const PAGE_SIZE = 15
 
-export default function SalesJobList() {
+export default function SalesJobList({ jobOrders: rawOrders }: { jobOrders: any[] }) {
   const router = useRouter()
-  const [jobOrders, setJobOrders]     = useState<JobOrder[]>([])
-  const [loading, setLoading]         = useState(false)
-  const [fetchError, setFetchError]   = useState<string | null>(null)
+  const jobOrders = useMemo(() =>
+    rawOrders.map((r: any): JobOrder => ({
+      id: r.id,
+      displayId: `JO-${new Date(r.created_at).getFullYear()}-${r.id.slice(-4).toUpperCase()}`,
+      customer: r.customer_name ?? "—",
+      plate: r.plate_number ?? "—",
+      vehicle: r.vehicle_unit ?? "—",
+      service: r.service ?? "—",
+      headDetailer: r.head_detailer ?? "Unassigned",
+      headInstaller: r.head_installer ?? "Unassigned",
+      scheduled: fmtDate(r.scheduled_at),
+      scheduledRaw: r.scheduled_at ?? "",
+      status: r.status ?? "Pending",
+    })),
+  [rawOrders])
+
   const [activeTab, setActiveTab]     = useState<TabType>("All")
   const [searchQuery, setSearchQuery] = useState("")
   const [currentPage, setCurrentPage] = useState(1)
@@ -55,38 +68,6 @@ export default function SalesJobList() {
   const filterRef = useRef<HTMLDivElement>(null)
 
   const hasActiveFilter = !!(filterService || filterTechnician || filterDateFrom || filterDateTo)
-
-  const load = useCallback(async () => {
-    setLoading(true)
-    setFetchError(null)
-    try {
-      const res  = await fetch("/api/operations/job-management/list-job-orders")
-      const json = await res.json()
-      if (!res.ok) throw new Error(json?.error ?? "Failed to fetch job orders")
-
-      const mapped: JobOrder[] = (json.job_orders ?? []).map((r: any) => ({
-        id:            r.id,
-        displayId:     `JO-${new Date(r.created_at).getFullYear()}-${r.id.slice(-4).toUpperCase()}`,
-        customer:      r.customer_name ?? "—",
-        plate:         r.plate_number  ?? "—",
-        vehicle:       r.vehicle_unit  ?? "—",
-        service:       r.service       ?? "—",
-        headDetailer:  r.head_detailer  ?? "Unassigned",
-        headInstaller: r.head_installer ?? "Unassigned",
-        scheduled:     fmtDate(r.scheduled_at),
-        scheduledRaw:  r.scheduled_at  ?? "",
-        status:        r.status        ?? "Pending",
-      }))
-
-      setJobOrders(mapped)
-    } catch (err: unknown) {
-      setFetchError(err instanceof Error ? err.message : String(err))
-    } finally {
-      setLoading(false)
-    }
-  }, [])
-
-  useEffect(() => { load() }, [load])
 
   useEffect(() => {
     function handleClick(e: MouseEvent) {
@@ -227,12 +208,8 @@ export default function SalesJobList() {
               <th className="px-4 py-3 w-8" />
             </tr>
           </thead>
-          <tbody>
-            {loading ? (
-              <tr><td colSpan={10} className="px-4 py-10 text-center text-sm text-gray-400">Loading job orders…</td></tr>
-            ) : fetchError ? (
-              <tr><td colSpan={10} className="px-4 py-10 text-center text-sm text-red-500">{fetchError}</td></tr>
-            ) : paginated.length === 0 ? (
+            <tbody>
+              {paginated.length === 0 ? (
               <tr><td colSpan={10} className="px-4 py-10 text-center text-sm text-gray-400">No job orders found.</td></tr>
             ) : (
               paginated.map((j, idx) => (
