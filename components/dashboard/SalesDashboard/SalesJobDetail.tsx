@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useCallback } from "react"
+import { useState } from "react"
 import Link from "next/link"
 import { ArrowLeft, ChevronDown, CheckCircle2, RefreshCw, Clock } from "lucide-react"
 
@@ -14,8 +14,8 @@ interface Stage {
   id:                  string
   name:                string
   sequence_order:      number
-  category:            "preparation" | "installation" | "finishing"
-  status:              "pending" | "in_progress" | "done" | "for_rework"
+  category_name:       string | null
+  status:              string
   rework_instructions: string | null
   handoff_notes:       string | null
   completed_at:        string | null
@@ -106,42 +106,12 @@ function SectionCollapse({ title, count, children, accent }: {
   )
 }
 
-export default function SalesJobDetail({ jobId }: { jobId: string }) {
-  const [job, setJob]       = useState<JobDetail | null>(null)
-  const [loading, setLoading] = useState(true)
-  const [error, setError]   = useState<string | null>(null)
-
-  const load = useCallback(async () => {
-    setLoading(true)
-    setError(null)
-    try {
-      const res  = await fetch(`/api/operations/job-orders/${jobId}`)
-      const json = await res.json()
-      if (!res.ok) throw new Error(json?.error ?? "Failed to load job")
-      setJob(json.job ?? null)
-    } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : "Something went wrong")
-    } finally {
-      setLoading(false)
-    }
-  }, [jobId])
-
-  useEffect(() => { load() }, [load])
-
-  if (loading) return (
-    <div className="flex items-center justify-center py-24 text-sm text-gray-400">Loading…</div>
-  )
-  if (error || !job) return (
-    <div className="flex flex-col items-center gap-3 py-24">
-      <p className="text-sm text-red-500">{error ?? "Job not found."}</p>
-      <Link href="/dashboard/sales/jobs" className="text-xs text-blue-500 hover:underline">← Back to Job Management</Link>
-    </div>
-  )
+export default function SalesJobDetail({ job }: { job: JobDetail }) {
 
   const displayId   = `JO-${new Date(job.created_at).getFullYear()}-${job.id.slice(-4).toUpperCase()}`
-  const prepStages  = job.stages.filter((s) => s.category === "preparation")
-  const instStages  = job.stages.filter((s) => s.category === "installation")
-  const finStages   = job.stages.filter((s) => s.category === "finishing")
+  const prepStages  = job.stages.filter((s) => s.category_name?.toLowerCase() === "preparation")
+  const instStages  = job.stages.filter((s) => s.category_name?.toLowerCase() === "installation")
+  const finStages   = job.stages.filter((s) => s.category_name?.toLowerCase() === "finishing")
   const totalStages = job.stages.length
   const doneStages  = job.stages.filter((s) => s.status === "done").length
   const progress    = totalStages > 0 ? Math.round((doneStages / totalStages) * 100) : 0

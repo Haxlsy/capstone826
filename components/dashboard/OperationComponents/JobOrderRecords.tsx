@@ -1,13 +1,12 @@
 "use client"
 
-import { useState, useEffect, useCallback } from "react"
+import { useState, useMemo } from "react"
 import { useRouter } from "next/navigation"
 import { Search, ChevronLeft, ChevronRight, FileText, FileSpreadsheet, CheckCircle2 } from "lucide-react"
-import { JobOrderRecordsSkeleton } from "@/app/dashboard/job-order-records/loading"
 
 interface JobRecord {
-  id:                     string   // UUID
-  displayId:              string   // e.g. "JO-2026-ABC1"
+  id:                     string
+  displayId:              string
   customer:               string
   plate:                  string
   vehicle:                string
@@ -36,11 +35,24 @@ function fmtDateTime(iso: string | null | undefined): string {
   })
 }
 
-export default function JobOrderRecords() {
+export default function JobOrderRecords({ jobOrders: rawOrders }: { jobOrders: any[] }) {
   const router = useRouter()
-  const [records, setRecords]       = useState<JobRecord[]>([])
-  const [loading, setLoading]       = useState(true)
-  const [fetchError, setFetchError] = useState<string | null>(null)
+  const records = useMemo(() =>
+    rawOrders.map((r: any): JobRecord => ({
+      id: r.id,
+      displayId: `JO-${new Date(r.created_at).getFullYear()}-${r.id.slice(-4).toUpperCase()}`,
+      customer: r.customer_name ?? "—",
+      plate: r.plate_number ?? "—",
+      vehicle: r.vehicle_unit ?? "—",
+      service: r.service ?? "—",
+      head_detailer: r.head_detailer ?? "Unassigned",
+      head_installer: r.head_installer ?? "Unassigned",
+      scheduled_at: r.scheduled_at,
+      expected_completion_at: r.expected_completion_at,
+      released_at: r.released_at ?? null,
+      created_at: r.created_at,
+    })),
+  [rawOrders])
 
   const [searchQuery, setSearchQuery] = useState("")
   const [serviceFilter, setServiceFilter] = useState("All")
@@ -53,39 +65,6 @@ export default function JobOrderRecords() {
   const [pendingService, setPendingService] = useState("All")
   const [pendingStart, setPendingStart]     = useState("")
   const [pendingEnd, setPendingEnd]         = useState("")
-
-  const load = useCallback(async () => {
-    setLoading(true)
-    setFetchError(null)
-    try {
-      const res  = await fetch("/api/operations/job-management/list-job-orders?released=1")
-      const json = await res.json()
-      if (!res.ok) throw new Error(json?.error ?? "Failed to load records")
-
-      const mapped: JobRecord[] = (json.job_orders ?? []).map((r: any) => ({
-        id:                     r.id,
-        displayId:              `JO-${new Date(r.created_at).getFullYear()}-${r.id.slice(-4).toUpperCase()}`,
-        customer:               r.customer_name ?? "—",
-        plate:                  r.plate_number  ?? "—",
-        vehicle:                r.vehicle_unit  ?? "—",
-        service:                r.service       ?? "—",
-        head_detailer:          r.head_detailer ?? "Unassigned",
-        head_installer:         r.head_installer ?? "Unassigned",
-        scheduled_at:           r.scheduled_at,
-        expected_completion_at: r.expected_completion_at,
-        released_at:            r.released_at ?? null,
-        created_at:             r.created_at,
-      }))
-
-      setRecords(mapped)
-    } catch (err: unknown) {
-      setFetchError(err instanceof Error ? err.message : String(err))
-    } finally {
-      setLoading(false)
-    }
-  }, [])
-
-  useEffect(() => { load() }, [load])
 
   const serviceOptions = [...new Set(records.map((r) => r.service).filter((s) => s !== "—"))]
 
@@ -158,8 +137,6 @@ export default function JobOrderRecords() {
 
   const labelClass = "block text-xs font-medium text-gray-500 mb-1"
   const inputClass = "border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 appearance-none"
-
-  if (loading) return <JobOrderRecordsSkeleton />
 
   return (
     <div className="flex flex-col gap-5">
@@ -237,15 +214,7 @@ export default function JobOrderRecords() {
             </tr>
           </thead>
           <tbody>
-            {loading ? (
-              <tr>
-                <td colSpan={8} className="px-4 py-10 text-center text-sm text-gray-400">Loading records…</td>
-              </tr>
-            ) : fetchError ? (
-              <tr>
-                <td colSpan={8} className="px-4 py-10 text-center text-sm text-red-500">{fetchError}</td>
-              </tr>
-            ) : paginated.length === 0 ? (
+            {paginated.length === 0 ? (
               <tr>
                 <td colSpan={8} className="px-4 py-10 text-center text-sm text-gray-400">
                   No released job orders found.

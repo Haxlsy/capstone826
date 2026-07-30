@@ -27,10 +27,10 @@ interface ServiceBreakdown {
   count: number
 }
 
-export function ShopPerformanceChart() {
+export function ShopPerformanceChart({ initialData }: { initialData?: ServiceBreakdown[] }) {
   const [period, setPeriod]   = useState<Period>("overall")
-  const [data, setData]       = useState<ServiceBreakdown[]>([])
-  const [loading, setLoading] = useState(true)
+  const [data, setData]       = useState<ServiceBreakdown[]>(initialData ?? [])
+  const [loading, setLoading] = useState(!initialData)
 
   const fetchData = useCallback(async (p: Period) => {
     setLoading(true)
@@ -44,11 +44,12 @@ export function ShopPerformanceChart() {
     }
   }, [])
 
-  useEffect(() => { fetchData(period) }, [fetchData, period])
+  useEffect(() => { if (!initialData) fetchData(period) }, [fetchData, period, initialData])
   useRealtimeRefetch("job_order", () => fetchData(period))
 
   function handlePeriod(p: Period) {
     setPeriod(p)
+    fetchData(p)
   }
 
   return (
@@ -60,7 +61,6 @@ export function ShopPerformanceChart() {
         </div>
 
         <div className="flex items-center gap-2">
-          {/* Period filter pills */}
           <div className="flex items-center gap-1 bg-gray-100 rounded-lg p-0.5">
             {PERIODS.map(({ key, label }) => (
               <button

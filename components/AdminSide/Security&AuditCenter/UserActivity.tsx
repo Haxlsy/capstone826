@@ -8,14 +8,14 @@ import renderRow from "./renderRow"
 import { useAuditLogs } from "@/hooks/use-audit-logs"
 import { useState } from "react"
 
-export default function UserActivity(){
+export default function UserActivity({ initialLogs }: { initialLogs: any[] }){
     const [actRoleFilter,   setActRoleFilter]   = useState<AuditRole | "all">("all")
     const [actCatFilter,    setActCatFilter]    = useState<AuditCategory | "all">("all")
     const [actPeriodFilter, setActPeriodFilter] = useState<TimePeriod>("all")
     const [actPageSize,     setActPageSize]     = useState<PageSize>(10)
     const [actPage,         setActPage]         = useState(1)
 
-    const { logs, loading, fetchErr } = useAuditLogs()
+    const { logs, loading, fetchErr } = useAuditLogs(initialLogs)
     const sorted = [...logs].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
 
     const actAll  = sorted.filter((e) => e.action !== "Logged in" && e.action !== "Logged out")
@@ -26,7 +26,6 @@ export default function UserActivity(){
     .filter((e) => actCatFilter   === "all" || e.category === actCatFilter)
     .filter((e) => !actPeriodStart || new Date(e.created_at) >= actPeriodStart)
 
-      // Activity pagination
     const actTotalPages = Math.max(1, Math.ceil(filteredAct.length / actPageSize))
     const actSafePage   = Math.min(actPage, actTotalPages)
     const actStart      = (actSafePage - 1) * actPageSize

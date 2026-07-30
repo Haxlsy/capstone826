@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useCallback } from "react"
+import { useState, useMemo } from "react"
 import { Search, Paperclip, ChevronLeft, ChevronRight, X, CheckCircle } from "lucide-react"
 import type { ConcernRecord } from "@/components/dashboard/OperationComponents/ConcernDetailsDrawer"
 
@@ -144,53 +144,35 @@ function ReadOnlyConcernDrawer({ record, onClose }: { record: ConcernRecord | nu
   )
 }
 
-export default function SalesConcerns() {
-  const [records, setRecords]           = useState<ConcernRecord[]>([])
-  const [loading, setLoading]           = useState(true)
-  const [fetchError, setFetchError]     = useState<string | null>(null)
+function mapConcern(c: any): ConcernRecord {
+  return {
+    id: c.id,
+    title: c.title,
+    description: c.description,
+    status: c.status as "Pending" | "Resolved",
+    response_note: c.response_note ?? null,
+    submitted_at: fmtDate(c.submitted_at),
+    jobId: c.job?.id
+      ? `JO-${new Date(c.submitted_at ?? "").getFullYear()}-${c.job.id.slice(-4).toUpperCase()}`
+      : "—",
+    submitterName: c.submitter?.full_name ?? "—",
+    submitterRole: c.submitter?.role ?? "—",
+    stage_name: c.stage_name ?? null,
+    media: (c.media ?? []).map((m: any) => ({
+      id: m.id,
+      file_url: m.file_url,
+      media_type: m.media_type,
+    })),
+  }
+}
+
+export default function SalesConcerns({ concerns }: { concerns: any[] }) {
+  const records = useMemo(() => concerns.map(mapConcern), [concerns])
   const [activeFilter, setActiveFilter] = useState<FilterType>("All")
   const [searchQuery, setSearchQuery]   = useState("")
   const [currentPage, setCurrentPage]   = useState(1)
   const [pageSize, setPageSize]         = useState(15)
   const [selected, setSelected]         = useState<ConcernRecord | null>(null)
-
-  const load = useCallback(async () => {
-    setLoading(true)
-    setFetchError(null)
-    try {
-      const res  = await fetch("/api/operations/job-concerns")
-      const json = await res.json()
-      if (!res.ok) throw new Error(json?.error ?? "Failed to load concerns")
-
-      const shaped: ConcernRecord[] = (json.concerns ?? []).map((c: any) => ({
-        id:            c.id,
-        title:         c.title,
-        description:   c.description,
-        status:        (c.status as "Pending" | "Resolved"),
-        response_note: c.response_note ?? null,
-        submitted_at:  fmtDate(c.submitted_at),
-        jobId:         c.job?.id
-          ? `JO-${new Date(c.submitted_at ?? "").getFullYear()}-${c.job.id.slice(-4).toUpperCase()}`
-          : "—",
-        submitterName: c.submitter?.full_name ?? "—",
-        submitterRole: c.submitter?.role ?? "—",
-        stage_name:    c.stage_name ?? null,
-        media:         (c.media ?? []).map((m: any) => ({
-          id:         m.id,
-          file_url:   m.file_url,
-          media_type: m.media_type,
-        })),
-      }))
-
-      setRecords(shaped)
-    } catch (err: unknown) {
-      setFetchError(err instanceof Error ? err.message : String(err))
-    } finally {
-      setLoading(false)
-    }
-  }, [])
-
-  useEffect(() => { load() }, [load])
 
   const filtered = records.filter((r) => {
     const matchFilter = activeFilter === "All" || r.status === activeFilter
@@ -258,15 +240,7 @@ export default function SalesConcerns() {
               </tr>
             </thead>
             <tbody>
-              {loading ? (
-                <tr>
-                  <td colSpan={8} className="px-4 py-10 text-center text-sm text-gray-400">Loading concerns…</td>
-                </tr>
-              ) : fetchError ? (
-                <tr>
-                  <td colSpan={8} className="px-4 py-10 text-center text-sm text-red-500">{fetchError}</td>
-                </tr>
-              ) : paginated.length === 0 ? (
+              {paginated.length === 0 ? (
                 <tr>
                   <td colSpan={8} className="px-4 py-10 text-center text-sm text-gray-400">No concerns found.</td>
                 </tr>
