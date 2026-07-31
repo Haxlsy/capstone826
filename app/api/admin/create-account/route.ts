@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server"
 import { cookies } from "next/headers"
+import { z } from "zod"
 import { createClient } from "@/lib/supabase/server"
 import { createAdminClient } from "@/lib/supabase/admin"
 import { logAudit } from "@/hooks/audit-helpers"
@@ -10,22 +11,24 @@ const ALLOWED_ROLES = [
   "sales",
   "head_detailer",
   "head_installer",
-]
+] as const
+
+const CreateAccountSchema = z.object({
+  fullName: z.string().trim().min(1, "Full name required").max(100),
+  username: z.string().trim().min(3, "Username must be at least 3 characters").max(50)
+    .regex(/^[a-zA-Z0-9_]+$/, "Username may only contain letters, numbers, and underscores"),
+  password: z.string().min(8, "Password must be at least 8 characters").max(128),
+  role: z.enum(ALLOWED_ROLES, { message: "Invalid role" }),
+})
 
 export async function POST(request: Request) {
   const body = await request.json()
-  const { fullName, username, password, role } = body
-
-  if (!fullName || !username || !password || !role) {
-    return NextResponse.json({ error: "All fields are required." }, { status: 400 })
+  const parsed = CreateAccountSchema.safeParse(body)
+  if (!parsed.success) {
+    return NextResponse.json({ error: parsed.error.issues[0].message }, { status: 400 })
   }
 
-  if (!ALLOWED_ROLES.includes(role)) {
-    return NextResponse.json(
-      { error: `Invalid role. Allowed: ${ALLOWED_ROLES.join(", ")}` },
-      { status: 400 }
-    )
-  }
+  const { fullName, username, password, role } = parsed.data
 
   const cookieStore = await cookies()
   const userClient  = createClient(cookieStore)
