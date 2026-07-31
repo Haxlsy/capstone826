@@ -13,13 +13,16 @@ export async function POST() {
 
     await supabase.auth.signOut()
 
+    const response = NextResponse.json({ success: true })
+    response.cookies.set("826_role", "", { maxAge: 0, path: "/" })
+
     // Log the logout event after sign-out (fire-and-forget)
     if (user) {
       const admin = createAdminClient()
       await createAuditLogEntry(admin, user.id);
     }
 
-    return NextResponse.json({ success: true })
+    return response
   } catch (err: any) {
     return NextResponse.json({ error: err?.message ?? String(err) }, { status: 500 })
   }
