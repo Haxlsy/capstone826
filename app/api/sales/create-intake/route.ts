@@ -1,5 +1,8 @@
 import { NextResponse } from "next/server";
 import { createClient as createAdminClient } from "@supabase/supabase-js";
+import { z } from "zod";
+
+
 
 function getAdmin() {
   return createAdminClient(
@@ -7,6 +10,50 @@ function getAdmin() {
     process.env.SUPABASE_SERVICE_ROLE_KEY!
   )
 }
+
+/**
+ * Zod validation for intake schema submission
+ * 
+ * This schema will validate the incoming data from the sales intake before it can be process or stored in the database. 
+ * This include the validation for personal information of the customer
+ * 
+ * @example
+ * // Valid data
+ * const validData = {
+ *   firstName: 'John',
+ *   lastName: 'Doe',
+ *   email: 'john@example.com',
+ *   phone: '+1234567890',
+ *   dateOfBirth: '1990-01-15',
+ *   services: ['consulting', 'support'],
+ *   agreeToTerms: true
+ * };
+ * 
+ * const result = CreateIntakeSchema.safeParse(validData);
+ * console.log(result.success); // true
+ * 
+ * @returns 
+ */
+/*TODO: I will double check this with my team and decide if i should record the downpayment, balance, and payment method. */
+const CreateIntakeSchema = z.object({
+  customer_id:    z.string().uuid().optional().nullable(),
+  full_name:      z.string().trim().min(1, "Customer full name required.").max(255),
+  contact_number: z.string().trim().min(1, "Contact number required.").max(20),
+  email:          z.email({ message: "Valid email required." }).optional().nullable(),
+  home_address:   z.string().trim().max(500).optional().nullable(),
+  plate_number:   z.string().trim().min(1, "Plate number required.").max(20),
+  make:           z.string().optional().nullable(),
+  model:          z.string().optional().nullable(),
+  color:          z.string().optional().nullable(),
+  service_id:     z.string().uuid().optional().nullable(),
+  service_name:   z.string().optional().nullable(),
+  vehicle_type_id: z.string().uuid().optional().nullable(),
+  downpayment:    z.number().nonnegative().optional(),
+  balance:        z.number().nonnegative().optional(),
+  payment_method: z.string().optional().nullable(),
+  scheduled_date: z.string().optional().nullable(),
+  status:         z.string().optional(),
+})
 
 const INTAKE_SELECT = `
   intake_id, plate_number, make, model, color,
@@ -20,6 +67,11 @@ const INTAKE_SELECT = `
 export async function POST(request: Request) {
   try {
     const body = await request.json();
+
+    const parsed = CreateIntakeSchema.safeParse(body);
+    if (!parsed.success) {
+      return NextResponse.json({ error: parsed.error.issues[0].message }, { status: 400 });
+    }
 
     const {
       customer_id,
@@ -39,12 +91,9 @@ export async function POST(request: Request) {
       payment_method,
       scheduled_date,
       status,
-    } = body;
+    } = parsed.data;
 
-    // Server-side validation
-    if (!full_name?.trim()) return NextResponse.json({ error: "Customer full name is required." }, { status: 400 });
-    if (!contact_number?.trim()) return NextResponse.json({ error: "Contact number is required." }, { status: 400 });
-    if (!plate_number?.trim()) return NextResponse.json({ error: "Plate number is required." }, { status: 400 });
+    // Cross-field check: a service type (id or name) is required
     if (!service_id && !service_name?.trim()) return NextResponse.json({ error: "Service type is required." }, { status: 400 });
 
     const admin = getAdmin()
