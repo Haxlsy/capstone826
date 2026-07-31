@@ -1,15 +1,23 @@
 import { NextResponse } from "next/server"
 import { cookies } from "next/headers"
+import { z } from "zod"
 import { createClient } from "@/lib/supabase/server"
 import { createAdminClient } from "@/lib/supabase/admin"
 
+const LoginSchema = z.object({
+  username: z.string().trim().min(1, "Username required").max(100),
+  password: z.string().min(1, "Password required").max(128),
+})
+
 export async function POST(request: Request) {
   try {
-    const { username, password } = await request.json()
-
-    if (!username || !password) {
-      return NextResponse.json({ error: "Credentials required" }, { status: 400 })
+    const body = await request.json()
+    const parsed = LoginSchema.safeParse(body)
+    if (!parsed.success) {
+      return NextResponse.json({ error: parsed.error.issues[0].message }, { status: 400 })
     }
+
+    const { username, password } = parsed.data
 
     const cookieStore = await cookies()
     const supabase = createClient(cookieStore)
@@ -50,7 +58,15 @@ export async function POST(request: Request) {
     // 4. Log Event (Awaited for reliability in Serverless)
     await createAuditLog(admin, authData.user.id, profile, "Logged in")
 
-    return NextResponse.json({ user: profile })
+    const response = NextResponse.json({ user: profile })
+    response.cookies.set("826_role", profile.role, {
+      httpOnly: true,
+      sameSite: "lax",
+      path: "/",
+      maxAge: 60 * 60 * 8, // 8h
+    })
+
+    return response
 
   } catch (err) {
     console.error("Login route error:", err)
