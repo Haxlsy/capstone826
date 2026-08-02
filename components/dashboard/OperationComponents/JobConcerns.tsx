@@ -1,20 +1,15 @@
 "use client"
 
-import { useState, useEffect, useCallback } from "react"
+import { useState } from "react"
+import { useQueryClient } from "@tanstack/react-query"
 import { Search, Paperclip, ChevronLeft, ChevronRight } from "lucide-react"
 import { ConcernsSkeleton } from "@/app/dashboard/concerns/loading"
-import ConcernDetailsDrawer, { type ConcernRecord } from "./ConcernDetailsDrawer"
+import ConcernDetailsDrawer from "./ConcernDetailsDrawer"
+import { useConcerns } from "@/hooks/use-concerns"
+import type { ConcernRecord } from "@/lib/operations/concern-record"
 
 type FilterType = "All" | "Pending" | "Resolved"
 const FILTERS: FilterType[] = ["All", "Pending", "Resolved"]
-
-function fmtDate(iso: string | null | undefined): string {
-  if (!iso) return "—"
-  return new Date(iso).toLocaleString("en-US", {
-    month: "short", day: "numeric", year: "numeric",
-    hour: "numeric", minute: "2-digit",
-  })
-}
 
 function avatarColor(name: string): string {
   const palette = [
@@ -29,62 +24,22 @@ function initials(name: string): string {
   return name.split(" ").map((n) => n[0]).join("").slice(0, 2).toUpperCase()
 }
 
-export default function JobConcerns() {
-  const [records, setRecords]         = useState<ConcernRecord[]>([])
-  const [loading, setLoading]         = useState(true)
-  const [fetchError, setFetchError]   = useState<string | null>(null)
+export default function JobConcerns({ initialRecords }: { initialRecords: ConcernRecord[] }) {
+  const queryClient = useQueryClient()
+  const { data: recordsData = [], isPending: loading, error: fetchError } = useConcerns(initialRecords)
+
   const [activeFilter, setActiveFilter] = useState<FilterType>("All")
   const [searchQuery, setSearchQuery] = useState("")
   const [currentPage, setCurrentPage] = useState(1)
   const [pageSize, setPageSize]       = useState(15)
   const [selected, setSelected]       = useState<ConcernRecord | null>(null)
 
-  const load = useCallback(async () => {
-    setLoading(true)
-    setFetchError(null)
-    try {
-      const res  = await fetch("/api/operations/job-concerns")
-      const json = await res.json()
-      if (!res.ok) throw new Error(json?.error ?? "Failed to load concerns")
-
-      const shaped: ConcernRecord[] = (json.concerns ?? []).map((c: any) => ({
-        id:            c.id,
-        title:         c.title,
-        description:   c.description,
-        status:        (c.status as "Pending" | "Resolved"),
-        response_note: c.response_note ?? null,
-        submitted_at:  fmtDate(c.submitted_at),
-        jobId:         c.job?.id
-          ? `JO-${new Date(c.submitted_at ?? "").getFullYear()}-${c.job.id.slice(-4).toUpperCase()}`
-          : "—",
-        submitterName: c.submitter?.full_name ?? "—",
-        submitterRole: c.submitter?.role ?? "—",
-        stage_name:    c.stage_name ?? null,
-        media:         (c.media ?? []).map((m: any) => ({
-          id:         m.id,
-          file_url:   m.file_url,
-          media_type: m.media_type,
-        })),
-      }))
-
-      setRecords(shaped)
-    } catch (err: unknown) {
-      setFetchError(err instanceof Error ? err.message : String(err))
-    } finally {
-      setLoading(false)
-    }
-  }, [])
-
-  useEffect(() => { load() }, [load])
-
   function handleResolve(id: string, note: string) {
-    setRecords((prev) =>
-      prev.map((r) => r.id === id ? { ...r, status: "Resolved", response_note: note } : r)
-    )
+    queryClient.invalidateQueries({ queryKey: ["concerns"] })
     setSelected((prev) => prev?.id === id ? { ...prev, status: "Resolved", response_note: note } : prev)
   }
 
-  const filtered = records.filter((r) => {
+  const filtered = recordsData.filter((r) => {
     const matchFilter = activeFilter === "All" || r.status === activeFilter
     const q = searchQuery.toLowerCase()
     const matchSearch = q === "" ||
@@ -159,7 +114,7 @@ export default function JobConcerns() {
               ) : fetchError ? (
                 <tr>
                   <td colSpan={7} className="px-4 py-10 text-center text-sm text-red-500">
-                    {fetchError}
+                    {fetchError.message}
                   </td>
                 </tr>
               ) : paginated.length === 0 ? (

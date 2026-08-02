@@ -182,6 +182,7 @@ export default function LoginPage() {
                   }}
                   placeholder="Username"
                   disabled={locked}
+                  suppressHydrationWarning
                   className={`${styles.input} ${errors.username ? styles.inputError : ""}`}
                 />
               </div>
@@ -202,6 +203,7 @@ export default function LoginPage() {
                   }}
                   placeholder="Password"
                   disabled={locked}
+                  suppressHydrationWarning
                   className={`${styles.input} ${errors.password ? styles.inputError : ""}`}
                 />
                 <button

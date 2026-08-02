@@ -15,6 +15,7 @@ import {
   LogOut,
   ChevronDown,
 } from "lucide-react"
+import { useConcerns } from "@/hooks/use-concerns"
 
 const JOB_MGMT_PATHS = [
   "/dashboard/job-management",
@@ -40,8 +41,9 @@ export default function OperationsSidebar() {
   const pathname = usePathname()
   const router   = useRouter()
 
-  const [pendingConcerns, setPendingConcerns] = useState(0)
-  const [jobMgmtOpen,     setJobMgmtOpen]     = useState(false)
+  const { data: concerns } = useConcerns()
+  const pendingConcerns    = (concerns ?? []).filter((c) => c.status === "Pending").length
+  const [jobMgmtOpen, setJobMgmtOpen] = useState(false)
 
   const isJobMgmtActive = JOB_MGMT_PATHS.some(
     (p) => pathname === p || pathname.startsWith(p + "/")
@@ -50,20 +52,6 @@ export default function OperationsSidebar() {
   useEffect(() => {
     if (isJobMgmtActive) setJobMgmtOpen(true)
   }, [isJobMgmtActive])
-
-  useEffect(() => {
-    async function fetchPendingCount() {
-      try {
-        const res  = await fetch("/api/operations/job-concerns")
-        const json = await res.json()
-        if (res.ok) {
-          const count = (json.concerns ?? []).filter((c: { status: string }) => c.status === "Pending").length
-          setPendingConcerns(count)
-        }
-      } catch {}
-    }
-    fetchPendingCount()
-  }, [pathname])
 
   async function handleLogout() {
     try {

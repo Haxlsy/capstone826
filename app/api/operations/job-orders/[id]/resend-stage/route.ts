@@ -63,14 +63,14 @@ export async function POST(
 
     let sendSuccess = false
 
-    if (psid && process.env.FB_PAGE_ACCESS_TOKEN) {
+    if (psid && process.env.META_PAGE_ACCESS_TOKEN) {
       // Build the update message
       const message = `✅ Stage Update: "${stageName}" has been completed for your vehicle (${(job as any)?.plate_number ?? ""}).\n\nThank you for your patience, ${customerName}!`
 
       try {
         // Send text message
         const textRes = await fetch(
-          `https://graph.facebook.com/v19.0/me/messages?access_token=${process.env.FB_PAGE_ACCESS_TOKEN}`,
+          `https://graph.facebook.com/v19.0/me/messages?access_token=${process.env.META_PAGE_ACCESS_TOKEN}`,
           {
             method: "POST",
             headers: { "Content-Type": "application/json" },
@@ -85,7 +85,7 @@ export async function POST(
           // Optionally attach first photo if available
           if (photos.length > 0) {
             await fetch(
-              `https://graph.facebook.com/v19.0/me/messages?access_token=${process.env.FB_PAGE_ACCESS_TOKEN}`,
+              `https://graph.facebook.com/v19.0/me/messages?access_token=${process.env.META_PAGE_ACCESS_TOKEN}`,
               {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
@@ -123,7 +123,7 @@ export async function POST(
     if (!sendSuccess) {
       const reason = !psid
         ? "Customer has no Messenger PSID linked."
-        : !process.env.FB_PAGE_ACCESS_TOKEN
+        : !process.env.META_PAGE_ACCESS_TOKEN
         ? "Messenger integration is not configured."
         : "Messenger API returned an error."
 
