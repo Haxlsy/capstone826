@@ -4,7 +4,6 @@ import Link from "next/link"
 import { usePathname, useRouter } from "next/navigation"
 import {
   MessageCircle,
-  MessagesSquare,
   Users,
   ClipboardList,
   AlertCircle,
@@ -13,7 +12,6 @@ import {
 } from "lucide-react"
 
 const navItems = [
-  { label: "Messenger Chats",      href: "/dashboard/sales/messenger",       icon: MessagesSquare, exact: true },
   { label: "Inquiry Management",   href: "/dashboard/sales",                 icon: MessageCircle,  exact: true },
   { label: "Customer Records",     href: "/dashboard/sales/customer-records", icon: Users,          exact: true },
   { label: "View Job Orders",      href: "/dashboard/sales/job-orders",      icon: ClipboardList,  exact: false },
