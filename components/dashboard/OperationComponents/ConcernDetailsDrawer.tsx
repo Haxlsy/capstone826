@@ -2,20 +2,7 @@
 
 import { useState } from "react"
 import { X, CheckCircle, Paperclip } from "lucide-react"
-
-export interface ConcernRecord {
-  id:            string
-  title:         string
-  description:   string
-  status:        "Pending" | "Resolved"
-  response_note: string | null
-  submitted_at:  string
-  jobId:         string       // display ID
-  submitterName: string
-  submitterRole: string
-  stage_name?:   string | null
-  media:         { id: string; file_url: string; media_type: string }[]
-}
+import type { ConcernRecord } from "@/lib/operations/concern-record"
 
 interface ConcernDetailsDrawerProps {
   record:    ConcernRecord | null

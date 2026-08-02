@@ -2,18 +2,11 @@
 
 import { useState, useMemo } from "react"
 import { Search, Paperclip, ChevronLeft, ChevronRight, X, CheckCircle } from "lucide-react"
-import type { ConcernRecord } from "@/components/dashboard/OperationComponents/ConcernDetailsDrawer"
+import type { ConcernRecord } from "@/lib/operations/concern-record"
+import { toConcernRecords } from "@/lib/operations/concern-record"
 
 type FilterType = "All" | "Pending" | "Resolved"
 const FILTERS: FilterType[] = ["All", "Pending", "Resolved"]
-
-function fmtDate(iso: string | null | undefined): string {
-  if (!iso) return "—"
-  return new Date(iso).toLocaleString("en-US", {
-    month: "short", day: "numeric", year: "numeric",
-    hour: "numeric", minute: "2-digit",
-  })
-}
 
 function avatarColor(name: string): string {
   const palette = [
@@ -144,30 +137,8 @@ function ReadOnlyConcernDrawer({ record, onClose }: { record: ConcernRecord | nu
   )
 }
 
-function mapConcern(c: any): ConcernRecord {
-  return {
-    id: c.id,
-    title: c.title,
-    description: c.description,
-    status: c.status as "Pending" | "Resolved",
-    response_note: c.response_note ?? null,
-    submitted_at: fmtDate(c.submitted_at),
-    jobId: c.job?.id
-      ? `JO-${new Date(c.submitted_at ?? "").getFullYear()}-${c.job.id.slice(-4).toUpperCase()}`
-      : "—",
-    submitterName: c.submitter?.full_name ?? "—",
-    submitterRole: c.submitter?.role ?? "—",
-    stage_name: c.stage_name ?? null,
-    media: (c.media ?? []).map((m: any) => ({
-      id: m.id,
-      file_url: m.file_url,
-      media_type: m.media_type,
-    })),
-  }
-}
-
 export default function SalesConcerns({ concerns }: { concerns: any[] }) {
-  const records = useMemo(() => concerns.map(mapConcern), [concerns])
+  const records = useMemo(() => toConcernRecords(concerns), [concerns])
   const [activeFilter, setActiveFilter] = useState<FilterType>("All")
   const [searchQuery, setSearchQuery]   = useState("")
   const [currentPage, setCurrentPage]   = useState(1)

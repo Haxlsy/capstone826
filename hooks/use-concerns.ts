@@ -1,30 +1,10 @@
 "use client"
 
 import { useQuery } from "@tanstack/react-query"
+import type { ConcernRecord } from "@/lib/operations/concern-record"
 
-type Concern = {
-  id: string
-  title: string
-  description: string
-  status: string
-  response_note: string | null
-  submitted_at: string
-  resolved_at: string | null
-  job: { id: string; status: string } | null
-  stage: {
-    id: string
-    custom_name: string | null
-    custom_sequence_order: number | null
-    service_stage: { name: string; sequence_order: number } | null
-  } | null
-  submitter: { id: string; full_name: string; role: string } | null
-  resolver: { full_name: string } | null
-  media: { id: string; file_url: string; media_type: string }[]
-  stage_name: string | null
-}
-
-export function useConcerns() {
-  return useQuery<Concern[]>({
+export function useConcerns(initialData?: ConcernRecord[]) {
+  return useQuery<ConcernRecord[]>({
     queryKey: ["concerns"],
     queryFn: async () => {
       const res = await fetch("/api/operations/job-concerns")
@@ -32,5 +12,6 @@ export function useConcerns() {
       const json = await res.json()
       return json.concerns ?? []
     },
+    initialData,
   })
 }
