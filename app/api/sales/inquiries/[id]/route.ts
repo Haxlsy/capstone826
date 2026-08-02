@@ -41,6 +41,29 @@ export async function PATCH(
       .eq("id", id)
 
     if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+
+    // When Sales marks the inquiry as resolved, the human handoff is concluded.
+    // Close the customer's messenger conversation so the AI resumes handling any
+    // new messages (it re-escalates to a fresh inquiry if needed).
+    if (status === "resolved") {
+      const { data: inq } = await admin
+        .from("inquiry")
+        .select("psid")
+        .eq("id", id)
+        .maybeSingle()
+
+      if (inq?.psid) {
+        const { error: convErr } = await admin
+          .from("messenger_conversation")
+          .update({ status: "closed" })
+          .eq("psid", inq.psid)
+
+        if (convErr) {
+          console.error("[sales/inquiries] messenger_conversation close failed:", convErr.message)
+        }
+      }
+    }
+
     return NextResponse.json({ success: true })
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err)
