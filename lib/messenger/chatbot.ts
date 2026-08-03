@@ -23,6 +23,15 @@ export interface ChatbotReply {
   reply:    string
   escalate: boolean
   reason?:  string | null
+  customer?: CustomerDetails | null
+}
+
+export interface CustomerDetails {
+  full_name:       string | null
+  contact_number:  string | null
+  plate_number:    string | null
+  vehicle_unit:    string | null
+  email:           string | null
 }
 
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY_CHATBOT! })
@@ -100,7 +109,7 @@ export function buildSystemPrompt(s: ChatbotSettings): string {
   if (s.enable_booking) {
     lines.push("")
     lines.push("When a customer wants to book a service:")
-    lines.push("1. Collect their Full Name, Contact Number, Plate Number, and Vehicle Type.")
+    lines.push("1. Collect their Full Name, Contact Number, Plate Number, Vehicle Type, and Email.")
     lines.push("2. Confirm the details with the customer.")
     lines.push(`3. Send them this message exactly: "${s.booking_message}"`)
     if (s.notify_sales) {
@@ -238,8 +247,9 @@ export async function generateChatbotReply(input: {
   settings?: ChatbotSettings | null
   system_prompt?: string | null
   knowledge?: string | null
+  vehicleContext?: string | null
 }): Promise<ChatbotReply> {
-  const { message, history = [], settings, system_prompt, knowledge } = input
+  const { message, history = [], settings, system_prompt, knowledge, vehicleContext } = input
 
   let systemPrompt: string
   if (settings) {
@@ -265,6 +275,15 @@ export async function generateChatbotReply(input: {
     }, knowledge)
   }
 
+  // Inject authoritative vehicle-status data obtained via the internal lookup.
+  if (vehicleContext && vehicleContext.trim()) {
+    systemPrompt += `\n\nVEHICLE STATUS LOOKUP RESULT (authoritative — use this to answer, do not invent status data:\n${vehicleContext.trim()}`
+  }
+
+  // Instruct the model to also surface any customer booking details it sees so
+  // the webhook can store them in the inquiry's extracted_* columns.
+  systemPrompt += `\n\nAlways include any customer details you can identify from the conversation in the JSON "customer" object: full_name, contact_number, plate_number, vehicle_unit, and email. Leave any field you cannot determine as null. These are only noted for follow-up by our Sales team.`
+
   const contents: { role: "user" | "model"; parts: { text: string }[] }[] = [
     ...(history as ChatMessage[]).map((h) => ({
       role: h.role,
@@ -287,6 +306,17 @@ export async function generateChatbotReply(input: {
           reply:    { type: "STRING" },
           escalate: { type: "BOOLEAN" },
           reason:   { type: "STRING" },
+          customer: {
+            type: "OBJECT",
+            properties: {
+              full_name:      { type: "STRING" },
+              contact_number: { type: "STRING" },
+              plate_number:   { type: "STRING" },
+              vehicle_unit:   { type: "STRING" },
+              email:          { type: "STRING" },
+            },
+            required: ["full_name", "contact_number", "plate_number", "vehicle_unit", "email"],
+          },
         },
         required: ["reply", "escalate"],
       },
@@ -297,12 +327,22 @@ export async function generateChatbotReply(input: {
 
   try {
     const parsed = JSON.parse(raw.trim().replace(/^```(?:json)?|```$/g, "").trim())
+    const c = parsed.customer as Record<string, unknown> | null
     return {
       reply:    typeof parsed.reply === "string" ? parsed.reply : raw,
       escalate: Boolean(parsed.escalate),
       reason:   typeof parsed.reason === "string" ? parsed.reason : null,
+      customer: c && typeof c === "object"
+        ? {
+            full_name:      typeof c.full_name === "string"      ? c.full_name      : null,
+            contact_number: typeof c.contact_number === "string" ? c.contact_number : null,
+            plate_number:   typeof c.plate_number === "string"   ? c.plate_number   : null,
+            vehicle_unit:   typeof c.vehicle_unit === "string"   ? c.vehicle_unit   : null,
+            email:          typeof c.email === "string"          ? c.email          : null,
+          }
+        : null,
     }
   } catch {
-    return { reply: raw, escalate: false, reason: null }
+    return { reply: raw, escalate: false, reason: null, customer: null }
   }
 }
