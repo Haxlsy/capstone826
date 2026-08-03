@@ -10,8 +10,10 @@ import {
   loadChatbotConfig,
   loadKnowledgeBase,
   generateChatbotReply,
+  extractCustomerDetails,
   requestedHuman,
   type ChatbotReply,
+  type CustomerDetails,
 } from "@/lib/messenger/chatbot"
 import {
   sendMessengerText,
@@ -164,12 +166,19 @@ async function handleInboundMessage(
     ? "customer asked to speak with a human"
     : null
   let extracted: ChatbotReply["customer"] = null
+  let settings: Awaited<ReturnType<typeof loadChatbotConfig>>["settings"] = null
+  let system_prompt: string | null = null
+  let knowledge: string | null = null
 
   try {
-    const [{ settings, system_prompt }, knowledge] = await Promise.all([
-      loadChatbotConfig(),
-      loadKnowledgeBase(),
-    ])
+    const [{ settings: loadedSettings, system_prompt: loadedPrompt }, loadedKnowledge] =
+      await Promise.all([
+        loadChatbotConfig(),
+        loadKnowledgeBase(),
+      ])
+    settings = loadedSettings
+    system_prompt = loadedPrompt
+    knowledge = loadedKnowledge
 
     const result = await generateChatbotReply({
       message: messageBody,
@@ -193,6 +202,29 @@ async function handleInboundMessage(
 
   if (escalate) {
     await setConversationStatus(conversation_id, "pending")
+
+    // If the main reply call produced no customer details (e.g. the model
+    // skipped the customer object under escalation pressure), run a focused
+    // second-pass extraction so the inquiry's extracted_* fields are filled.
+    const hasDetails = (c: CustomerDetails | null | undefined): boolean =>
+      Boolean(
+        c &&
+        (c.full_name || c.contact_number || c.plate_number || c.vehicle_unit || c.email)
+      )
+    if (!hasDetails(extracted)) {
+      try {
+        const fallback = await extractCustomerDetails({
+          message: messageBody,
+          history,
+          settings,
+          system_prompt,
+          knowledge,
+        })
+        if (hasDetails(fallback)) extracted = fallback
+      } catch (err) {
+        console.error("[webhook/facebook] extraction fallback failed:", err)
+      }
+    }
 
     // Inquiry record (only on escalation) so Inquiry Management keeps working.
     // Any customer details the AI identified are stored in extracted_* columns.

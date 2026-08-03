@@ -171,6 +171,42 @@ export function buildFullSystemPrompt(
   return parts.join("\n\n")
 }
 
+/**
+ * Assembles the runtime system prompt from whichever config source is
+ * available. Used by both generateChatbotReply and extractCustomerDetails so
+ * the two calls share a single prompt (no drift).
+ */
+function buildRuntimeSystemPrompt(
+  settings?: ChatbotSettings | null,
+  system_prompt?: string | null,
+  knowledge?: string | null
+): string {
+  if (settings) {
+    return buildFullSystemPrompt(settings, knowledge)
+  }
+
+  if (system_prompt) {
+    const base = [system_prompt.trim(), BUSINESS_FACTS, HARD_GUARDRAIL].join("\n\n")
+    return knowledge
+      ? `${base}\n\nADDITIONAL BUSINESS KNOWLEDGE (use this to answer accurately):\n${knowledge.trim()}`
+      : base
+  }
+
+  return buildFullSystemPrompt({
+    personality: "friendly",
+    enable_services: true,
+    enable_booking: true,
+    enable_status: true,
+    enable_faq: true,
+    booking_message: "A staff member will follow up with you to confirm your booking.",
+    notify_sales: true,
+    language: "english",
+    escalation_rules: ["speak_to_human", "complaint", "unanswerable"],
+    vehicle_status_template:
+      "Please share your vehicle's plate number so I can check the current status of your job.",
+  }, knowledge)
+}
+
 /** Loads the chatbot config row (settings + persisted system_prompt). */
 export async function loadChatbotConfig() {
   const supabase = createAdminClient()
@@ -251,29 +287,7 @@ export async function generateChatbotReply(input: {
 }): Promise<ChatbotReply> {
   const { message, history = [], settings, system_prompt, knowledge, vehicleContext } = input
 
-  let systemPrompt: string
-  if (settings) {
-    systemPrompt = buildFullSystemPrompt(settings, knowledge)
-  } else if (system_prompt) {
-    const base = [system_prompt.trim(), BUSINESS_FACTS, HARD_GUARDRAIL].join("\n\n")
-    systemPrompt = knowledge
-      ? `${base}\n\nADDITIONAL BUSINESS KNOWLEDGE (use this to answer accurately):\n${knowledge.trim()}`
-      : base
-  } else {
-    systemPrompt = buildFullSystemPrompt({
-      personality: "friendly",
-      enable_services: true,
-      enable_booking: true,
-      enable_status: true,
-      enable_faq: true,
-      booking_message: "A staff member will follow up with you to confirm your booking.",
-      notify_sales: true,
-      language: "english",
-      escalation_rules: ["speak_to_human", "complaint", "unanswerable"],
-      vehicle_status_template:
-        "Please share your vehicle's plate number so I can check the current status of your job.",
-    }, knowledge)
-  }
+  let systemPrompt = buildRuntimeSystemPrompt(settings, system_prompt, knowledge)
 
   // Inject authoritative vehicle-status data obtained via the internal lookup.
   if (vehicleContext && vehicleContext.trim()) {
@@ -281,8 +295,9 @@ export async function generateChatbotReply(input: {
   }
 
   // Instruct the model to also surface any customer booking details it sees so
-  // the webhook can store them in the inquiry's extracted_* columns.
-  systemPrompt += `\n\nAlways include any customer details you can identify from the conversation in the JSON "customer" object: full_name, contact_number, plate_number, vehicle_unit, and email. Leave any field you cannot determine as null. These are only noted for follow-up by our Sales team.`
+  // the webhook can store them in the inquiry's extracted_* columns. Even when
+  // the reply escalates, the details must still be returned.
+  systemPrompt += `\n\nAlways include any customer details you can identify from the conversation in the JSON "customer" object: full_name, contact_number, plate_number, vehicle_unit, and email. Leave any field you cannot determine as null. These are only noted for follow-up by our Sales team. Even when you escalate or answer with a short acknowledgement, you MUST still return every customer detail visible anywhere in the conversation in the "customer" object.`
 
   const contents: { role: "user" | "model"; parts: { text: string }[] }[] = [
     ...(history as ChatMessage[]).map((h) => ({
@@ -298,7 +313,7 @@ export async function generateChatbotReply(input: {
     config: {
       systemInstruction: systemPrompt,
       temperature: 0.7,
-      maxOutputTokens: 512,
+      maxOutputTokens: 1024,
       responseMimeType: "application/json",
       responseSchema: {
         type: "OBJECT",
@@ -318,7 +333,7 @@ export async function generateChatbotReply(input: {
             required: ["full_name", "contact_number", "plate_number", "vehicle_unit", "email"],
           },
         },
-        required: ["reply", "escalate"],
+        required: ["reply", "escalate", "customer"],
       },
     },
   })
@@ -344,5 +359,78 @@ export async function generateChatbotReply(input: {
     }
   } catch {
     return { reply: raw, escalate: false, reason: null, customer: null }
+  }
+}
+
+/**
+ * Focused second-pass extraction of customer booking details from a
+ * conversation. Used on escalation when the main reply call did not return any
+ * details. Runs a single Gemini call whose JSON schema is ONLY the customer
+ * object, so the model cannot skip it. Returns null on any failure (never
+ * throws into the webhook).
+ */
+export async function extractCustomerDetails(input: {
+  message: string
+  history?: ChatMessage[]
+  settings?: ChatbotSettings | null
+  system_prompt?: string | null
+  knowledge?: string | null
+}): Promise<CustomerDetails | null> {
+  const { message, history = [], settings, system_prompt, knowledge } = input
+
+  let systemPrompt = buildRuntimeSystemPrompt(settings, system_prompt, knowledge)
+  systemPrompt += `\n\nExtract the customer's booking details from the conversation. Return them in the JSON "customer" object: full_name, contact_number, plate_number, vehicle_unit, and email. Leave any field you cannot determine as null. These are only noted for follow-up by our Sales team.`
+
+  const contents: { role: "user" | "model"; parts: { text: string }[] }[] = [
+    ...(history as ChatMessage[]).map((h) => ({
+      role: h.role,
+      parts: [{ text: h.text }],
+    })),
+    { role: "user" as const, parts: [{ text: message.trim() }] },
+  ]
+
+  try {
+    const response = await ai.models.generateContent({
+      model: "gemini-3.1-flash-lite-preview",
+      contents,
+      config: {
+        systemInstruction: systemPrompt,
+        temperature: 0.2,
+        maxOutputTokens: 512,
+        responseMimeType: "application/json",
+        responseSchema: {
+          type: "OBJECT",
+          properties: {
+            customer: {
+              type: "OBJECT",
+              properties: {
+                full_name:      { type: "STRING" },
+                contact_number: { type: "STRING" },
+                plate_number:   { type: "STRING" },
+                vehicle_unit:   { type: "STRING" },
+                email:          { type: "STRING" },
+              },
+              required: ["full_name", "contact_number", "plate_number", "vehicle_unit", "email"],
+            },
+          },
+          required: ["customer"],
+        },
+      },
+    })
+
+    const raw = response.text ?? ""
+    const parsed = JSON.parse(raw.trim().replace(/^```(?:json)?|```$/g, "").trim())
+    const c = parsed.customer as Record<string, unknown> | null
+    if (!c || typeof c !== "object") return null
+
+    return {
+      full_name:      typeof c.full_name === "string"      ? c.full_name      : null,
+      contact_number: typeof c.contact_number === "string" ? c.contact_number : null,
+      plate_number:   typeof c.plate_number === "string"   ? c.plate_number   : null,
+      vehicle_unit:   typeof c.vehicle_unit === "string"   ? c.vehicle_unit   : null,
+      email:          typeof c.email === "string"          ? c.email          : null,
+    }
+  } catch {
+    return null
   }
 }
