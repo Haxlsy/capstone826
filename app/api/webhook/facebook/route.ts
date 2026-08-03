@@ -11,8 +11,15 @@ import {
   loadKnowledgeBase,
   generateChatbotReply,
   requestedHuman,
+  type ChatbotReply,
 } from "@/lib/messenger/chatbot"
-import { sendMessengerText, fetchMessengerProfile } from "@/lib/messenger/graph"
+import {
+  sendMessengerText,
+  sendMessengerQuickReply,
+  fetchMessengerProfile,
+  type MessengerQuickReply,
+} from "@/lib/messenger/graph"
+import { lookupVehicleStatus, formatVehicleStatus } from "@/lib/messenger/vehicle"
 
 const VERIFY_TOKEN = process.env.META_VERIFY_TOKEN!
 
@@ -31,6 +38,19 @@ export async function GET(req: NextRequest) {
 const ESCALATION_ACK =
   "A member of our team will assist you shortly. Thank you for reaching out to 826 Auto Care!"
 
+const QUICK_REPLIES: MessengerQuickReply[] = [
+  { content_type: "text", title: "Services & Prices", payload: "services" },
+  { content_type: "text", title: "Booking",           payload: "booking"  },
+  { content_type: "text", title: "Report a Concern",  payload: "report"   },
+  { content_type: "text", title: "Vehicle Status",    payload: "status"   },
+]
+
+// Loose PH plate-number pattern (e.g. ABC 1234, XYZ-567, 1234 ABC).
+const PLATE_PATTERN = /\b[A-Z]{1,4}\s?-?\s?\d{1,6}(?:\s?-\s?[A-Z]{1,2})?\b/i
+
+// Loose Philippine mobile-number pattern (e.g. 0917 555 0101, +639175550101).
+const PHONE_PATTERN = /(?:\+?63|0)\s?9\d{2}[\s.-]?\d{3}[\s.-]?\d{4}\b/
+
 interface MessengerEvent {
   sender?: { id?: string }
   recipient?: { id?: string }
@@ -40,6 +60,7 @@ interface MessengerEvent {
     text?: string
     is_echo?: boolean
     attachments?: unknown[]
+    quick_reply?: { payload?: string }
   }
   delivery?: unknown
   read?: unknown
@@ -117,6 +138,23 @@ async function handleInboundMessage(
   // just record the message, do not auto-reply.
   if (status === "pending") return
 
+  const quickReplyPayload = msg.quick_reply?.payload ?? null
+
+  // Vehicle-status context: if the message carries a plate (and possibly a
+  // phone for identity verification), look it up and feed the authoritative
+  // result to the AI so it answers from real data.
+  const plateMatch = messageBody.match(PLATE_PATTERN)
+  const phoneMatch = messageBody.match(PHONE_PATTERN)
+  let vehicleContext: string | null = null
+  if (plateMatch?.[0]) {
+    const lookup = await lookupVehicleStatus({
+      plate: plateMatch[0],
+      phone: phoneMatch?.[0] ?? null,
+      psid: senderId,
+    })
+    vehicleContext = formatVehicleStatus(lookup)
+  }
+
   // AI auto-reply + escalation decision.
   const humanRequested = requestedHuman(messageBody)
 
@@ -125,6 +163,7 @@ async function handleInboundMessage(
   let escalateReason: string | null = humanRequested
     ? "customer asked to speak with a human"
     : null
+  let extracted: ChatbotReply["customer"] = null
 
   try {
     const [{ settings, system_prompt }, knowledge] = await Promise.all([
@@ -138,11 +177,13 @@ async function handleInboundMessage(
       settings,
       system_prompt,
       knowledge,
+      vehicleContext,
     })
 
     reply = result.reply?.trim() || null
     escalate = result.escalate || humanRequested
     escalateReason = humanRequested ? "customer asked to speak with a human" : (result.reason ?? null)
+    extracted = result.customer ?? null
   } catch (err) {
     // If the AI fails, err on the side of escalating to a human.
     console.error("[webhook/facebook] chatbot error:", err)
@@ -154,6 +195,7 @@ async function handleInboundMessage(
     await setConversationStatus(conversation_id, "pending")
 
     // Inquiry record (only on escalation) so Inquiry Management keeps working.
+    // Any customer details the AI identified are stored in extracted_* columns.
     const inquiry_type = humanRequested ? "Human Response" : "Booking"
     const { error: inquiryErr } = await admin.from("inquiry").insert({
       messenger_name: profile.name,
@@ -162,10 +204,16 @@ async function handleInboundMessage(
       status: "open",
       escalated_at: timestamp,
       last_message: messageBody,
+      extracted_name:    extracted?.full_name      ?? null,
+      extracted_contact: extracted?.contact_number ?? null,
+      extracted_plate:   extracted?.plate_number   ?? null,
+      extracted_vehicle: extracted?.vehicle_unit   ?? null,
+      extracted_email:   extracted?.email          ?? null,
     })
     if (inquiryErr) console.error("[webhook/facebook] inquiry insert failed:", inquiryErr.message)
 
-    // Acknowledge to the customer that a human will follow up.
+    // Acknowledge to the customer that a human will follow up (no quick replies —
+    // a human now owns the thread).
     const fbId = await sendMessengerText(senderId, ESCALATION_ACK)
     await insertMessage({
       conversation_id,
@@ -177,9 +225,13 @@ async function handleInboundMessage(
     return
   }
 
-  // Not escalated → send the AI reply.
+  // Not escalated → send the AI reply. Attach the quick-reply menu unless this
+  // inbound was itself a quick-reply tap (answer it plainly, menu returns on
+  // the next free-text message).
   if (reply) {
-    const fbId = await sendMessengerText(senderId, reply)
+    const fbId = quickReplyPayload
+      ? await sendMessengerText(senderId, reply)
+      : await sendMessengerQuickReply(senderId, reply, QUICK_REPLIES)
     await insertMessage({
       conversation_id,
       sender_type: "agent",
