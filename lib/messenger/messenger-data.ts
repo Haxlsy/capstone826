@@ -5,12 +5,16 @@ export type ConversationStatus = "open" | "pending" | "closed"
 export async function getOrCreateConversationByPsid(
   psid: string,
   customerName: string
-): Promise<{ conversation_id: number; status: ConversationStatus }> {
+): Promise<{
+  conversation_id: number
+  status: ConversationStatus
+  is_vehicle_inquiry: boolean
+}> {
   const supabase = createAdminClient()
 
   const { data: existing } = await supabase
     .from("messenger_conversation")
-    .select("conversation_id, status")
+    .select("conversation_id, status, is_vehicle_inquiry")
     .eq("psid", psid)
     .maybeSingle()
 
@@ -25,6 +29,7 @@ export async function getOrCreateConversationByPsid(
     return {
       conversation_id: existing.conversation_id,
       status: existing.status as ConversationStatus,
+      is_vehicle_inquiry: Boolean(existing.is_vehicle_inquiry),
     }
   }
 
@@ -44,7 +49,22 @@ export async function getOrCreateConversationByPsid(
     throw new Error(error?.message ?? "Failed to create conversation")
   }
 
-  return { conversation_id: data.conversation_id, status: "open" }
+  return { conversation_id: data.conversation_id, status: "open", is_vehicle_inquiry: false }
+}
+
+/** Marks whether the conversation is currently a vehicle-status flow. */
+export async function setVehicleInquiry(conversation_id: number, value: boolean) {
+  const supabase = createAdminClient()
+
+  const { data, error } = await supabase
+    .from("messenger_conversation")
+    .update({ is_vehicle_inquiry: value })
+    .eq("conversation_id", conversation_id)
+    .select("conversation_id")
+    .single()
+
+  if (error) throw new Error(error.message)
+  return data
 }
 
 export async function insertMessage(input: {
