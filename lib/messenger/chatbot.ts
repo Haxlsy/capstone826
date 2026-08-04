@@ -273,6 +273,57 @@ export function requestedHuman(message: string): boolean {
   return HUMAN_REQUEST_PATTERNS.some((re) => re.test(normalized))
 }
 
+const BOOKING_INTENT_PATTERNS = [
+  /\bbook(?:ing|ed)?\b/i,
+  /\bmag-?book\b/i,
+  /\bmagpa-?book\b/i,
+  /\bpa-?book\b/i,
+  /\breserv(?:e|ation|ed)\b/i,
+  /\bsched(?:ule|uled|uling)?\b/i,
+  /\bappointment\b/i,
+  /\bpa(?:sched|iskedule)\b/i,
+  /\bsign\s*up\b/i,
+]
+
+const STATUS_INTENT_PATTERNS = [
+  /\bstatus\b/i,
+  /\bupdate\b/i,
+  /\bprogress\b/i,
+  /\bas\s+of\b/i,
+  /\bcheck\b/i,
+  /\bsaan\s+na\b/i,
+  /\bano\s+na\b/i,
+  /\btapos\s+na\b/i,
+  /\bgaano\s+na\b/i,
+  /\bkumusta\s+(?:ang|na)\b/i,
+  /\bbalak\s+ko\s+lang\s+itsek\b/i,
+  /\bpaki-?(?:check|tingnan)\b/i,
+]
+
+/** True when the message expresses intent to book a service. */
+export function hasBookingIntent(message: string): boolean {
+  const normalized = message.toLowerCase()
+  return BOOKING_INTENT_PATTERNS.some((re) => re.test(normalized))
+}
+
+/** True when the message asks for a vehicle-status update. */
+export function hasStatusIntent(message: string): boolean {
+  const normalized = message.toLowerCase()
+  return STATUS_INTENT_PATTERNS.some((re) => re.test(normalized))
+}
+
+/**
+ * True when a booking request is complete enough to hand over to Sales.
+ * The core identity fields (full name, contact number, plate number) must all
+ * be captured. Vehicle unit and email are preferred but not required.
+ * Extraction spans the full conversation history, so details may accumulate
+ * across several turns before this flips true.
+ */
+export function isCompleteBooking(details: CustomerDetails | null | undefined): boolean {
+  if (!details) return false
+  return Boolean(details.full_name && details.contact_number && details.plate_number)
+}
+
 /**
  * Generates a chatbot reply via Gemini with a structured JSON output
  * that also tells us whether the conversation should escalate to Sales.
