@@ -4,6 +4,7 @@ import {
   getOrCreateConversationByPsid,
   insertMessage,
   setConversationStatus,
+  setVehicleInquiry,
   getConversationHistory,
 } from "@/lib/messenger/messenger-data"
 import {
@@ -12,6 +13,9 @@ import {
   generateChatbotReply,
   extractCustomerDetails,
   requestedHuman,
+  hasBookingIntent,
+  hasStatusIntent,
+  isCompleteBooking,
   type ChatbotReply,
   type CustomerDetails,
 } from "@/lib/messenger/chatbot"
@@ -39,6 +43,16 @@ export async function GET(req: NextRequest) {
 
 const ESCALATION_ACK =
   "A member of our team will assist you shortly. Thank you for reaching out to 826 Auto Care!"
+
+// Report-type concern keywords used by the escalation-type resolver.
+const REPORT_PATTERNS = [
+  /\breport\b/i,
+  /\bcomplaint\b/i,
+  /\bconcern\b/i,
+  /\breklamo\b/i,
+  /\bproblema\b/i,
+  /\bissue\b/i,
+]
 
 const QUICK_REPLIES: MessengerQuickReply[] = [
   { content_type: "text", title: "Services & Prices", payload: "services" },
@@ -119,11 +133,9 @@ async function handleInboundMessage(
 
   const profile = await fetchMessengerProfile(senderId)
 
-  // Get or create the conversation and capture its current status.
-  const { conversation_id, status } = await getOrCreateConversationByPsid(
-    senderId,
-    profile.name
-  )
+  // Get or create the conversation and capture its current status + flow flag.
+  const { conversation_id, status, is_vehicle_inquiry } =
+    await getOrCreateConversationByPsid(senderId, profile.name)
 
   // Build AI history BEFORE inserting the current message.
   const history = await getConversationHistory(conversation_id)
@@ -142,13 +154,37 @@ async function handleInboundMessage(
 
   const quickReplyPayload = msg.quick_reply?.payload ?? null
 
-  // Vehicle-status context: if the message carries a plate (and possibly a
-  // phone for identity verification), look it up and feed the authoritative
-  // result to the AI so it answers from real data.
+  // Intent detection. Status intent always wins over booking intent: a status
+  // lookup is read-only and non-destructive, so checking it first is safe.
+  const bookingIntent =
+    quickReplyPayload === "booking" || hasBookingIntent(messageBody)
+  const statusIntent =
+    quickReplyPayload === "status" ||
+    hasStatusIntent(messageBody) ||
+    (!bookingIntent && is_vehicle_inquiry)
+
+  // Persist which flow the conversation is in so a bare follow-up reply
+  // (e.g. just a plate + phone after the status template) stays on the same
+  // track without needing the keyword repeated.
+  try {
+    if (statusIntent) {
+      await setVehicleInquiry(conversation_id, true)
+    } else if (bookingIntent) {
+      await setVehicleInquiry(conversation_id, false)
+    }
+  } catch (err) {
+    console.error("[webhook/facebook] setVehicleInquiry failed:", err)
+  }
+
+  // Vehicle-status context: run the lookup whenever a plate is present UNLESS
+  // this message has explicit booking intent (booking details include a plate
+  // but must not drag in status context). Bare plate+phone with no keyword is
+  // still honored as a status request, matching current behavior and the scope
+  // (non-Messenger customers verify identity via plate + phone).
   const plateMatch = messageBody.match(PLATE_PATTERN)
   const phoneMatch = messageBody.match(PHONE_PATTERN)
   let vehicleContext: string | null = null
-  if (plateMatch?.[0]) {
+  if (plateMatch?.[0] && !bookingIntent) {
     const lookup = await lookupVehicleStatus({
       plate: plateMatch[0],
       phone: phoneMatch?.[0] ?? null,
@@ -165,6 +201,7 @@ async function handleInboundMessage(
   let escalateReason: string | null = humanRequested
     ? "customer asked to speak with a human"
     : null
+  let aiReason: string | null = null
   let extracted: ChatbotReply["customer"] = null
   let settings: Awaited<ReturnType<typeof loadChatbotConfig>>["settings"] = null
   let system_prompt: string | null = null
@@ -192,6 +229,7 @@ async function handleInboundMessage(
     reply = result.reply?.trim() || null
     escalate = result.escalate || humanRequested
     escalateReason = humanRequested ? "customer asked to speak with a human" : (result.reason ?? null)
+    aiReason = result.reason ?? null
     extracted = result.customer ?? null
   } catch (err) {
     // If the AI fails, err on the side of escalating to a human.
@@ -228,7 +266,23 @@ async function handleInboundMessage(
 
     // Inquiry record (only on escalation) so Inquiry Management keeps working.
     // Any customer details the AI identified are stored in extracted_* columns.
-    const inquiry_type = humanRequested ? "Human Response" : "Booking"
+    //
+    // Escalation type priority:
+    //   1. Customer explicitly asked for a human          → Human Response
+    //   2. Booking details are complete (or AI confirmed) → Booking
+    //   3. Customer reported a concern/complaint          → Report
+    //   4. Anything else                                  → Human Response
+    let inquiry_type: "Booking" | "Human Response" | "Report"
+    if (humanRequested) {
+      inquiry_type = "Human Response"
+    } else if (aiReason === "booking_confirmed" || isCompleteBooking(extracted)) {
+      inquiry_type = "Booking"
+    } else if (REPORT_PATTERNS.some((re) => re.test(messageBody))) {
+      inquiry_type = "Report"
+    } else {
+      inquiry_type = "Human Response"
+    }
+
     const { error: inquiryErr } = await admin.from("inquiry").insert({
       messenger_name: profile.name,
       psid: senderId,
@@ -244,6 +298,20 @@ async function handleInboundMessage(
     })
     if (inquiryErr) console.error("[webhook/facebook] inquiry insert failed:", inquiryErr.message)
 
+    // Booking requests first receive the configured confirmation message, then
+    // the escalation ack — the customer knows their booking was received before
+    // being told a human will follow up.
+    if (inquiry_type === "Booking" && settings?.booking_message) {
+      const confirmId = await sendMessengerText(senderId, settings.booking_message)
+      await insertMessage({
+        conversation_id,
+        sender_type: "agent",
+        message_body: settings.booking_message,
+        sent_at: new Date().toISOString(),
+        fb_message_id: confirmId,
+      })
+    }
+
     // Acknowledge to the customer that a human will follow up (no quick replies —
     // a human now owns the thread).
     const fbId = await sendMessengerText(senderId, ESCALATION_ACK)
@@ -254,6 +322,13 @@ async function handleInboundMessage(
       sent_at: new Date().toISOString(),
       fb_message_id: fbId,
     })
+
+    // Escalated threads are now owned by Sales; leave any status flow.
+    try {
+      await setVehicleInquiry(conversation_id, false)
+    } catch (err) {
+      console.error("[webhook/facebook] setVehicleInquiry reset failed:", err)
+    }
     return
   }
 
