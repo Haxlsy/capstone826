@@ -312,16 +312,58 @@ export function hasStatusIntent(message: string): boolean {
   return STATUS_INTENT_PATTERNS.some((re) => re.test(normalized))
 }
 
+const CONFIRMATION_PATTERNS = [
+  /\byes\b/i,
+  /\byeah\b/i,
+  /\byep\b/i,
+  /\b(?:okay|ok)\b/i,
+  /\bconfirm(?:ed)?\b/i,
+  /\bcorrect\b/i,
+  /\btama\b/i,
+  /\btumpak\b/i,
+  /\bopo\b/i,
+  /\boo\b/i,
+  /\bsige\b/i,
+  /\bsure\b/i,
+  /\bright\b/i,
+]
+
+/** True when the customer is confirming the collected booking details. */
+export function confirmRequested(message: string): boolean {
+  const normalized = message.toLowerCase()
+  return CONFIRMATION_PATTERNS.some((re) => re.test(normalized))
+}
+
+const BOOKING_FIELDS: { key: keyof CustomerDetails; label: string }[] = [
+  { key: "full_name",      label: "Full Name" },
+  { key: "contact_number", label: "Contact Number" },
+  { key: "plate_number",   label: "Plate Number" },
+  { key: "vehicle_unit",   label: "Vehicle Type" },
+  { key: "email",          label: "Email Address" },
+]
+
+/** True when the extracted details carry any booking field (booking-flow signal). */
+export function hasAnyBookingField(details: CustomerDetails | null | undefined): boolean {
+  if (!details) return false
+  return BOOKING_FIELDS.some((f) => Boolean(details[f.key]))
+}
+
+/** Labels of the required booking fields still missing from the extracted details. */
+export function missingBookingFields(
+  details: CustomerDetails | null | undefined
+): string[] {
+  if (!details) return BOOKING_FIELDS.map((f) => f.label)
+  return BOOKING_FIELDS.filter((f) => !details[f.key]).map((f) => f.label)
+}
+
 /**
- * True when a booking request is complete enough to hand over to Sales.
- * The core identity fields (full name, contact number, plate number) must all
- * be captured. Vehicle unit and email are preferred but not required.
- * Extraction spans the full conversation history, so details may accumulate
- * across several turns before this flips true.
+ * True when a booking request is complete enough to confirm and hand over to
+ * Sales. ALL five fields (full name, contact number, plate number, vehicle
+ * type, email) must be captured. Extraction spans the full conversation
+ * history, so details may accumulate across several turns before this flips.
  */
 export function isCompleteBooking(details: CustomerDetails | null | undefined): boolean {
-  if (!details) return false
-  return Boolean(details.full_name && details.contact_number && details.plate_number)
+  return missingBookingFields(details).length === 0
 }
 
 /**
@@ -335,14 +377,21 @@ export async function generateChatbotReply(input: {
   system_prompt?: string | null
   knowledge?: string | null
   vehicleContext?: string | null
+  bookingContext?: string | null
 }): Promise<ChatbotReply> {
-  const { message, history = [], settings, system_prompt, knowledge, vehicleContext } = input
+  const { message, history = [], settings, system_prompt, knowledge, vehicleContext, bookingContext } = input
 
   let systemPrompt = buildRuntimeSystemPrompt(settings, system_prompt, knowledge)
 
   // Inject authoritative vehicle-status data obtained via the internal lookup.
   if (vehicleContext && vehicleContext.trim()) {
     systemPrompt += `\n\nVEHICLE STATUS LOOKUP RESULT (authoritative — use this to answer, do not invent status data:\n${vehicleContext.trim()}`
+  }
+
+  // Inject authoritative booking-flow guidance (remind missing fields / await
+  // confirmation) so the AI's reply matches the deterministic flow state.
+  if (bookingContext && bookingContext.trim()) {
+    systemPrompt += `\n\nBOOKING FLOW (authoritative — follow this over the generic booking instructions):\n${bookingContext.trim()}`
   }
 
   // Instruct the model to also surface any customer booking details it sees so

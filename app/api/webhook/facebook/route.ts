@@ -15,6 +15,9 @@ import {
   requestedHuman,
   hasBookingIntent,
   hasStatusIntent,
+  hasAnyBookingField,
+  missingBookingFields,
+  confirmRequested,
   isCompleteBooking,
   type ChatbotReply,
   type CustomerDetails,
@@ -45,13 +48,14 @@ const ESCALATION_ACK =
   "A member of our team will assist you shortly. Thank you for reaching out to 826 Auto Care!"
 
 // Report-type concern keywords used by the escalation-type resolver.
+// Deliberately excludes "problema"/"issue" so casual phrases like
+// "walang problema" (no problem) do not trigger a report escalation.
 const REPORT_PATTERNS = [
   /\breport\b/i,
   /\bcomplaint\b/i,
   /\bconcern\b/i,
   /\breklamo\b/i,
-  /\bproblema\b/i,
-  /\bissue\b/i,
+  /\bmagreklamo\b/i,
 ]
 
 const QUICK_REPLIES: MessengerQuickReply[] = [
@@ -60,6 +64,20 @@ const QUICK_REPLIES: MessengerQuickReply[] = [
   { content_type: "text", title: "Report a Concern",  payload: "report"   },
   { content_type: "text", title: "Vehicle Status",    payload: "status"   },
 ]
+
+// Shown when the bot has collected complete booking details and needs the
+// customer to confirm them before escalating.
+const CONFIRM_QUICK_REPLIES: MessengerQuickReply[] = [
+  { content_type: "text", title: "Yes, confirm",     payload: "confirm" },
+  { content_type: "text", title: "No, let me edit",  payload: "edit"    },
+]
+
+/** True when the extracted customer object carries at least one real detail. */
+const hasExtractedDetails = (c: CustomerDetails | null | undefined): boolean =>
+  Boolean(
+    c &&
+    (c.full_name || c.contact_number || c.plate_number || c.vehicle_unit || c.email)
+  )
 
 // Loose PH plate-number pattern (e.g. ABC 1234, XYZ-567, 1234 ABC).
 const PLATE_PATTERN = /\b[A-Z]{1,4}\s?-?\s?\d{1,6}(?:\s?-\s?[A-Z]{1,2})?\b/i
@@ -195,9 +213,12 @@ async function handleInboundMessage(
 
   // AI auto-reply + escalation decision.
   const humanRequested = requestedHuman(messageBody)
+  const reportIntent =
+    quickReplyPayload === "report" ||
+    REPORT_PATTERNS.some((re) => re.test(messageBody))
 
   let reply: string | null = null
-  let escalate = humanRequested
+  let escalate = humanRequested || reportIntent
   let escalateReason: string | null = humanRequested
     ? "customer asked to speak with a human"
     : null
@@ -227,7 +248,7 @@ async function handleInboundMessage(
     })
 
     reply = result.reply?.trim() || null
-    escalate = result.escalate || humanRequested
+    escalate = result.escalate || humanRequested || reportIntent
     escalateReason = humanRequested ? "customer asked to speak with a human" : (result.reason ?? null)
     aiReason = result.reason ?? null
     extracted = result.customer ?? null
@@ -238,47 +259,100 @@ async function handleInboundMessage(
     escalateReason = "chatbot error"
   }
 
+  // Booking flow: deterministic remind → confirm → escalate. This overrides the
+  // AI's own escalate flag so a completed booking is never finalized before the
+  // customer confirms their details, and missing fields are called out.
+  const bookingFlow =
+    hasBookingIntent(messageBody) || (!statusIntent && hasAnyBookingField(extracted))
+  let awaitBookingConfirm = false
+  let escalateBooking = false
+
+  if (bookingFlow && !humanRequested && !reportIntent) {
+    const missing = missingBookingFields(extracted)
+    let bookingContext: string
+
+    if (missing.length > 0) {
+      escalate = false
+      bookingContext =
+        `The customer is in a booking flow but is missing the following required detail(s): ${missing.join(", ")}. ` +
+        "Politely ask the customer to provide only the missing details. Do NOT send the final booking confirmation and do NOT escalate until all details are collected."
+    } else if (quickReplyPayload === "edit") {
+      escalate = false
+      bookingContext =
+        "The customer wants to edit one of their collected booking details. Ask which detail they would like to change, then update it. Do NOT finalize or escalate until the customer confirms."
+    } else if (confirmRequested(messageBody) || quickReplyPayload === "confirm") {
+      escalate = true
+      escalateBooking = true
+      bookingContext =
+        "The customer has confirmed their complete booking details. The booking is ready to be handed over to Sales."
+    } else {
+      escalate = false
+      awaitBookingConfirm = true
+      bookingContext =
+        "All required booking details are collected (Full Name, Contact Number, Plate Number, Vehicle Type, Email). " +
+        "Summarize the details back to the customer and ask them to confirm. " +
+        "Do NOT send the final booking confirmation message and do NOT escalate until the customer confirms."
+    }
+
+    // Re-generate the reply with the booking-flow context (and get a more
+    // reliable customer extraction). The escalation path ignores `reply`, so
+    // this is safe for the confirmed case too.
+    try {
+      const flowResult = await generateChatbotReply({
+        message: messageBody,
+        history,
+        settings,
+        system_prompt,
+        knowledge,
+        vehicleContext,
+        bookingContext,
+      })
+      if (flowResult.reply?.trim()) reply = flowResult.reply.trim()
+      if (hasExtractedDetails(flowResult.customer)) extracted = flowResult.customer
+    } catch (err) {
+      console.error("[webhook/facebook] booking-flow reply failed:", err)
+    }
+  }
+
+  // If the main reply calls produced no customer details but we still escalated
+  // (human request, report, or generic AI escalation), run a focused second-pass
+  // extraction so the inquiry's extracted_* fields are filled.
+  if (escalate && !hasExtractedDetails(extracted) && !bookingFlow) {
+    try {
+      const fallback = await extractCustomerDetails({
+        message: messageBody,
+        history,
+        settings,
+        system_prompt,
+        knowledge,
+      })
+      if (hasExtractedDetails(fallback)) extracted = fallback
+    } catch (err) {
+      console.error("[webhook/facebook] extraction fallback failed:", err)
+    }
+  }
+
   if (escalate) {
     await setConversationStatus(conversation_id, "pending")
-
-    // If the main reply call produced no customer details (e.g. the model
-    // skipped the customer object under escalation pressure), run a focused
-    // second-pass extraction so the inquiry's extracted_* fields are filled.
-    const hasDetails = (c: CustomerDetails | null | undefined): boolean =>
-      Boolean(
-        c &&
-        (c.full_name || c.contact_number || c.plate_number || c.vehicle_unit || c.email)
-      )
-    if (!hasDetails(extracted)) {
-      try {
-        const fallback = await extractCustomerDetails({
-          message: messageBody,
-          history,
-          settings,
-          system_prompt,
-          knowledge,
-        })
-        if (hasDetails(fallback)) extracted = fallback
-      } catch (err) {
-        console.error("[webhook/facebook] extraction fallback failed:", err)
-      }
-    }
 
     // Inquiry record (only on escalation) so Inquiry Management keeps working.
     // Any customer details the AI identified are stored in extracted_* columns.
     //
     // Escalation type priority:
     //   1. Customer explicitly asked for a human          → Human Response
-    //   2. Booking details are complete (or AI confirmed) → Booking
-    //   3. Customer reported a concern/complaint          → Report
+    //   2. Customer reported a concern/complaint          → Report
+    //   3. Booking confirmed (booking flow + complete)    → Booking
     //   4. Anything else                                  → Human Response
     let inquiry_type: "Booking" | "Human Response" | "Report"
     if (humanRequested) {
       inquiry_type = "Human Response"
-    } else if (aiReason === "booking_confirmed" || isCompleteBooking(extracted)) {
-      inquiry_type = "Booking"
-    } else if (REPORT_PATTERNS.some((re) => re.test(messageBody))) {
+    } else if (reportIntent) {
       inquiry_type = "Report"
+    } else if (
+      bookingFlow &&
+      (escalateBooking || aiReason === "booking_confirmed" || isCompleteBooking(extracted))
+    ) {
+      inquiry_type = "Booking"
     } else {
       inquiry_type = "Human Response"
     }
@@ -332,13 +406,17 @@ async function handleInboundMessage(
     return
   }
 
-  // Not escalated → send the AI reply. Attach the quick-reply menu unless this
-  // inbound was itself a quick-reply tap (answer it plainly, menu returns on
-  // the next free-text message).
+  // Not escalated → send the AI reply. Attach the confirm menu when booking
+  // details are complete and awaiting the customer's confirmation; otherwise
+  // attach the standard quick-reply menu unless this inbound was itself a
+  // quick-reply tap (answer it plainly, menu returns on the next free-text
+  // message).
   if (reply) {
     const fbId = quickReplyPayload
       ? await sendMessengerText(senderId, reply)
-      : await sendMessengerQuickReply(senderId, reply, QUICK_REPLIES)
+      : awaitBookingConfirm
+        ? await sendMessengerQuickReply(senderId, reply, CONFIRM_QUICK_REPLIES)
+        : await sendMessengerQuickReply(senderId, reply, QUICK_REPLIES)
     await insertMessage({
       conversation_id,
       sender_type: "agent",
