@@ -5,6 +5,7 @@ import {
   insertMessage,
   setConversationStatus,
   setVehicleInquiry,
+  setAwaitingConfirmation,
   getConversationHistory,
 } from "@/lib/messenger/messenger-data"
 import {
@@ -15,7 +16,6 @@ import {
   requestedHuman,
   hasBookingIntent,
   hasStatusIntent,
-  hasAnyBookingField,
   missingBookingFields,
   confirmRequested,
   isCompleteBooking,
@@ -65,13 +65,6 @@ const QUICK_REPLIES: MessengerQuickReply[] = [
   { content_type: "text", title: "Vehicle Status",    payload: "status"   },
 ]
 
-// Shown when the bot has collected complete booking details and needs the
-// customer to confirm them before escalating.
-const CONFIRM_QUICK_REPLIES: MessengerQuickReply[] = [
-  { content_type: "text", title: "Yes, confirm",     payload: "confirm" },
-  { content_type: "text", title: "No, let me edit",  payload: "edit"    },
-]
-
 /** True when the extracted customer object carries at least one real detail. */
 const hasExtractedDetails = (c: CustomerDetails | null | undefined): boolean =>
   Boolean(
@@ -84,6 +77,16 @@ const PLATE_PATTERN = /\b[A-Z]{1,4}\s?-?\s?\d{1,6}(?:\s?-\s?[A-Z]{1,2})?\b/i
 
 // Loose Philippine mobile-number pattern (e.g. 0917 555 0101, +639175550101).
 const PHONE_PATTERN = /(?:\+?63|0)\s?9\d{2}[\s.-]?\d{3}[\s.-]?\d{4}\b/
+
+// Loose email pattern (e.g. john@example.com).
+const EMAIL_PATTERN = /\b[\w.+-]+@[\w-]+\.[\w.]+\b/
+
+// A message carries a booking signal when it either states booking intent or
+// contains one of the booking detail tokens (plate / phone / email). This is
+// evaluated on the CURRENT message only, so a stray detail from an older turn
+// does not keep the confirmation flow glued to unrelated replies.
+const bookingSignal = (text: string): boolean =>
+  hasBookingIntent(text) || PLATE_PATTERN.test(text) || PHONE_PATTERN.test(text) || EMAIL_PATTERN.test(text)
 
 interface MessengerEvent {
   sender?: { id?: string }
@@ -151,8 +154,8 @@ async function handleInboundMessage(
 
   const profile = await fetchMessengerProfile(senderId)
 
-  // Get or create the conversation and capture its current status + flow flag.
-  const { conversation_id, status, is_vehicle_inquiry } =
+  // Get or create the conversation and capture its current status + flow flags.
+  const { conversation_id, status, is_vehicle_inquiry, awaiting_confirmation } =
     await getOrCreateConversationByPsid(senderId, profile.name)
 
   // Build AI history BEFORE inserting the current message.
@@ -262,36 +265,57 @@ async function handleInboundMessage(
   // Booking flow: deterministic remind → confirm → escalate. This overrides the
   // AI's own escalate flag so a completed booking is never finalized before the
   // customer confirms their details, and missing fields are called out.
-  const bookingFlow =
-    hasBookingIntent(messageBody) || (!statusIntent && hasAnyBookingField(extracted))
-  let awaitBookingConfirm = false
+  //
+  // The flow only fires when the CURRENT message carries a booking signal
+  // (booking intent / a detail token) OR the customer is still on the
+  // confirmation step (awaiting_confirmation was persisted by a previous turn).
+  // This keeps unrelated free-text replies from being dragged into the booking
+  // flow just because earlier turns contained booking details.
+  const signal = bookingSignal(messageBody)
+  const bookingFlow = signal || awaiting_confirmation
   let escalateBooking = false
 
-  if (bookingFlow && !humanRequested && !reportIntent) {
+  // Best-effort flag persistence: a failure here should not abort the reply.
+  const persistConfirmFlag = async (value: boolean) => {
+    try {
+      await setAwaitingConfirmation(conversation_id, value)
+    } catch (err) {
+      console.error("[webhook/facebook] setAwaitingConfirmation failed:", err)
+    }
+  }
+
+  if (bookingFlow && !statusIntent && !humanRequested && !reportIntent) {
     const missing = missingBookingFields(extracted)
     let bookingContext: string
 
     if (missing.length > 0) {
       escalate = false
+      await persistConfirmFlag(false)
       bookingContext =
         `The customer is in a booking flow but is missing the following required detail(s): ${missing.join(", ")}. ` +
         "Politely ask the customer to provide only the missing details. Do NOT send the final booking confirmation and do NOT escalate until all details are collected."
-    } else if (quickReplyPayload === "edit") {
-      escalate = false
-      bookingContext =
-        "The customer wants to edit one of their collected booking details. Ask which detail they would like to change, then update it. Do NOT finalize or escalate until the customer confirms."
-    } else if (confirmRequested(messageBody) || quickReplyPayload === "confirm") {
+    } else if (confirmRequested(messageBody)) {
       escalate = true
       escalateBooking = true
+      await persistConfirmFlag(false)
       bookingContext =
         "The customer has confirmed their complete booking details. The booking is ready to be handed over to Sales."
-    } else {
+    } else if (signal) {
       escalate = false
-      awaitBookingConfirm = true
+      await persistConfirmFlag(true)
       bookingContext =
         "All required booking details are collected (Full Name, Contact Number, Plate Number, Vehicle Type, Email). " +
-        "Summarize the details back to the customer and ask them to confirm. " +
+        "Summarize the details back to the customer and ask them to confirm, phrased in the customer's configured language like: " +
+        "'Is this information correct? Reply YES to confirm.' " +
         "Do NOT send the final booking confirmation message and do NOT escalate until the customer confirms."
+    } else {
+      // Flag was set but this message carries no booking signal — the customer
+      // wandered off. Clear the flag and let the AI answer normally.
+      escalate = false
+      await persistConfirmFlag(false)
+      bookingContext =
+        "The customer was asked to confirm their booking details but the last message is not a confirmation and carries no booking details. " +
+        "Answer the customer normally; you may briefly re-offer to continue their booking if it is natural to do so, but do not send the final booking confirmation and do not escalate."
     }
 
     // Re-generate the reply with the booking-flow context (and get a more
@@ -403,20 +427,19 @@ async function handleInboundMessage(
     } catch (err) {
       console.error("[webhook/facebook] setVehicleInquiry reset failed:", err)
     }
+    await persistConfirmFlag(false)
     return
   }
 
-  // Not escalated → send the AI reply. Attach the confirm menu when booking
-  // details are complete and awaiting the customer's confirmation; otherwise
-  // attach the standard quick-reply menu unless this inbound was itself a
-  // quick-reply tap (answer it plainly, menu returns on the next free-text
-  // message).
+  // Not escalated → send the AI reply. Attach the standard quick-reply menu
+  // unless this inbound was itself a quick-reply tap (answer it plainly; the
+  // menu returns on the next free-text message). The booking confirmation is
+  // requested in plain text (no confirm buttons), so the standard menu is
+  // always what the customer sees during the booking flow.
   if (reply) {
     const fbId = quickReplyPayload
       ? await sendMessengerText(senderId, reply)
-      : awaitBookingConfirm
-        ? await sendMessengerQuickReply(senderId, reply, CONFIRM_QUICK_REPLIES)
-        : await sendMessengerQuickReply(senderId, reply, QUICK_REPLIES)
+      : await sendMessengerQuickReply(senderId, reply, QUICK_REPLIES)
     await insertMessage({
       conversation_id,
       sender_type: "agent",
