@@ -42,10 +42,10 @@ export async function PATCH(
 
     if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
-    // When Sales marks the inquiry as resolved, the human handoff is concluded.
-    // Close the customer's messenger conversation so the AI resumes handling any
-    // new messages (it re-escalates to a fresh inquiry if needed).
-    if (status === "resolved") {
+    // When Sales records or resolves the inquiry, the human handoff is
+    // concluded. Close the customer's messenger conversation so the AI resumes
+    // handling any new messages (it re-escalates to a fresh inquiry if needed).
+    if (status === "resolved" || status === "recorded") {
       const { data: inq } = await admin
         .from("inquiry")
         .select("psid")

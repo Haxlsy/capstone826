@@ -343,10 +343,6 @@ const BOOKING_FIELDS: { key: keyof CustomerDetails; label: string }[] = [
 ]
 
 /** True when the extracted details carry any booking field (booking-flow signal). */
-export function hasAnyBookingField(details: CustomerDetails | null | undefined): boolean {
-  if (!details) return false
-  return BOOKING_FIELDS.some((f) => Boolean(details[f.key]))
-}
 
 /** Labels of the required booking fields still missing from the extracted details. */
 export function missingBookingFields(
