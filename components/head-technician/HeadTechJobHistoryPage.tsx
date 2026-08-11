@@ -7,6 +7,7 @@ import {
   ThumbsUp, AlertTriangle, Loader2, Info, RefreshCw, Play, X, Users, ChevronDown, Clock, AlarmClock,
 } from "lucide-react";
 import { BottomNav } from "./components/BottomNav";
+import { fmtDateTime, fmtDateTimeShort } from "@/lib/time-display";
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -258,10 +259,7 @@ export default function HeadTechJobHistoryPage({ jobId }: { jobId: string }) {
         body: JSON.stringify({ action: "mark_stage_done", stage_id: stage.id, completion_notes: notes || null }),
       });
       if (res.ok) {
-        const now = new Date().toLocaleString("en-US", {
-          month: "short", day: "numeric", year: "numeric",
-          hour: "numeric", minute: "2-digit",
-        });
+        const now = fmtDateTime(new Date().toISOString());
         setJob((prev) => prev ? {
           ...prev,
           stages: prev.stages.map((s) =>
@@ -528,7 +526,7 @@ export default function HeadTechJobHistoryPage({ jobId }: { jobId: string }) {
                     <span className="font-medium">{s.order}. {s.name}</span>
                     {s.expected_end_at && (
                       <span className="text-red-400 truncate">
-                        · was due {new Date(s.expected_end_at).toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}
+                        · was due {fmtDateTimeShort(s.expected_end_at)}
                       </span>
                     )}
                   </li>
@@ -1026,7 +1024,7 @@ function StageCard({
             <p className={`flex items-center gap-1 text-[11px] mt-0.5 ${stage.is_delayed ? "text-red-500" : "text-gray-400"}`}>
               <Clock size={10} />
               {stage.expected_end_at && (
-                <span>Due by {new Date(stage.expected_end_at).toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}</span>
+                <span>Due by {fmtDateTimeShort(stage.expected_end_at)}</span>
               )}
               {stage.expected_end_at && stage.stage_duration_mins > 0 && <span className="text-gray-300">·</span>}
               {stage.stage_duration_mins > 0 && <span>{fmtDuration(stage.stage_duration_mins)}</span>}

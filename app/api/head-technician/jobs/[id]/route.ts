@@ -3,15 +3,7 @@ import { cookies } from "next/headers"
 import { createClient } from "@/lib/supabase/server"
 import { createAdminClient } from "@/lib/supabase/admin"
 import { addWorkingMins } from "@/hooks/time-utils"
-
-function fmtDate(iso: string | null): string {
-  if (!iso) return "—"
-  return new Date(iso).toLocaleString("en-US", {
-    month: "short", day: "numeric", year: "numeric",
-    hour: "numeric", minute: "2-digit",
-    timeZone: "Asia/Manila",
-  })
-}
+import { fmtDateTime } from "@/lib/time-display"
 
 export async function GET(
   _request: Request,
@@ -230,7 +222,7 @@ export async function GET(
         car_make:              (j.customer as any)?.vehicle_unit ?? j.vehicle_unit     ?? "—",
         service:               (j.service as any)?.name          ?? "—",
         technician_name:       (leader?.user_account as any)?.full_name ?? "—",
-        scheduled_start:       fmtDate(j.scheduled_at),
+        scheduled_start:       fmtDateTime(j.scheduled_at),
         status:                j.status,
         handoff_notes:         handoffNotes,
         preparation_finished,
@@ -241,7 +233,7 @@ export async function GET(
         installers,
         timeline: (history ?? []).map((h: any) => ({
           status:     h.status,
-          changed_at: fmtDate(h.created_at),
+          changed_at: fmtDateTime(h.created_at),
           changed_by: (h.changed_by as any)?.full_name ?? "System",
         })),
         stages: stages.map((s: any) => ({
@@ -260,7 +252,7 @@ export async function GET(
           rework_instructions:  s.rework_instructions  ?? null,
           handoff_notes:        s.handoff_notes         ?? null,
           completion_notes:     s.completion_notes      ?? null,
-          completed_at:         s.completed_at ? fmtDate(s.completed_at) : null,
+          completed_at:         s.completed_at ? fmtDateTime(s.completed_at) : null,
           media:                (s.media ?? []).map((m: any) => ({
             id:   m.id,
             url:  m.file_url,
@@ -309,6 +301,23 @@ export async function PATCH(
         .from("job_order")
         .update({ status: "Ongoing", actual_start_at: new Date().toISOString() })
         .eq("id", jobId)
+
+      // Recompute expected_completion_at from the actual start + full stage duration
+      // so an early/late start is reflected immediately.
+      const { data: jobStages } = await admin
+        .from("job_stage_progress")
+        .select("stage_duration_mins, service_stage:service_stage_id(stage_duration_mins)")
+        .eq("job_order_id", jobId)
+      const totalMins = (jobStages ?? []).reduce((acc: number, s: any) => {
+        const override = s.stage_duration_mins as number | null
+        const base     = (s.service_stage as any)?.stage_duration_mins ?? 0
+        return acc + (override != null ? override : base)
+      }, 0)
+      if (totalMins > 0) {
+        const newCompletion = addWorkingMins(new Date(), totalMins)
+        await admin.from("job_order").update({ expected_completion_at: newCompletion.toISOString() }).eq("id", jobId)
+      }
+
       await admin.from("job_order_history").insert({
         job_order_id:  jobId,
         status:        "Ongoing",

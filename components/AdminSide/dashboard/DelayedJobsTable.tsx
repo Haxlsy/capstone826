@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react"
 import { AlertTriangle, RefreshCw } from "lucide-react"
 import { useRealtimeRefetch } from "@/hooks/useRealtimeRefetch"
+import { fmtDateTimeShort } from "@/lib/time-display"
 
 interface DelayedJob {
   id: string
@@ -96,12 +97,7 @@ export function DelayedJobsTable({ initialData }: { initialData?: DelayedJob[] }
                     </td>
                     <td className="py-2 pr-3 text-gray-700">{job.service?.name ?? "—"}</td>
                     <td className="py-2 pr-3 text-gray-500 text-xs">
-                      {job.expected_completion_at
-                        ? new Date(job.expected_completion_at).toLocaleString("en-US", {
-                            month: "short", day: "numeric",
-                            hour: "numeric", minute: "2-digit",
-                          })
-                        : "—"}
+                      {fmtDateTimeShort(job.expected_completion_at)}
                     </td>
                     <td className="py-2">
                       {isOverdue ? (

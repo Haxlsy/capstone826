@@ -1,3 +1,5 @@
+import { fmtDateTime } from "@/lib/time-display"
+
 export interface ActivityItem {
   id: string
   description: string
@@ -7,18 +9,6 @@ export interface ActivityItem {
 
 interface RecentActivityProps {
   items: ActivityItem[]
-}
-
-function formatTimestamp(isoString: string): string {
-  const date = new Date(isoString)
-  return date.toLocaleString("en-US", {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
-    hour12: true,
-  })
 }
 
 const typeColorMap: Record<ActivityItem["type"], string> = {
@@ -48,7 +38,7 @@ export default function RecentActivity({ items }: RecentActivityProps) {
                 {item.description}
               </p>
               <span className="text-xs text-gray-400 shrink-0 ml-4">
-                {formatTimestamp(item.timestamp)}
+                {fmtDateTime(item.timestamp)}
               </span>
             </div>
           ))}

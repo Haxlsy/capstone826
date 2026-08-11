@@ -2,15 +2,7 @@ import { NextResponse } from "next/server"
 import { cookies } from "next/headers"
 import { createClient } from "@/lib/supabase/server"
 import { createAdminClient } from "@/lib/supabase/admin"
-
-function fmtDate(iso: string | null): string {
-  if (!iso) return "—"
-  return new Date(iso).toLocaleString("en-US", {
-    month: "short", day: "numeric", year: "numeric",
-    hour: "numeric", minute: "2-digit",
-    timeZone: "Asia/Manila",
-  })
-}
+import { fmtDateTime } from "@/lib/time-display"
 
 // ── GET — fetch own submitted concerns ───────────────────────────────────────
 export async function GET() {
@@ -76,7 +68,7 @@ export async function GET() {
         description:     c.description,
         status:          c.status,
         response_note:   c.response_note ?? null,
-        submitted_at:    fmtDate(c.submitted_at),
+        submitted_at:    fmtDateTime(c.submitted_at),
         job_display_id:  c.job?.id
           ? `JO-${new Date(c.job.created_at).getFullYear()}-${(c.job.id as string).slice(-4).toUpperCase()}`
           : null,

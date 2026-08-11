@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef, useCallback } from "react"
 import { Search, Car, Phone, Mail, Pencil, X, Check } from "lucide-react"
 import { getInitials } from "@/hooks/useCurrentUser"
+import { fmtDate } from "@/lib/time-display"
 
 interface CustomerRecord {
   id:            string
@@ -13,10 +14,6 @@ interface CustomerRecord {
   vehicleUnit:   string
   psid:          string | null
   createdAt:     string
-}
-
-function fmtDate(iso: string): string {
-  return new Date(iso).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })
 }
 
 const EDIT_INPUT = "text-sm border border-gray-300 rounded-lg px-2 py-1 focus:outline-none focus:ring-2 focus:ring-blue-500"

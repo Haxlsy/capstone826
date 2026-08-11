@@ -3,6 +3,7 @@
 import { useState, useMemo } from "react"
 import { useRouter } from "next/navigation"
 import { Search, ChevronLeft, ChevronRight, FileText, FileSpreadsheet, CheckCircle2 } from "lucide-react"
+import { fmtDateTime } from "@/lib/time-display"
 
 interface JobRecord {
   id:                     string
@@ -17,22 +18,6 @@ interface JobRecord {
   expected_completion_at: string | null
   released_at:            string | null
   created_at:             string
-}
-
-function fmtDate(iso: string | null | undefined): string {
-  if (!iso) return "—"
-  return new Date(iso).toLocaleDateString("en-US", {
-    month: "short", day: "numeric", year: "numeric",
-    hour: "numeric", minute: "2-digit", hour12: true,
-  })
-}
-
-function fmtDateTime(iso: string | null | undefined): string {
-  if (!iso) return "—"
-  return new Date(iso).toLocaleString("en-US", {
-    month: "short", day: "numeric", year: "numeric",
-    hour: "numeric", minute: "2-digit", hour12: true,
-  })
 }
 
 export default function JobOrderRecords({ jobOrders: rawOrders }: { jobOrders: any[] }) {
@@ -96,8 +81,8 @@ export default function JobOrderRecords({ jobOrders: rawOrders }: { jobOrders: a
     const rows = filtered.map((r) => [
       r.displayId, r.customer, r.plate, r.vehicle, r.service,
       r.head_detailer, r.head_installer,
-      r.scheduled_at ? fmtDate(r.scheduled_at) : "—",
-      fmtDate(r.created_at),
+      r.scheduled_at ? fmtDateTime(r.scheduled_at) : "—",
+      fmtDateTime(r.created_at),
       r.released_at ? fmtDateTime(r.released_at) : "—"
     ])
     const csv = [headers, ...rows].map((row) => row.map((c) => `"${String(c).replace(/"/g, '""')}"`).join(",")).join("\n")
@@ -114,8 +99,8 @@ export default function JobOrderRecords({ jobOrders: rawOrders }: { jobOrders: a
         <td>${r.displayId}</td><td>${r.customer}</td><td>${r.plate}</td>
         <td>${r.vehicle}</td><td>${r.service}</td>
         <td>${r.head_detailer}</td><td>${r.head_installer}</td>
-        <td>${r.scheduled_at ? fmtDate(r.scheduled_at) : "—"}</td>
-        <td>${fmtDate(r.created_at)}</td>
+        <td>${r.scheduled_at ? fmtDateTime(r.scheduled_at) : "—"}</td>
+        <td>${fmtDateTime(r.created_at)}</td>
         <td>${r.released_at ? fmtDateTime(r.released_at) : "—"}</td>
       </tr>`).join("")
     const html = `<html><head><title>Job Order Records</title>
@@ -252,7 +237,7 @@ export default function JobOrderRecords({ jobOrders: rawOrders }: { jobOrders: a
                   </span>
                 </td>
                 <td className="px-4 py-3.5">
-                  <span className="text-sm text-gray-500">{fmtDate(r.scheduled_at)}</span>
+                  <span className="text-sm text-gray-500">{fmtDateTime(r.scheduled_at)}</span>
                 </td>
                 <td className="px-4 py-3.5">
                   <div className="flex items-center gap-1.5">

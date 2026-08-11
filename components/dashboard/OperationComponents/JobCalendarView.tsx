@@ -3,6 +3,7 @@
 import { useState, useMemo } from "react"
 import { ChevronLeft, ChevronRight, Clock, CalendarClock, CheckCircle2, User, X } from "lucide-react"
 import { Sk } from "@/components/ui/skeleton"
+import { fmtDateTimeShort } from "@/lib/time-display"
 
 type DotColor = "blue" | "green" | "orange" | "red" | "teal" | "amber" | "gray"
 
@@ -60,14 +61,6 @@ interface CalendarJob {
   service:                string
   head_detailer:          string | null
   head_installer:         string | null
-}
-
-function fmtDateTime(iso: string | null): string {
-  if (!iso) return "—"
-  return new Date(iso).toLocaleString("en-US", {
-    month: "short", day: "numeric",
-    hour: "numeric", minute: "2-digit", hour12: true,
-  })
 }
 
 // ── Compact hover tooltip — one line per job, handles 15+ cleanly ────────────
@@ -182,7 +175,7 @@ function DayDetailModal({
                     <CalendarClock className="w-3 h-3" />
                     Scheduled
                   </span>
-                  <span className="text-gray-700 font-medium">{fmtDateTime(job.scheduled_at)}</span>
+                  <span className="text-gray-700 font-medium">{fmtDateTimeShort(job.scheduled_at)}</span>
                 </div>
                 <div className="flex items-center justify-between">
                   <span className="flex items-center gap-1.5 text-gray-400">
@@ -190,7 +183,7 @@ function DayDetailModal({
                     Started
                   </span>
                   <span className={job.actual_start_at ? "text-blue-600 font-medium" : "italic text-gray-400"}>
-                    {job.actual_start_at ? fmtDateTime(job.actual_start_at) : "Not started yet"}
+                    {job.actual_start_at ? fmtDateTimeShort(job.actual_start_at) : "Not started yet"}
                   </span>
                 </div>
                 <div className="flex items-center justify-between">
@@ -199,7 +192,7 @@ function DayDetailModal({
                     Est. End
                   </span>
                   <span className={job.expected_completion_at ? "text-gray-700" : "italic text-gray-400"}>
-                    {job.expected_completion_at ? fmtDateTime(job.expected_completion_at) : "—"}
+                    {job.expected_completion_at ? fmtDateTimeShort(job.expected_completion_at) : "—"}
                   </span>
                 </div>
               </div>

@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from "react"
 import Link from "next/link"
 import { Users, Clock, RefreshCw, CalendarClock, CheckCircle2, AlertCircle } from "lucide-react"
+import { fmtDateTimeShort } from "@/lib/time-display"
 
 interface TeamEntry {
   job_id:                 string
@@ -17,14 +18,6 @@ interface TeamEntry {
   head_installer:         string | null
   detailers:              string[]
   installers:             string[]
-}
-
-function fmtDateTime(iso: string | null): string {
-  if (!iso) return "—"
-  return new Date(iso).toLocaleString("en-US", {
-    month: "short", day: "numeric",
-    hour: "numeric", minute: "2-digit", hour12: true,
-  })
 }
 
 
@@ -58,7 +51,7 @@ function TimelineRow({
           <CalendarClock className="w-3 h-3" />
           Scheduled
         </span>
-        <span className="text-gray-700 font-medium text-right">{fmtDateTime(scheduledAt)}</span>
+        <span className="text-gray-700 font-medium text-right">{fmtDateTimeShort(scheduledAt)}</span>
       </div>
       <div className="flex items-center justify-between gap-2">
         <span className="flex items-center gap-1.5 text-gray-400 shrink-0">
@@ -66,7 +59,7 @@ function TimelineRow({
           Started
         </span>
         <span className={`text-right ${hasStarted ? "text-blue-600 font-medium" : "italic text-gray-400"}`}>
-          {hasStarted ? fmtDateTime(actualStartAt) : "Not started yet"}
+          {hasStarted ? fmtDateTimeShort(actualStartAt) : "Not started yet"}
         </span>
       </div>
       <div className="flex items-center justify-between gap-2">
@@ -75,7 +68,7 @@ function TimelineRow({
           Est. End
         </span>
         <span className={`text-right ${expectedEndAt ? "text-gray-700" : "italic text-gray-400"}`}>
-          {expectedEndAt ? fmtDateTime(expectedEndAt) : "—"}
+          {expectedEndAt ? fmtDateTimeShort(expectedEndAt) : "—"}
         </span>
       </div>
     </div>

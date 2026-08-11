@@ -1,5 +1,6 @@
 import { createAdminClient } from "@/lib/supabase/admin"
 import { addWorkingMins } from "@/hooks/time-utils"
+import { fmtDate } from "@/lib/time-display"
 
 export type TechnicianJob = {
   job_id: string
@@ -15,13 +16,6 @@ export type TechnicianJob = {
   progress: number
   stage_groups: { label: string; color: string; done: number; total: number }[]
   has_delayed_stage: boolean
-}
-
-function fmtDate(iso: string | null): string {
-  if (!iso) return "—"
-  return new Date(iso).toLocaleDateString("en-US", {
-    month: "short", day: "numeric", year: "numeric",
-  })
 }
 
 type StageGroup = { label: string; color: string; done: number; total: number }
