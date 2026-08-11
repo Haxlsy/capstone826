@@ -3,6 +3,7 @@ import { cookies } from "next/headers"
 import { createClient } from "@/lib/supabase/server"
 import { createAdminClient } from "@/lib/supabase/admin"
 import { logAudit } from "@/hooks/audit-helpers"
+import { addWorkingMins } from "@/hooks/time-utils"
 
 interface CustomStage {
   service_stage_id:      string | null   // null for stages added only for this job
@@ -82,8 +83,7 @@ export async function POST(request: Request) {
     if (scheduled_at && effectiveDurationMins) {
       const d = new Date(scheduled_at)
       if (!isNaN(d.getTime())) {
-        d.setMinutes(d.getMinutes() + effectiveDurationMins)
-        expected_completion_at = d.toISOString()
+        expected_completion_at = addWorkingMins(d, effectiveDurationMins).toISOString()
       } else {
         console.error("Invalid date received:", scheduled_at)
       }
