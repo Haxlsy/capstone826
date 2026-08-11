@@ -5,6 +5,7 @@ import {
   insertMessage,
   setConversationStatus,
   setVehicleInquiry,
+  setBookingFlow,
   setAwaitingConfirmation,
   getConversationHistory,
 } from "@/lib/messenger/messenger-data"
@@ -155,7 +156,7 @@ async function handleInboundMessage(
   const profile = await fetchMessengerProfile(senderId)
 
   // Get or create the conversation and capture its current status + flow flags.
-  const { conversation_id, status, is_vehicle_inquiry, awaiting_confirmation } =
+  const { conversation_id, status, is_vehicle_inquiry, is_booking_flow, awaiting_confirmation } =
     await getOrCreateConversationByPsid(senderId, profile.name)
 
   // Build AI history BEFORE inserting the current message.
@@ -184,17 +185,24 @@ async function handleInboundMessage(
     hasStatusIntent(messageBody) ||
     (!bookingIntent && is_vehicle_inquiry)
 
+  // A message carries a booking signal when it states booking intent or
+  // contains a booking detail token (plate / phone / email).
+  const signal = bookingSignal(messageBody)
+
   // Persist which flow the conversation is in so a bare follow-up reply
-  // (e.g. just a plate + phone after the status template) stays on the same
-  // track without needing the keyword repeated.
+  // (e.g. just a plate + phone after the status template, or a vehicle type
+  // that completes a booking) stays on the same track without needing the
+  // keyword repeated.
   try {
     if (statusIntent) {
       await setVehicleInquiry(conversation_id, true)
-    } else if (bookingIntent) {
+      await setBookingFlow(conversation_id, false)
+    } else if (bookingIntent || signal) {
       await setVehicleInquiry(conversation_id, false)
+      await setBookingFlow(conversation_id, true)
     }
   } catch (err) {
-    console.error("[webhook/facebook] setVehicleInquiry failed:", err)
+    console.error("[webhook/facebook] flow persistence failed:", err)
   }
 
   // Vehicle-status context: run the lookup whenever a plate is present UNLESS
@@ -266,13 +274,14 @@ async function handleInboundMessage(
   // AI's own escalate flag so a completed booking is never finalized before the
   // customer confirms their details, and missing fields are called out.
   //
-  // The flow only fires when the CURRENT message carries a booking signal
-  // (booking intent / a detail token) OR the customer is still on the
-  // confirmation step (awaiting_confirmation was persisted by a previous turn).
-  // This keeps unrelated free-text replies from being dragged into the booking
-  // flow just because earlier turns contained booking details.
-  const signal = bookingSignal(messageBody)
-  const bookingFlow = signal || awaiting_confirmation
+  // The flow fires when the CURRENT message carries a booking signal
+  // (booking intent / a detail token), the conversation is flagged as being in
+  // a booking flow (is_booking_flow was persisted by an earlier turn), OR the
+  // customer is still on the confirmation step (awaiting_confirmation was
+  // persisted by a previous turn). Persisting is_booking_flow keeps the flow
+  // engaged across detail-collection turns whose final detail (e.g. a vehicle
+  // type like "Ford") carries no booking signal of its own.
+  const bookingFlow = signal || is_booking_flow || awaiting_confirmation
   let escalateBooking = false
 
   // Best-effort flag persistence: a failure here should not abort the reply.
@@ -281,6 +290,13 @@ async function handleInboundMessage(
       await setAwaitingConfirmation(conversation_id, value)
     } catch (err) {
       console.error("[webhook/facebook] setAwaitingConfirmation failed:", err)
+    }
+  }
+  const persistBookingFlowFlag = async (value: boolean) => {
+    try {
+      await setBookingFlow(conversation_id, value)
+    } catch (err) {
+      console.error("[webhook/facebook] setBookingFlow failed:", err)
     }
   }
 
@@ -298,9 +314,25 @@ async function handleInboundMessage(
       escalate = true
       escalateBooking = true
       await persistConfirmFlag(false)
+      await persistBookingFlowFlag(false)
       bookingContext =
         "The customer has confirmed their complete booking details. The booking is ready to be handed over to Sales."
-    } else if (signal) {
+    } else if (awaiting_confirmation && !signal) {
+      // The confirmation flag was set but this message is neither a
+      // confirmation nor a booking detail — the customer wandered off. Clear
+      // the flow flags and let the AI answer normally.
+      escalate = false
+      await persistConfirmFlag(false)
+      await persistBookingFlowFlag(false)
+      bookingContext =
+        "The customer was asked to confirm their booking details but the last message is not a confirmation and carries no booking details. " +
+        "Answer the customer normally; you may briefly re-offer to continue their booking if it is natural to do so, but do not send the final booking confirmation and do not escalate."
+    } else {
+      // All required details are collected but not yet confirmed. Summarize the
+      // details and ask the customer to confirm — this runs even when the
+      // current message carries no booking signal (e.g. it completed the set
+      // with just a vehicle type). Persist the confirmation flag so the next
+      // "Yes" escalates.
       escalate = false
       await persistConfirmFlag(true)
       bookingContext =
@@ -308,14 +340,6 @@ async function handleInboundMessage(
         "Summarize the details back to the customer and ask them to confirm, phrased in the customer's configured language like: " +
         "'Is this information correct? Reply YES to confirm.' " +
         "Do NOT send the final booking confirmation message and do NOT escalate until the customer confirms."
-    } else {
-      // Flag was set but this message carries no booking signal — the customer
-      // wandered off. Clear the flag and let the AI answer normally.
-      escalate = false
-      await persistConfirmFlag(false)
-      bookingContext =
-        "The customer was asked to confirm their booking details but the last message is not a confirmation and carries no booking details. " +
-        "Answer the customer normally; you may briefly re-offer to continue their booking if it is natural to do so, but do not send the final booking confirmation and do not escalate."
     }
 
     // Re-generate the reply with the booking-flow context (and get a more
@@ -424,8 +448,9 @@ async function handleInboundMessage(
     // Escalated threads are now owned by Sales; leave any status flow.
     try {
       await setVehicleInquiry(conversation_id, false)
+      await setBookingFlow(conversation_id, false)
     } catch (err) {
-      console.error("[webhook/facebook] setVehicleInquiry reset failed:", err)
+      console.error("[webhook/facebook] flow reset failed:", err)
     }
     await persistConfirmFlag(false)
     return

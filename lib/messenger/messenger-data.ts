@@ -9,13 +9,16 @@ export async function getOrCreateConversationByPsid(
   conversation_id: number
   status: ConversationStatus
   is_vehicle_inquiry: boolean
+  is_booking_flow: boolean
   awaiting_confirmation: boolean
 }> {
   const supabase = createAdminClient()
 
   const { data: existing } = await supabase
     .from("messenger_conversation")
-    .select("conversation_id, status, is_vehicle_inquiry, awaiting_confirmation")
+    .select(
+      "conversation_id, status, is_vehicle_inquiry, is_booking_flow, awaiting_confirmation"
+    )
     .eq("psid", psid)
     .maybeSingle()
 
@@ -31,6 +34,7 @@ export async function getOrCreateConversationByPsid(
       conversation_id: existing.conversation_id,
       status: existing.status as ConversationStatus,
       is_vehicle_inquiry: Boolean(existing.is_vehicle_inquiry),
+      is_booking_flow: Boolean(existing.is_booking_flow),
       awaiting_confirmation: Boolean(existing.awaiting_confirmation),
     }
   }
@@ -42,6 +46,7 @@ export async function getOrCreateConversationByPsid(
       psid,
       status: "open",
       is_vehicle_inquiry: false,
+      is_booking_flow: false,
       last_message_at: now,
     })
     .select("conversation_id")
@@ -51,7 +56,7 @@ export async function getOrCreateConversationByPsid(
     throw new Error(error?.message ?? "Failed to create conversation")
   }
 
-  return { conversation_id: data.conversation_id, status: "open", is_vehicle_inquiry: false, awaiting_confirmation: false }
+  return { conversation_id: data.conversation_id, status: "open", is_vehicle_inquiry: false, is_booking_flow: false, awaiting_confirmation: false }
 }
 
 /** Marks whether the AI has asked the customer to confirm their booking details. */
@@ -73,6 +78,21 @@ export async function setVehicleInquiry(conversation_id: number, value: boolean)
   const { data, error } = await supabase
     .from("messenger_conversation")
     .update({ is_vehicle_inquiry: value })
+    .eq("conversation_id", conversation_id)
+    .select("conversation_id")
+    .single()
+
+  if (error) throw new Error(error.message)
+  return data
+}
+
+/** Marks whether the conversation is currently in a booking flow. */
+export async function setBookingFlow(conversation_id: number, value: boolean) {
+  const supabase = createAdminClient()
+
+  const { data, error } = await supabase
+    .from("messenger_conversation")
+    .update({ is_booking_flow: value })
     .eq("conversation_id", conversation_id)
     .select("conversation_id")
     .single()
