@@ -1,4 +1,6 @@
 import { createAdminClient } from "@/lib/supabase/admin"
+import { computeExpectedCompletion } from "@/lib/job-estimates"
+import { fmtDateTime } from "@/lib/time-display"
 
 export interface VehicleStatusResult {
   found: boolean
@@ -84,7 +86,7 @@ export async function lookupVehicleStatus(input: {
   const { data: job } = await supabase
     .from("job_order")
     .select(
-      `id, status, scheduled_at, expected_completion_at,
+      `id, status, scheduled_at, actual_start_at, expected_completion_at,
        service:service_id(name),
        customer:customer_record_id(full_name)`
     )
@@ -109,7 +111,8 @@ export async function lookupVehicleStatus(input: {
     .select(
       `
        status,
-       service_stage:service_stage_id(name, sequence_order)`
+       stage_duration_mins,
+       service_stage:service_stage_id(name, sequence_order, stage_duration_mins)`
     )
     .eq("job_order_id", job.id)
     .order("sequence_order", { referencedTable: "service_stage", ascending: true })
@@ -120,11 +123,22 @@ export async function lookupVehicleStatus(input: {
       status: s.status,
       name: rel?.name ?? null,
       sequence_order: rel?.sequence_order ?? 0,
+      duration_mins: (s.stage_duration_mins as number | null) ?? (rel?.stage_duration_mins ?? 0),
     }
   }).sort((a: any, b: any) => a.sequence_order - b.sequence_order)
   const total = ordered.length
   const completed = ordered.filter((s: any) => s.status === "done").length
   const active = ordered.find((s: any) => s.status !== "done")
+
+  // Live estimate — recompute from schedule/actual + stage durations (working-hours aware)
+  // instead of trusting the stored expected_completion_at column.
+  const totalDurationMins = ordered.reduce((acc: number, s: any) => acc + s.duration_mins, 0)
+  const { expected } = computeExpectedCompletion({
+    scheduled_at: job.scheduled_at,
+    actual_start_at: job.actual_start_at,
+    totalDurationMins,
+  })
+  const expectedCompletionAt = expected ?? (job.expected_completion_at ?? null)
 
   return {
     found: true,
@@ -140,7 +154,7 @@ export async function lookupVehicleStatus(input: {
       completedStages: completed,
       totalStages:     total,
       scheduledAt:     job.scheduled_at,
-      expectedCompletionAt: job.expected_completion_at,
+      expectedCompletionAt,
     },
   }
 }
@@ -171,7 +185,7 @@ export function formatVehicleStatus(result: VehicleStatusResult): string {
     `Service: ${j.serviceName ?? "not specified"} for ${j.customerName ?? "customer"}.`,
     stageLine,
     progress,
-    j.expectedCompletionAt ? `Expected completion: ${j.expectedCompletionAt}.` : "",
+    j.expectedCompletionAt ? `Expected completion: ${fmtDateTime(j.expectedCompletionAt)}.` : "",
   ]
     .filter(Boolean)
     .join("\n")

@@ -1,5 +1,6 @@
 import { createAdminClient } from "@/lib/supabase/admin"
 import { addWorkingMins } from "@/hooks/time-utils"
+import { totalStageDurationMins, computeExpectedCompletion } from "@/lib/job-estimates"
 
 export async function getJobDetailData(id: string) {
   const supabase = createAdminClient()
@@ -64,21 +65,15 @@ export async function getJobDetailData(id: string) {
 
   const j = job as any
 
-  const totalDurationMins = (stages ?? []).reduce((acc: number, s: any) => {
-    const override = (s.stage_duration_mins as number | null) ?? null
-    const service  = s.service_stage_id ? (ssMap.get(s.service_stage_id)?.stage_duration_mins ?? 0) : 0
-    return acc + (override !== null ? override : service)
-  }, 0)
+  const totalDurationMins = totalStageDurationMins(stages ?? [], ssMap)
 
-  const expectedCompletionAt: string | null = j.scheduled_at
-    ? addWorkingMins(new Date(j.scheduled_at), totalDurationMins).toISOString()
-    : (j.expected_completion_at ?? null)
-
-  let updatedEstAt: string | null = null
-  if (j.actual_start_at && expectedCompletionAt) {
-    const updated = addWorkingMins(new Date(j.actual_start_at), totalDurationMins)
-    if (updated.toISOString() > expectedCompletionAt) updatedEstAt = updated.toISOString()
-  }
+  const { expected, updated } = computeExpectedCompletion({
+    scheduled_at: j.scheduled_at,
+    actual_start_at: j.actual_start_at,
+    totalDurationMins,
+  })
+  const expectedCompletionAt: string | null = expected ?? (j.expected_completion_at ?? null)
+  const updatedEstAt: string | null = updated
 
   const headDetailer  = (team ?? []).find((t: any) => t.role_in_job === "head_detailer")
   const headInstaller = (team ?? []).find((t: any) => t.role_in_job === "head_installer")
@@ -95,8 +90,10 @@ export async function getJobDetailData(id: string) {
       const cat = ss?.category_id ? catMap.get(ss.category_id) : null
       return {
         id: s.id,
+        service_stage_id: s.service_stage_id ?? null,
         name: s.custom_name ?? ss?.name ?? "—",
         sequence_order: s.custom_sequence_order ?? ss?.sequence_order ?? 0,
+        category_id: cat?.id ?? null,
         category_name: cat?.name ?? null,
         category_color: cat?.display_color ?? null,
         status: s.status,
