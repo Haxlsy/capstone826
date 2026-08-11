@@ -3,6 +3,7 @@
 import { useState } from "react"
 import Link from "next/link"
 import { ArrowLeft, ChevronDown, CheckCircle2, RefreshCw, Clock } from "lucide-react"
+import { fmtDateTime } from "@/lib/time-display"
 
 interface StageMedia {
   id:         string
@@ -50,14 +51,6 @@ interface JobDetail {
   finishing_approved_at:  string | null
   history:                HistoryEntry[]
   stages:                 Stage[]
-}
-
-function fmtDate(iso: string | null | undefined): string {
-  if (!iso) return "—"
-  return new Date(iso).toLocaleString("en-US", {
-    month: "short", day: "numeric", year: "numeric",
-    hour: "numeric", minute: "2-digit",
-  })
 }
 
 const STATUS_COLORS: Record<string, string> = {
@@ -156,11 +149,11 @@ export default function SalesJobDetail({ job }: { job: JobDetail }) {
         <div className="bg-white border border-gray-100 rounded-xl p-4 flex flex-col gap-3">
           <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Service &amp; Timeline</p>
           <InfoRow label="Service"   value={job.service} />
-          <InfoRow label="Scheduled" value={fmtDate(job.scheduled_at)} />
-          <InfoRow label="Started"   value={fmtDate(job.actual_start_at)} />
-          <InfoRow label="Est. End"  value={fmtDate(job.expected_completion_at)} />
+          <InfoRow label="Scheduled" value={fmtDateTime(job.scheduled_at)} />
+          <InfoRow label="Started"   value={fmtDateTime(job.actual_start_at)} />
+          <InfoRow label="Est. End"  value={fmtDateTime(job.expected_completion_at)} />
           {job.finishing_approved_at && (
-            <InfoRow label="Finishing Passed" value={fmtDate(job.finishing_approved_at)} />
+            <InfoRow label="Finishing Passed" value={fmtDateTime(job.finishing_approved_at)} />
           )}
         </div>
       </div>
@@ -251,7 +244,7 @@ export default function SalesJobDetail({ job }: { job: JobDetail }) {
                 <div className="w-1.5 h-1.5 rounded-full bg-gray-300 mt-1.5 shrink-0" />
                 <div>
                   <p className="text-sm font-medium text-gray-800">{h.status}</p>
-                  <p className="text-xs text-gray-400">{fmtDate(h.created_at)} · {h.changed_by}</p>
+                  <p className="text-xs text-gray-400">{fmtDateTime(h.created_at)} · {h.changed_by}</p>
                 </div>
               </div>
             ))}

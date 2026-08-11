@@ -5,6 +5,7 @@ import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { ArrowLeft, PackageCheck, ChevronDown, Users, RefreshCw, CheckCircle2, XCircle, Clock, RotateCcw, UserPlus, X, Loader2, Trash2 } from "lucide-react"
 import { JobOrderDetailSkeleton } from "@/app/dashboard/job-management/[id]/loading"
+import { fmtDateTime } from "@/lib/time-display"
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -72,14 +73,6 @@ interface JobDetail {
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
-
-function fmtDate(iso: string | null | undefined): string {
-  if (!iso) return "—"
-  return new Date(iso).toLocaleString("en-US", {
-    month: "short", day: "numeric", year: "numeric",
-    hour: "numeric", minute: "2-digit",
-  })
-}
 
 const STATUS_COLORS: Record<string, string> = {
   "Pending":        "bg-yellow-50 text-yellow-700 border-yellow-200",
@@ -449,22 +442,22 @@ export default function JobOrderDetail({ jobId }: { jobId: string }) {
           </div>
           <div>
             <p className="text-xs text-gray-400 uppercase tracking-wide mb-0.5">Scheduled Start</p>
-            <p className="font-medium text-gray-700">{fmtDate(job.scheduled_at)}</p>
+            <p className="font-medium text-gray-700">{fmtDateTime(job.scheduled_at)}</p>
           </div>
           <CrewCell label="Head Detailer" lead={job.head_detailer?.full_name ?? "Unassigned"} crew={job.detailers} />
           <CrewCell label="Head Installer" lead={job.head_installer?.full_name ?? "Unassigned"} crew={job.installers} />
           <div>
             <p className="text-xs text-gray-400 uppercase tracking-wide mb-0.5">Started</p>
-            <p className="font-medium text-gray-700">{fmtDate(job.actual_start_at)}</p>
+            <p className="font-medium text-gray-700">{fmtDateTime(job.actual_start_at)}</p>
           </div>
           <div>
             <p className="text-xs text-gray-400 uppercase tracking-wide mb-0.5">Est. Completion</p>
-            <p className="font-medium text-gray-700">{fmtDate(job.expected_completion_at)}</p>
+            <p className="font-medium text-gray-700">{fmtDateTime(job.expected_completion_at)}</p>
           </div>
           {updatedEst && (
             <div>
               <p className="text-xs text-gray-400 uppercase tracking-wide mb-0.5">Updated Est.</p>
-              <p className="font-medium text-orange-600">{fmtDate(updatedEst)}</p>
+              <p className="font-medium text-orange-600">{fmtDateTime(updatedEst)}</p>
             </div>
           )}
           <div className="col-span-2 md:col-span-4 pt-1">
@@ -488,7 +481,7 @@ export default function JobOrderDetail({ jobId }: { jobId: string }) {
           const isLastCategory = key === lastCategoryKey
           const extra = isLastCategory
             ? job.finishing_approved_at
-              ? `Passed to Operations · ${fmtDate(job.finishing_approved_at)}`
+              ? `Passed to Operations · ${fmtDateTime(job.finishing_approved_at)}`
               : "Awaiting handoff to Operations"
             : null
           return (
@@ -537,7 +530,7 @@ export default function JobOrderDetail({ jobId }: { jobId: string }) {
                               </span>
                             )}
                             {stage.completed_at && (
-                              <span className="text-xs text-gray-400">{fmtDate(stage.completed_at)}</span>
+                              <span className="text-xs text-gray-400">{fmtDateTime(stage.completed_at)}</span>
                             )}
                           </div>
                           {job.status === "For Inspection" && stage.status !== "for_rework" && (
@@ -553,7 +546,7 @@ export default function JobOrderDetail({ jobId }: { jobId: string }) {
                         </div>
                         {stage.status !== "done" && stage.expected_end_at && (
                           <p className={`text-xs mt-0.5 ${stage.is_delayed ? "text-red-400" : "text-gray-400"}`}>
-                            Expected by {fmtDate(stage.expected_end_at)}
+                            Expected by {fmtDateTime(stage.expected_end_at)}
                           </p>
                         )}
 
@@ -642,7 +635,7 @@ export default function JobOrderDetail({ jobId }: { jobId: string }) {
                   STATUS_COLORS[h.status] ? "bg-current" : "bg-gray-300"
                 }`} />
                 <span className="font-medium text-gray-700 w-28 shrink-0">{h.status}</span>
-                <span className="text-gray-400 text-xs">{fmtDate(h.created_at)}</span>
+                <span className="text-gray-400 text-xs">{fmtDateTime(h.created_at)}</span>
                 <span className="text-gray-400 text-xs ml-auto">{h.changed_by}</span>
               </div>
             ))
@@ -835,7 +828,7 @@ function SendIndicator({ sent, sentAt }: { sent: boolean | null; sentAt: string 
     return (
       <span className="inline-flex items-center gap-1 text-[11px] font-medium text-green-700 bg-green-50 border border-green-200 rounded-full px-2 py-0.5">
         <CheckCircle2 className="w-3 h-3" />
-        Update sent{sentAt ? ` · ${fmtDate(sentAt)}` : ""}
+        Update sent{sentAt ? ` · ${fmtDateTime(sentAt)}` : ""}
       </span>
     )
   }
@@ -843,7 +836,7 @@ function SendIndicator({ sent, sentAt }: { sent: boolean | null; sentAt: string 
     return (
       <span className="inline-flex items-center gap-1 text-[11px] font-medium text-red-700 bg-red-50 border border-red-200 rounded-full px-2 py-0.5">
         <XCircle className="w-3 h-3" />
-        Update failed{sentAt ? ` · ${fmtDate(sentAt)}` : ""}
+        Update failed{sentAt ? ` · ${fmtDateTime(sentAt)}` : ""}
       </span>
     )
   }

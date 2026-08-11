@@ -3,6 +3,7 @@
 import { useState, useMemo, useEffect, useRef } from "react"
 import { useRouter } from "next/navigation"
 import { Search, Filter, X, ChevronLeft, ChevronRight, ArrowRight } from "lucide-react"
+import { fmtDate } from "@/lib/time-display"
 
 interface JobOrder {
   id:            string
@@ -29,11 +30,6 @@ const STATUS_BADGE: Record<string, string> = {
   Released:       "bg-emerald-50 text-emerald-700 border-emerald-100",
   Delayed:        "bg-red-50 text-red-700 border-red-100",
   Cancelled:      "bg-gray-100 text-gray-500 border-gray-200",
-}
-
-function fmtDate(iso: string | null | undefined): string {
-  if (!iso) return "—"
-  return new Date(iso).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })
 }
 
 const PAGE_SIZE = 15

@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation"
 import { CheckCircle2 } from "lucide-react"
 import ServiceOverridePanel, { type Stage } from "./ServiceOverridePanel"
 import JobOrderConfirmDialog, { type JobOrderSummary } from "./JobOrderConfirmDialog"
+import { fmtDateTime } from "@/lib/time-display"
 
 interface CustomerRecord {
   id:             string
@@ -418,54 +419,43 @@ export default function AddJobOrderForm() {
     return new Date(raw)
   }
 
-  function formatScheduledStart(raw: string, ppf: boolean): string {
+  function scheduledDisplay(raw: string, ppf: boolean): string {
     if (!raw) return "—"
-    const d = resolveStartDate(raw, ppf)
-    return d.toLocaleString("en-US", {
-      month: "short", day: "numeric", year: "numeric",
-      hour: "numeric", minute: "2-digit",
-    })
+    return fmtDateTime(resolveStartDate(raw, ppf).toISOString())
   }
 
-  // Calculates expected completion respecting working hours (8 AM – 8 PM).
-  // If a day's remaining work time is exhausted, the job continues the next
-  // calendar day starting at 8 AM.
-  function calculateCompletion(raw: string, durationMins: number, ppf: boolean): string {
-    if (!raw || durationMins <= 0) return "—"
-    const WORK_START = 8 * 60    // 480  mins
-    const WORK_END   = 20 * 60   // 1200 mins
+  const estimatedMins  = customDurationMins ?? (selectedService?.estimated_duration_mins ?? 0)
 
-    let current   = resolveStartDate(raw, ppf)
-    let remaining = durationMins
+  // Expected-completion preview is computed server-side (same engine that
+  // persists the estimate) so the browser never re-implements working-hours math.
+  const [estimate, setEstimate] = useState<{ expectedDisplay: string } | null>(null)
 
-    while (remaining > 0) {
-      const nowMins      = current.getHours() * 60 + current.getMinutes()
-      const availToday   = WORK_END - nowMins
-
-      if (availToday <= 0) {
-        // Already at or past 8 PM — jump to next day at 8 AM
-        current.setDate(current.getDate() + 1)
-        current.setHours(WORK_START / 60, 0, 0, 0)
-        continue
-      }
-
-      if (remaining <= availToday) {
-        current = new Date(current.getTime() + remaining * 60_000)
-        remaining = 0
-      } else {
-        remaining -= availToday
-        current.setDate(current.getDate() + 1)
-        current.setHours(WORK_START / 60, 0, 0, 0)
-      }
+  async function fetchEstimate(): Promise<string | null> {
+    if (!scheduledAt || estimatedMins <= 0) { setEstimate(null); return null }
+    try {
+      const res = await fetch("/api/operations/job-management/estimate-completion", {
+        method:  "POST",
+        headers: { "Content-Type": "application/json" },
+        body:    JSON.stringify({
+          startIso:     resolveStartDate(scheduledAt, isPPF).toISOString(),
+          durationMins: estimatedMins,
+        }),
+      })
+      if (!res.ok) return null
+      const data = await res.json()
+      const display = (data?.expected_display as string) ?? null
+      setEstimate(display ? { expectedDisplay: display } : null)
+      return display
+    } catch {
+      return null
     }
-
-    return current.toLocaleString("en-US", {
-      month: "short", day: "numeric", year: "numeric",
-      hour: "numeric", minute: "2-digit",
-    })
   }
 
-  function handleConfirmClick() {
+  useEffect(() => {
+    fetchEstimate()
+  }, [scheduledAt, estimatedMins, isPPF])
+
+  async function handleConfirmClick() {
     setApiError(null)
     const errs = validate()
     if (Object.keys(errs).length > 0) { setFieldErrors(errs); return }
@@ -477,6 +467,8 @@ export default function AddJobOrderForm() {
         ? `${Math.round(effDuration / 60)} hr${Math.round(effDuration / 60) !== 1 ? "s" : ""}`
         : `${effDuration} min${effDuration !== 1 ? "s" : ""}`
 
+    const estimateDisplay = await fetchEstimate()
+
     const summary: JobOrderSummary = {
       customerName:  selectedCustomer?.full_name    ?? manualCustomerName.trim(),
       contactNumber: selectedCustomer?.contact_number ?? manualContactNumber.trim(),
@@ -486,10 +478,10 @@ export default function AddJobOrderForm() {
       serviceName:   customServiceName || selectedService?.name || "—",
       isOverridden:  !!customServiceName && customServiceName !== selectedService?.name,
       stages:        customStages.map((s) => ({ name: s.name, category_name: s.category_name, category_color: s.category_color })),
-      scheduledAt:   formatScheduledStart(scheduledAt, isPPF),
+      scheduledAt:   scheduledDisplay(scheduledAt, isPPF),
       expectedEnd:   scheduledAt && effDuration > 0
-        ? calculateCompletion(scheduledAt, effDuration, isPPF)
-        : formatScheduledStart(scheduledAt, isPPF),
+        ? (estimateDisplay ?? "…")
+        : scheduledDisplay(scheduledAt, isPPF),
       duration:      dLabel,
       headDetailer:  headTechs.find((t) => t.id === selectedHeadDetailerId)?.full_name  ?? "—",
       headInstaller: headTechs.find((t) => t.id === selectedHeadInstallerId)?.full_name ?? "—",
@@ -522,9 +514,7 @@ export default function AddJobOrderForm() {
 
       const payload: Record<string, unknown> = {
         service_id:           selectedServiceId,
-        scheduled_at:         isPPF
-          ? new Date(`${scheduledAt}T08:00:00`).toISOString()
-          : new Date(scheduledAt).toISOString(),
+        scheduled_at:         resolveStartDate(scheduledAt, isPPF).toISOString(),
         head_detailer_id:     selectedHeadDetailerId  ?? null,
         head_installer_id:    selectedHeadInstallerId ?? null,
         detailer_ids:         [...selectedDetailerIds],
@@ -563,7 +553,6 @@ export default function AddJobOrderForm() {
     }
   }
 
-  const estimatedMins  = customDurationMins ?? (selectedService?.estimated_duration_mins ?? 0)
   const hrs            = Math.round(estimatedMins / 60)
   const durationLabel  = estimatedMins > 0
     ? estimatedMins >= 60
@@ -571,9 +560,9 @@ export default function AddJobOrderForm() {
       : `${estimatedMins} min${estimatedMins !== 1 ? "s" : ""}`
     : "—"
   const effectiveServiceName = customServiceName || selectedService?.name || "—"
-  const expectedCompletion   = scheduledAt && estimatedMins > 0
-    ? calculateCompletion(scheduledAt, estimatedMins, isPPF)
-    : scheduledAt ? formatScheduledStart(scheduledAt, isPPF) : "—"
+  const expectedCompletion   = scheduledAt
+    ? (estimate?.expectedDisplay ?? "…")
+    : "—"
 
   const [searchQuery, setSearchQuery] = useState("");
   const [isOpen, setIsOpen] = useState(false);
@@ -838,7 +827,7 @@ export default function AddJobOrderForm() {
               <div>
                 <p className="text-xs text-gray-500">Scheduled Start</p>
                 <p className="text-sm font-medium text-gray-800 mt-1">
-                  {formatScheduledStart(scheduledAt, isPPF)}
+                  {scheduledDisplay(scheduledAt, isPPF)}
                 </p>
                 {isPPF && (
                   <p className="text-[10px] text-gray-400 mt-0.5">Starts at 8:00 AM</p>

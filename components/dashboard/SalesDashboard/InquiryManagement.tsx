@@ -8,6 +8,7 @@ import {
   Phone, Hash, CheckCheck, CircleDot, X, Search,
   AlertCircle, Mail, Layers,
 } from "lucide-react"
+import { fmtDateTime } from "@/lib/time-display"
 
 type InquiryStatus = "open" | "resolved" | "recorded"
 type InquiryType   = "Booking" | "Human Response" | "Report"
@@ -72,13 +73,6 @@ function timeAgo(iso: string): string {
   return `${days} day${days > 1 ? "s" : ""} ago`
 }
 
-function fmtDate(iso: string): string {
-  return new Date(iso).toLocaleString("en-US", {
-    month: "short", day: "numeric", year: "numeric",
-    hour: "numeric", minute: "2-digit",
-  })
-}
-
 function getInitials(name: string) {
   return name.split(" ").slice(0, 2).map((n) => n[0]).join("").toUpperCase()
 }
@@ -115,7 +109,7 @@ export default function InquiryManagement() {
         psid:             i.psid,
         messengerName:    i.messenger_name,
         timeElapsed:      timeAgo(i.escalated_at),
-        escalationDate:   fmtDate(i.escalated_at),
+        escalationDate:   fmtDateTime(i.escalated_at),
         type:             i.inquiry_type as InquiryType,
         status:           i.status as InquiryStatus,
         extractedName:    i.extracted_name    ?? null,

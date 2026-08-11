@@ -11,6 +11,7 @@ import StatusPickerModal, {
   STATUS_BADGE_MAP,
 } from "./StatusPickerModal"
 import StatusConfirmDialog from "./StatusConfirmDialog"
+import { fmtDate } from "@/lib/time-display"
 
 interface JobOrder {
   id:            string
@@ -29,11 +30,6 @@ interface JobOrder {
 
 type TabType = "All" | "Pending" | "Ongoing" | "For Rework" | "For Inspection" | "For Release" | "Delayed"
 const TABS: TabType[] = ["All", "Pending", "Ongoing", "For Rework", "For Inspection", "For Release", "Delayed"]
-
-function fmtDate(iso: string | null | undefined): string {
-  if (!iso) return "—"
-  return new Date(iso).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })
-}
 
 export default function JobManagementTable() {
   const router = useRouter()
