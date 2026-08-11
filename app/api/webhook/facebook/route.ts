@@ -48,6 +48,14 @@ export async function GET(req: NextRequest) {
 const ESCALATION_ACK =
   "A member of our team will assist you shortly. Thank you for reaching out to 826 Auto Care!"
 
+// Booking-flow context for the confirmation prompt: summarize the collected
+// details and ask the customer to confirm before the booking is escalated.
+const CONFIRM_BOOKING_CONTEXT =
+  "All required booking details are collected (Full Name, Contact Number, Plate Number, Vehicle Type, Email). " +
+  "Summarize the details back to the customer and ask them to confirm, phrased in the customer's configured language like: " +
+  "'Is this information correct? Reply YES to confirm.' " +
+  "Do NOT send the final booking confirmation message and do NOT escalate until the customer confirms."
+
 // Report-type concern keywords used by the escalation-type resolver.
 // Deliberately excludes "problema"/"issue" so casual phrases like
 // "walang problema" (no problem) do not trigger a report escalation.
@@ -303,14 +311,25 @@ async function handleInboundMessage(
   if (bookingFlow && !statusIntent && !humanRequested && !reportIntent) {
     const missing = missingBookingFields(extracted)
     let bookingContext: string
+    // Whether we are about to re-ask for missing details. If the flow re-gen
+    // below refreshes the extraction and shows all details ARE present, we
+    // recover by switching to the confirmation prompt instead of re-asking.
+    let wasMissingBranch = false
 
     if (missing.length > 0) {
       escalate = false
+      wasMissingBranch = true
       await persistConfirmFlag(false)
       bookingContext =
-        `The customer is in a booking flow but is missing the following required detail(s): ${missing.join(", ")}. ` +
-        "Politely ask the customer to provide only the missing details. Do NOT send the final booking confirmation and do NOT escalate until all details are collected."
-    } else if (confirmRequested(messageBody)) {
+        `The customer is in a booking flow but the following required detail(s) are not confirmed from the latest message: ${missing.join(", ")}. ` +
+        "If the customer already provided any of these details earlier in the conversation, treat them as collected and include them in your structured customer extraction. " +
+        "Politely ask the customer to provide only the truly missing details. Do NOT send the final booking confirmation and do NOT escalate until all details are collected."
+    } else if (confirmRequested(messageBody) && awaiting_confirmation) {
+      // Escalate only when a confirmation prompt was actually shown on a
+      // previous turn (awaiting_confirmation was persisted then). A premature
+      // "yes" — details just became complete but no prompt was shown yet — falls
+      // through to the confirmation branch below, so a customer can never be
+      // escalated to Sales without first seeing their details summarized.
       escalate = true
       escalateBooking = true
       await persistConfirmFlag(false)
@@ -331,15 +350,12 @@ async function handleInboundMessage(
       // All required details are collected but not yet confirmed. Summarize the
       // details and ask the customer to confirm — this runs even when the
       // current message carries no booking signal (e.g. it completed the set
-      // with just a vehicle type). Persist the confirmation flag so the next
-      // "Yes" escalates.
+      // with just a vehicle type), and also swallows a premature "yes" so the
+      // prompt is always shown before the booking can escalate. Persist the
+      // confirmation flag so the next "Yes" escalates.
       escalate = false
       await persistConfirmFlag(true)
-      bookingContext =
-        "All required booking details are collected (Full Name, Contact Number, Plate Number, Vehicle Type, Email). " +
-        "Summarize the details back to the customer and ask them to confirm, phrased in the customer's configured language like: " +
-        "'Is this information correct? Reply YES to confirm.' " +
-        "Do NOT send the final booking confirmation message and do NOT escalate until the customer confirms."
+      bookingContext = CONFIRM_BOOKING_CONTEXT
     }
 
     // Re-generate the reply with the booking-flow context (and get a more
@@ -359,6 +375,30 @@ async function handleInboundMessage(
       if (hasExtractedDetails(flowResult.customer)) extracted = flowResult.customer
     } catch (err) {
       console.error("[webhook/facebook] booking-flow reply failed:", err)
+    }
+
+    // Recovery: the re-gen's refreshed extraction (which sees the full history)
+    // can show all details are actually collected even though the first pass
+    // looked incomplete. Instead of sending a redundant re-ask for details the
+    // customer already gave, switch to the confirmation prompt. Costs one extra
+    // Gemini call only in this rare case.
+    if (wasMissingBranch && isCompleteBooking(extracted)) {
+      await persistConfirmFlag(true)
+      try {
+        const confirmResult = await generateChatbotReply({
+          message: messageBody,
+          history,
+          settings,
+          system_prompt,
+          knowledge,
+          vehicleContext,
+          bookingContext: CONFIRM_BOOKING_CONTEXT,
+        })
+        if (confirmResult.reply?.trim()) reply = confirmResult.reply.trim()
+        if (hasExtractedDetails(confirmResult.customer)) extracted = confirmResult.customer
+      } catch (err) {
+        console.error("[webhook/facebook] booking recovery reply failed:", err)
+      }
     }
   }
 
