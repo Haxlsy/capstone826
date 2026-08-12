@@ -2,29 +2,12 @@
 
 import { useState, useRef, useEffect } from "react"
 import { Send, RotateCcw, Bot, Sparkles } from "lucide-react"
-
-interface ChatbotSettings {
-  personality:      "friendly" | "formal" | "casual"
-  enable_services:  boolean
-  enable_booking:   boolean
-  enable_status:    boolean
-  enable_faq:       boolean
-  booking_message:  string
-  notify_sales:     boolean
-  language:                "english" | "filipino" | "both"
-  escalation_rules:        string[]
-  vehicle_status_template: string
-}
+import { type ChatbotSettings, type ChatMessage } from "@/types/chatbot"
 
 interface Message {
   role: "user" | "bot"
   text: string
   time: string
-}
-
-interface HistoryItem {
-  role: "user" | "model"
-  text: string
 }
 
 const EXAMPLE_QUESTIONS: Record<"english" | "filipino" | "both", string[]> = {
@@ -74,7 +57,7 @@ export default function ChatbotPreview({ settings }: { settings: ChatbotSettings
     setInput("")
     setLoading(true)
 
-    const history: HistoryItem[] = messages.map((m) => ({
+    const history: ChatMessage[] = messages.map((m) => ({
       role: m.role === "user" ? "user" : "model",
       text: m.text,
     }))
@@ -137,7 +120,7 @@ export default function ChatbotPreview({ settings }: { settings: ChatbotSettings
               <Sparkles className="w-5 h-5 text-gray-400" />
             </div>
             <p className="text-xs text-gray-400 max-w-[160px]">
-              Ask a question below to test your chatbot's responses.
+              Ask a question below to test your chatbot&apos;s responses.
             </p>
           </div>
         )}

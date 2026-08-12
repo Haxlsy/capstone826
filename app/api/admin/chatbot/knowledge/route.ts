@@ -1,14 +1,18 @@
 import { NextResponse } from "next/server"
-import { cookies } from "next/headers"
-import { createClient } from "@/lib/supabase/server"
 import { createAdminClient } from "@/lib/supabase/admin"
+import { getAdminCaller } from "@/lib/auth/guard"
 import { logAudit } from "@/hooks/audit-helpers"
+import { kbCreateSchema } from "@/types/chatbot"
 
 export async function GET() {
+  const auth = await getAdminCaller()
+  if ("error" in auth) return auth.error
+
   const supabase = createAdminClient()
   const { data, error } = await supabase
     .from("chatbot_knowledge")
-    .select("id, topic, content, created_at, updated_at")
+    .select("id, category, topic, content, created_at, updated_at")
+    .order("category")
     .order("topic")
     .order("created_at")
 
@@ -17,13 +21,17 @@ export async function GET() {
 }
 
 export async function POST(request: Request) {
-  const body = await request.json()
-  const { topic, content } = body
+  const auth = await getAdminCaller()
+  if ("error" in auth) return auth.error
+  const { caller } = auth
 
-  if (!topic || !content) {
-    return NextResponse.json({ error: "topic and content are required." }, { status: 400 })
+  const body = await request.json()
+  const parsed = kbCreateSchema.safeParse(body)
+  if (!parsed.success) {
+    return NextResponse.json({ error: parsed.error.issues[0].message }, { status: 400 })
   }
 
+  const { topic, content, category } = parsed.data
   const supabase = createAdminClient()
 
   // Get the config row id to link the entry
@@ -37,28 +45,20 @@ export async function POST(request: Request) {
 
   const { data, error } = await supabase
     .from("chatbot_knowledge")
-    .insert({ chatbot_config_id: config.id, topic, content })
+    .insert({ chatbot_config_id: config.id, topic, content, category })
     .select()
     .single()
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
-  const cookieStore = await cookies()
-  const userClient  = createClient(cookieStore)
-  const { data: { user } } = await userClient.auth.getUser()
-  if (user) {
-    const { data: prof } = await supabase.from("user_account").select("full_name, role").eq("id", user.id).single()
-    if (prof) {
-      logAudit({
-        user_id:   user.id,
-        user_name: prof.full_name,
-        role:      prof.role,
-        category:  "create",
-        action:    "Added knowledge entry",
-        target:    topic,
-      })
-    }
-  }
+  logAudit({
+    user_id:   caller.user.id,
+    user_name: caller.profile.full_name,
+    role:      caller.profile.role,
+    category:  "create",
+    action:    "Added knowledge entry",
+    target:    topic,
+  })
 
   return NextResponse.json({ entry: data }, { status: 201 })
 }
