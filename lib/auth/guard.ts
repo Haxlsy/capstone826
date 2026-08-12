@@ -1,6 +1,7 @@
 import { cache } from "react"
 import { cookies } from "next/headers"
 import { redirect } from "next/navigation"
+import { NextResponse } from "next/server"
 import { createClient } from "@/lib/supabase/server"
 import { createAdminClient } from "@/lib/supabase/admin"
 
@@ -38,4 +39,48 @@ export async function requireRole(allowedRoles: string[]) {
   }
 
   return { user, role }
+}
+
+// ===================================================================
+// API-route hardening helpers
+// ===================================================================
+
+export interface AdminCaller {
+  user: { id: string }
+  profile: { full_name: string; role: string }
+}
+
+const unauthorized = () =>
+  NextResponse.json({ error: "Unauthorized." }, { status: 401 })
+
+const forbidden = () =>
+  NextResponse.json({ error: "Forbidden. Admin access required." }, { status: 403 })
+
+/**
+ * Resolves the currently authenticated admin/super-admin caller for API
+ * route handlers. Returns `{ error }` (a ready-to-return NextResponse)
+ * when the caller is not signed in, or signed in without the admin role.
+ * Otherwise returns `{ caller }` with the profile needed for audit logs.
+ *
+ * This is the single source of truth for admin API auth; it replaces the
+ * per-route `getUser()` + `user_account` role check pattern.
+ */
+export async function getAdminCaller(): Promise<
+  { caller: AdminCaller } | { error: NextResponse }
+> {
+  const user = await getCurrentUser()
+  if (!user) return { error: unauthorized() }
+
+  const admin = createAdminClient()
+  const { data: profile } = await admin
+    .from("user_account")
+    .select("full_name, role")
+    .eq("id", user.id)
+    .single()
+
+  if (!profile || !["admin", "super_admin"].includes(profile.role)) {
+    return { error: forbidden() }
+  }
+
+  return { caller: { user: { id: user.id }, profile } }
 }

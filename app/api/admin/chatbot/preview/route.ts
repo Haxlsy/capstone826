@@ -1,27 +1,31 @@
 import { NextResponse } from "next/server"
+import { z } from "zod"
 import {
   generateChatbotReply,
   loadChatbotConfig,
   loadKnowledgeBase,
-  type ChatbotSettings,
 } from "@/lib/messenger/chatbot"
+import { getAdminCaller } from "@/lib/auth/guard"
+import { chatMessageSchema, chatbotSettingsSchema } from "@/types/chatbot"
 
-interface HistoryItem {
-  role: "user" | "model"
-  text: string
-}
+const PreviewSchema = z.object({
+  message:  z.string().trim().min(1, "message is required."),
+  history:  z.array(chatMessageSchema).default([]),
+  settings: chatbotSettingsSchema.optional(),
+})
 
 export async function POST(request: Request) {
+  const auth = await getAdminCaller()
+  if ("error" in auth) return auth.error
+
   try {
-    const { message, history = [], settings } = (await request.json()) as {
-      message: string
-      history: HistoryItem[]
-      settings?: ChatbotSettings
+    const body = await request.json()
+    const parsed = PreviewSchema.safeParse(body)
+    if (!parsed.success) {
+      return NextResponse.json({ error: parsed.error.issues[0].message }, { status: 400 })
     }
 
-    if (!message?.trim()) {
-      return NextResponse.json({ error: "message is required." }, { status: 400 })
-    }
+    const { message, history, settings } = parsed.data
 
     const [knowledge, config] = await Promise.all([
       loadKnowledgeBase(),

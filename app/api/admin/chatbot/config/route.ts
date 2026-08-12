@@ -1,11 +1,14 @@
 import { NextResponse } from "next/server"
-import { cookies } from "next/headers"
-import { createClient } from "@/lib/supabase/server"
 import { createAdminClient } from "@/lib/supabase/admin"
+import { getAdminCaller, type AdminCaller } from "@/lib/auth/guard"
 import { logAudit } from "@/hooks/audit-helpers"
-import { buildSystemPrompt, type ChatbotSettings } from "@/lib/messenger/chatbot"
+import { buildSystemPrompt } from "@/lib/messenger/chatbot"
+import { chatbotSettingsSchema, type ChatbotSettings } from "@/types/chatbot"
 
 export async function GET() {
+  const auth = await getAdminCaller()
+  if ("error" in auth) return auth.error
+
   const supabase = createAdminClient()
   const { data, error } = await supabase
     .from("chatbot_config")
@@ -18,31 +21,35 @@ export async function GET() {
 }
 
 export async function POST(request: Request) {
+  const auth = await getAdminCaller()
+  if ("error" in auth) return auth.error
+  const { caller } = auth
+
   const body = await request.json()
 
   // Accept either legacy system_prompt string OR new settings object
   const isLegacy = typeof body.system_prompt === "string" && !body.settings
 
   if (isLegacy) {
-    // Fallback: raw system_prompt save (keeps Knowledge Base tab working if needed)
     const { system_prompt } = body as { system_prompt: string }
-    return saveRaw(system_prompt)
+    return saveRaw(system_prompt, null, caller)
   }
 
-  const settings = body.settings as ChatbotSettings
-  if (!settings || typeof settings !== "object") {
-    return NextResponse.json({ error: "settings object is required." }, { status: 400 })
+  const parsed = chatbotSettingsSchema.safeParse(body.settings)
+  if (!parsed.success) {
+    return NextResponse.json({ error: parsed.error.issues[0].message }, { status: 400 })
   }
 
+  const settings = parsed.data
   const system_prompt = buildSystemPrompt(settings)
-  return saveRaw(system_prompt, settings)
+  return saveRaw(system_prompt, settings, caller)
 }
 
-async function saveRaw(system_prompt: string, settings?: ChatbotSettings) {
-  const cookieStore = await cookies()
-  const userClient = createClient(cookieStore)
-  const { data: { user } } = await userClient.auth.getUser()
-
+async function saveRaw(
+  system_prompt: string,
+  settings: ChatbotSettings | null,
+  caller: AdminCaller
+) {
   const supabase = createAdminClient()
 
   const { data: config } = await supabase
@@ -55,10 +62,10 @@ async function saveRaw(system_prompt: string, settings?: ChatbotSettings) {
 
   const updates: Record<string, unknown> = {
     system_prompt,
-    updated_by_id: user?.id ?? null,
+    updated_by_id: caller.user.id,
     updated_at:    new Date().toISOString(),
   }
-  if (settings !== undefined) updates.settings = settings
+  if (settings !== null) updates.settings = settings
 
   const { error } = await supabase
     .from("chatbot_config")
@@ -67,18 +74,13 @@ async function saveRaw(system_prompt: string, settings?: ChatbotSettings) {
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
-  if (user) {
-    const { data: prof } = await supabase.from("user_account").select("full_name, role").eq("id", user.id).single()
-    if (prof) {
-      logAudit({
-        user_id:   user.id,
-        user_name: prof.full_name,
-        role:      prof.role,
-        category:  "update",
-        action:    settings ? "Updated chatbot settings" : "Updated chatbot system prompt",
-      })
-    }
-  }
+  logAudit({
+    user_id:   caller.user.id,
+    user_name: caller.profile.full_name,
+    role:      caller.profile.role,
+    category:  "update",
+    action:    settings ? "Updated chatbot settings" : "Updated chatbot system prompt",
+  })
 
   return NextResponse.json({ success: true })
 }
