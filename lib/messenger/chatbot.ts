@@ -1,38 +1,13 @@
 import { GoogleGenAI } from "@google/genai"
 import { createAdminClient } from "@/lib/supabase/admin"
+import {
+  type ChatbotSettings,
+  type ChatMessage,
+  type ChatbotReply,
+  type CustomerDetails,
+} from "@/types/chatbot"
 
-export interface ChatbotSettings {
-  personality:      "friendly" | "formal" | "casual"
-  enable_services:  boolean
-  enable_booking:   boolean
-  enable_status:    boolean
-  enable_faq:       boolean
-  booking_message:  string
-  notify_sales:     boolean
-  language:         "english" | "filipino" | "both"
-  escalation_rules: string[]
-  vehicle_status_template: string
-}
-
-export interface ChatMessage {
-  role: "user" | "model"
-  text: string
-}
-
-export interface ChatbotReply {
-  reply:    string
-  escalate: boolean
-  reason?:  string | null
-  customer?: CustomerDetails | null
-}
-
-export interface CustomerDetails {
-  full_name:       string | null
-  contact_number:  string | null
-  plate_number:    string | null
-  vehicle_unit:    string | null
-  email:           string | null
-}
+export type { ChatbotSettings, ChatMessage, ChatbotReply, CustomerDetails }
 
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY_CHATBOT! })
 
@@ -232,14 +207,15 @@ export async function loadKnowledgeBase(): Promise<string | null> {
   const supabase = createAdminClient()
   const { data, error } = await supabase
     .from("chatbot_knowledge")
-    .select("topic, content")
+    .select("category, topic, content")
+    .order("category")
     .order("topic")
     .order("created_at")
 
   if (error || !data || data.length === 0) return null
 
   return data
-    .map((k) => `- ${k.topic}: ${k.content}`)
+    .map((k) => `- [${k.category ?? "FAQ"}] ${k.topic}: ${k.content}`)
     .join("\n")
 }
 

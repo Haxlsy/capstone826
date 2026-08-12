@@ -23,7 +23,7 @@ export default function VehicleStatusTemplate({ value, onChange, onSave, saved, 
         <div className="flex items-start gap-2.5 bg-blue-50 border border-blue-100 rounded-xl px-4 py-3">
           <Info className="w-4 h-4 text-blue-500 mt-0.5 shrink-0" />
           <p className="text-sm text-blue-700">
-            The AI will ask for the customer's details, then automatically look up their active job order and share the current status.
+            The AI will ask for the customer&apos;s details, then automatically look up their active job order and share the current status.
           </p>
         </div>
 
