@@ -1,7 +1,8 @@
 import { createAdminClient } from "@/lib/supabase/admin"
 import { TimePeriod } from "@/types/audit"
+import type { AuditCaller } from "@/lib/auth/caller"
 
-type AuditCategory = "auth" | "view" | "create" | "update" | "approve" | "flag" | "delete" | "message"
+export type AuditCategory = "auth" | "view" | "create" | "update" | "approve" | "flag" | "delete" | "message"
 
 interface AuditParams {
   user_id:   string | null
@@ -21,6 +22,25 @@ export function logAudit(params: AuditParams): void {
       () => {},
       (err: unknown) => console.error("[audit]", err)
     )
+}
+
+/**
+ * Convenience wrapper that fills in user_id / user_name / role from the
+ * already-resolved caller (see `getAuditCaller` in lib/auth/caller), so
+ * routes can audit with a single call: `logAuditCall(caller, opts)`.
+ */
+export function logAuditCall(
+  caller: AuditCaller,
+  opts: { category: AuditCategory; action: string; target?: string }
+): void {
+  logAudit({
+    user_id:   caller.id,
+    user_name: caller.full_name,
+    role:      caller.role,
+    category:  opts.category,
+    action:    opts.action,
+    target:    opts.target,
+  })
 }
   
 export function startOfPeriod(period: TimePeriod): Date | null {
