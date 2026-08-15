@@ -2,6 +2,8 @@ import { NextResponse } from "next/server"
 import { cookies } from "next/headers"
 import { createClient } from "@/lib/supabase/server"
 import { createAdminClient } from "@/lib/supabase/admin"
+import { getAuditCaller } from "@/lib/auth/caller"
+import { logAuditCall } from "@/hooks/audit-helpers"
 
 export async function POST(request: Request) {
   try {
@@ -43,6 +45,14 @@ export async function POST(request: Request) {
 
     if (updateError) {
       return NextResponse.json({ error: updateError.message }, { status: 500 })
+    }
+
+    const caller = await getAuditCaller()
+    if (caller) {
+      logAuditCall(caller, {
+        category: "auth",
+        action:   "Changed own password",
+      })
     }
 
     return NextResponse.json({ success: true })

@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server"
 import { createAdminClient } from "@/lib/supabase/admin"
 import { getAdminCaller } from "@/lib/auth/guard"
-import { logAudit } from "@/hooks/audit-helpers"
+import { auditCallerOf } from "@/lib/auth/caller"
+import { logAuditCall } from "@/hooks/audit-helpers"
 import { kbCreateSchema } from "@/types/chatbot"
 
 export async function GET() {
@@ -51,13 +52,10 @@ export async function POST(request: Request) {
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
-  logAudit({
-    user_id:   caller.user.id,
-    user_name: caller.profile.full_name,
-    role:      caller.profile.role,
-    category:  "create",
-    action:    "Added knowledge entry",
-    target:    topic,
+  logAuditCall(auditCallerOf(caller), {
+    category: "create",
+    action:   "Added knowledge entry",
+    target:   topic,
   })
 
   return NextResponse.json({ entry: data }, { status: 201 })

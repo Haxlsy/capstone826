@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server"
 import { createAdminClient } from "@/lib/supabase/admin"
+import { getAuditCaller } from "@/lib/auth/caller"
+import { logAuditCall } from "@/hooks/audit-helpers"
 
 const ALL_DAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
 
@@ -120,6 +122,16 @@ export async function PATCH(request: Request) {
       .eq("id", id)
 
     if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+
+    const caller = await getAuditCaller()
+    if (caller) {
+      logAuditCall(caller, {
+        category: "update",
+        action:   "Updated technician",
+        target:   `technician ${id}`,
+      })
+    }
+
     return NextResponse.json({ success: true })
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err)
@@ -159,6 +171,16 @@ export async function POST(request: Request) {
       .single()
 
     if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+
+    const caller = await getAuditCaller()
+    if (caller) {
+      logAuditCall(caller, {
+        category: "create",
+        action:   "Created technician",
+        target:   data.full_name,
+      })
+    }
+
     return NextResponse.json({ technician: data }, { status: 201 })
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err)

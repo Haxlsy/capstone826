@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server"
 import { createAdminClient } from "@/lib/supabase/admin"
 import { getAdminCaller, type AdminCaller } from "@/lib/auth/guard"
-import { logAudit } from "@/hooks/audit-helpers"
+import { auditCallerOf } from "@/lib/auth/caller"
+import { logAuditCall } from "@/hooks/audit-helpers"
 import { buildSystemPrompt } from "@/lib/messenger/chatbot"
 import { chatbotSettingsSchema, type ChatbotSettings } from "@/types/chatbot"
 
@@ -74,12 +75,9 @@ async function saveRaw(
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
-  logAudit({
-    user_id:   caller.user.id,
-    user_name: caller.profile.full_name,
-    role:      caller.profile.role,
-    category:  "update",
-    action:    settings ? "Updated chatbot settings" : "Updated chatbot system prompt",
+  logAuditCall(auditCallerOf(caller), {
+    category: "update",
+    action:   settings ? "Updated chatbot settings" : "Updated chatbot system prompt",
   })
 
   return NextResponse.json({ success: true })

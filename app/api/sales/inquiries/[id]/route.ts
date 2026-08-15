@@ -2,6 +2,8 @@ import { NextResponse } from "next/server"
 import { cookies } from "next/headers"
 import { createClient } from "@/lib/supabase/server"
 import { createAdminClient } from "@/lib/supabase/admin"
+import { getAuditCaller } from "@/lib/auth/caller"
+import { logAuditCall } from "@/hooks/audit-helpers"
 
 export async function PATCH(
   request: Request,
@@ -51,6 +53,15 @@ export async function PATCH(
         .select("psid")
         .eq("id", id)
         .maybeSingle()
+
+      const caller = await getAuditCaller()
+      if (caller) {
+        logAuditCall(caller, {
+          category: "approve",
+          action:   status === "resolved" ? "Resolved Messenger inquiry" : "Recorded Messenger inquiry",
+          target:   `inquiry ${id}`,
+        })
+      }
 
       if (inq?.psid) {
         const { error: convErr } = await admin

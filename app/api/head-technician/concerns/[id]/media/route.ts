@@ -2,6 +2,8 @@ import { NextResponse } from "next/server"
 import { cookies } from "next/headers"
 import { createClient } from "@/lib/supabase/server"
 import { createAdminClient } from "@/lib/supabase/admin"
+import { getAuditCaller } from "@/lib/auth/caller"
+import { logAuditCall } from "@/hooks/audit-helpers"
 
 // POST /api/head-technician/concerns/[id]/media
 // Accepts multipart form with field "file".
@@ -62,6 +64,15 @@ export async function POST(
       .single()
 
     if (dbErr) return NextResponse.json({ error: dbErr.message }, { status: 500 })
+
+    const caller = await getAuditCaller()
+    if (caller) {
+      logAuditCall(caller, {
+        category: "create",
+        action:   "Attached media to concern",
+        target:   `concern ${concernId} (${isPhoto ? "photo" : "video"})`,
+      })
+    }
 
     return NextResponse.json({ success: true, media: mediaRow }, { status: 201 })
   } catch (err: unknown) {

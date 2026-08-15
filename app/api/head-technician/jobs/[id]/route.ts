@@ -4,6 +4,8 @@ import { createClient } from "@/lib/supabase/server"
 import { createAdminClient } from "@/lib/supabase/admin"
 import { addWorkingMins } from "@/hooks/time-utils"
 import { fmtDateTime } from "@/lib/time-display"
+import { getAuditCaller } from "@/lib/auth/caller"
+import { logAuditCall } from "@/hooks/audit-helpers"
 
 export async function GET(
   _request: Request,
@@ -285,6 +287,7 @@ export async function PATCH(
     if (!user) return NextResponse.json({ error: "Unauthorized." }, { status: 401 })
 
     const admin = createAdminClient()
+    const caller = await getAuditCaller()
 
     if (action === "start_job") {
       const { data: profile } = await admin
@@ -323,6 +326,9 @@ export async function PATCH(
         status:        "Ongoing",
         changed_by_id: user.id,
       })
+      if (caller) {
+        logAuditCall(caller, { category: "update", action: "Started job", target: `job ${jobId}` })
+      }
       return NextResponse.json({ success: true })
     }
 
@@ -392,6 +398,10 @@ export async function PATCH(
         }
       }
 
+      if (caller) {
+        logAuditCall(caller, { category: "update", action: "Marked stage as done", target: `job ${jobId} stage ${stage_id}` })
+      }
+
       return NextResponse.json({ success: true })
     }
 
@@ -430,6 +440,10 @@ export async function PATCH(
             }
           }
         }
+      }
+
+      if (caller) {
+        logAuditCall(caller, { category: "approve", action: "Approved category handoff", target: `job ${jobId} category ${category_id}` })
       }
 
       return NextResponse.json({ success: true })
@@ -506,6 +520,10 @@ export async function PATCH(
 
       if (updateErr) return NextResponse.json({ error: updateErr.message }, { status: 500 })
 
+      if (caller) {
+        logAuditCall(caller, { category: "approve", action: "Passed job to operations", target: `job ${jobId}` })
+      }
+
       return NextResponse.json({ success: true })
     }
 
@@ -570,6 +588,14 @@ export async function PATCH(
         }))
 
       if (notifRows.length > 0) await admin.from("notification").insert(notifRows)
+
+      if (caller) {
+        logAuditCall(caller, {
+          category: "flag",
+          action:   "Flagged stages for rework",
+          target:   `job ${jobId} (${stage_ids.length} stage(s))`,
+        })
+      }
 
       return NextResponse.json({ success: true })
     }

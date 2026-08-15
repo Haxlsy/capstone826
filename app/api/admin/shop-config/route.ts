@@ -1,6 +1,9 @@
 import { NextResponse } from "next/server"
 import { z } from "zod"
 import { createAdminClient } from "@/lib/supabase/admin"
+import { getAdminCaller } from "@/lib/auth/guard"
+import { auditCallerOf } from "@/lib/auth/caller"
+import { logAuditCall } from "@/hooks/audit-helpers"
 
 // GET /api/admin/shop-config
 export async function GET() {
@@ -27,6 +30,10 @@ const PatchSchema = z.object({
 // PATCH /api/admin/shop-config
 export async function PATCH(request: Request) {
   try {
+    const auth = await getAdminCaller()
+    if ("error" in auth) return auth.error
+    const { caller } = auth
+
     const body = await request.json()
     const parsed = PatchSchema.safeParse(body)
     if (!parsed.success) {
@@ -42,6 +49,13 @@ export async function PATCH(request: Request) {
       .single()
 
     if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+
+    logAuditCall(auditCallerOf(caller), {
+      category: "update",
+      action:   "Updated shop capacity",
+      target:   `max_capacity = ${parsed.data.max_capacity}`,
+    })
+
     return NextResponse.json(data)
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err)

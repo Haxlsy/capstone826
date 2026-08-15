@@ -2,6 +2,8 @@ import { NextResponse } from "next/server"
 import { cookies } from "next/headers"
 import { createClient } from "@/lib/supabase/server"
 import { z } from "zod"
+import { getAuditCaller } from "@/lib/auth/caller"
+import { logAuditCall } from "@/hooks/audit-helpers"
 
 const CreateCustomerSchema = z.object({
   full_name: z.string().min(1, "Name required").max(255),
@@ -47,6 +49,15 @@ export async function POST(request: Request) {
 
     if (error) {
       return NextResponse.json({ error: error.message }, { status: 500 })
+    }
+
+    const caller = await getAuditCaller()
+    if (caller) {
+      logAuditCall(caller, {
+        category: "create",
+        action:   "Created customer",
+        target:   validated.full_name,
+      })
     }
 
     return NextResponse.json(

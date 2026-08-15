@@ -1,26 +1,17 @@
 import { NextResponse } from "next/server"
-import { cookies } from "next/headers"
-import { createClient } from "@/lib/supabase/server"
 import { createAdminClient } from "@/lib/supabase/admin"
+import { getAdminCaller } from "@/lib/auth/guard"
+import { auditCallerOf } from "@/lib/auth/caller"
+import { logAuditCall } from "@/hooks/audit-helpers"
 
 // PUT /api/admin/category-presets/[id]
 export async function PUT(request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
-    const cookieStore = await cookies()
-    const supabase    = createClient(cookieStore)
-    const { data: { user } } = await supabase.auth.getUser()
-    if (!user) return NextResponse.json({ error: "Unauthorized." }, { status: 401 })
+    const auth = await getAdminCaller()
+    if ("error" in auth) return auth.error
+    const { caller } = auth
 
     const admin = createAdminClient()
-    const { data: profile } = await admin
-      .from("user_account")
-      .select("role")
-      .eq("id", user.id)
-      .single()
-
-    if (!profile || !["admin", "super_admin"].includes(profile.role)) {
-      return NextResponse.json({ error: "Forbidden. Admin access required." }, { status: 403 })
-    }
 
     const { id } = await params
     const body = await request.json()
@@ -59,6 +50,12 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
       if (stagesErr) return NextResponse.json({ error: stagesErr.message }, { status: 500 })
     }
 
+    logAuditCall(auditCallerOf(caller), {
+      category: "update",
+      action:   "Updated workflow category preset",
+      target:   name.trim(),
+    })
+
     return NextResponse.json({ ok: true })
   } catch (err: unknown) {
     return NextResponse.json({ error: err instanceof Error ? err.message : String(err) }, { status: 500 })
@@ -68,25 +65,27 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
 // DELETE /api/admin/category-presets/[id]
 export async function DELETE(_request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
-    const cookieStore = await cookies()
-    const supabase    = createClient(cookieStore)
-    const { data: { user } } = await supabase.auth.getUser()
-    if (!user) return NextResponse.json({ error: "Unauthorized." }, { status: 401 })
+    const auth = await getAdminCaller()
+    if ("error" in auth) return auth.error
+    const { caller } = auth
 
     const admin = createAdminClient()
-    const { data: profile } = await admin
-      .from("user_account")
-      .select("role")
-      .eq("id", user.id)
-      .single()
-
-    if (!profile || !["admin", "super_admin"].includes(profile.role)) {
-      return NextResponse.json({ error: "Forbidden. Admin access required." }, { status: 403 })
-    }
 
     const { id } = await params
+    const { data: preset } = await admin
+      .from("category_preset")
+      .select("name")
+      .eq("id", id)
+      .maybeSingle()
+
     const { error } = await admin.from("category_preset").delete().eq("id", id)
     if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+
+    logAuditCall(auditCallerOf(caller), {
+      category: "delete",
+      action:   "Deleted workflow category preset",
+      target:   preset?.name ?? `preset ${id}`,
+    })
 
     return NextResponse.json({ ok: true })
   } catch (err: unknown) {

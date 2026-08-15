@@ -2,6 +2,8 @@ import { NextResponse } from "next/server"
 import { cookies } from "next/headers"
 import { createClient } from "@/lib/supabase/server"
 import { createAdminClient } from "@/lib/supabase/admin"
+import { getAuditCaller } from "@/lib/auth/caller"
+import { logAuditCall } from "@/hooks/audit-helpers"
 
 export async function GET(
   _request: Request,
@@ -62,6 +64,16 @@ export async function PATCH(
       .eq("id", id)
 
     if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+
+    const caller = await getAuditCaller()
+    if (caller && status === "Resolved") {
+      logAuditCall(caller, {
+        category: "approve",
+        action:   "Resolved concern",
+        target:   `concern ${id}`,
+      })
+    }
+
     return NextResponse.json({ success: true })
   } catch (err: any) {
     return NextResponse.json({ error: err?.message ?? String(err) }, { status: 500 })

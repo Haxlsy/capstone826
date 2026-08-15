@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server"
 import { createAdminClient } from "@/lib/supabase/admin"
 import { getAdminCaller } from "@/lib/auth/guard"
-import { logAudit } from "@/hooks/audit-helpers"
+import { auditCallerOf } from "@/lib/auth/caller"
+import { logAuditCall } from "@/hooks/audit-helpers"
 import { kbUpdateSchema } from "@/types/chatbot"
 
 export async function PATCH(
@@ -29,13 +30,10 @@ export async function PATCH(
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
-  logAudit({
-    user_id:   caller.user.id,
-    user_name: caller.profile.full_name,
-    role:      caller.profile.role,
-    category:  "update",
-    action:    "Updated knowledge entry",
-    target:    parsed.data.topic ?? id,
+  logAuditCall(auditCallerOf(caller), {
+    category: "update",
+    action:   "Updated knowledge entry",
+    target:   parsed.data.topic ?? id,
   })
 
   return NextResponse.json({ success: true })
@@ -63,13 +61,10 @@ export async function DELETE(
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
-  logAudit({
-    user_id:   caller.user.id,
-    user_name: caller.profile.full_name,
-    role:      caller.profile.role,
-    category:  "delete",
-    action:    "Deleted knowledge entry",
-    target:    entry?.topic ?? id,
+  logAuditCall(auditCallerOf(caller), {
+    category: "delete",
+    action:   "Deleted knowledge entry",
+    target:   entry?.topic ?? id,
   })
 
   return NextResponse.json({ success: true })
