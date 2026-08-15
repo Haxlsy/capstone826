@@ -3,6 +3,8 @@ import { cookies } from "next/headers"
 import { createClient } from "@/lib/supabase/server"
 import { createAdminClient } from "@/lib/supabase/admin"
 import { fmtDateTime } from "@/lib/time-display"
+import { getAuditCaller } from "@/lib/auth/caller"
+import { logAuditCall } from "@/hooks/audit-helpers"
 
 // ── GET — fetch own submitted concerns ───────────────────────────────────────
 export async function GET() {
@@ -152,6 +154,15 @@ export async function POST(request: Request) {
 
     if (result.error) return NextResponse.json({ error: result.error.message }, { status: 500 })
     const data = result.data
+
+    const caller = await getAuditCaller()
+    if (caller) {
+      logAuditCall(caller, {
+        category: "create",
+        action:   "Submitted concern",
+        target:   autoTitle,
+      })
+    }
 
     return NextResponse.json({ success: true, id: (data as any)?.id })
   } catch (err: unknown) {

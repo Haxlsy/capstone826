@@ -1,28 +1,19 @@
 import { NextResponse } from "next/server"
-import { cookies } from "next/headers"
-import { createClient } from "@/lib/supabase/server"
 import { createAdminClient } from "@/lib/supabase/admin"
+import { getAdminCaller } from "@/lib/auth/guard"
+import { auditCallerOf } from "@/lib/auth/caller"
+import { logAuditCall } from "@/hooks/audit-helpers"
 
 // POST /api/admin/workflow-categories
 // Find-or-create: if a category with the same name already exists, return it.
 // Body: { name: string, technician_role: "detailer" | "installer", display_color?: string }
 export async function POST(request: Request) {
   try {
-    const cookieStore = await cookies()
-    const supabase    = createClient(cookieStore)
-    const { data: { user } } = await supabase.auth.getUser()
-    if (!user) return NextResponse.json({ error: "Unauthorized." }, { status: 401 })
+    const auth = await getAdminCaller()
+    if ("error" in auth) return auth.error
+    const { caller } = auth
 
     const admin = createAdminClient()
-    const { data: profile } = await admin
-      .from("user_account")
-      .select("full_name, role")
-      .eq("id", user.id)
-      .single()
-
-    if (!profile || !["admin", "super_admin"].includes(profile.role)) {
-      return NextResponse.json({ error: "Forbidden. Admin access required." }, { status: 403 })
-    }
 
     const body = await request.json()
     const { name, technician_role, display_color } = body
@@ -44,6 +35,12 @@ export async function POST(request: Request) {
       .single()
 
     if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+
+    logAuditCall(auditCallerOf(caller), {
+      category: "create",
+      action:   "Created or updated workflow category",
+      target:   data.name,
+    })
 
     return NextResponse.json({ category: data })
   } catch (err: unknown) {

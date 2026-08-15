@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { createClient } from "@/lib/supabase/server";
 import { createClient as createAdminClient } from "@supabase/supabase-js";
+import { getAuditCaller } from "@/lib/auth/caller";
+import { logAuditCall } from "@/hooks/audit-helpers";
 
 export async function GET(
   request: Request,
@@ -99,6 +101,15 @@ export async function PATCH(
         { error: (error as any).message ?? String(error) },
         { status: 500 }
       );
+    }
+
+    const caller = await getAuditCaller();
+    if (caller) {
+      logAuditCall(caller, {
+        category: "update",
+        action:   "Updated messenger conversation",
+        target:   `conversation ${id} (${status ?? "status change"})`,
+      });
     }
 
     return NextResponse.json({ success: true, conversation: data });

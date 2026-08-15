@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server"
 import { createAdminClient } from "@/lib/supabase/admin"
+import { getAuditCaller } from "@/lib/auth/caller"
+import { logAuditCall } from "@/hooks/audit-helpers"
 
 export async function PATCH(
   request: Request,
@@ -29,6 +31,16 @@ export async function PATCH(
       .eq("id", id)
 
     if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+
+    const caller = await getAuditCaller()
+    if (caller) {
+      logAuditCall(caller, {
+        category: "update",
+        action:   "Updated customer record",
+        target:   (updates.full_name ?? `record ${id}`) as string,
+      })
+    }
+
     return NextResponse.json({ success: true })
   } catch (err: any) {
     return NextResponse.json({ error: err?.message ?? String(err) }, { status: 500 })

@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { createClient as createAdminClient } from "@supabase/supabase-js";
 import { z } from "zod";
+import { getAuditCaller } from "@/lib/auth/caller";
+import { logAuditCall } from "@/hooks/audit-helpers";
 
 
 
@@ -165,6 +167,15 @@ export async function POST(request: Request) {
       .single();
 
     if (intakeRes.error) return NextResponse.json({ error: intakeRes.error.message ?? String(intakeRes.error) }, { status: 500 });
+
+    const caller = await getAuditCaller();
+    if (caller) {
+      logAuditCall(caller, {
+        category: "create",
+        action:   "Created customer intake",
+        target:   `${full_name} — ${plate_number}`,
+      });
+    }
 
     return NextResponse.json({ customer: customerRow, intake: intakeRes.data });
   } catch (err: any) {

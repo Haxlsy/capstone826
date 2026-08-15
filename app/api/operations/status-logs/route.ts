@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { createClient } from "@/lib/supabase/server";
 import { createClient as createAdminClient } from "@supabase/supabase-js";
+import { getAuditCaller } from "@/lib/auth/caller";
+import { logAuditCall } from "@/hooks/audit-helpers";
 
 export async function GET(request: Request) {
   try {
@@ -129,6 +131,15 @@ export async function POST(request: Request) {
         { error: (error as any).message ?? String(error) },
         { status: 500 }
       );
+    }
+
+    const caller = await getAuditCaller();
+    if (caller) {
+      logAuditCall(caller, {
+        category: "update",
+        action:   `Changed job status to ${new_status}`,
+        target:   remarks ?? `job ${job_order_id} (${old_status ?? "?"} → ${new_status})`,
+      });
     }
 
     return NextResponse.json({ success: true, status_log: data }, { status: 201 });

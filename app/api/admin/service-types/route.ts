@@ -1,6 +1,9 @@
 import { NextResponse } from "next/server"
 import { z } from "zod"
 import { createAdminClient } from "@/lib/supabase/admin"
+import { getAdminCaller } from "@/lib/auth/guard"
+import { auditCallerOf } from "@/lib/auth/caller"
+import { logAuditCall } from "@/hooks/audit-helpers"
 
 // GET /api/admin/service-types
 // Returns all service types sorted alphabetically.
@@ -30,6 +33,10 @@ const CreateSchema = z.object({
 // Creates a new service type. Rejects normalized duplicates.
 export async function POST(request: Request) {
   try {
+    const auth = await getAdminCaller()
+    if ("error" in auth) return auth.error
+    const { caller } = auth
+
     const body   = await request.json()
     const parsed = CreateSchema.safeParse(body)
     if (!parsed.success) {
@@ -50,6 +57,12 @@ export async function POST(request: Request) {
       }
       return NextResponse.json({ error: error.message }, { status: 500 })
     }
+
+    logAuditCall(auditCallerOf(caller), {
+      category: "create",
+      action:   "Created service type",
+      target:   name,
+    })
 
     return NextResponse.json({ success: true, name })
   } catch (err: unknown) {
