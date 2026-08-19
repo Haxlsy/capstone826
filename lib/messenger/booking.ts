@@ -1,6 +1,11 @@
 import { createAdminClient } from "@/lib/supabase/admin"
 
 export interface ActiveBooking {
+  /**
+   * True only when the customer has a real, qualifying active booking (a live
+   * job order). An existing `customer_record` alone does NOT count as an active
+   * booking — see docs/chatbot/AI_CHATBOT_OPENCODE_INSTRUCTION.md §14.
+   */
   hasActiveBooking: boolean
   record?: {
     full_name:      string | null
@@ -30,9 +35,10 @@ const ACTIVE_JOB_STATUSES = [
  * has a booking on file. The `customer_record.psid` column is UNIQUE, so it is
  * the single source of truth for "this customer has booked with us before".
  *
- * Returns the customer's recorded details plus their most recent live job order
- * (if any). A live job is a non-archived job_order whose status is not finished
- * (Released / Cancelled).
+ * Returns the customer's recorded details (`record`, when a customer_record
+ * exists) plus their most recent live job order (`job`, when there is one).
+ * `hasActiveBooking` is true ONLY when a live job exists — a customer_record
+ * alone never means "you have an active booking".
  */
 export async function lookupActiveBooking(psid: string): Promise<ActiveBooking> {
   const supabase = createAdminClient()
@@ -61,7 +67,7 @@ export async function lookupActiveBooking(psid: string): Promise<ActiveBooking> 
     .maybeSingle()
 
   return {
-    hasActiveBooking: true,
+    hasActiveBooking: Boolean(job),
     record: {
       full_name:      record.full_name      ?? null,
       contact_number: record.contact_number ?? null,
@@ -91,9 +97,13 @@ function serviceNameFromJob(
 /**
  * Renders an active-booking lookup result into a short, neutral block of text
  * that can be injected into the Gemini prompt as authoritative context.
+ *
+ * Only a real active booking (hasActiveBooking === true) renders the "existing
+ * active booking" notice. A customer_record without a live job renders customer
+ * context only, and never claims the customer has an active booking.
  */
 export function formatActiveBooking(result: ActiveBooking): string | null {
-  if (!result.hasActiveBooking || !result.record) return null
+  if (!result.record) return null
 
   const r = result.record
   const parts: string[] = []
@@ -104,9 +114,9 @@ export function formatActiveBooking(result: ActiveBooking): string | null {
   if (r.contact_number) parts.push(`Contact: ${r.contact_number}`)
 
   if (result.job) {
-    parts.push(`Active job: ${result.job.service_name ?? "a service"} (status: ${result.job.status}).`)
+    parts.push(`Active booking: ${result.job.service_name ?? "a service"} (status: ${result.job.status}).`)
   } else {
-    parts.push("This customer has a customer record on file but no live job order right now.")
+    parts.push("This customer has a customer record on file but no active booking/job right now.")
   }
 
   return parts.join("\n")
