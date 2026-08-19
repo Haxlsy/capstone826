@@ -7,6 +7,7 @@ import {
   setVehicleInquiry,
   setBookingFlow,
   setAwaitingConfirmation,
+  setActiveBookingOffered,
   getConversationHistory,
 } from "@/lib/messenger/messenger-data"
 import {
@@ -20,9 +21,11 @@ import {
   missingBookingFields,
   confirmRequested,
   isCompleteBooking,
+  wantsSeparateBooking,
   type ChatbotReply,
   type CustomerDetails,
 } from "@/lib/messenger/chatbot"
+import { lookupActiveBooking, formatActiveBooking } from "@/lib/messenger/booking"
 import {
   sendMessengerText,
   sendMessengerQuickReply,
@@ -164,7 +167,7 @@ async function handleInboundMessage(
   const profile = await fetchMessengerProfile(senderId)
 
   // Get or create the conversation and capture its current status + flow flags.
-  const { conversation_id, status, is_vehicle_inquiry, is_booking_flow, awaiting_confirmation } =
+  const { conversation_id, status, is_vehicle_inquiry, is_booking_flow, awaiting_confirmation, active_booking_offered } =
     await getOrCreateConversationByPsid(senderId, profile.name)
 
   // Build AI history BEFORE inserting the current message.
@@ -307,6 +310,13 @@ async function handleInboundMessage(
       console.error("[webhook/facebook] setBookingFlow failed:", err)
     }
   }
+  const persistActiveBookingOffered = async (value: boolean) => {
+    try {
+      await setActiveBookingOffered(conversation_id, value)
+    } catch (err) {
+      console.error("[webhook/facebook] setActiveBookingOffered failed:", err)
+    }
+  }
 
   if (bookingFlow && !statusIntent && !humanRequested && !reportIntent) {
     const missing = missingBookingFields(extracted)
@@ -316,7 +326,35 @@ async function handleInboundMessage(
     // recover by switching to the confirmation prompt instead of re-asking.
     let wasMissingBranch = false
 
-    if (missing.length > 0) {
+    // A returning customer (same psid) who already has a booking on file is told
+    // their booking is currently active before a second booking is collected.
+    // The pause releases only after they explicitly confirm a separate new
+    // booking, so a genuine additional booking still works.
+    const activeBooking = await lookupActiveBooking(senderId)
+    const releaseActiveBookingPause =
+      activeBooking.hasActiveBooking &&
+      active_booking_offered &&
+      (wantsSeparateBooking(messageBody) || confirmRequested(messageBody))
+
+    if (releaseActiveBookingPause) {
+      await persistActiveBookingOffered(false)
+    }
+
+    if (activeBooking.hasActiveBooking && !releaseActiveBookingPause) {
+      // Inform + pause: the customer already has an active booking. Do not
+      // collect a new booking or arm the confirmation flow until they clarify.
+      escalate = false
+      await persistConfirmFlag(false)
+      await persistActiveBookingOffered(true)
+      const activeDetails = formatActiveBooking(activeBooking)
+      bookingContext =
+        (activeDetails
+          ? `The customer already has an active booking on file with 826 Auto Care:\n${activeDetails}\n\n`
+          : "The customer already has an active booking on file with 826 Auto Care.\n\n") +
+        "Politely inform them that their booking is currently active and share the on-file vehicle/plate details. " +
+        "Ask whether they are (a) updating their existing booking or (b) booking a separate, additional service. " +
+        "Do NOT collect a new booking, do NOT ask them to confirm booking details, and do NOT escalate until the customer explicitly confirms they want a separate new booking."
+    } else if (missing.length > 0) {
       escalate = false
       wasMissingBranch = true
       await persistConfirmFlag(false)
@@ -343,6 +381,7 @@ async function handleInboundMessage(
       escalate = false
       await persistConfirmFlag(false)
       await persistBookingFlowFlag(false)
+      await persistActiveBookingOffered(false)
       bookingContext =
         "The customer was asked to confirm their booking details but the last message is not a confirmation and carries no booking details. " +
         "Answer the customer normally; you may briefly re-offer to continue their booking if it is natural to do so, but do not send the final booking confirmation and do not escalate."
@@ -493,6 +532,7 @@ async function handleInboundMessage(
       console.error("[webhook/facebook] flow reset failed:", err)
     }
     await persistConfirmFlag(false)
+    await persistActiveBookingOffered(false)
     return
   }
 
