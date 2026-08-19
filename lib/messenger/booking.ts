@@ -1,4 +1,5 @@
 import { createAdminClient } from "@/lib/supabase/admin"
+import { type CustomerDetails } from "@/types/chatbot"
 
 export interface ActiveBooking {
   /**
@@ -120,4 +121,99 @@ export function formatActiveBooking(result: ActiveBooking): string | null {
   }
 
   return parts.join("\n")
+}
+
+export interface IdentityConflict {
+  conflict: boolean
+  nameConflict: boolean
+  plateConflict: boolean
+  /** Neutral, non-accusatory clarification instruction injected into the AI prompt. */
+  clarification: string
+  /** Concise note recorded on the inquiry when the booking is escalated. */
+  note: string
+}
+
+function normalizeName(name: string): string {
+  return name
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, " ")
+    .replace(/[^a-zñáéíóú ]/g, "")
+}
+
+function namesCompatible(a: string, b: string): boolean {
+  const A = normalizeName(a)
+  const B = normalizeName(b)
+  if (!A || !B) return true
+  if (A === B) return true
+  return A.includes(B) || B.includes(A)
+}
+
+/**
+ * Phase 4 (identity-conflict detection) — flags a booking whose details
+ * contradict the canonical customer record instead of silently accepting them
+ * (docs/chatbot/AI_CHATBOT_OPENCODE_INSTRUCTION.md §7 / §7.1 / Test 5):
+ *
+ * 1. Name conflict — the booking's full name is incompatible with the name on
+ *    the customer_record for this psid (e.g. the record says "John", the
+ *    booking says "Caleb"). Vehicle association is business context, not
+ *    authentication — a name mismatch is surfaced and clarified, never a
+ *    hard block.
+ * 2. Plate conflict — the booking's plate number is already associated with a
+ *    DIFFERENT customer_record (plate_number is UNIQUE). A plate owned by this
+ *    same psid is not a conflict.
+ *
+ * The webhook never writes to customer_record from AI extraction, so nothing is
+ * silently overwritten; this only detects the discrepancy so the AI can clarify
+ * and Sales can verify.
+ */
+export async function lookupIdentityConflict(input: {
+  psid: string
+  extracted?: CustomerDetails | null
+  record?: ActiveBooking["record"] | null
+}): Promise<IdentityConflict | null> {
+  const { psid, extracted, record } = input
+  if (!extracted) return null
+
+  let nameConflict = false
+  let plateConflict = false
+
+  if (record?.full_name && extracted.full_name) {
+    nameConflict = !namesCompatible(record.full_name, extracted.full_name)
+  }
+
+  if (extracted.plate_number) {
+    const supabase = createAdminClient()
+    const { data: plateOwner } = await supabase
+      .from("customer_record")
+      .select("psid")
+      .ilike("plate_number", extracted.plate_number.trim().toUpperCase())
+      .limit(1)
+      .maybeSingle()
+    if (plateOwner && plateOwner.psid !== psid) plateConflict = true
+  }
+
+  if (!nameConflict && !plateConflict) return null
+
+  const notes: string[] = []
+  const asks: string[] = []
+  if (nameConflict) {
+    notes.push(`the name "${extracted.full_name}" differs from "${record?.full_name}" on the customer record`)
+    asks.push("whether this booking is under a different name or is an update to their details")
+  }
+  if (plateConflict) {
+    notes.push(`the plate number "${extracted.plate_number}" is already associated with another customer's record`)
+    asks.push("them to confirm the correct plate number for their vehicle")
+  }
+
+  return {
+    conflict: true,
+    nameConflict,
+    plateConflict,
+    clarification:
+      `The customer's booking details conflict with the customer record on file: ${notes.join(" and ")}. ` +
+      `Ask a neutral clarification question (for example, ask ${asks.join(" and ")}). ` +
+      "Do NOT escalate and do NOT finalize the booking until the customer confirms or corrects their details.",
+    note: `Identity conflict: ${notes.join("; ")}.`,
+  }
 }

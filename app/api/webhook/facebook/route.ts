@@ -8,6 +8,7 @@ import {
   setBookingFlow,
   setAwaitingConfirmation,
   setActiveBookingOffered,
+  setConflictPending,
   getConversationHistory,
 } from "@/lib/messenger/messenger-data"
 import {
@@ -25,7 +26,7 @@ import {
   type ChatbotReply,
   type CustomerDetails,
 } from "@/lib/messenger/chatbot"
-import { lookupActiveBooking, formatActiveBooking } from "@/lib/messenger/booking"
+import { lookupActiveBooking, formatActiveBooking, lookupIdentityConflict } from "@/lib/messenger/booking"
 import {
   sendMessengerText,
   sendMessengerQuickReply,
@@ -172,7 +173,7 @@ async function handleInboundMessage(
   const profile = await fetchMessengerProfile(senderId)
 
   // Get or create the conversation and capture its current status + flow flags.
-  const { conversation_id, status, is_vehicle_inquiry, is_booking_flow, awaiting_confirmation, active_booking_offered } =
+  const { conversation_id, status, is_vehicle_inquiry, is_booking_flow, awaiting_confirmation, active_booking_offered, conflict_pending } =
     await getOrCreateConversationByPsid(senderId, profile.name)
 
   // Build AI history BEFORE inserting the current message.
@@ -312,6 +313,9 @@ async function handleInboundMessage(
   // type like "Ford") carries no booking signal of its own.
   const bookingFlow = signal || is_booking_flow || awaiting_confirmation
   let escalateBooking = false
+  // Set when a complete booking carries an identity conflict that the customer
+  // confirmed anyway — recorded on the inquiry so Sales can verify (Phase 4).
+  let conflictNote: string | null = null
 
   // Best-effort flag persistence: a failure here should not abort the reply.
   const persistConfirmFlag = async (value: boolean) => {
@@ -333,6 +337,13 @@ async function handleInboundMessage(
       await setActiveBookingOffered(conversation_id, value)
     } catch (err) {
       console.error("[webhook/facebook] setActiveBookingOffered failed:", err)
+    }
+  }
+  const persistConflictPending = async (value: boolean) => {
+    try {
+      await setConflictPending(conversation_id, value)
+    } catch (err) {
+      console.error("[webhook/facebook] setConflictPending failed:", err)
     }
   }
 
@@ -379,39 +390,84 @@ async function handleInboundMessage(
         `The customer is in a booking flow but the following required detail(s) are not confirmed from the latest message: ${missing.join(", ")}. ` +
         "If the customer already provided any of these details earlier in the conversation, treat them as collected and include them in your structured customer extraction. " +
         "Politely ask the customer to provide only the truly missing details. Do NOT send the final booking confirmation and do NOT escalate until all details are collected."
-    } else if (confirmRequested(messageBody) && awaiting_confirmation) {
-      // Escalate only when a confirmation prompt was actually shown on a
-      // previous turn (awaiting_confirmation was persisted then). A premature
-      // "yes" — details just became complete but no prompt was shown yet — falls
-      // through to the confirmation branch below, so a customer can never be
-      // escalated to Sales without first seeing their details summarized.
-      escalate = true
-      escalateBooking = true
-      await persistConfirmFlag(false)
-      await persistBookingFlowFlag(false)
-      branchContext =
-        "The customer has confirmed their complete booking details. The booking is ready to be handed over to Sales."
-    } else if (awaiting_confirmation && !signal) {
-      // The confirmation flag was set but this message is neither a
-      // confirmation nor a booking detail — the customer wandered off. Clear
-      // the flow flags and let the AI answer normally.
-      escalate = false
-      await persistConfirmFlag(false)
-      await persistBookingFlowFlag(false)
-      await persistActiveBookingOffered(false)
-      branchContext =
-        "The customer was asked to confirm their booking details but the last message is not a confirmation and carries no booking details. " +
-        "Answer the customer normally; you may briefly re-offer to continue their booking if it is natural to do so, but do not send the final booking confirmation and do not escalate."
     } else {
-      // All required details are collected but not yet confirmed. Summarize the
-      // details and ask the customer to confirm — this runs even when the
-      // current message carries no booking signal (e.g. it completed the set
-      // with just a vehicle type), and also swallows a premature "yes" so the
-      // prompt is always shown before the booking can escalate. Persist the
-      // confirmation flag so the next "Yes" escalates.
-      escalate = false
-      await persistConfirmFlag(true)
-      branchContext = CONFIRM_BOOKING_CONTEXT
+      // Phase 4 (identity conflict): a COMPLETE booking whose details contradict
+      // the canonical customer record is never finalized silently. The AI asks a
+      // neutral clarification first (conflict_pending is persisted so the next
+      // turn knows a conflict was already surfaced); only when the customer
+      // confirms despite the conflict is the booking escalated to Sales for
+      // verification, with a conflict_note recorded on the inquiry (Test 5).
+      const conflict = await lookupIdentityConflict({
+        psid: senderId,
+        extracted,
+        record: activeBooking.record,
+      })
+
+      if (conflict) {
+        if (conflict_pending) {
+          if (confirmRequested(messageBody)) {
+            // Customer confirmed the booking despite the conflict → Sales
+            // verifies identity before anything is finalized.
+            escalate = true
+            escalateBooking = true
+            conflictNote = conflict.note
+            await persistConfirmFlag(false)
+            await persistConflictPending(false)
+            await persistBookingFlowFlag(false)
+            branchContext =
+              "The customer confirmed a booking that conflicts with the customer record on file. " +
+              "The booking is escalated to Sales for identity verification. Do NOT finalize the details as correct."
+          } else {
+            // Still conflicting and not confirmed → keep asking the neutral
+            // clarification, never escalate and never finalize.
+            escalate = false
+            await persistConfirmFlag(false)
+            branchContext = conflict.clarification
+          }
+        } else {
+          // First time the conflict is detected → surface it, don't escalate.
+          escalate = false
+          await persistConflictPending(true)
+          await persistConfirmFlag(false)
+          branchContext = conflict.clarification
+        }
+      } else if (confirmRequested(messageBody) && awaiting_confirmation) {
+        // Escalate only when a confirmation prompt was actually shown on a
+        // previous turn (awaiting_confirmation was persisted then). A premature
+        // "yes" — details just became complete but no prompt was shown yet — falls
+        // through to the confirmation branch below, so a customer can never be
+        // escalated to Sales without first seeing their details summarized.
+        escalate = true
+        escalateBooking = true
+        await persistConfirmFlag(false)
+        await persistConflictPending(false)
+        await persistBookingFlowFlag(false)
+        branchContext =
+          "The customer has confirmed their complete booking details. The booking is ready to be handed over to Sales."
+      } else if (awaiting_confirmation && !signal) {
+        // The confirmation flag was set but this message is neither a
+        // confirmation nor a booking detail — the customer wandered off. Clear
+        // the flow flags and let the AI answer normally.
+        escalate = false
+        await persistConfirmFlag(false)
+        await persistConflictPending(false)
+        await persistBookingFlowFlag(false)
+        await persistActiveBookingOffered(false)
+        branchContext =
+          "The customer was asked to confirm their booking details but the last message is not a confirmation and carries no booking details. " +
+          "Answer the customer normally; you may briefly re-offer to continue their booking if it is natural to do so, but do not send the final booking confirmation and do not escalate."
+      } else {
+        // All required details are collected but not yet confirmed. Summarize the
+        // details and ask the customer to confirm — this runs even when the
+        // current message carries no booking signal (e.g. it completed the set
+        // with just a vehicle type), and also swallows a premature "yes" so the
+        // prompt is always shown before the booking can escalate. Persist the
+        // confirmation flag so the next "Yes" escalates.
+        escalate = false
+        await persistConflictPending(false)
+        await persistConfirmFlag(true)
+        branchContext = CONFIRM_BOOKING_CONTEXT
+      }
     }
 
     const bookingContext: string = activeBookingContext
@@ -443,7 +499,17 @@ async function handleInboundMessage(
     // customer already gave, switch to the confirmation prompt. Costs one extra
     // Gemini call only in this rare case.
     if (wasMissingBranch && isCompleteBooking(extracted)) {
-      await persistConfirmFlag(true)
+      // The re-gen's refreshed extraction can show all details collected even
+      // though the first pass looked incomplete. If the completed details carry
+      // an identity conflict, surface the clarification instead of the normal
+      // confirmation prompt; otherwise switch to confirmation.
+      const conflict = await lookupIdentityConflict({
+        psid: senderId,
+        extracted,
+        record: activeBooking.record,
+      })
+      await persistConfirmFlag(!conflict)
+      await persistConflictPending(Boolean(conflict))
       try {
         const confirmResult = await generateChatbotReply({
           message: messageBody,
@@ -452,7 +518,7 @@ async function handleInboundMessage(
           system_prompt,
           knowledge,
           vehicleContext,
-          bookingContext: CONFIRM_BOOKING_CONTEXT,
+          bookingContext: conflict ? conflict.clarification : CONFIRM_BOOKING_CONTEXT,
         })
         if (confirmResult.reply?.trim()) reply = confirmResult.reply.trim()
         if (hasExtractedDetails(confirmResult.customer)) extracted = confirmResult.customer
@@ -515,6 +581,7 @@ async function handleInboundMessage(
       status: "open",
       escalated_at: timestamp,
       last_message: messageBody,
+      conflict_note:     conflictNote,
       extracted_name:    extracted?.full_name      ?? null,
       extracted_contact: extracted?.contact_number ?? null,
       extracted_plate:   extracted?.plate_number   ?? null,
@@ -570,6 +637,7 @@ async function handleInboundMessage(
     }
     await persistConfirmFlag(false)
     await persistActiveBookingOffered(false)
+    await persistConflictPending(false)
     return
   }
 
