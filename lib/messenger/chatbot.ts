@@ -282,26 +282,23 @@ export function hasBookingIntent(message: string): boolean {
   return BOOKING_INTENT_PATTERNS.some((re) => re.test(normalized))
 }
 
-const SEPARATE_BOOKING_PATTERNS = [
-  /\banother\b/i,
-  /\badditional\b/i,
-  /\bseparate\b/i,
-  /\bsecond\s+booking\b/i,
-  /\bnew\s+booking\b/i,
-  /\bisa\s+pang\b/i,
-  /\bisa\s+pa\b/i,
-  /\biba\s+pa\b/i,
-  /\bpangalawa\b/i,
+const EXISTING_BOOKING_PATTERNS = [
+  /\b(change|cancel|modify|update|adjust|move)\b[\s\S]*\b(booking|appointment|schedule|sched|appt)\b/i,
+  /\b(booking|appointment|schedule|sched|appt)\b[\s\S]*\b(change|cancel|modify|update|adjust|move)\b/i,
+  /\breschedul(?:e|ed|ing|ement)\b/i,
+  /\b(magpapa-?resched|magpapa-?sched|magparesched)\b/i,
+  /\b(cancel|kansel|icancel|kanselahin)\b[\s\S]*\b(booking|appointment|sched|schedule|order)\b/i,
+  /\b(palitan|baguhin|bago|imove|i-?move)\b[\s\S]*\b(booking|appointment|sched|schedule)\b/i,
 ]
 
 /**
- * True when the customer explicitly wants a separate, additional booking — used
- * to release the active-booking pause when a returning customer confirms they
- * are not just updating their current booking.
+ * True when the message concerns an EXISTING booking operation (change, cancel,
+ * modify, reschedule) rather than a new booking request. These should be
+ * escalated to Sales, never collected as a fresh booking.
  */
-export function wantsSeparateBooking(message: string): boolean {
+export function hasExistingBookingIntent(message: string): boolean {
   const normalized = message.toLowerCase()
-  return SEPARATE_BOOKING_PATTERNS.some((re) => re.test(normalized))
+  return EXISTING_BOOKING_PATTERNS.some((re) => re.test(normalized))
 }
 
 /** True when the message asks for a vehicle-status update. */
@@ -377,16 +374,33 @@ export async function generateChatbotReply(input: {
 
   let systemPrompt = buildRuntimeSystemPrompt(settings, system_prompt, knowledge)
 
+  // Authoritative backend context (vehicle status, booking flow) is assembled
+  // under one labeled section so it is clearly separated from conversation
+  // history and always takes priority over conversational assumptions.
+  const authoritativeBlocks: string[] = []
+
   // Inject authoritative vehicle-status data obtained via the internal lookup.
   if (vehicleContext && vehicleContext.trim()) {
-    systemPrompt += `\n\nVEHICLE STATUS LOOKUP RESULT (authoritative — use this to answer, do not invent status data:\n${vehicleContext.trim()}`
+    authoritativeBlocks.push(
+      `VEHICLE STATUS (authoritative — use this to answer, do not invent status data):\n${vehicleContext.trim()}`
+    )
   }
 
   // Inject authoritative booking-flow guidance (remind missing fields / await
   // confirmation) so the AI's reply matches the deterministic flow state.
   if (bookingContext && bookingContext.trim()) {
-    systemPrompt += `\n\nBOOKING FLOW (authoritative — follow this over the generic booking instructions):\n${bookingContext.trim()}`
+    authoritativeBlocks.push(
+      `BOOKING FLOW (authoritative — follow this over the generic booking instructions and over conversation history):\n${bookingContext.trim()}`
+    )
   }
+
+  if (authoritativeBlocks.length > 0) {
+    systemPrompt += `\n\nAUTHORITATIVE BACKEND CONTEXT (follow this over conversation history):\n${authoritativeBlocks.join("\n\n")}`
+  }
+
+  // Historical messages must never contaminate a new booking request. Only the
+  // details the customer gives for the CURRENT request count as the request.
+  systemPrompt += `\n\nWhen the customer is submitting a NEW booking request, use only the details they provide for this request. Older messages from previous bookings or earlier turns are historical context only — do not merge them into the current request unless the customer repeats or confirms them.`
 
   // Instruct the model to also surface any customer booking details it sees so
   // the webhook can store them in the inquiry's extracted_* columns. Even when
