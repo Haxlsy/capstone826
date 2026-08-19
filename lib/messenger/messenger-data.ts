@@ -11,13 +11,14 @@ export async function getOrCreateConversationByPsid(
   is_vehicle_inquiry: boolean
   is_booking_flow: boolean
   awaiting_confirmation: boolean
+  active_booking_offered: boolean
 }> {
   const supabase = createAdminClient()
 
   const { data: existing } = await supabase
     .from("messenger_conversation")
     .select(
-      "conversation_id, status, is_vehicle_inquiry, is_booking_flow, awaiting_confirmation"
+      "conversation_id, status, is_vehicle_inquiry, is_booking_flow, awaiting_confirmation, active_booking_offered"
     )
     .eq("psid", psid)
     .maybeSingle()
@@ -36,6 +37,7 @@ export async function getOrCreateConversationByPsid(
       is_vehicle_inquiry: Boolean(existing.is_vehicle_inquiry),
       is_booking_flow: Boolean(existing.is_booking_flow),
       awaiting_confirmation: Boolean(existing.awaiting_confirmation),
+      active_booking_offered: Boolean(existing.active_booking_offered),
     }
   }
 
@@ -56,7 +58,19 @@ export async function getOrCreateConversationByPsid(
     throw new Error(error?.message ?? "Failed to create conversation")
   }
 
-  return { conversation_id: data.conversation_id, status: "open", is_vehicle_inquiry: false, is_booking_flow: false, awaiting_confirmation: false }
+  return { conversation_id: data.conversation_id, status: "open", is_vehicle_inquiry: false, is_booking_flow: false, awaiting_confirmation: false, active_booking_offered: false }
+}
+
+/** Marks whether the AI has informed the customer that they already have an active booking. */
+export async function setActiveBookingOffered(conversation_id: number, value: boolean) {
+  const supabase = createAdminClient()
+
+  const { error } = await supabase
+    .from("messenger_conversation")
+    .update({ active_booking_offered: value })
+    .eq("conversation_id", conversation_id)
+
+  if (error) throw new Error(error.message)
 }
 
 /** Marks whether the AI has asked the customer to confirm their booking details. */

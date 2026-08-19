@@ -282,6 +282,28 @@ export function hasBookingIntent(message: string): boolean {
   return BOOKING_INTENT_PATTERNS.some((re) => re.test(normalized))
 }
 
+const SEPARATE_BOOKING_PATTERNS = [
+  /\banother\b/i,
+  /\badditional\b/i,
+  /\bseparate\b/i,
+  /\bsecond\s+booking\b/i,
+  /\bnew\s+booking\b/i,
+  /\bisa\s+pang\b/i,
+  /\bisa\s+pa\b/i,
+  /\biba\s+pa\b/i,
+  /\bpangalawa\b/i,
+]
+
+/**
+ * True when the customer explicitly wants a separate, additional booking — used
+ * to release the active-booking pause when a returning customer confirms they
+ * are not just updating their current booking.
+ */
+export function wantsSeparateBooking(message: string): boolean {
+  const normalized = message.toLowerCase()
+  return SEPARATE_BOOKING_PATTERNS.some((re) => re.test(normalized))
+}
+
 /** True when the message asks for a vehicle-status update. */
 export function hasStatusIntent(message: string): boolean {
   const normalized = message.toLowerCase()
