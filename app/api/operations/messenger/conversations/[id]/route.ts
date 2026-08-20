@@ -73,6 +73,17 @@ export async function PATCH(
     if (handler_role) updatePayload.handler_role = handler_role;
     updatePayload.last_message_at = new Date().toISOString();
 
+    // A human-owned (pending) or handed-off (closed) conversation must not keep
+    // any in-flight AI flow state — otherwise the next customer message would
+    // resume a stale booking/status flow (Phase 6 hardening).
+    if (status === "pending" || status === "closed") {
+      updatePayload.is_vehicle_inquiry    = false;
+      updatePayload.is_booking_flow       = false;
+      updatePayload.awaiting_confirmation = false;
+      updatePayload.active_booking_offered = false;
+      updatePayload.conflict_pending      = false;
+    }
+
     let { data, error } = await supabase
       .from("messenger_conversation")
       .update(updatePayload)

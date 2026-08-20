@@ -1,6 +1,12 @@
 import { createAdminClient } from "@/lib/supabase/admin"
+import { type CustomerDetails } from "@/types/chatbot"
 
 export interface ActiveBooking {
+  /**
+   * True only when the customer has a real, qualifying active booking (a live
+   * job order). An existing `customer_record` alone does NOT count as an active
+   * booking — see docs/chatbot/AI_CHATBOT_OPENCODE_INSTRUCTION.md §14.
+   */
   hasActiveBooking: boolean
   record?: {
     full_name:      string | null
@@ -30,9 +36,10 @@ const ACTIVE_JOB_STATUSES = [
  * has a booking on file. The `customer_record.psid` column is UNIQUE, so it is
  * the single source of truth for "this customer has booked with us before".
  *
- * Returns the customer's recorded details plus their most recent live job order
- * (if any). A live job is a non-archived job_order whose status is not finished
- * (Released / Cancelled).
+ * Returns the customer's recorded details (`record`, when a customer_record
+ * exists) plus their most recent live job order (`job`, when there is one).
+ * `hasActiveBooking` is true ONLY when a live job exists — a customer_record
+ * alone never means "you have an active booking".
  */
 export async function lookupActiveBooking(psid: string): Promise<ActiveBooking> {
   const supabase = createAdminClient()
@@ -61,7 +68,7 @@ export async function lookupActiveBooking(psid: string): Promise<ActiveBooking> 
     .maybeSingle()
 
   return {
-    hasActiveBooking: true,
+    hasActiveBooking: Boolean(job),
     record: {
       full_name:      record.full_name      ?? null,
       contact_number: record.contact_number ?? null,
@@ -91,9 +98,13 @@ function serviceNameFromJob(
 /**
  * Renders an active-booking lookup result into a short, neutral block of text
  * that can be injected into the Gemini prompt as authoritative context.
+ *
+ * Only a real active booking (hasActiveBooking === true) renders the "existing
+ * active booking" notice. A customer_record without a live job renders customer
+ * context only, and never claims the customer has an active booking.
  */
 export function formatActiveBooking(result: ActiveBooking): string | null {
-  if (!result.hasActiveBooking || !result.record) return null
+  if (!result.record) return null
 
   const r = result.record
   const parts: string[] = []
@@ -104,10 +115,112 @@ export function formatActiveBooking(result: ActiveBooking): string | null {
   if (r.contact_number) parts.push(`Contact: ${r.contact_number}`)
 
   if (result.job) {
-    parts.push(`Active job: ${result.job.service_name ?? "a service"} (status: ${result.job.status}).`)
+    parts.push(`Active booking: ${result.job.service_name ?? "a service"} (status: ${result.job.status}).`)
   } else {
-    parts.push("This customer has a customer record on file but no live job order right now.")
+    parts.push("This customer has a customer record on file but no active booking/job right now.")
   }
 
   return parts.join("\n")
+}
+
+export interface IdentityConflict {
+  conflict: boolean
+  nameConflict: boolean
+  plateConflict: boolean
+  /** Neutral, non-accusatory clarification instruction injected into the AI prompt. */
+  clarification: string
+  /** Concise note recorded on the inquiry when the booking is escalated. */
+  note: string
+}
+
+function normalizeName(name: string): string {
+  return name
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, " ")
+    .replace(/[^a-zñáéíóú ]/g, "")
+}
+
+export function namesCompatible(a: string, b: string): boolean {
+  const A = normalizeName(a)
+  const B = normalizeName(b)
+  if (!A || !B) return true
+  if (A === B) return true
+  if (A.includes(B) || B.includes(A)) return true
+  const ta = A.split(" ")
+  const tb = B.split(" ")
+  // Same first name AND same surname (e.g. a dropped middle name) → same person.
+  if (ta.length > 1 && tb.length > 1 && ta[0] === tb[0] && ta[ta.length - 1] === tb[tb.length - 1]) {
+    return true
+  }
+  return false
+}
+
+/**
+ * Phase 4 (identity-conflict detection) — flags a booking whose details
+ * contradict the canonical customer record instead of silently accepting them
+ * (docs/chatbot/AI_CHATBOT_OPENCODE_INSTRUCTION.md §7 / §7.1 / Test 5):
+ *
+ * 1. Name conflict — the booking's full name is incompatible with the name on
+ *    the customer_record for this psid (e.g. the record says "John", the
+ *    booking says "Caleb"). Vehicle association is business context, not
+ *    authentication — a name mismatch is surfaced and clarified, never a
+ *    hard block.
+ * 2. Plate conflict — the booking's plate number is already associated with a
+ *    DIFFERENT customer_record (plate_number is UNIQUE). A plate owned by this
+ *    same psid is not a conflict.
+ *
+ * The webhook never writes to customer_record from AI extraction, so nothing is
+ * silently overwritten; this only detects the discrepancy so the AI can clarify
+ * and Sales can verify.
+ */
+export async function lookupIdentityConflict(input: {
+  psid: string
+  extracted?: CustomerDetails | null
+  record?: ActiveBooking["record"] | null
+}): Promise<IdentityConflict | null> {
+  const { psid, extracted, record } = input
+  if (!extracted) return null
+
+  let nameConflict = false
+  let plateConflict = false
+
+  if (record?.full_name && extracted.full_name) {
+    nameConflict = !namesCompatible(record.full_name, extracted.full_name)
+  }
+
+  if (extracted.plate_number) {
+    const supabase = createAdminClient()
+    const { data: plateOwner } = await supabase
+      .from("customer_record")
+      .select("psid")
+      .ilike("plate_number", extracted.plate_number.trim().toUpperCase())
+      .limit(1)
+      .maybeSingle()
+    if (plateOwner && plateOwner.psid !== psid) plateConflict = true
+  }
+
+  if (!nameConflict && !plateConflict) return null
+
+  const notes: string[] = []
+  const asks: string[] = []
+  if (nameConflict) {
+    notes.push(`the name "${extracted.full_name}" differs from "${record?.full_name}" on the customer record`)
+    asks.push("whether this booking is under a different name or is an update to their details")
+  }
+  if (plateConflict) {
+    notes.push(`the plate number "${extracted.plate_number}" is already associated with another customer's record`)
+    asks.push("them to confirm the correct plate number for their vehicle")
+  }
+
+  return {
+    conflict: true,
+    nameConflict,
+    plateConflict,
+    clarification:
+      `The customer's booking details conflict with the customer record on file: ${notes.join(" and ")}. ` +
+      `Ask a neutral clarification question (for example, ask ${asks.join(" and ")}). ` +
+      "Do NOT escalate and do NOT finalize the booking until the customer confirms or corrects their details.",
+    note: `Identity conflict: ${notes.join("; ")}.`,
+  }
 }

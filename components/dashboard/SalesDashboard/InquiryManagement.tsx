@@ -6,7 +6,7 @@ import {
   MessageCircle, ArrowRightLeft, Clock,
   CheckCircle2, ChevronRight, User, Car,
   Phone, Hash, CheckCheck, CircleDot, X, Search,
-  AlertCircle, Mail, Layers,
+  AlertCircle, Mail, Layers, AlertTriangle,
 } from "lucide-react"
 import { fmtDateTime } from "@/lib/time-display"
 
@@ -27,6 +27,7 @@ interface Inquiry {
   extractedPlate:    string | null
   extractedVehicle:  string | null
   lastMessage:       string | null
+  conflictNote:      string | null
 }
 
 type Tab = "all" | "unresolved" | "open" | "recorded" | "resolved"
@@ -118,6 +119,7 @@ export default function InquiryManagement() {
         extractedPlate:   i.extracted_plate   ?? null,
         extractedVehicle: i.extracted_vehicle ?? null,
         lastMessage:      i.last_message      ?? null,
+        conflictNote:     i.conflict_note     ?? null,
       }))
       setInquiries(shaped)
       if (!selectedId && shaped.length > 0) setSelectedId(shaped[0].id)
@@ -315,10 +317,13 @@ export default function InquiryManagement() {
                         {STATUS_LABELS[inq.status]}
                       </span>
                     </div>
-                    <div className="mt-1">
+                    <div className="mt-1 flex items-center gap-1.5">
                       <span className={`text-[10px] font-medium px-2 py-0.5 rounded-full border ${TYPE_COLORS[inq.type]}`}>
                         {inq.type}
                       </span>
+                      {inq.conflictNote && (
+                        <AlertTriangle className="w-3 h-3 text-amber-500" aria-label="Identity conflict" />
+                      )}
                     </div>
                     <p className="text-[10px] text-gray-400 mt-1">{inq.timeElapsed}</p>
                   </div>
@@ -376,6 +381,16 @@ export default function InquiryManagement() {
                 </div>
               </div>
             </div>
+
+            {selected.conflictNote && (
+              <div className="flex items-start gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3">
+                <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+                <div>
+                  <p className="text-xs font-semibold text-amber-700 uppercase tracking-wider">Identity Conflict</p>
+                  <p className="text-sm text-amber-800 mt-1">{selected.conflictNote}</p>
+                </div>
+              </div>
+            )}
 
             <div className="space-y-2">
               <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider">AI-Extracted Fields</p>

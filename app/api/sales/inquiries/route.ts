@@ -19,7 +19,7 @@ export async function GET(request: Request) {
         `id, messenger_name, psid, inquiry_type, status,
          escalated_at, resolved_at,
          extracted_name, extracted_contact, extracted_plate, extracted_vehicle, extracted_email,
-         last_message,
+         last_message, conflict_note,
          resolver:resolved_by_id(full_name)`
       )
       .order("escalated_at", { ascending: false })
@@ -27,9 +27,9 @@ export async function GET(request: Request) {
     data = result.data
     error = result.error
 
-    // Fallback 1: extracted_email column may not exist yet — retry without it
+    // Fallback 1: extracted_email / conflict_note columns may not exist yet — retry without them
     if (error && (error as any).message?.includes("column")) {
-      console.warn("⚠️ extracted_email missing, retrying without it.");
+      console.warn("⚠️ extracted_email/conflict_note missing, retrying without them.");
       const fallback1 = await supabase
         .from("inquiry")
         .select(
