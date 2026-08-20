@@ -141,12 +141,19 @@ function normalizeName(name: string): string {
     .replace(/[^a-zñáéíóú ]/g, "")
 }
 
-function namesCompatible(a: string, b: string): boolean {
+export function namesCompatible(a: string, b: string): boolean {
   const A = normalizeName(a)
   const B = normalizeName(b)
   if (!A || !B) return true
   if (A === B) return true
-  return A.includes(B) || B.includes(A)
+  if (A.includes(B) || B.includes(A)) return true
+  const ta = A.split(" ")
+  const tb = B.split(" ")
+  // Same first name AND same surname (e.g. a dropped middle name) → same person.
+  if (ta.length > 1 && tb.length > 1 && ta[0] === tb[0] && ta[ta.length - 1] === tb[tb.length - 1]) {
+    return true
+  }
+  return false
 }
 
 /**
