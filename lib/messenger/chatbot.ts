@@ -287,7 +287,7 @@ const EXISTING_BOOKING_PATTERNS = [
   /\b(booking|appointment|schedule|sched|appt)\b[\s\S]*\b(change|cancel|modify|update|adjust|move)\b/i,
   /\breschedul(?:e|ed|ing|ement)\b/i,
   /\b(magpapa-?resched|magpapa-?sched|magparesched)\b/i,
-  /\b(cancel|kansel|icancel|kanselahin)\b[\s\S]*\b(booking|appointment|sched|schedule|order)\b/i,
+  /\b(cancel|kansel|icancel|kanselahin|pakansel)\b[\s\S]*\b(booking|appointment|sched|schedule|order)\b/i,
   /\b(palitan|baguhin|bago|imove|i-?move)\b[\s\S]*\b(booking|appointment|sched|schedule)\b/i,
 ]
 
