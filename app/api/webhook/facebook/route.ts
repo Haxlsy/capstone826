@@ -418,11 +418,17 @@ async function handleInboundMessage(
               "The customer confirmed a booking that conflicts with the customer record on file. " +
               "The booking is escalated to Sales for identity verification. Do NOT finalize the details as correct."
           } else {
-            // Still conflicting and not confirmed → keep asking the neutral
-            // clarification, never escalate and never finalize.
+            // Still conflicting and not confirmed → adapt the prompt so Gemini
+            // understands the customer is responding to an existing identity
+            // conflict clarification, not receiving one for the first time.
             escalate = false
             await persistConfirmFlag(false)
-            branchContext = conflict.clarification
+            branchContext =
+              conflict.clarification +
+              "\n\nThe customer has already been asked about this identity conflict and is now responding. " +
+              "If they confirm the conflicting details are correct, the booking will be escalated to Sales for identity verification. " +
+              "If they provide corrected details that match the customer record, the conflict is resolved. " +
+              "If their response is unclear or does not address the identity conflict, repeat the neutral clarification question."
           }
         } else {
           // First time the conflict is detected → surface it, don't escalate.
