@@ -67,6 +67,14 @@ describe("Test 7 — Premature confirmation", () => {
     expect(confirmRequested("maybe")).toBe(false)
     expect(confirmRequested("what is my total")).toBe(false)
   })
+
+  it("does not treat a Filipino-English update phrase as confirmation", () => {
+    // This is the exact phrase the user tested: after the conflict clarification
+    // was shown, the customer said "update details and update ko account ko".
+    // confirmRequested correctly returns false — the fix is in the webhook's
+    // adapted prompt, not in the helper.
+    expect(confirmRequested("update details and update ko account ko")).toBe(false)
+  })
 })
 
 describe("Test 8 — Human request", () => {
