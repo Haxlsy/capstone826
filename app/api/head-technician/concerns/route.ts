@@ -164,6 +164,30 @@ export async function POST(request: Request) {
       })
     }
 
+    // ── Notify all active Operations users ──────────────────────────────────
+    try {
+      const { data: opsUsers } = await admin
+        .from("user_account")
+        .select("id")
+        .eq("role", "operations")
+        .eq("is_archived", false)
+
+      if (opsUsers?.length) {
+        const concernId = (data as any)?.id
+        const notifRows = opsUsers.map((u: any) => ({
+          user_id:      u.id,
+          type:         "concern",
+          message:      autoTitle,
+          job_order_id: job_order_id.trim(),
+          stage_id:     stage_id?.trim() || null,
+          is_read:      false,
+        }))
+        await admin.from("notification").insert(notifRows)
+      }
+    } catch (notifErr) {
+      console.error("[head-technician/concerns] notification fan-out failed:", notifErr)
+    }
+
     return NextResponse.json({ success: true, id: (data as any)?.id })
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err)

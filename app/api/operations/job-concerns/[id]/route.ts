@@ -51,6 +51,20 @@ export async function PATCH(
     if (!user) return NextResponse.json({ error: "Unauthorized." }, { status: 401 })
 
     const admin = createAdminClient()
+
+    // Fetch concern details before update (for notification)
+    let submitterId: string | null = null
+    let concernJobId: string | null = null
+    if (status === "Resolved") {
+      const { data: concernRow } = await admin
+        .from("concern")
+        .select("submitted_by_id, job_order_id")
+        .eq("id", id)
+        .single()
+      submitterId = (concernRow as any)?.submitted_by_id ?? null
+      concernJobId = (concernRow as any)?.job_order_id ?? null
+    }
+
     const updates: Record<string, any> = { status }
     if (status === "Resolved") {
       updates.resolved_by_id = user.id
@@ -72,6 +86,21 @@ export async function PATCH(
         action:   "Resolved concern",
         target:   `concern ${id}`,
       })
+    }
+
+    // ── Notify submitting head tech ─────────────────────────────────────────
+    if (status === "Resolved" && submitterId) {
+      try {
+        await admin.from("notification").insert({
+          user_id:      submitterId,
+          type:         "concern_resolved",
+          message:      response_note ?? "Your concern has been resolved.",
+          job_order_id: concernJobId,
+          is_read:      false,
+        })
+      } catch (notifErr) {
+        console.error("[job-concerns] resolve notification failed:", notifErr)
+      }
     }
 
     return NextResponse.json({ success: true })

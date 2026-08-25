@@ -418,11 +418,17 @@ async function handleInboundMessage(
               "The customer confirmed a booking that conflicts with the customer record on file. " +
               "The booking is escalated to Sales for identity verification. Do NOT finalize the details as correct."
           } else {
-            // Still conflicting and not confirmed → keep asking the neutral
-            // clarification, never escalate and never finalize.
+            // Still conflicting and not confirmed → adapt the prompt so Gemini
+            // understands the customer is responding to an existing identity
+            // conflict clarification, not receiving one for the first time.
             escalate = false
             await persistConfirmFlag(false)
-            branchContext = conflict.clarification
+            branchContext =
+              conflict.clarification +
+              "\n\nThe customer has already been asked about this identity conflict and is now responding. " +
+              "If they confirm the conflicting details are correct, the booking will be escalated to Sales for identity verification. " +
+              "If they provide corrected details that match the customer record, the conflict is resolved. " +
+              "If their response is unclear or does not address the identity conflict, repeat the neutral clarification question."
           }
         } else {
           // First time the conflict is detected → surface it, don't escalate.
@@ -589,6 +595,33 @@ async function handleInboundMessage(
       extracted_email:   extracted?.email          ?? null,
     })
     if (inquiryErr) console.error("[webhook/facebook] inquiry insert failed:", inquiryErr.message)
+
+    // ── Notify Sales users (gated by notify_sales + inquiry type) ───────────
+    if (
+      settings?.notify_sales &&
+      (inquiry_type === "Booking" || inquiry_type === "Human Response")
+    ) {
+      try {
+        const { data: salesUsers } = await admin
+          .from("user_account")
+          .select("id")
+          .eq("role", "sales")
+          .eq("is_archived", false)
+
+        if (salesUsers?.length) {
+          const notifRows = salesUsers.map((u: any) => ({
+            user_id:      u.id,
+            type:         "inquiry",
+            message:      `New ${inquiry_type} inquiry from ${profile.name}`,
+            job_order_id: null,
+            is_read:      false,
+          }))
+          await admin.from("notification").insert(notifRows)
+        }
+      } catch (notifErr) {
+        console.error("[webhook/facebook] sales notification fan-out failed:", notifErr)
+      }
+    }
 
     // Booking requests first receive the configured confirmation message, then
     // the escalation ack — the customer knows their booking was received before

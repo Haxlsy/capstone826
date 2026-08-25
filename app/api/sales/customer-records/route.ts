@@ -44,9 +44,14 @@ export async function POST(request: Request) {
 
     const supabase = createAdminClient()
 
+    // Upsert: if a customer_record with this psid already exists (e.g. the
+    // customer booked twice), update it instead of hitting the UNIQUE constraint.
     const { data, error } = await supabase
       .from("customer_record")
-      .insert({ full_name, contact_number, email, plate_number, vehicle_unit, psid })
+      .upsert(
+        { full_name, contact_number, email, plate_number, vehicle_unit, psid },
+        { onConflict: "psid" }
+      )
       .select()
       .single()
 
