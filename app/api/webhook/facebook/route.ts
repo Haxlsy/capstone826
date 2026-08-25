@@ -596,6 +596,33 @@ async function handleInboundMessage(
     })
     if (inquiryErr) console.error("[webhook/facebook] inquiry insert failed:", inquiryErr.message)
 
+    // ── Notify Sales users (gated by notify_sales + inquiry type) ───────────
+    if (
+      settings?.notify_sales &&
+      (inquiry_type === "Booking" || inquiry_type === "Human Response")
+    ) {
+      try {
+        const { data: salesUsers } = await admin
+          .from("user_account")
+          .select("id")
+          .eq("role", "sales")
+          .eq("is_archived", false)
+
+        if (salesUsers?.length) {
+          const notifRows = salesUsers.map((u: any) => ({
+            user_id:      u.id,
+            type:         "inquiry",
+            message:      `New ${inquiry_type} inquiry from ${profile.name}`,
+            job_order_id: null,
+            is_read:      false,
+          }))
+          await admin.from("notification").insert(notifRows)
+        }
+      } catch (notifErr) {
+        console.error("[webhook/facebook] sales notification fan-out failed:", notifErr)
+      }
+    }
+
     // Booking requests first receive the configured confirmation message, then
     // the escalation ack — the customer knows their booking was received before
     // being told a human will follow up.
