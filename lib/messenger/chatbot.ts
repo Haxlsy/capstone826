@@ -111,6 +111,8 @@ export function buildSystemPrompt(s: ChatbotSettings): string {
   lines.push("")
   if (s.language === "filipino") {
     lines.push("LANGUAGE: Always respond in Filipino (Tagalog). Use natural, conversational Filipino throughout every message.")
+  } else if (s.language === "both") {
+    lines.push("LANGUAGE: Detect the customer's language from their message and respond in the same language. If they write in English, reply in English. If they write in Filipino/Tagalog, reply in Filipino. If mixed, match their dominant language.")
   } else {
     lines.push("LANGUAGE: Always respond in English.")
   }
