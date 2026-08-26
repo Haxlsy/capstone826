@@ -92,7 +92,48 @@ export default function InquiryManagement() {
   const [recordOpen, setRecordOpen] = useState(false)
   const [recordForm, setRecordForm] = useState({ full_name: "", contact_number: "", email: "", plate_number: "", vehicle_unit: "" })
   const [recording, setRecording]   = useState(false)
-  const [recordError, setRecordError] = useState<string | null>(null)
+  const [recordErrors, setRecordErrors] = useState<Record<string, string>>({})
+
+  // Validation patterns
+  const PLATE_RE = /^[A-Z]{1,4}\s?-?\s?\d{1,6}(?:\s?-\s?[A-Z]{1,2})?$/i
+  const PHONE_RE = /^(?:\+?63|0)\s?9\d{2}[\s.-]?\d{3}[\s.-]?\d{4}$/
+  const EMAIL_RE = /^[\w.+-]+@[\w-]+\.[\w.]+$/
+  const NAME_RE  = /^[A-Za-z\s.'-]{2,}$/
+
+  function validateRecordForm(): Record<string, string> {
+    const errs: Record<string, string> = {}
+    const { full_name, contact_number, email, plate_number, vehicle_unit } = recordForm
+
+    if (!full_name.trim()) {
+      errs.full_name = "Full name is required."
+    } else if (!NAME_RE.test(full_name.trim())) {
+      errs.full_name = "Full name must be at least 2 characters (letters, spaces, dots, hyphens only)."
+    }
+
+    if (!contact_number.trim()) {
+      errs.contact_number = "Contact number is required."
+    } else if (!PHONE_RE.test(contact_number.trim())) {
+      errs.contact_number = "Enter a valid PH mobile number (e.g., 09171234567)."
+    }
+
+    if (email.trim() && !EMAIL_RE.test(email.trim())) {
+      errs.email = "Enter a valid email address (e.g., juan@email.com)."
+    }
+
+    if (!plate_number.trim()) {
+      errs.plate_number = "Plate number is required."
+    } else if (!PLATE_RE.test(plate_number.trim())) {
+      errs.plate_number = "Enter a valid plate number (e.g., ABC 1234, ABC-1234)."
+    }
+
+    if (!vehicle_unit.trim()) {
+      errs.vehicle_unit = "Vehicle unit is required."
+    } else if (vehicle_unit.trim().length < 2) {
+      errs.vehicle_unit = "Vehicle unit must be at least 2 characters."
+    }
+
+    return errs
+  }
 
   // Resolve confirm
   const [resolveTarget, setResolveTarget] = useState<string | null>(null)
@@ -188,24 +229,31 @@ export default function InquiryManagement() {
       plate_number:   inq.extractedPlate   ?? "",
       vehicle_unit:   inq.extractedVehicle ?? "",
     })
-    setRecordError(null)
+    setRecordErrors({})
     setRecordOpen(true)
   }
 
   async function submitRecord() {
     if (!selected) return
-    const { full_name, contact_number, plate_number, vehicle_unit } = recordForm
-    if (!full_name || !contact_number || !plate_number || !vehicle_unit) {
-      setRecordError("Full name, contact, plate number, and vehicle are required.")
-      return
-    }
+
+    const errs = validateRecordForm()
+    setRecordErrors(errs)
+    if (Object.keys(errs).length > 0) return
+
     setRecording(true)
-    setRecordError(null)
+    setRecordErrors({})
     try {
+      const trimmed = {
+        full_name:      recordForm.full_name.trim(),
+        contact_number: recordForm.contact_number.trim(),
+        email:          recordForm.email.trim() || null,
+        plate_number:   recordForm.plate_number.trim().toUpperCase(),
+        vehicle_unit:   recordForm.vehicle_unit.trim(),
+      }
       const crRes  = await fetch("/api/sales/customer-records", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ...recordForm, psid: selected.psid }),
+        body: JSON.stringify({ ...trimmed, psid: selected.psid }),
       })
       const crJson = await crRes.json()
       if (!crRes.ok) throw new Error(crJson?.error ?? "Failed to create customer record")
@@ -219,7 +267,7 @@ export default function InquiryManagement() {
       setInquiries((prev) => prev.map((i) => i.id === selected.id ? { ...i, status: "recorded" } : i))
       setRecordOpen(false)
     } catch (err: unknown) {
-      setRecordError(err instanceof Error ? err.message : String(err))
+      setRecordErrors({ _submit: err instanceof Error ? err.message : String(err) })
     } finally {
       setRecording(false)
     }
@@ -510,15 +558,21 @@ export default function InquiryManagement() {
                   <input
                     type={type}
                     value={(recordForm as Record<string, string>)[key]}
-                    onChange={(e) => setRecordForm((prev) => ({ ...prev, [key]: e.target.value }))}
+                    onChange={(e) => {
+                      setRecordForm((prev) => ({ ...prev, [key]: e.target.value }))
+                      if (recordErrors[key]) setRecordErrors((prev) => { const n = { ...prev }; delete n[key]; return n })
+                    }}
                     placeholder={placeholder}
-                    className={INPUT_CLS}
+                    className={`${INPUT_CLS} ${recordErrors[key] ? "border-red-400 focus:ring-red-500" : ""}`}
                   />
+                  {recordErrors[key] && (
+                    <p className="text-[11px] text-red-500 mt-1">{recordErrors[key]}</p>
+                  )}
                 </div>
               ))}
             </div>
 
-            {recordError && <p className="text-xs text-red-500 mt-3">{recordError}</p>}
+            {recordErrors._submit && <p className="text-xs text-red-500 mt-3">{recordErrors._submit}</p>}
 
             <div className="flex gap-3 mt-5">
               <button
