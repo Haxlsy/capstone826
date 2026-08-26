@@ -301,6 +301,21 @@ async function handleInboundMessage(
         : (result.reason ?? null)
     aiReason = result.reason ?? null
     extracted = result.customer ?? null
+
+    // Option B safety net: If we're in a vehicle status flow and the lookup
+    // returned real status data (not just a "must be verified" prompt), the AI
+    // should never escalate. The status data is already in the prompt — the AI
+    // just needs to relay it. This guards against AI confusion from conflicting
+    // escalation rules in the system prompt.
+    if (
+      statusIntent &&
+      vehicleContext &&
+      !vehicleContext.includes("must be verified") &&
+      !vehicleContext.includes("Please provide")
+    ) {
+      escalate = false
+      escalateReason = null
+    }
   } catch (err) {
     // If the AI fails, err on the side of escalating to a human.
     console.error("[webhook/facebook] chatbot error:", err)
@@ -319,7 +334,11 @@ async function handleInboundMessage(
   // persisted by a previous turn). Persisting is_booking_flow keeps the flow
   // engaged across detail-collection turns whose final detail (e.g. a vehicle
   // type like "Ford") carries no booking signal of its own.
-  const bookingFlow = signal || is_booking_flow || awaiting_confirmation
+  //
+  // Option A fix: A bare plate in a status follow-up must NOT trigger bookingFlow.
+  // When statusIntent is true (vehicle status request), the plate is part of the
+  // status lookup, not a booking detail token.
+  const bookingFlow = (signal && !statusIntent) || is_booking_flow || awaiting_confirmation
   let escalateBooking = false
   // Set when a complete booking carries an identity conflict that the customer
   // confirmed anyway — recorded on the inquiry so Sales can verify (Phase 4).
