@@ -229,15 +229,23 @@ async function handleInboundMessage(
     console.error("[webhook/facebook] flow persistence failed:", err)
   }
 
-  // Vehicle-status context: run the lookup whenever a plate is present UNLESS
-  // this message has explicit booking intent (booking details include a plate
-  // but must not drag in status context). Bare plate+phone with no keyword is
-  // still honored as a status request, matching current behavior and the scope
-  // (non-Messenger customers verify identity via plate + phone).
+  // Vehicle-status context: run the lookup for:
+  // 1) Quick reply "status" (no plate needed) — uses psid to find customer_record.
+  // 2) Plate in message (manual entry, non-Messenger customers) — existing logic.
+  //    Booking-intent messages skip status lookup to avoid contaminating context.
   const plateMatch = messageBody.match(PLATE_PATTERN)
   const phoneMatch = messageBody.match(PHONE_PATTERN)
   let vehicleContext: string | null = null
-  if (plateMatch?.[0] && !bookingIntent) {
+
+  if (quickReplyPayload === "status" && !plateMatch?.[0]) {
+    // Messenger quick-reply: lookup by psid only (trusted path)
+    const lookup = await lookupVehicleStatus({
+      plate: "",
+      psid: senderId,
+    })
+    vehicleContext = formatVehicleStatus(lookup)
+  } else if (plateMatch?.[0] && !bookingIntent) {
+    // Plate in message: lookup by plate + optional phone + psid
     const lookup = await lookupVehicleStatus({
       plate: plateMatch[0],
       phone: phoneMatch?.[0] ?? null,
