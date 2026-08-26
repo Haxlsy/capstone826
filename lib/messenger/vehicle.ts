@@ -44,17 +44,30 @@ export async function lookupVehicleStatus(input: {
   const phone = (input.phone ?? "").trim()
   const psid = input.psid ?? null
 
-  if (!plate) {
-    return { found: false, trusted: false, needsVerification: true, message: "no plate" }
-  }
-
   // Confirm customer from the vehicle record.
-  const { data: record } = await supabase
-    .from("customer_record")
-    .select("id, full_name, contact_number, plate_number, psid")
-    .ilike("plate_number", plate)
-    .limit(1)
-    .maybeSingle()
+  // 1) If psid provided but no plate: lookup customer_record by psid first
+  //    (Messenger quick-reply "status" uses this path).
+  // 2) Else: lookup by plate (manual entry, non-Messenger customers).
+  let record = null
+  let effectivePlate = plate
+
+  if (!plate && psid) {
+    const { data } = await supabase
+      .from("customer_record")
+      .select("id, full_name, contact_number, plate_number, psid")
+      .eq("psid", psid)
+      .maybeSingle()
+    record = data
+    if (record?.plate_number) effectivePlate = normalizePlate(record.plate_number)
+  } else if (plate) {
+    const { data } = await supabase
+      .from("customer_record")
+      .select("id, full_name, contact_number, plate_number, psid")
+      .ilike("plate_number", plate)
+      .limit(1)
+      .maybeSingle()
+    record = data
+  }
 
   // Trust when this is the Messenger-linked account in question.
   let trusted = false
@@ -82,6 +95,9 @@ export async function lookupVehicleStatus(input: {
     }
   }
 
+  // Use the plate from the record for job lookup
+  const jobPlate = record.plate_number ?? effectivePlate
+
   // Latest active job order for the customer (via customer_record or manual fields).
   const { data: job } = await supabase
     .from("job_order")
@@ -90,7 +106,7 @@ export async function lookupVehicleStatus(input: {
        service:service_id(name),
        customer:customer_record_id(full_name)`
     )
-    .or(`customer_record_id.eq.${record.id},plate_number.eq.${plate}`)
+    .or(`customer_record_id.eq.${record.id},plate_number.eq.${jobPlate}`)
     .eq("is_archived", false)
     .order("created_at", { ascending: false })
     .limit(1)
@@ -146,7 +162,7 @@ export async function lookupVehicleStatus(input: {
     needsVerification: false,
     message: "job found",
     job: {
-      plate:          record.plate_number ?? plate,
+      plate:          jobPlate,
       customerName:   (job.customer as any)?.full_name ?? null,
       serviceName:    (job.service as any)?.name ?? null,
       status:         job.status,
