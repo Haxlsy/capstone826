@@ -50,16 +50,26 @@ export async function PATCH(
     if (status === "resolved" || status === "recorded") {
       const { data: inq } = await admin
         .from("inquiry")
-        .select("psid")
+        .select("psid, extracted_name")
         .eq("id", id)
         .maybeSingle()
+
+      let customerName: string | null = inq?.extracted_name ?? null
+      if (!customerName && inq?.psid) {
+        const { data: rec } = await admin
+          .from("customer_record")
+          .select("full_name")
+          .eq("psid", inq.psid)
+          .maybeSingle()
+        customerName = rec?.full_name ?? null
+      }
 
       const caller = await getAuditCaller()
       if (caller) {
         logAuditCall(caller, {
           category: "approve",
           action:   status === "resolved" ? "Resolved Messenger inquiry" : "Recorded Messenger inquiry",
-          target:   `inquiry ${id}`,
+          target:   customerName ?? `inquiry ${id}`,
         })
       }
 

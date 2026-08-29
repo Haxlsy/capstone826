@@ -6,6 +6,7 @@ import { addWorkingMins } from "@/hooks/time-utils"
 import { fmtDateTime } from "@/lib/time-display"
 import { getAuditCaller } from "@/lib/auth/caller"
 import { logAuditCall } from "@/hooks/audit-helpers"
+import { sendMessengerText, sendMessengerImage } from "@/lib/messenger/graph"
 
 export async function GET(
   _request: Request,
@@ -289,6 +290,14 @@ export async function PATCH(
     const admin = createAdminClient()
     const caller = await getAuditCaller()
 
+    // Job identity for human-readable audit targets (and Workstream B auto-send).
+    const { data: job } = await admin
+      .from("job_order")
+      .select("customer_name, plate_number")
+      .eq("id", jobId)
+      .single()
+    const jobLabel = (job as any)?.customer_name ?? jobId
+
     if (action === "start_job") {
       const { data: profile } = await admin
         .from("user_account")
@@ -327,7 +336,7 @@ export async function PATCH(
         changed_by_id: user.id,
       })
       if (caller) {
-        logAuditCall(caller, { category: "update", action: "Started job", target: `job ${jobId}` })
+        logAuditCall(caller, { category: "update", action: "Started job", target: jobLabel })
       }
       return NextResponse.json({ success: true })
     }
@@ -398,8 +407,86 @@ export async function PATCH(
         }
       }
 
+      // Resolve stage name (used for the audit target and the customer update).
+      let stageName = "Service stage"
+      {
+        const { data: jsp } = await admin
+          .from("job_stage_progress")
+          .select("service_stage_id")
+          .eq("id", stage_id)
+          .single()
+        const ssId = (jsp as any)?.service_stage_id as string | null
+        if (ssId) {
+          const { data: ss } = await admin
+            .from("service_stage")
+            .select("name")
+            .eq("id", ssId)
+            .single()
+          stageName = (ss as any)?.name ?? stageName
+        }
+      }
+
       if (caller) {
-        logAuditCall(caller, { category: "update", action: "Marked stage as done", target: `job ${jobId} stage ${stage_id}` })
+        logAuditCall(caller, {
+          category: "update",
+          action:   "Marked stage as done",
+          target:   `${jobLabel} — ${stageName}`,
+        })
+      }
+
+      // ── Workstream B — auto-send stage completion update to the customer ──────
+      // Wrapped so a messaging failure NEVER breaks the 200 response. The manual
+      // "Resend stage update" button remains the fallback.
+      try {
+        const { data: stageRow } = await admin
+          .from("job_stage_progress")
+          .select("messenger_sent")
+          .eq("id", stage_id)
+          .single()
+
+        if (!(stageRow as any)?.messenger_sent) {
+          const nowIso = new Date().toISOString()
+
+          const { data: custRow } = await admin
+            .from("job_order")
+            .select("customer:customer_record_id(psid, full_name)")
+            .eq("id", jobId)
+            .single()
+          const psid = (custRow as any)?.customer?.psid ?? null
+
+          if (!psid || !process.env.META_PAGE_ACCESS_TOKEN) {
+            await admin
+              .from("job_stage_progress")
+              .update({ messenger_sent: false, messenger_sent_at: nowIso })
+              .eq("id", stage_id)
+          } else {
+            const customerName =
+              (custRow as any)?.customer?.full_name ?? (job as any)?.customer_name ?? "Customer"
+            const plate = (job as any)?.plate_number ?? ""
+
+            const { data: media } = await admin
+              .from("stage_media")
+              .select("shareable_link, media_type")
+              .eq("job_stage_progress_id", stage_id)
+            const photos = ((media ?? []) as any[])
+              .filter((m) => m.media_type === "photo" && m.shareable_link)
+              .map((m) => m.shareable_link as string)
+
+            const message = `✅ Stage Update: "${stageName}" has been completed for your vehicle (${plate}).\n\nThank you for your patience, ${customerName}!`
+
+            const textMid = await sendMessengerText(psid, message)
+            if (textMid && photos.length > 0) {
+              await sendMessengerImage(psid, photos[0])
+            }
+
+            await admin
+              .from("job_stage_progress")
+              .update({ messenger_sent: Boolean(textMid), messenger_sent_at: nowIso })
+              .eq("id", stage_id)
+          }
+        }
+      } catch (sendErr) {
+        console.error("[HT mark_stage_done] auto-send failed:", sendErr)
       }
 
       return NextResponse.json({ success: true })
@@ -443,7 +530,17 @@ export async function PATCH(
       }
 
       if (caller) {
-        logAuditCall(caller, { category: "approve", action: "Approved category handoff", target: `job ${jobId} category ${category_id}` })
+        const { data: cat } = await admin
+          .from("workflow_category")
+          .select("name")
+          .eq("id", category_id)
+          .single()
+        const categoryName = (cat as any)?.name ?? category_id
+        logAuditCall(caller, {
+          category: "approve",
+          action:   "Approved category handoff",
+          target:   `${jobLabel} — ${categoryName}`,
+        })
       }
 
       return NextResponse.json({ success: true })
@@ -521,7 +618,7 @@ export async function PATCH(
       if (updateErr) return NextResponse.json({ error: updateErr.message }, { status: 500 })
 
       if (caller) {
-        logAuditCall(caller, { category: "approve", action: "Passed job to operations", target: `job ${jobId}` })
+        logAuditCall(caller, { category: "approve", action: "Passed job to operations", target: jobLabel })
       }
 
       return NextResponse.json({ success: true })
@@ -593,7 +690,7 @@ export async function PATCH(
         logAuditCall(caller, {
           category: "flag",
           action:   "Flagged stages for rework",
-          target:   `job ${jobId} (${stage_ids.length} stage(s))`,
+          target:   `${jobLabel} (${stage_ids.length} stage(s))`,
         })
       }
 

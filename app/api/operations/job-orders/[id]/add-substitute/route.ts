@@ -36,7 +36,7 @@ export async function POST(
     // Verify job exists
     const { data: job } = await admin
       .from("job_order")
-      .select("id, status")
+      .select("id, status, customer_name")
       .eq("id", jobId)
       .single()
     if (!job) return NextResponse.json({ error: "Job order not found." }, { status: 404 })
@@ -69,7 +69,7 @@ export async function POST(
         role:      profile.role,
         category:  "update",
         action:    `Added substitute ${role} "${tech.full_name}" to job`,
-        target:    jobId,
+        target:    (job as any).customer_name ?? jobId,
       })
     }
 

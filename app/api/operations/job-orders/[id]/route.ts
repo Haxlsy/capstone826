@@ -49,7 +49,7 @@ export async function PATCH(
     // Fetch current job to detect status change
     const { data: current } = await admin
       .from("job_order")
-      .select("status, actual_start_at")
+      .select("status, actual_start_at, customer_name")
       .eq("id", id)
       .single()
 
@@ -128,7 +128,7 @@ export async function PATCH(
           role:      profile.role,
           category:  isApproval ? "approve" : "update",
           action:    `Updated job status to ${newStatus}`,
-          target:    id,
+          target:    current?.customer_name ?? id,
         })
       }
     } else if (head_detailer_id !== undefined || head_installer_id !== undefined || scheduled_at !== undefined) {
@@ -140,7 +140,7 @@ export async function PATCH(
           role:      profile.role,
           category:  "update",
           action:    "Updated job assignment",
-          target:    id,
+          target:    current?.customer_name ?? id,
         })
       }
     }
@@ -202,7 +202,7 @@ export async function DELETE(
         role:      profile.role,
         category:  "delete",
         action:    `Cancelled and deleted job order for ${job.customer_name}`,
-        target:    id,
+        target:    job.customer_name ?? id,
       })
     }
 

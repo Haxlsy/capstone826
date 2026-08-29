@@ -123,12 +123,22 @@ export async function PATCH(request: Request) {
 
     if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
+    let techName: string | null = full_name?.trim() || null
+    if (!techName) {
+      const { data: techRow } = await supabase
+        .from("technician")
+        .select("full_name")
+        .eq("id", id)
+        .single()
+      techName = (techRow as any)?.full_name ?? null
+    }
+
     const caller = await getAuditCaller()
     if (caller) {
       logAuditCall(caller, {
         category: "update",
         action:   "Updated technician",
-        target:   `technician ${id}`,
+        target:   techName ?? `technician ${id}`,
       })
     }
 

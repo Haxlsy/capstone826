@@ -37,7 +37,7 @@ export async function POST(
     // Guard: job must be For Inspection
     const { data: job } = await admin
       .from("job_order")
-      .select("status")
+      .select("status, customer_name")
       .eq("id", jobId)
       .single()
 
@@ -105,7 +105,7 @@ export async function POST(
         role:      profile.role,
         category:  "flag",
         action:    "Flagged stage for rework during inspection",
-        target:    jobId,
+        target:    job.customer_name ?? jobId,
       })
     }
 

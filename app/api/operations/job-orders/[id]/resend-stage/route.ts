@@ -2,6 +2,7 @@ import { NextResponse } from "next/server"
 import { cookies } from "next/headers"
 import { createClient } from "@/lib/supabase/server"
 import { createAdminClient } from "@/lib/supabase/admin"
+import { sendMessengerText, sendMessengerImage } from "@/lib/messenger/graph"
 
 // POST /api/operations/job-orders/[id]/resend-stage
 // Body: { stage_id: string }
@@ -68,38 +69,11 @@ export async function POST(
       const message = `✅ Stage Update: "${stageName}" has been completed for your vehicle (${(job as any)?.plate_number ?? ""}).\n\nThank you for your patience, ${customerName}!`
 
       try {
-        // Send text message
-        const textRes = await fetch(
-          `https://graph.facebook.com/v19.0/me/messages?access_token=${process.env.META_PAGE_ACCESS_TOKEN}`,
-          {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              recipient: { id: psid },
-              message:   { text: message },
-            }),
-          }
-        )
-
-        if (textRes.ok) {
+        const textMid = await sendMessengerText(psid, message)
+        if (textMid) {
           // Optionally attach first photo if available
           if (photos.length > 0) {
-            await fetch(
-              `https://graph.facebook.com/v19.0/me/messages?access_token=${process.env.META_PAGE_ACCESS_TOKEN}`,
-              {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({
-                  recipient: { id: psid },
-                  message: {
-                    attachment: {
-                      type:    "image",
-                      payload: { url: photos[0], is_reusable: true },
-                    },
-                  },
-                }),
-              }
-            )
+            await sendMessengerImage(psid, photos[0])
           }
           sendSuccess = true
         }

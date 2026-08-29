@@ -73,6 +73,44 @@ export async function sendMessengerText(
 }
 
 /**
+ * Sends an image attachment to a Messenger user via the Facebook Graph API.
+ * Returns the Facebook message id (mid) on success, or null on failure.
+ * Never throws.
+ */
+export async function sendMessengerImage(
+  psid: string,
+  imageUrl: string
+): Promise<string | null> {
+  const token = process.env.META_PAGE_ACCESS_TOKEN
+  if (!token || !psid || !imageUrl) return null
+
+  try {
+    const res = await fetch(
+      `${GRAPH_API_URL}?access_token=${token}`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          recipient: { id: psid },
+          message: {
+            attachment: {
+              type:    "image",
+              payload: { url: imageUrl, is_reusable: true },
+            },
+          },
+        }),
+      }
+    )
+
+    if (!res.ok) return null
+    const json = await res.json().catch(() => null)
+    return json?.message_id ?? null
+  } catch {
+    return null
+  }
+}
+
+/**
  * Fetches the public profile (name + profile_pic) for a Messenger PSID.
  */
 export async function fetchMessengerProfile(psid: string): Promise<{

@@ -119,7 +119,7 @@ export async function PATCH(
       logAuditCall(caller, {
         category: "update",
         action:   "Updated messenger conversation",
-        target:   `conversation ${id} (${status ?? "status change"})`,
+        target:   `${(data as any)?.customer_name ?? `conversation ${id}`} (${status ?? "status change"})`,
       });
     }
 

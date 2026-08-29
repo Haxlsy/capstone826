@@ -55,6 +55,7 @@ export async function PATCH(
     // Fetch concern details before update (for notification)
     let submitterId: string | null = null
     let concernJobId: string | null = null
+    let concernCustomerName: string | null = null
     if (status === "Resolved") {
       const { data: concernRow } = await admin
         .from("concern")
@@ -63,6 +64,14 @@ export async function PATCH(
         .single()
       submitterId = (concernRow as any)?.submitted_by_id ?? null
       concernJobId = (concernRow as any)?.job_order_id ?? null
+      if (concernJobId) {
+        const { data: jobRow } = await admin
+          .from("job_order")
+          .select("customer_name")
+          .eq("id", concernJobId)
+          .single()
+        concernCustomerName = (jobRow as any)?.customer_name ?? null
+      }
     }
 
     const updates: Record<string, any> = { status }
@@ -84,7 +93,7 @@ export async function PATCH(
       logAuditCall(caller, {
         category: "approve",
         action:   "Resolved concern",
-        target:   `concern ${id}`,
+        target:   concernCustomerName ?? `concern ${id}`,
       })
     }
 

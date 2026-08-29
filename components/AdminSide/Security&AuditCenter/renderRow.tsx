@@ -23,7 +23,7 @@ export default function renderRow(entry: ApiLog, showTarget: boolean) {
           </span>
         </td>
         {showTarget && (
-          <td className="py-3 text-xs text-gray-500 font-mono">{entry.target || "—"}</td>
+          <td className="py-3 text-xs text-gray-500">{entry.target || "—"}</td>
         )}
       </tr>
     )
