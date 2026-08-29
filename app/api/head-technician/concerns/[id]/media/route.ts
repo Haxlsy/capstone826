@@ -65,12 +65,27 @@ export async function POST(
 
     if (dbErr) return NextResponse.json({ error: dbErr.message }, { status: 500 })
 
+    const { data: concernRow } = await admin
+      .from("concern")
+      .select("job_order_id")
+      .eq("id", concernId)
+      .single()
+    let concernCustomerName: string | null = null
+    if ((concernRow as any)?.job_order_id) {
+      const { data: jobRow } = await admin
+        .from("job_order")
+        .select("customer_name")
+        .eq("id", (concernRow as any).job_order_id)
+        .single()
+      concernCustomerName = (jobRow as any)?.customer_name ?? null
+    }
+
     const caller = await getAuditCaller()
     if (caller) {
       logAuditCall(caller, {
         category: "create",
         action:   "Attached media to concern",
-        target:   `concern ${concernId} (${isPhoto ? "photo" : "video"})`,
+        target:   `${concernCustomerName ?? `concern ${concernId}`} (${isPhoto ? "photo" : "video"})`,
       })
     }
 

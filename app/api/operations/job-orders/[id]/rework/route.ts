@@ -79,6 +79,7 @@ export async function POST(
     }
 
     const { data: profile } = await admin.from("user_account").select("full_name, role").eq("id", user.id).single()
+    const { data: jobRow } = await admin.from("job_order").select("customer_name").eq("id", jobId).single()
     if (profile) {
       logAudit({
         user_id:   user.id,
@@ -86,7 +87,7 @@ export async function POST(
         role:      profile.role,
         category:  "flag",
         action:    "Flagged job for rework",
-        target:    jobId,
+        target:    jobRow?.customer_name ?? jobId,
       })
     }
 
