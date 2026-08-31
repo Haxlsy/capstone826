@@ -74,6 +74,7 @@ export default function CustomerRecords() {
       email:         record.email ?? "",
       plateNumber:   record.plateNumber,
       vehicleUnit:   record.vehicleUnit,
+      psid:          record.psid ?? "",
     })
     setSaveErr(null)
   }
@@ -88,6 +89,8 @@ export default function CustomerRecords() {
     setSaving(true)
     setSaveErr(null)
     try {
+      const original = records.find((r) => r.id === id)
+      const psidChanged = (editDraft.psid ?? "") !== (original?.psid ?? "")
       const res  = await fetch(`/api/sales/customer-records/${id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
@@ -97,13 +100,16 @@ export default function CustomerRecords() {
           email:          editDraft.email || null,
           plate_number:   editDraft.plateNumber,
           vehicle_unit:   editDraft.vehicleUnit,
+          ...(psidChanged ? { psid: (editDraft.psid ?? "").trim() } : {}),
         }),
       })
       const json = await res.json()
       if (!res.ok) throw new Error(json?.error ?? "Failed to save")
 
       setRecords((prev) =>
-        prev.map((r) => r.id === id ? { ...r, ...editDraft } as CustomerRecord : r)
+        prev.map((r) => r.id === id
+          ? { ...r, ...editDraft, psid: (editDraft.psid ?? "").trim() || null } as CustomerRecord
+          : r)
       )
       setEditingId(null)
       setEditDraft({})
@@ -172,12 +178,21 @@ export default function CustomerRecords() {
                           {getInitials(record.fullName)}
                         </div>
                         {isEditing ? (
-                          <input
-                            aria-label="Full name"
-                            className={`${EDIT_INPUT} w-40`}
-                            value={editDraft.fullName ?? ""}
-                            onChange={(e) => setEditDraft((d) => ({ ...d, fullName: e.target.value }))}
-                          />
+                          <div className="flex flex-col gap-1">
+                            <input
+                              aria-label="Full name"
+                              className={`${EDIT_INPUT} w-40`}
+                              value={editDraft.fullName ?? ""}
+                              onChange={(e) => setEditDraft((d) => ({ ...d, fullName: e.target.value }))}
+                            />
+                            <input
+                              aria-label="Messenger PSID"
+                              placeholder="Messenger PSID"
+                              className={`${EDIT_INPUT} w-40 font-mono text-[11px]`}
+                              value={editDraft.psid ?? ""}
+                              onChange={(e) => setEditDraft((d) => ({ ...d, psid: e.target.value }))}
+                            />
+                          </div>
                         ) : (
                           <div>
                             <p className="font-medium text-gray-800">{record.fullName}</p>

@@ -37,7 +37,7 @@ import {
   normalizePhone,
   formatOwnVehicleStatus,
   resolveOwnVehicleStatus,
-  verifyAndLinkPsid,
+  assessLinkClaim,
   type OwnVehicleOutcome,
 } from "@/lib/messenger/vehicle"
 
@@ -195,61 +195,57 @@ describe("resolveOwnVehicleStatus — PSID scoping + aggregation", () => {
   })
 })
 
-describe("verifyAndLinkPsid", () => {
-  it("links when plate + phone match and psid is unset", async () => {
+describe("assessLinkClaim (read-only — never links)", () => {
+  it("match_unlinked when plate + phone match a record with no psid", async () => {
     store.responses = {
-      customer_record: [
-        { data: { id: "r1", contact_number: "0917 123 4567", psid: null }, error: null }, // by plate
-        { data: null, error: null },                                                       // update
-        { data: { id: "r1", full_name: "Jane", contact_number: "09171234567", plate_number: "ABC 123" }, error: null }, // resolveOwn
-      ],
-      job_order: [{ data: [], error: null }],
+      customer_record: [{ data: { id: "r1", full_name: "Jane Cruz", contact_number: "0917 123 4567", psid: null }, error: null }],
     }
-    const res = await verifyAndLinkPsid({ psid: "psid-1", plate: "ABC 123", phone: "+639171234567" })
-    expect(res.kind).toBe("linked")
+    const res = await assessLinkClaim({ psid: "psid-1", plate: "ABC 123", phone: "+639171234567" })
+    expect(res).toEqual({ kind: "match_unlinked", recordName: "Jane Cruz" })
   })
 
   it("resolves the record via a job_order when the plate is on no record", async () => {
     store.responses = {
       customer_record: [
-        { data: null, error: null },                                                        // by plate → none
-        { data: { id: "r9", contact_number: "09171234567", psid: null }, error: null },      // by job.customer_record_id
-        { data: null, error: null },                                                         // update
-        { data: { id: "r9", full_name: "Jane", contact_number: "09171234567", plate_number: "OLD 1" }, error: null }, // resolveOwn
+        { data: null, error: null }, // by plate → none
+        { data: { id: "r9", full_name: "Jane", contact_number: "09171234567", psid: null }, error: null }, // via job
       ],
-      job_order: [
-        { data: { customer_record_id: "r9" }, error: null }, // by plate
-        { data: [], error: null },                           // resolveOwn active jobs
-      ],
+      job_order: [{ data: { customer_record_id: "r9" }, error: null }],
     }
-    const res = await verifyAndLinkPsid({ psid: "psid-1", plate: "XYZ 789", phone: "09171234567" })
-    expect(res.kind).toBe("linked")
+    const res = await assessLinkClaim({ psid: "psid-1", plate: "XYZ 789", phone: "09171234567" })
+    expect(res.kind).toBe("match_unlinked")
   })
 
-  it("returns no_match on a phone mismatch", async () => {
+  it("phone_mismatch when the record exists but the phone is wrong", async () => {
     store.responses = {
-      customer_record: [{ data: { id: "r1", contact_number: "09179999999", psid: null }, error: null }],
-      job_order: [],
+      customer_record: [{ data: { id: "r1", full_name: "Jane", contact_number: "09179999999", psid: null }, error: null }],
     }
-    const res = await verifyAndLinkPsid({ psid: "psid-1", plate: "ABC 123", phone: "09171234567" })
-    expect(res.kind).toBe("no_match")
+    const res = await assessLinkClaim({ psid: "psid-1", plate: "ABC 123", phone: "09171234567" })
+    expect(res.kind).toBe("phone_mismatch")
   })
 
-  it("returns conflict when the plate's record has another psid", async () => {
+  it("owned_by_other when the plate's record already has a different psid", async () => {
     store.responses = {
-      customer_record: [{ data: { id: "r1", contact_number: "09171234567", psid: "someone-else" }, error: null }],
-      job_order: [],
+      customer_record: [{ data: { id: "r1", full_name: "Jane", contact_number: "09171234567", psid: "someone-else" }, error: null }],
     }
-    const res = await verifyAndLinkPsid({ psid: "psid-1", plate: "ABC 123", phone: "09171234567" })
-    expect(res.kind).toBe("conflict")
+    const res = await assessLinkClaim({ psid: "psid-1", plate: "ABC 123", phone: "09171234567" })
+    expect(res).toEqual({ kind: "owned_by_other", phoneMatched: true })
   })
 
-  it("returns no_match when nothing has that plate", async () => {
+  it("owned_by_other with phoneMatched=false when phone is also wrong", async () => {
+    store.responses = {
+      customer_record: [{ data: { id: "r1", full_name: "Jane", contact_number: "09179999999", psid: "someone-else" }, error: null }],
+    }
+    const res = await assessLinkClaim({ psid: "psid-1", plate: "ABC 123", phone: "09171234567" })
+    expect(res).toEqual({ kind: "owned_by_other", phoneMatched: false })
+  })
+
+  it("no_record when nothing has that plate", async () => {
     store.responses = {
       customer_record: [{ data: null, error: null }],
       job_order: [{ data: null, error: null }],
     }
-    const res = await verifyAndLinkPsid({ psid: "psid-1", plate: "ZZZ 000", phone: "09171234567" })
-    expect(res.kind).toBe("no_match")
+    const res = await assessLinkClaim({ psid: "psid-1", plate: "ZZZ 000", phone: "09171234567" })
+    expect(res.kind).toBe("no_record")
   })
 })

@@ -235,38 +235,41 @@ export function formatOwnVehicleStatus(
   )
 }
 
-export type LinkPsidResult =
-  | { kind: "linked"; outcome: OwnVehicleOutcome }         // record matched + psid attached
-  | { kind: "already_linked"; outcome: OwnVehicleOutcome } // record already this psid
-  | { kind: "no_match" }                                   // plate/phone did not verify
-  | { kind: "conflict" }                                   // plate belongs to a different psid
+export type LinkClaim =
+  | { kind: "no_record" }                                  // nothing matches the plate
+  | { kind: "match_unlinked"; recordName: string | null }  // record exists, psid null, phone matches
+  | { kind: "phone_mismatch" }                             // record exists, psid null, phone wrong
+  | { kind: "owned_by_other"; phoneMatched: boolean }      // record.psid is a different PSID
+  | { kind: "owned_by_requester"; outcome: OwnVehicleOutcome } // defensive: psid already this user
 
 /**
- * Verifies a Messenger customer against an existing customer_record using the
- * plate number and the phone number on file, and — on a match — links the record
- * to their psid so future status checks resolve automatically.
+ * Assesses a Messenger customer's claim to an existing customer_record using the
+ * plate number and the phone number on file. **Read-only** — it never links the
+ * record. Account linking is a persistent access grant, so it is always
+ * completed by Sales (after an out-of-band identity check) via the
+ * customer-record edit form.
  *
  * The plate is resolved via `customer_record.plate_number` (UNIQUE) first, then
  * — for a returning customer whose 2nd car only exists as a job — via
  * `job_order.plate_number`.
  */
-export async function verifyAndLinkPsid(input: {
+export async function assessLinkClaim(input: {
   psid: string
   plate: string
   phone: string
-}): Promise<LinkPsidResult> {
+}): Promise<LinkClaim> {
   const supabase = createAdminClient()
   const plate = normalizePlate(input.plate)
   const phone = normalizePhone(input.phone)
-  if (!plate || !isPlausibleMobile(phone)) return { kind: "no_match" }
+  if (!plate || !isPlausibleMobile(phone)) return { kind: "no_record" }
 
   let record:
-    | { id: string; contact_number: string | null; psid: string | null }
+    | { id: string; full_name: string | null; contact_number: string | null; psid: string | null }
     | null = null
 
   const { data: byPlate } = await supabase
     .from("customer_record")
-    .select("id, contact_number, psid")
+    .select("id, full_name, contact_number, psid")
     .ilike("plate_number", plate)
     .maybeSingle()
   record = byPlate ?? null
@@ -284,32 +287,24 @@ export async function verifyAndLinkPsid(input: {
     if (job?.customer_record_id) {
       const { data: r2 } = await supabase
         .from("customer_record")
-        .select("id, contact_number, psid")
+        .select("id, full_name, contact_number, psid")
         .eq("id", job.customer_record_id)
         .maybeSingle()
       record = r2 ?? null
     }
   }
 
-  if (!record) return { kind: "no_match" }
+  if (!record) return { kind: "no_record" }
+
+  const phoneMatched = normalizePhone(record.contact_number) === phone
 
   if (record.psid && record.psid === input.psid) {
-    return { kind: "already_linked", outcome: await resolveOwnVehicleStatus(input.psid) }
+    return { kind: "owned_by_requester", outcome: await resolveOwnVehicleStatus(input.psid) }
   }
   if (record.psid && record.psid !== input.psid) {
-    return { kind: "conflict" }
+    return { kind: "owned_by_other", phoneMatched }
   }
+  if (!phoneMatched) return { kind: "phone_mismatch" }
 
-  if (normalizePhone(record.contact_number) !== phone) return { kind: "no_match" }
-
-  const { error } = await supabase
-    .from("customer_record")
-    .update({ psid: input.psid })
-    .eq("id", record.id)
-  if (error) {
-    console.error("[vehicle] psid link failed:", error.message)
-    return { kind: "no_match" }
-  }
-
-  return { kind: "linked", outcome: await resolveOwnVehicleStatus(input.psid) }
+  return { kind: "match_unlinked", recordName: record.full_name ?? null }
 }
