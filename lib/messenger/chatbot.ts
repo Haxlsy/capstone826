@@ -9,6 +9,14 @@ import {
 
 export type { ChatbotSettings, ChatMessage, ChatbotReply, CustomerDetails }
 
+/**
+ * Normalizes a model-provided detail field: trims it, and treats an empty or
+ * whitespace-only string (which the structured-output model emits for values it
+ * cannot determine) as `null` rather than a real value.
+ */
+const str = (v: unknown): string | null =>
+  typeof v === "string" && v.trim() ? v.trim() : null
+
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY_CHATBOT! })
 
 // Business facts — always injected so the AI answers accurately.
@@ -434,13 +442,12 @@ export async function generateChatbotReply(input: {
           customer: {
             type: "OBJECT",
             properties: {
-              full_name:      { type: "STRING" },
-              contact_number: { type: "STRING" },
-              plate_number:   { type: "STRING" },
-              vehicle_unit:   { type: "STRING" },
-              email:          { type: "STRING" },
+              full_name:      { type: "STRING", nullable: true },
+              contact_number: { type: "STRING", nullable: true },
+              plate_number:   { type: "STRING", nullable: true },
+              vehicle_unit:   { type: "STRING", nullable: true },
+              email:          { type: "STRING", nullable: true },
             },
-            required: ["full_name", "contact_number", "plate_number", "vehicle_unit", "email"],
           },
         },
         required: ["reply", "escalate", "customer"],
@@ -459,11 +466,11 @@ export async function generateChatbotReply(input: {
       reason:   typeof parsed.reason === "string" ? parsed.reason : null,
       customer: c && typeof c === "object"
         ? {
-            full_name:      typeof c.full_name === "string"      ? c.full_name      : null,
-            contact_number: typeof c.contact_number === "string" ? c.contact_number : null,
-            plate_number:   typeof c.plate_number === "string"   ? c.plate_number   : null,
-            vehicle_unit:   typeof c.vehicle_unit === "string"   ? c.vehicle_unit   : null,
-            email:          typeof c.email === "string"          ? c.email          : null,
+            full_name:      str(c.full_name),
+            contact_number: str(c.contact_number),
+            plate_number:   str(c.plate_number),
+            vehicle_unit:   str(c.vehicle_unit),
+            email:          str(c.email),
           }
         : null,
     }
@@ -514,13 +521,12 @@ export async function extractCustomerDetails(input: {
             customer: {
               type: "OBJECT",
               properties: {
-                full_name:      { type: "STRING" },
-                contact_number: { type: "STRING" },
-                plate_number:   { type: "STRING" },
-                vehicle_unit:   { type: "STRING" },
-                email:          { type: "STRING" },
+                full_name:      { type: "STRING", nullable: true },
+                contact_number: { type: "STRING", nullable: true },
+                plate_number:   { type: "STRING", nullable: true },
+                vehicle_unit:   { type: "STRING", nullable: true },
+                email:          { type: "STRING", nullable: true },
               },
-              required: ["full_name", "contact_number", "plate_number", "vehicle_unit", "email"],
             },
           },
           required: ["customer"],
@@ -534,11 +540,11 @@ export async function extractCustomerDetails(input: {
     if (!c || typeof c !== "object") return null
 
     return {
-      full_name:      typeof c.full_name === "string"      ? c.full_name      : null,
-      contact_number: typeof c.contact_number === "string" ? c.contact_number : null,
-      plate_number:   typeof c.plate_number === "string"   ? c.plate_number   : null,
-      vehicle_unit:   typeof c.vehicle_unit === "string"   ? c.vehicle_unit   : null,
-      email:          typeof c.email === "string"          ? c.email          : null,
+      full_name:      str(c.full_name),
+      contact_number: str(c.contact_number),
+      plate_number:   str(c.plate_number),
+      vehicle_unit:   str(c.vehicle_unit),
+      email:          str(c.email),
     }
   } catch {
     return null
