@@ -5,8 +5,10 @@ import {
   hasStatusIntent,
   hasExistingBookingIntent,
   confirmRequested,
+  isPureConfirmation,
   missingBookingFields,
   isCompleteBooking,
+  buildBookingSummary,
   type CustomerDetails,
 } from "@/lib/messenger/chatbot"
 
@@ -113,5 +115,34 @@ describe("Required booking information", () => {
     expect(isCompleteBooking(complete)).toBe(true)
     expect(isCompleteBooking({ ...complete, plate_number: null })).toBe(false)
     expect(isCompleteBooking(null)).toBe(false)
+  })
+
+  it("renders a deterministic confirmation summary with every value", () => {
+    const summary = buildBookingSummary(complete)
+    for (const v of Object.values(complete)) {
+      expect(summary).toContain(v as string)
+    }
+    expect(summary).toMatch(/reply yes to confirm/i)
+  })
+})
+
+describe("isPureConfirmation — final booking 'yes' vs. still giving details", () => {
+  it("treats a bare affirmation as a confirmation", () => {
+    expect(isPureConfirmation("yes")).toBe(true)
+    expect(isPureConfirmation("opo")).toBe(true)
+    expect(isPureConfirmation("sige po")).toBe(true)
+    expect(isPureConfirmation("yes that's correct")).toBe(true)
+    expect(isPureConfirmation("YES, all details are correct")).toBe(true)
+  })
+
+  it("does NOT treat a message that still carries details as a confirmation", () => {
+    expect(isPureConfirmation("opo, Toyota Vios")).toBe(false)
+    expect(isPureConfirmation("ok my email is a@b.com")).toBe(false)
+    expect(isPureConfirmation("sige, 0917 555 0101")).toBe(false)
+  })
+
+  it("is false for non-confirmation chatter", () => {
+    expect(isPureConfirmation("maybe")).toBe(false)
+    expect(isPureConfirmation("what is my total")).toBe(false)
   })
 })
