@@ -123,6 +123,43 @@ export function formatActiveBooking(result: ActiveBooking): string | null {
   return parts.join("\n")
 }
 
+// Strict plate equality for dedup: "AAA-111" === "AAA 111" === "aaa111".
+// Deliberately stricter than vehicle.ts's normalizePlate (which keeps dashes);
+// importing that here would be circular (vehicle.ts imports from this file).
+function platesEqual(a?: string | null, b?: string | null): boolean {
+  const n = (s?: string | null) => (s ?? "").toUpperCase().replace(/[^A-Z0-9]/g, "")
+  return n(a).length > 0 && n(a) === n(b)
+}
+
+/**
+ * True when a completed booking is for a vehicle this psid is already on file
+ * for — same plate, and a name compatible with the customer record. A same-plate
+ * booking under an incompatible name is NOT this (it stays an identity conflict).
+ */
+export function isSameVehicleOnFile(
+  record: ActiveBooking["record"] | null | undefined,
+  extracted: CustomerDetails | null | undefined
+): boolean {
+  if (!record || !extracted) return false
+  return (
+    platesEqual(record.plate_number, extracted.plate_number) &&
+    namesCompatible(record.full_name ?? "", extracted.full_name ?? "")
+  )
+}
+
+/** Deterministic "you already have a booking on file" acknowledgement. */
+export function buildDuplicateBookingNotice(
+  record: ActiveBooking["record"] | null | undefined
+): string {
+  const plate = record?.plate_number ?? "your vehicle"
+  const veh = record?.vehicle_unit ? ` (${record.vehicle_unit})` : ""
+  return (
+    `It looks like we already have your booking details on file for ${plate}${veh}. ` +
+    "Our team will reach out to confirm your schedule. " +
+    "If you'd like to book a different vehicle or need anything else, just let me know."
+  )
+}
+
 export interface IdentityConflict {
   conflict: boolean
   nameConflict: boolean

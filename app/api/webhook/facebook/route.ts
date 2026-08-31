@@ -8,6 +8,7 @@ import {
   setBookingFlow,
   setAwaitingConfirmation,
   setActiveBookingOffered,
+  setBookingDuplicateNotified,
   setConflictPending,
   setAwaitingLinkVerification,
   setLinkAttempts,
@@ -30,7 +31,13 @@ import {
   type ChatbotReply,
   type CustomerDetails,
 } from "@/lib/messenger/chatbot"
-import { lookupActiveBooking, formatActiveBooking, lookupIdentityConflict } from "@/lib/messenger/booking"
+import {
+  lookupActiveBooking,
+  formatActiveBooking,
+  lookupIdentityConflict,
+  isSameVehicleOnFile,
+  buildDuplicateBookingNotice,
+} from "@/lib/messenger/booking"
 import {
   sendMessengerText,
   sendMessengerQuickReply,
@@ -183,7 +190,7 @@ async function handleInboundMessage(
   const profile = await fetchMessengerProfile(senderId)
 
   // Get or create the conversation and capture its current status + flow flags.
-  const { conversation_id, status, is_vehicle_inquiry, is_booking_flow, awaiting_confirmation, active_booking_offered, conflict_pending, awaiting_link_verification, link_attempts } =
+  const { conversation_id, status, is_vehicle_inquiry, is_booking_flow, awaiting_confirmation, active_booking_offered, booking_duplicate_notified, conflict_pending, awaiting_link_verification, link_attempts } =
     await getOrCreateConversationByPsid(senderId, profile.name)
 
   // Best-effort flag persistence: a failure here must not abort the reply.
@@ -481,6 +488,13 @@ async function handleInboundMessage(
       console.error("[webhook/facebook] setConflictPending failed:", err)
     }
   }
+  const persistBookingDuplicateNotified = async (value: boolean) => {
+    try {
+      await setBookingDuplicateNotified(conversation_id, value)
+    } catch (err) {
+      console.error("[webhook/facebook] setBookingDuplicateNotified failed:", err)
+    }
+  }
 
   if (bookingFlow && !statusIntent && !humanRequested && !reportIntent && !existingBookingIntent) {
     const missing = missingBookingFields(extracted)
@@ -496,8 +510,32 @@ async function handleInboundMessage(
     // customer_record alone does not count as an active booking.
     const activeBooking = await lookupActiveBooking(senderId)
 
+    // Dedup: an identical repeat booking for a vehicle this psid is already on
+    // file for (i.e. a previously recorded/resolved booking) is acknowledged
+    // once WITHOUT creating another inquiry. If the customer submits the same
+    // booking yet again after being told, it is escalated to Sales, flagged as a
+    // repeat via conflict_note.
+    const sameVehicleOnFile =
+      missing.length === 0 && isSameVehicleOnFile(activeBooking.record, extracted)
+    const acknowledgeDuplicate = sameVehicleOnFile && !booking_duplicate_notified
+
+    if (acknowledgeDuplicate) {
+      escalate = false
+      escalateBooking = false
+      reply = buildDuplicateBookingNotice(activeBooking.record)
+      await persistBookingDuplicateNotified(true)
+      await persistBookingFlowFlag(false)
+      await persistConfirmFlag(false)
+      await persistConflictPending(false)
+      await persistActiveBookingOffered(false)
+    } else if (sameVehicleOnFile) {
+      conflictNote =
+        `Repeat booking: customer is already on file for plate ` +
+        `${activeBooking.record?.plate_number ?? "?"} and re-submitted the same booking details.`
+    }
+
     let activeBookingContext: string | null = null
-    if (activeBooking.hasActiveBooking) {
+    if (!acknowledgeDuplicate && activeBooking.hasActiveBooking) {
       const activeDetails = formatActiveBooking(activeBooking)
       if (active_booking_offered) {
         activeBookingContext =
@@ -511,18 +549,22 @@ async function handleInboundMessage(
           "Briefly inform them their booking is currently active, then collect the new booking request normally. " +
           "Do NOT modify, cancel, or replace the existing booking — this is a separate request that goes to Sales."
       }
-    } else if (active_booking_offered) {
+    } else if (!acknowledgeDuplicate && active_booking_offered) {
       // No active booking anymore — clear the stale notice flag.
       await persistActiveBookingOffered(false)
     }
 
-    let branchContext: string
+    // Null while the duplicate-acknowledgement path owns the reply — the
+    // re-gen / confirmation logic below is skipped entirely in that case.
+    let branchContext: string | null = null
     // Set when the branch wants the customer to see a details summary + confirm
     // prompt. The summary is then rendered deterministically (buildBookingSummary)
     // rather than left to Gemini, so the customer ALWAYS sees their details
     // before a "yes" can hand the booking to Sales.
     let confirmSummary = false
-    if (missing.length > 0) {
+    if (acknowledgeDuplicate) {
+      // handled above — no branch context, no re-gen, no escalation
+    } else if (missing.length > 0) {
       escalate = false
       wasMissingBranch = true
       await persistConfirmFlag(false)
@@ -602,6 +644,7 @@ async function handleInboundMessage(
         await persistConflictPending(false)
         await persistBookingFlowFlag(false)
         await persistActiveBookingOffered(false)
+        await persistBookingDuplicateNotified(false)
         branchContext =
           "The customer was asked to confirm their booking details but the last message is not a confirmation and carries no booking details. " +
           "Answer the customer normally; you may briefly re-offer to continue their booking if it is natural to do so, but do not send the final booking confirmation and do not escalate."
@@ -620,66 +663,69 @@ async function handleInboundMessage(
       }
     }
 
-    const bookingContext: string = activeBookingContext
-      ? `${activeBookingContext}\n\n${branchContext}`
-      : branchContext
+    // branchContext is null only on the duplicate-acknowledgement path, which
+    // already owns `reply` and needs no Gemini re-gen.
+    if (branchContext !== null) {
+      const bookingContext: string = activeBookingContext
+        ? `${activeBookingContext}\n\n${branchContext}`
+        : branchContext
 
-    // Re-generate the reply with the booking-flow context (and get a more
-    // reliable customer extraction). The escalation path ignores `reply`, so
-    // this is safe for the confirmed case too.
-    try {
-      const flowResult = await generateChatbotReply({
-        message: messageBody,
-        history,
-        settings,
-        system_prompt,
-        knowledge,
-        vehicleContext,
-        bookingContext,
-      })
-      if (flowResult.reply?.trim()) reply = flowResult.reply.trim()
-      if (hasExtractedDetails(flowResult.customer)) extracted = flowResult.customer
-    } catch (err) {
-      console.error("[webhook/facebook] booking-flow reply failed:", err)
-    }
+      // Re-generate the reply with the booking-flow context (and get a more
+      // reliable customer extraction). The escalation path ignores `reply`, so
+      // this is safe for the confirmed case too.
+      try {
+        const flowResult = await generateChatbotReply({
+          message: messageBody,
+          history,
+          settings,
+          system_prompt,
+          knowledge,
+          vehicleContext,
+          bookingContext,
+        })
+        if (flowResult.reply?.trim()) reply = flowResult.reply.trim()
+        if (hasExtractedDetails(flowResult.customer)) extracted = flowResult.customer
+      } catch (err) {
+        console.error("[webhook/facebook] booking-flow reply failed:", err)
+      }
 
-    // Recovery: the re-gen's refreshed extraction (which sees the full history)
-    // can show all details are actually collected even though the first pass
-    // looked incomplete. Instead of sending a redundant re-ask for details the
-    // customer already gave, switch to the confirmation prompt. Costs one extra
-    // Gemini call only in this rare case.
-    if (wasMissingBranch && isCompleteBooking(extracted)) {
-      // The re-gen's refreshed extraction can show all details collected even
-      // though the first pass looked incomplete. If the completed details carry
-      // an identity conflict, surface the clarification instead of the normal
-      // confirmation prompt; otherwise switch to confirmation.
-      const conflict = await lookupIdentityConflict({
-        psid: senderId,
-        extracted,
-        record: activeBooking.record,
-      })
-      await persistConfirmFlag(!conflict)
-      await persistConflictPending(Boolean(conflict))
-      if (conflict) {
-        try {
-          const confirmResult = await generateChatbotReply({
-            message: messageBody,
-            history,
-            settings,
-            system_prompt,
-            knowledge,
-            vehicleContext,
-            bookingContext: conflict.clarification,
-          })
-          if (confirmResult.reply?.trim()) reply = confirmResult.reply.trim()
-          if (hasExtractedDetails(confirmResult.customer)) extracted = confirmResult.customer
-        } catch (err) {
-          console.error("[webhook/facebook] booking recovery reply failed:", err)
+      // Recovery: the re-gen's refreshed extraction (which sees the full history)
+      // can show all details are actually collected even though the first pass
+      // looked incomplete. Instead of sending a redundant re-ask for details the
+      // customer already gave, switch to the confirmation prompt. Costs one extra
+      // Gemini call only in this rare case.
+      if (wasMissingBranch && isCompleteBooking(extracted)) {
+        // If the completed details carry an identity conflict, surface the
+        // clarification instead of the normal confirmation prompt; otherwise
+        // switch to confirmation.
+        const conflict = await lookupIdentityConflict({
+          psid: senderId,
+          extracted,
+          record: activeBooking.record,
+        })
+        await persistConfirmFlag(!conflict)
+        await persistConflictPending(Boolean(conflict))
+        if (conflict) {
+          try {
+            const confirmResult = await generateChatbotReply({
+              message: messageBody,
+              history,
+              settings,
+              system_prompt,
+              knowledge,
+              vehicleContext,
+              bookingContext: conflict.clarification,
+            })
+            if (confirmResult.reply?.trim()) reply = confirmResult.reply.trim()
+            if (hasExtractedDetails(confirmResult.customer)) extracted = confirmResult.customer
+          } catch (err) {
+            console.error("[webhook/facebook] booking recovery reply failed:", err)
+          }
+        } else {
+          // No conflict → show the deterministic details summary + confirm prompt.
+          escalate = false
+          confirmSummary = true
         }
-      } else {
-        // No conflict → show the deterministic details summary + confirm prompt.
-        escalate = false
-        confirmSummary = true
       }
     }
 
@@ -865,6 +911,7 @@ async function handleInboundMessage(
     }
     await persistConfirmFlag(false)
     await persistActiveBookingOffered(false)
+    await persistBookingDuplicateNotified(false)
     await persistConflictPending(false)
     await safe(() => setAwaitingLinkVerification(conversation_id, false))
     await safe(() => setLinkAttempts(conversation_id, 0))

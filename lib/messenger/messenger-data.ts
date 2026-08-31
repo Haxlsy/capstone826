@@ -12,6 +12,7 @@ export async function getOrCreateConversationByPsid(
   is_booking_flow: boolean
   awaiting_confirmation: boolean
   active_booking_offered: boolean
+  booking_duplicate_notified: boolean
   conflict_pending: boolean
   awaiting_link_verification: boolean
   link_attempts: number
@@ -21,7 +22,7 @@ export async function getOrCreateConversationByPsid(
   const { data: existing } = await supabase
     .from("messenger_conversation")
     .select(
-      "conversation_id, status, is_vehicle_inquiry, is_booking_flow, awaiting_confirmation, active_booking_offered, conflict_pending, awaiting_link_verification, link_attempts"
+      "conversation_id, status, is_vehicle_inquiry, is_booking_flow, awaiting_confirmation, active_booking_offered, booking_duplicate_notified, conflict_pending, awaiting_link_verification, link_attempts"
     )
     .eq("psid", psid)
     .maybeSingle()
@@ -41,6 +42,7 @@ export async function getOrCreateConversationByPsid(
       is_booking_flow: Boolean(existing.is_booking_flow),
       awaiting_confirmation: Boolean(existing.awaiting_confirmation),
       active_booking_offered: Boolean(existing.active_booking_offered),
+      booking_duplicate_notified: Boolean(existing.booking_duplicate_notified),
       conflict_pending: Boolean(existing.conflict_pending),
       awaiting_link_verification: Boolean(existing.awaiting_link_verification),
       link_attempts: Number(existing.link_attempts ?? 0),
@@ -64,7 +66,7 @@ export async function getOrCreateConversationByPsid(
     throw new Error(error?.message ?? "Failed to create conversation")
   }
 
-  return { conversation_id: data.conversation_id, status: "open", is_vehicle_inquiry: false, is_booking_flow: false, awaiting_confirmation: false, active_booking_offered: false, conflict_pending: false, awaiting_link_verification: false, link_attempts: 0 }
+  return { conversation_id: data.conversation_id, status: "open", is_vehicle_inquiry: false, is_booking_flow: false, awaiting_confirmation: false, active_booking_offered: false, booking_duplicate_notified: false, conflict_pending: false, awaiting_link_verification: false, link_attempts: 0 }
 }
 
 /** Marks whether the next customer message is a plate/phone account-linking attempt. */
@@ -110,6 +112,18 @@ export async function setActiveBookingOffered(conversation_id: number, value: bo
   const { error } = await supabase
     .from("messenger_conversation")
     .update({ active_booking_offered: value })
+    .eq("conversation_id", conversation_id)
+
+  if (error) throw new Error(error.message)
+}
+
+/** Marks whether the AI has told the customer their booking is already on file (dedup). */
+export async function setBookingDuplicateNotified(conversation_id: number, value: boolean) {
+  const supabase = createAdminClient()
+
+  const { error } = await supabase
+    .from("messenger_conversation")
+    .update({ booking_duplicate_notified: value })
     .eq("conversation_id", conversation_id)
 
   if (error) throw new Error(error.message)
