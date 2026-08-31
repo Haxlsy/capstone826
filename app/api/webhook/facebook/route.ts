@@ -665,7 +665,7 @@ async function handleInboundMessage(
   // If the main reply calls produced no customer details but we still escalated
   // (human request, report, or generic AI escalation), run a focused second-pass
   // extraction so the inquiry's extracted_* fields are filled.
-  if (escalate && !hasExtractedDetails(extracted) && !bookingFlow) {
+  if (escalate && !hasExtractedDetails(extracted)) {
     try {
       const fallback = await extractCustomerDetails({
         message: messageBody,
