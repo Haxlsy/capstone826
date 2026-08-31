@@ -339,6 +339,28 @@ export function confirmRequested(message: string): boolean {
   return CONFIRMATION_PATTERNS.some((re) => re.test(normalized))
 }
 
+// Affirmation + politeness filler that carries no booking information. A message
+// that is ONLY these words is a genuine final "yes" (apostrophes are stripped
+// before matching, so "that's" → "thats").
+const PURE_CONFIRMATION_TOKENS =
+  /\b(?:yes|yeah|yep|ok|okay|sure|confirm(?:ed)?|correct|right|thats|its|it|that|this|is|are|all|good|fine|my|your|the|details?|infos?|information|sige|opo|oo|po|tama|tumpak|wasto|salamat|thanks?|thank|you|please|pls)\b/g
+
+/**
+ * True only when the message is essentially just an affirmation — after
+ * stripping affirmation/politeness words and every non-alphanumeric character,
+ * nothing meaningful remains. "opo" / "yes that's correct" / "sige po" → true;
+ * "opo, Toyota Vios" / "ok my email is a@b.com" → false (still giving details).
+ */
+export function isPureConfirmation(message: string): boolean {
+  if (!confirmRequested(message)) return false
+  const leftover = message
+    .toLowerCase()
+    .replace(/['’`]/g, "")
+    .replace(PURE_CONFIRMATION_TOKENS, " ")
+    .replace(/[^a-z0-9]+/g, "")
+  return leftover.length === 0
+}
+
 const BOOKING_FIELDS: { key: keyof CustomerDetails; label: string }[] = [
   { key: "full_name",      label: "Full Name" },
   { key: "contact_number", label: "Contact Number" },
@@ -365,6 +387,25 @@ export function missingBookingFields(
  */
 export function isCompleteBooking(details: CustomerDetails | null | undefined): boolean {
   return missingBookingFields(details).length === 0
+}
+
+/**
+ * Deterministic booking-details summary shown to the customer before the
+ * booking is handed to Sales. Rendered in code (not via Gemini) so the
+ * customer ALWAYS sees their details and an explicit confirm prompt before a
+ * "yes" can escalate the booking.
+ */
+export function buildBookingSummary(details: CustomerDetails): string {
+  return [
+    "Please review your booking details:",
+    `• Name: ${details.full_name ?? "—"}`,
+    `• Contact: ${details.contact_number ?? "—"}`,
+    `• Plate: ${details.plate_number ?? "—"}`,
+    `• Vehicle: ${details.vehicle_unit ?? "—"}`,
+    `• Email: ${details.email ?? "—"}`,
+    "",
+    "Reply YES to confirm, or send the correct value for anything that's wrong.",
+  ].join("\n")
 }
 
 /**

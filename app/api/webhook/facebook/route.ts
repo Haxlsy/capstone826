@@ -23,7 +23,9 @@ import {
   hasStatusIntent,
   missingBookingFields,
   confirmRequested,
+  isPureConfirmation,
   isCompleteBooking,
+  buildBookingSummary,
   hasExistingBookingIntent,
   type ChatbotReply,
   type CustomerDetails,
@@ -283,10 +285,15 @@ async function handleInboundMessage(
   // lookup is read-only and non-destructive, so checking it first is safe.
   const bookingIntent =
     quickReplyPayload === "booking" || hasBookingIntent(messageBody)
+  // While a booking flow is engaged, ambiguous status keywords ("check",
+  // "update", "progress") must NOT flip the conversation into a status lookup —
+  // that would clear is_booking_flow and drop the confirmation guardrail. Only an
+  // explicit "Vehicle Status" quick-reply switches the customer out mid-booking.
   const statusIntent =
     quickReplyPayload === "status" ||
-    hasStatusIntent(messageBody) ||
-    (!bookingIntent && is_vehicle_inquiry)
+    ((hasStatusIntent(messageBody) || (!bookingIntent && is_vehicle_inquiry)) &&
+      !is_booking_flow &&
+      !awaiting_confirmation)
 
   // An existing-booking operation (change/cancel/modify/reschedule) is never a
   // new booking — it is escalated to Sales for handling.
@@ -510,6 +517,11 @@ async function handleInboundMessage(
     }
 
     let branchContext: string
+    // Set when the branch wants the customer to see a details summary + confirm
+    // prompt. The summary is then rendered deterministically (buildBookingSummary)
+    // rather than left to Gemini, so the customer ALWAYS sees their details
+    // before a "yes" can hand the booking to Sales.
+    let confirmSummary = false
     if (missing.length > 0) {
       escalate = false
       wasMissingBranch = true
@@ -533,7 +545,7 @@ async function handleInboundMessage(
 
       if (conflict) {
         if (conflict_pending) {
-          if (confirmRequested(messageBody)) {
+          if (confirmRequested(messageBody) && !signal) {
             // Customer confirmed the booking despite the conflict → Sales
             // verifies identity before anything is finalized.
             escalate = true
@@ -565,12 +577,15 @@ async function handleInboundMessage(
           await persistConfirmFlag(false)
           branchContext = conflict.clarification
         }
-      } else if (confirmRequested(messageBody) && awaiting_confirmation) {
+      } else if (isPureConfirmation(messageBody) && awaiting_confirmation) {
         // Escalate only when a confirmation prompt was actually shown on a
-        // previous turn (awaiting_confirmation was persisted then). A premature
-        // "yes" — details just became complete but no prompt was shown yet — falls
-        // through to the confirmation branch below, so a customer can never be
-        // escalated to Sales without first seeing their details summarized.
+        // previous turn (awaiting_confirmation was persisted then) AND this
+        // message is essentially just an affirmation — not one that still
+        // carries booking details (e.g. "opo, my email is …"), which is a
+        // correction, not a final "yes". A premature "yes" — details just
+        // became complete but no prompt was shown yet — falls through to the
+        // confirmation branch below, so a customer can never be escalated to
+        // Sales without first seeing their details summarized.
         escalate = true
         escalateBooking = true
         await persistConfirmFlag(false)
@@ -598,6 +613,7 @@ async function handleInboundMessage(
         // prompt is always shown before the booking can escalate. Persist the
         // confirmation flag so the next "Yes" escalates.
         escalate = false
+        confirmSummary = true
         await persistConflictPending(false)
         await persistConfirmFlag(true)
         branchContext = CONFIRM_BOOKING_CONTEXT
@@ -644,22 +660,47 @@ async function handleInboundMessage(
       })
       await persistConfirmFlag(!conflict)
       await persistConflictPending(Boolean(conflict))
-      try {
-        const confirmResult = await generateChatbotReply({
-          message: messageBody,
-          history,
-          settings,
-          system_prompt,
-          knowledge,
-          vehicleContext,
-          bookingContext: conflict ? conflict.clarification : CONFIRM_BOOKING_CONTEXT,
-        })
-        if (confirmResult.reply?.trim()) reply = confirmResult.reply.trim()
-        if (hasExtractedDetails(confirmResult.customer)) extracted = confirmResult.customer
-      } catch (err) {
-        console.error("[webhook/facebook] booking recovery reply failed:", err)
+      if (conflict) {
+        try {
+          const confirmResult = await generateChatbotReply({
+            message: messageBody,
+            history,
+            settings,
+            system_prompt,
+            knowledge,
+            vehicleContext,
+            bookingContext: conflict.clarification,
+          })
+          if (confirmResult.reply?.trim()) reply = confirmResult.reply.trim()
+          if (hasExtractedDetails(confirmResult.customer)) extracted = confirmResult.customer
+        } catch (err) {
+          console.error("[webhook/facebook] booking recovery reply failed:", err)
+        }
+      } else {
+        // No conflict → show the deterministic details summary + confirm prompt.
+        escalate = false
+        confirmSummary = true
       }
     }
+
+    // Render the confirmation summary deterministically from the freshest
+    // extraction so the customer always sees every detail before confirming.
+    if (confirmSummary && !escalate && extracted && isCompleteBooking(extracted)) {
+      reply = buildBookingSummary(extracted)
+    }
+  }
+
+  // A booking only ever reaches Sales through the deterministic confirm step
+  // inside the block above (escalateBooking). The model's own escalate flag must
+  // never shortcut the confirmation step for a booking-flow conversation.
+  if (
+    bookingFlow &&
+    !humanRequested &&
+    !reportIntent &&
+    !existingBookingIntent &&
+    !escalateBooking
+  ) {
+    escalate = false
   }
 
   // If the main reply calls produced no customer details but we still escalated
