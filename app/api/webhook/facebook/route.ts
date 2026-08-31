@@ -38,7 +38,7 @@ import {
 import {
   resolveOwnVehicleStatus,
   formatOwnVehicleStatus,
-  verifyAndLinkPsid,
+  assessLinkClaim,
   normalizePlate,
 } from "@/lib/messenger/vehicle"
 import { logAudit } from "@/hooks/audit-helpers"
@@ -209,40 +209,64 @@ async function handleInboundMessage(
 
   // ── Account-linking verification ─────────────────────────────────────────
   // When the bot has asked an unlinked customer for their plate + booking phone,
-  // the next message is a linking attempt. Handled BEFORE any booking-signal
-  // logic so a plate/phone reply is not swallowed by the booking flow.
+  // the next message is a link CLAIM. Handled BEFORE any booking-signal logic so
+  // a plate/phone reply is not swallowed by the booking flow.
+  //
+  // The bot never links the account itself — linking is a persistent access
+  // grant. Every claim is routed to Sales, who verify identity out-of-band and
+  // set `psid` on the customer record. No status is shown until then.
   let linkedVehicleContext: string | null = null
-  let linkEscalation: { reason: string; note: string | null } | null = null
+  let linkEscalation: { reason: string; note: string | null; impersonation?: boolean } | null = null
   if (awaiting_link_verification) {
     const lp = messageBody.match(PLATE_PATTERN)?.[0] ?? ""
     const lph = messageBody.match(PHONE_PATTERN)?.[0] ?? ""
+    const plateNorm = normalizePlate(lp)
 
     if (!lp || !lph) {
       // Not a plate + phone pair — the customer wandered off the linking step.
       await safe(() => setAwaitingLinkVerification(conversation_id, false))
     } else {
-      const res = await verifyAndLinkPsid({ psid: senderId, plate: lp, phone: lph })
-      if (res.kind === "linked" || res.kind === "already_linked") {
+      const claim = await assessLinkClaim({ psid: senderId, plate: lp, phone: lph })
+      const clearLink = async () => {
         await safe(() => setAwaitingLinkVerification(conversation_id, false))
         await safe(() => setLinkAttempts(conversation_id, 0))
-        logAudit({ ...auditActor, category: "update", action: "messenger: linked psid to customer record", target: `psid=${senderId} plate=${normalizePlate(lp)}` })
-        linkedVehicleContext = formatOwnVehicleStatus(res.outcome)
-      } else if (res.kind === "conflict") {
-        await safe(() => setAwaitingLinkVerification(conversation_id, false))
-        await safe(() => setLinkAttempts(conversation_id, 0))
-        logAudit({ ...auditActor, category: "flag", action: "messenger: link attempt on record owned by another profile", target: `psid=${senderId} plate=${normalizePlate(lp)}` })
+      }
+
+      if (claim.kind === "owned_by_requester") {
+        // Defensive — resolveOwnVehicleStatus should already have found this.
+        await clearLink()
+        linkedVehicleContext = formatOwnVehicleStatus(claim.outcome)
+      } else if (claim.kind === "match_unlinked") {
+        await clearLink()
+        logAudit({ ...auditActor, category: "flag", action: "messenger: account link request", target: `psid=${senderId} plate=${plateNorm}` })
         linkEscalation = {
-          reason: "account-link conflict: plate belongs to a different Messenger profile",
-          note: `Account link conflict: Messenger profile ${senderId} tried to claim the customer record for plate ${normalizePlate(lp)}, which is linked to a different profile.`,
+          reason: "account link request — pending Sales verification",
+          note:
+            `Account link request. Messenger PSID ${senderId} (FB name "${profile.name}") claims plate ${plateNorm}; ` +
+            `the phone they gave matches the record for "${claim.recordName ?? "unknown"}". ` +
+            `Verify identity (call the number on file / confirm at drop-off) before setting the PSID on that customer record.`,
+        }
+      } else if (claim.kind === "owned_by_other") {
+        await clearLink()
+        logAudit({ ...auditActor, category: "flag", action: "messenger: impersonation-suspected link attempt", target: `psid=${senderId} plate=${plateNorm} phoneMatched=${claim.phoneMatched}` })
+        linkEscalation = {
+          impersonation: true,
+          reason: "possible impersonation — link attempt on a record owned by another Messenger account",
+          note:
+            `POSSIBLE IMPERSONATION. Messenger PSID ${senderId} (FB name "${profile.name}") tried to claim plate ${plateNorm}, ` +
+            `which is already linked to a different Messenger account (phoneMatched=${claim.phoneMatched}). ` +
+            `Do NOT re-link without confirming with the current owner.`,
         }
       } else {
-        // no_match — count the attempt; escalate to Sales at 5.
+        // no_record / phone_mismatch — let the customer self-correct, then escalate.
         const attempts = link_attempts + 1
         if (attempts >= 5) {
-          await safe(() => setAwaitingLinkVerification(conversation_id, false))
-          await safe(() => setLinkAttempts(conversation_id, 0))
-          logAudit({ ...auditActor, category: "flag", action: "messenger: link verification failed 5x", target: `psid=${senderId}` })
-          linkEscalation = { reason: "account-link verification failed 5 times", note: null }
+          await clearLink()
+          logAudit({ ...auditActor, category: "flag", action: "messenger: link verification failed 5x", target: `psid=${senderId} last_plate=${plateNorm}` })
+          linkEscalation = {
+            reason: "account link — 5 unverified attempts",
+            note: `Account link attempt failed verification 5 times. Last claim: plate ${plateNorm}, phone provided but no matching record.`,
+          }
         } else {
           await safe(() => setLinkAttempts(conversation_id, attempts))
           const askAgain =
@@ -414,7 +438,7 @@ async function handleInboundMessage(
   // confirmed anyway — recorded on the inquiry so Sales can verify (Phase 4).
   let conflictNote: string | null = null
 
-  // Account-linking failure (conflict / 5 failed attempts) escalates to Sales.
+  // Every account-link claim is routed to Sales for out-of-band verification.
   if (linkEscalation) {
     escalate = true
     escalateReason = linkEscalation.reason
@@ -724,6 +748,32 @@ async function handleInboundMessage(
         }
       } catch (notifErr) {
         console.error("[webhook/facebook] sales notification fan-out failed:", notifErr)
+      }
+    }
+
+    // A suspected impersonation attempt always notifies Sales — regardless of
+    // the notify_sales setting — so it is seen in real time, not just in the log.
+    if (linkEscalation?.impersonation) {
+      try {
+        const { data: salesUsers } = await admin
+          .from("user_account")
+          .select("id")
+          .eq("role", "sales")
+          .eq("is_archived", false)
+
+        if (salesUsers?.length) {
+          await admin.from("notification").insert(
+            salesUsers.map((u: any) => ({
+              user_id:      u.id,
+              type:         "inquiry",
+              message:      `⚠️ Possible impersonation attempt from ${profile.name}`,
+              job_order_id: null,
+              is_read:      false,
+            }))
+          )
+        }
+      } catch (notifErr) {
+        console.error("[webhook/facebook] impersonation notification failed:", notifErr)
       }
     }
 

@@ -11,7 +11,7 @@ export async function PATCH(
     const { id } = await params
 
     const body = await request.json()
-    const { full_name, contact_number, email, plate_number, vehicle_unit } = body
+    const { full_name, contact_number, email, plate_number, vehicle_unit, psid } = body
 
     const updates: Record<string, any> = {}
     if (full_name)            updates.full_name       = full_name.trim()
@@ -20,11 +20,37 @@ export async function PATCH(
     if (plate_number)         updates.plate_number    = plate_number.trim()
     if (vehicle_unit)         updates.vehicle_unit    = vehicle_unit.trim()
 
+    const supabase = createAdminClient()
+
+    // Linking a Messenger account (psid) is a deliberate, audited action —
+    // Sales does this after verifying identity out-of-band.
+    let linkedPsid = false
+    if (psid !== undefined) {
+      const trimmed = typeof psid === "string" ? psid.trim() : ""
+      if (trimmed) {
+        const { data: clash } = await supabase
+          .from("customer_record")
+          .select("id")
+          .eq("psid", trimmed)
+          .neq("id", id)
+          .maybeSingle()
+        if (clash) {
+          return NextResponse.json(
+            { error: "That Messenger account is already linked to another customer record." },
+            { status: 409 }
+          )
+        }
+        updates.psid = trimmed
+      } else {
+        updates.psid = null
+      }
+      linkedPsid = true
+    }
+
     if (Object.keys(updates).length === 0) {
       return NextResponse.json({ error: "Nothing to update." }, { status: 400 })
     }
 
-    const supabase = createAdminClient()
     const { error } = await supabase
       .from("customer_record")
       .update(updates)
@@ -36,7 +62,9 @@ export async function PATCH(
     if (caller) {
       logAuditCall(caller, {
         category: "update",
-        action:   "Updated customer record",
+        action:   linkedPsid
+          ? (updates.psid ? "Linked Messenger account to customer record" : "Unlinked Messenger account from customer record")
+          : "Updated customer record",
         target:   (updates.full_name ?? `record ${id}`) as string,
       })
     }
