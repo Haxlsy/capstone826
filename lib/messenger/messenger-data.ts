@@ -13,13 +13,15 @@ export async function getOrCreateConversationByPsid(
   awaiting_confirmation: boolean
   active_booking_offered: boolean
   conflict_pending: boolean
+  awaiting_link_verification: boolean
+  link_attempts: number
 }> {
   const supabase = createAdminClient()
 
   const { data: existing } = await supabase
     .from("messenger_conversation")
     .select(
-      "conversation_id, status, is_vehicle_inquiry, is_booking_flow, awaiting_confirmation, active_booking_offered, conflict_pending"
+      "conversation_id, status, is_vehicle_inquiry, is_booking_flow, awaiting_confirmation, active_booking_offered, conflict_pending, awaiting_link_verification, link_attempts"
     )
     .eq("psid", psid)
     .maybeSingle()
@@ -40,6 +42,8 @@ export async function getOrCreateConversationByPsid(
       awaiting_confirmation: Boolean(existing.awaiting_confirmation),
       active_booking_offered: Boolean(existing.active_booking_offered),
       conflict_pending: Boolean(existing.conflict_pending),
+      awaiting_link_verification: Boolean(existing.awaiting_link_verification),
+      link_attempts: Number(existing.link_attempts ?? 0),
     }
   }
 
@@ -60,7 +64,31 @@ export async function getOrCreateConversationByPsid(
     throw new Error(error?.message ?? "Failed to create conversation")
   }
 
-  return { conversation_id: data.conversation_id, status: "open", is_vehicle_inquiry: false, is_booking_flow: false, awaiting_confirmation: false, active_booking_offered: false, conflict_pending: false }
+  return { conversation_id: data.conversation_id, status: "open", is_vehicle_inquiry: false, is_booking_flow: false, awaiting_confirmation: false, active_booking_offered: false, conflict_pending: false, awaiting_link_verification: false, link_attempts: 0 }
+}
+
+/** Marks whether the next customer message is a plate/phone account-linking attempt. */
+export async function setAwaitingLinkVerification(conversation_id: number, value: boolean) {
+  const supabase = createAdminClient()
+
+  const { error } = await supabase
+    .from("messenger_conversation")
+    .update({ awaiting_link_verification: value })
+    .eq("conversation_id", conversation_id)
+
+  if (error) throw new Error(error.message)
+}
+
+/** Sets the failed account-linking attempt counter for a conversation. */
+export async function setLinkAttempts(conversation_id: number, value: number) {
+  const supabase = createAdminClient()
+
+  const { error } = await supabase
+    .from("messenger_conversation")
+    .update({ link_attempts: value })
+    .eq("conversation_id", conversation_id)
+
+  if (error) throw new Error(error.message)
 }
 
 /** Marks whether the AI has asked the customer to clarify an identity conflict on their booking. */

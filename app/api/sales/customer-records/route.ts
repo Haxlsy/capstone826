@@ -2,6 +2,7 @@ import { NextResponse } from "next/server"
 import { createAdminClient } from "@/lib/supabase/admin"
 import { getAuditCaller } from "@/lib/auth/caller"
 import { logAuditCall } from "@/hooks/audit-helpers"
+import { normalizePhone } from "@/lib/phone"
 
 export async function GET(request: Request) {
   try {
@@ -44,12 +45,16 @@ export async function POST(request: Request) {
 
     const supabase = createAdminClient()
 
+    // Canonicalise the phone so the Messenger status flow can match this
+    // customer's other vehicles by contact number.
+    const normalizedContact = normalizePhone(contact_number) || contact_number
+
     // Upsert: if a customer_record with this psid already exists (e.g. the
     // customer booked twice), update it instead of hitting the UNIQUE constraint.
     const { data, error } = await supabase
       .from("customer_record")
       .upsert(
-        { full_name, contact_number, email, plate_number, vehicle_unit, psid },
+        { full_name, contact_number: normalizedContact, email, plate_number, vehicle_unit, psid },
         { onConflict: "psid" }
       )
       .select()

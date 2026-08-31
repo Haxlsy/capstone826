@@ -4,6 +4,7 @@ import { createClient } from "@/lib/supabase/server"
 import { createAdminClient } from "@/lib/supabase/admin"
 import { logAudit } from "@/hooks/audit-helpers"
 import { addWorkingMins } from "@/hooks/time-utils"
+import { normalizePhone } from "@/lib/phone"
 
 interface CustomStage {
   service_stage_id:      string | null   // null for stages added only for this job
@@ -114,6 +115,9 @@ export async function POST(request: Request) {
       }
     } else {
       // Manual entry — create or reuse a customer_record row.
+      // Canonicalise the phone so the Messenger status flow can match this
+      // customer's other vehicles by contact number.
+      const normContact = normalizePhone(contact_number) || (contact_number?.trim() ?? null)
       if (plate_number?.trim()) {
         const { data: existing } = await admin
           .from("customer_record")
@@ -129,7 +133,7 @@ export async function POST(request: Request) {
           .from("customer_record")
           .insert({
             full_name:      customer_name?.trim()  ?? null,
-            contact_number: contact_number?.trim() ?? null,
+            contact_number: normContact,
             email:          email?.trim()          ?? null,
             plate_number:   plate_number?.trim()   ?? null,
             vehicle_unit:   vehicle_unit?.trim()   ?? null,
@@ -146,7 +150,7 @@ export async function POST(request: Request) {
       }
 
       resolvedCustomerName  = customer_name?.trim()  ?? null
-      resolvedContactNumber = contact_number?.trim() ?? null
+      resolvedContactNumber = normContact
       resolvedPlateNumber   = plate_number?.trim()   ?? null
       resolvedVehicleUnit   = vehicle_unit?.trim()   ?? null
     }
