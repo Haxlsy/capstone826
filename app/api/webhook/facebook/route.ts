@@ -9,6 +9,8 @@ import {
   setAwaitingConfirmation,
   setActiveBookingOffered,
   setConflictPending,
+  setAwaitingLinkVerification,
+  setLinkAttempts,
   getConversationHistory,
 } from "@/lib/messenger/messenger-data"
 import {
@@ -33,7 +35,13 @@ import {
   fetchMessengerProfile,
   type MessengerQuickReply,
 } from "@/lib/messenger/graph"
-import { lookupVehicleStatus, formatVehicleStatus } from "@/lib/messenger/vehicle"
+import {
+  resolveOwnVehicleStatus,
+  formatOwnVehicleStatus,
+  verifyAndLinkPsid,
+  normalizePlate,
+} from "@/lib/messenger/vehicle"
+import { logAudit } from "@/hooks/audit-helpers"
 
 const VERIFY_TOKEN = process.env.META_VERIFY_TOKEN!
 
@@ -173,8 +181,14 @@ async function handleInboundMessage(
   const profile = await fetchMessengerProfile(senderId)
 
   // Get or create the conversation and capture its current status + flow flags.
-  const { conversation_id, status, is_vehicle_inquiry, is_booking_flow, awaiting_confirmation, active_booking_offered, conflict_pending } =
+  const { conversation_id, status, is_vehicle_inquiry, is_booking_flow, awaiting_confirmation, active_booking_offered, conflict_pending, awaiting_link_verification, link_attempts } =
     await getOrCreateConversationByPsid(senderId, profile.name)
+
+  // Best-effort flag persistence: a failure here must not abort the reply.
+  const safe = async (fn: () => Promise<unknown>) => {
+    try { await fn() } catch (err) { console.error("[webhook/facebook] state persist failed:", err) }
+  }
+  const auditActor = { user_id: null, user_name: profile.name || "Messenger user", role: "customer" as const }
 
   // Build AI history BEFORE inserting the current message.
   const history = await getConversationHistory(conversation_id)
@@ -192,6 +206,54 @@ async function handleInboundMessage(
   if (status === "pending") return
 
   const quickReplyPayload = msg.quick_reply?.payload ?? null
+
+  // ── Account-linking verification ─────────────────────────────────────────
+  // When the bot has asked an unlinked customer for their plate + booking phone,
+  // the next message is a linking attempt. Handled BEFORE any booking-signal
+  // logic so a plate/phone reply is not swallowed by the booking flow.
+  let linkedVehicleContext: string | null = null
+  let linkEscalation: { reason: string; note: string | null } | null = null
+  if (awaiting_link_verification) {
+    const lp = messageBody.match(PLATE_PATTERN)?.[0] ?? ""
+    const lph = messageBody.match(PHONE_PATTERN)?.[0] ?? ""
+
+    if (!lp || !lph) {
+      // Not a plate + phone pair — the customer wandered off the linking step.
+      await safe(() => setAwaitingLinkVerification(conversation_id, false))
+    } else {
+      const res = await verifyAndLinkPsid({ psid: senderId, plate: lp, phone: lph })
+      if (res.kind === "linked" || res.kind === "already_linked") {
+        await safe(() => setAwaitingLinkVerification(conversation_id, false))
+        await safe(() => setLinkAttempts(conversation_id, 0))
+        logAudit({ ...auditActor, category: "update", action: "messenger: linked psid to customer record", target: `psid=${senderId} plate=${normalizePlate(lp)}` })
+        linkedVehicleContext = formatOwnVehicleStatus(res.outcome)
+      } else if (res.kind === "conflict") {
+        await safe(() => setAwaitingLinkVerification(conversation_id, false))
+        await safe(() => setLinkAttempts(conversation_id, 0))
+        logAudit({ ...auditActor, category: "flag", action: "messenger: link attempt on record owned by another profile", target: `psid=${senderId} plate=${normalizePlate(lp)}` })
+        linkEscalation = {
+          reason: "account-link conflict: plate belongs to a different Messenger profile",
+          note: `Account link conflict: Messenger profile ${senderId} tried to claim the customer record for plate ${normalizePlate(lp)}, which is linked to a different profile.`,
+        }
+      } else {
+        // no_match — count the attempt; escalate to Sales at 5.
+        const attempts = link_attempts + 1
+        if (attempts >= 5) {
+          await safe(() => setAwaitingLinkVerification(conversation_id, false))
+          await safe(() => setLinkAttempts(conversation_id, 0))
+          logAudit({ ...auditActor, category: "flag", action: "messenger: link verification failed 5x", target: `psid=${senderId}` })
+          linkEscalation = { reason: "account-link verification failed 5 times", note: null }
+        } else {
+          await safe(() => setLinkAttempts(conversation_id, attempts))
+          const askAgain =
+            "That didn't match our records. Please double-check your plate number and the phone number on your booking, then send them again."
+          const mid = await sendMessengerText(senderId, askAgain)
+          await insertMessage({ conversation_id, sender_type: "agent", message_body: askAgain, sent_at: new Date().toISOString(), fb_message_id: mid })
+          return
+        }
+      }
+    }
+  }
 
   // Intent detection. Status intent always wins over booking intent: a status
   // lookup is read-only and non-destructive, so checking it first is safe.
@@ -214,44 +276,50 @@ async function handleInboundMessage(
   // (e.g. just a plate + phone after the status template, or a vehicle type
   // that completes a booking) stays on the same track without needing the
   // keyword repeated.
-  try {
-    if (statusIntent) {
-      await setVehicleInquiry(conversation_id, true)
-      await setBookingFlow(conversation_id, false)
-    } else if (existingBookingIntent) {
-      await setVehicleInquiry(conversation_id, false)
-      await setBookingFlow(conversation_id, false)
-    } else if (bookingIntent || signal) {
-      await setVehicleInquiry(conversation_id, false)
-      await setBookingFlow(conversation_id, true)
+  if (!awaiting_link_verification && !linkEscalation) {
+    try {
+      if (statusIntent) {
+        await setVehicleInquiry(conversation_id, true)
+        await setBookingFlow(conversation_id, false)
+      } else if (existingBookingIntent) {
+        await setVehicleInquiry(conversation_id, false)
+        await setBookingFlow(conversation_id, false)
+      } else if (bookingIntent || signal) {
+        await setVehicleInquiry(conversation_id, false)
+        await setBookingFlow(conversation_id, true)
+      }
+    } catch (err) {
+      console.error("[webhook/facebook] flow persistence failed:", err)
     }
-  } catch (err) {
-    console.error("[webhook/facebook] flow persistence failed:", err)
   }
 
-  // Vehicle-status context: run the lookup for:
-  // 1) Quick reply "status" (no plate needed) — uses psid to find customer_record.
-  // 2) Plate in message (manual entry, non-Messenger customers) — existing logic.
-  //    Booking-intent messages skip status lookup to avoid contaminating context.
-  const plateMatch = messageBody.match(PLATE_PATTERN)
-  const phoneMatch = messageBody.match(PHONE_PATTERN)
+  // Vehicle-status context. Identity is resolved STRICTLY from the sender's psid:
+  //   psid → customer_record → verified phone → all active job_orders
+  // A plate in the message only narrows to one of the customer's OWN vehicles,
+  // or (if it is nobody's of theirs) triggers a refusal — never a data lookup.
+  const plateInMsg = normalizePlate(messageBody.match(PLATE_PATTERN)?.[0] ?? "")
   let vehicleContext: string | null = null
 
-  if (quickReplyPayload === "status" && !plateMatch?.[0]) {
-    // Messenger quick-reply: lookup by psid only (trusted path)
-    const lookup = await lookupVehicleStatus({
-      plate: "",
-      psid: senderId,
-    })
-    vehicleContext = formatVehicleStatus(lookup)
-  } else if (plateMatch?.[0] && !bookingIntent) {
-    // Plate in message: lookup by plate + optional phone + psid
-    const lookup = await lookupVehicleStatus({
-      plate: plateMatch[0],
-      phone: phoneMatch?.[0] ?? null,
-      psid: senderId,
-    })
-    vehicleContext = formatVehicleStatus(lookup)
+  if (linkedVehicleContext) {
+    vehicleContext = linkedVehicleContext
+  } else if (statusIntent && !bookingIntent && !linkEscalation) {
+    const outcome = await resolveOwnVehicleStatus(senderId)
+    const jobPlates = outcome.kind === "ok" ? outcome.jobs.map((j) => normalizePlate(j.plate)) : []
+    const focusPlate = plateInMsg && jobPlates.includes(plateInMsg) ? plateInMsg : undefined
+    const plateMismatch =
+      Boolean(plateInMsg) && !focusPlate && outcome.kind === "ok" && jobPlates.length > 0
+
+    if (plateMismatch) {
+      vehicleContext = formatOwnVehicleStatus(outcome, { plateMismatch: true })
+      logAudit({ ...auditActor, category: "flag", action: "messenger status: plate not owned by requester", target: `psid=${senderId} requested_plate=${plateInMsg} account_plates=${jobPlates.join("/") || "none"}` })
+    } else {
+      vehicleContext = formatOwnVehicleStatus(outcome, { focusPlate })
+      if (outcome.kind === "not_linked") {
+        logAudit({ ...auditActor, category: "flag", action: "messenger status: no linked customer record", target: `psid=${senderId}${plateInMsg ? ` requested_plate=${plateInMsg}` : ""}` })
+        // Ask for plate + booking phone so the next message can link the account.
+        await safe(() => setAwaitingLinkVerification(conversation_id, true))
+      }
+    }
   }
 
   // AI auto-reply + escalation decision.
@@ -338,11 +406,20 @@ async function handleInboundMessage(
   // Option A fix: A bare plate in a status follow-up must NOT trigger bookingFlow.
   // When statusIntent is true (vehicle status request), the plate is part of the
   // status lookup, not a booking detail token.
-  const bookingFlow = (signal && !statusIntent) || is_booking_flow || awaiting_confirmation
+  const bookingFlow =
+    !awaiting_link_verification && !linkEscalation &&
+    ((signal && !statusIntent) || is_booking_flow || awaiting_confirmation)
   let escalateBooking = false
   // Set when a complete booking carries an identity conflict that the customer
   // confirmed anyway — recorded on the inquiry so Sales can verify (Phase 4).
   let conflictNote: string | null = null
+
+  // Account-linking failure (conflict / 5 failed attempts) escalates to Sales.
+  if (linkEscalation) {
+    escalate = true
+    escalateReason = linkEscalation.reason
+    if (linkEscalation.note) conflictNote = linkEscalation.note
+  }
 
   // Best-effort flag persistence: a failure here should not abort the reply.
   const persistConfirmFlag = async (value: boolean) => {
@@ -698,6 +775,8 @@ async function handleInboundMessage(
     await persistConfirmFlag(false)
     await persistActiveBookingOffered(false)
     await persistConflictPending(false)
+    await safe(() => setAwaitingLinkVerification(conversation_id, false))
+    await safe(() => setLinkAttempts(conversation_id, 0))
     return
   }
 

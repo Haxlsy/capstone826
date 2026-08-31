@@ -23,7 +23,7 @@ export interface ActiveBooking {
 }
 
 // Job statuses that mean the customer's service is still live / not finished.
-const ACTIVE_JOB_STATUSES = [
+export const ACTIVE_JOB_STATUSES = [
   "Pending",
   "Ongoing",
   "For Rework",

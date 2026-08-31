@@ -1,127 +1,64 @@
 import { createAdminClient } from "@/lib/supabase/admin"
 import { computeExpectedCompletion } from "@/lib/job-estimates"
 import { fmtDateTime } from "@/lib/time-display"
+import { ACTIVE_JOB_STATUSES } from "@/lib/messenger/booking"
+import { normalizePhone, isPlausibleMobile } from "@/lib/phone"
 
-export interface VehicleStatusResult {
-  found: boolean
-  trusted: boolean
-  needsVerification: boolean
-  message: string
-  job?: {
-    plate:               string
-    customerName:        string | null
-    serviceName:         string | null
-    status:              string
-    currentStage:        string | null
-    completedStages:     number
-    totalStages:         number
-    scheduledAt:         string | null
-    expectedCompletionAt: string | null
-  }
+export { normalizePhone } from "@/lib/phone"
+
+export interface JobStatus {
+  plate:               string
+  customerName:        string | null
+  serviceName:         string | null
+  status:              string
+  currentStage:        string | null
+  completedStages:     number
+  totalStages:         number
+  scheduledAt:         string | null
+  expectedCompletionAt: string | null
 }
+
+/**
+ * The result of resolving a Messenger customer's OWN vehicle status.
+ *
+ * Identity is established **only** from the page-scoped id (psid). A plate or
+ * phone number appearing in a chat message is never used to look up data — the
+ * status flow returns the vehicles registered to the requester's psid (matched
+ * by the verified contact number on their customer_record), or nothing.
+ *
+ * `jobs` may be empty — that means "linked, but no vehicle currently in service".
+ */
+export type OwnVehicleOutcome =
+  | { kind: "not_linked" }
+  | { kind: "ok"; jobs: JobStatus[] }
 
 export function normalizePlate(plate: string | null | undefined): string {
   return (plate ?? "").trim().toUpperCase().replace(/\s+/g, " ")
 }
 
-/**
- * Looks up the live status of a customer's vehicle against the active job
- * orders.
- *
- * - If the customer is recognized by their Messenger `psid`, they are trusted
- *   and no phone verification is needed.
- * - If the customer is not on Messenger (or psid unknown), they must provide
- *   the plate number **and** the matching contact number recorded in the
- *   customer record (identity verification, per scope).
- */
-export async function lookupVehicleStatus(input: {
-  plate: string
-  phone?: string | null
-  psid?: string | null
-}): Promise<VehicleStatusResult> {
-  const supabase = createAdminClient()
-  const plate = normalizePlate(input.plate)
-  const phone = (input.phone ?? "").trim()
-  const psid = input.psid ?? null
+// Safety cap: if more than this many active jobs match a phone key, treat the
+// key as unreliable (shared / placeholder number) and fall back to the psid
+// record's own jobs only.
+const MAX_JOBS_PER_PHONE = 8
 
-  // Confirm customer from the vehicle record.
-  // 1) If psid provided but no plate: lookup customer_record by psid first
-  //    (Messenger quick-reply "status" uses this path).
-  // 2) Else: lookup by plate (manual entry, non-Messenger customers).
-  let record = null
-  let effectivePlate = plate
+interface JobRow {
+  id: string
+  status: string
+  scheduled_at: string | null
+  actual_start_at: string | null
+  expected_completion_at: string | null
+  customer_record_id: string | null
+  plate_number: string | null
+  contact_number: string | null
+  service: any
+  customer: any
+}
 
-  if (!plate && psid) {
-    const { data } = await supabase
-      .from("customer_record")
-      .select("id, full_name, contact_number, plate_number, psid")
-      .eq("psid", psid)
-      .maybeSingle()
-    record = data
-    if (record?.plate_number) effectivePlate = normalizePlate(record.plate_number)
-  } else if (plate) {
-    const { data } = await supabase
-      .from("customer_record")
-      .select("id, full_name, contact_number, plate_number, psid")
-      .ilike("plate_number", plate)
-      .limit(1)
-      .maybeSingle()
-    record = data
-  }
-
-  // Trust when this is the Messenger-linked account in question.
-  let trusted = false
-  if (record) {
-    const psidMatches = psid && record.psid && record.psid === psid
-    const phoneMatches = phone && record.contact_number && record.contact_number.replace(/\s/g, "") === phone.replace(/\s/g, "")
-    trusted = Boolean(psidMatches || phoneMatches)
-  }
-
-  if (!record) {
-    return {
-      found: false,
-      trusted: false,
-      needsVerification: true,
-      message: "no customer record",
-    }
-  }
-
-  if (!trusted) {
-    return {
-      found: true,
-      trusted: false,
-      needsVerification: true,
-      message: "verification required",
-    }
-  }
-
-  // Use the plate from the record for job lookup
-  const jobPlate = record.plate_number ?? effectivePlate
-
-  // Latest active job order for the customer (via customer_record or manual fields).
-  const { data: job } = await supabase
-    .from("job_order")
-    .select(
-      `id, status, scheduled_at, actual_start_at, expected_completion_at,
-       service:service_id(name),
-       customer:customer_record_id(full_name)`
-    )
-    .or(`customer_record_id.eq.${record.id},plate_number.eq.${jobPlate}`)
-    .eq("is_archived", false)
-    .order("created_at", { ascending: false })
-    .limit(1)
-    .maybeSingle()
-
-  if (!job) {
-    return {
-      found: true,
-      trusted: true,
-      needsVerification: false,
-      message: "no active job",
-    }
-  }
-
-  // Current stage + completion counts.
+async function buildJobStatus(
+  supabase: ReturnType<typeof createAdminClient>,
+  job: JobRow,
+  fallbackName: string | null
+): Promise<JobStatus> {
   const { data: stages } = await supabase
     .from("job_stage_progress")
     .select(
@@ -133,21 +70,23 @@ export async function lookupVehicleStatus(input: {
     .eq("job_order_id", job.id)
     .order("sequence_order", { referencedTable: "service_stage", ascending: true })
 
-  const ordered = (stages ?? []).map((s: any) => {
-    const rel = Array.isArray(s.service_stage) ? s.service_stage[0] : s.service_stage
-    return {
-      status: s.status,
-      name: rel?.name ?? null,
-      sequence_order: rel?.sequence_order ?? 0,
-      duration_mins: (s.stage_duration_mins as number | null) ?? (rel?.stage_duration_mins ?? 0),
-    }
-  }).sort((a: any, b: any) => a.sequence_order - b.sequence_order)
+  const ordered = (stages ?? [])
+    .map((s: any) => {
+      const rel = Array.isArray(s.service_stage) ? s.service_stage[0] : s.service_stage
+      return {
+        status: s.status,
+        name: rel?.name ?? null,
+        sequence_order: rel?.sequence_order ?? 0,
+        duration_mins: (s.stage_duration_mins as number | null) ?? (rel?.stage_duration_mins ?? 0),
+      }
+    })
+    .sort((a: any, b: any) => a.sequence_order - b.sequence_order)
   const total = ordered.length
   const completed = ordered.filter((s: any) => s.status === "done").length
   const active = ordered.find((s: any) => s.status !== "done")
 
-  // Live estimate — recompute from schedule/actual + stage durations (working-hours aware)
-  // instead of trusting the stored expected_completion_at column.
+  // Live estimate — recompute from schedule/actual + stage durations
+  // (working-hours aware) instead of trusting the stored column.
   const totalDurationMins = ordered.reduce((acc: number, s: any) => acc + s.duration_mins, 0)
   const { expected } = computeExpectedCompletion({
     scheduled_at: job.scheduled_at,
@@ -157,39 +96,96 @@ export async function lookupVehicleStatus(input: {
   const expectedCompletionAt = expected ?? (job.expected_completion_at ?? null)
 
   return {
-    found: true,
-    trusted: true,
-    needsVerification: false,
-    message: "job found",
-    job: {
-      plate:          jobPlate,
-      customerName:   (job.customer as any)?.full_name ?? null,
-      serviceName:    (job.service as any)?.name ?? null,
-      status:         job.status,
-      currentStage:   active?.name ?? null,
-      completedStages: completed,
-      totalStages:     total,
-      scheduledAt:     job.scheduled_at,
-      expectedCompletionAt,
-    },
+    plate:           normalizePlate(job.plate_number ?? ""),
+    customerName:    (Array.isArray(job.customer) ? job.customer[0]?.full_name : job.customer?.full_name) ?? fallbackName ?? null,
+    serviceName:     (Array.isArray(job.service) ? job.service[0]?.name : job.service?.name) ?? null,
+    status:          job.status,
+    currentStage:    active?.name ?? null,
+    completedStages: completed,
+    totalStages:     total,
+    scheduledAt:     job.scheduled_at,
+    expectedCompletionAt,
   }
 }
 
+const JOB_SELECT = `id, status, scheduled_at, actual_start_at, expected_completion_at,
+   customer_record_id, plate_number, contact_number,
+   service:service_id(name),
+   customer:customer_record_id(full_name)`
+
 /**
- * Renders a lookups result into a short, neutral block of text that can be
- * injected into the Gemini prompt as authoritative context.
+ * Resolves the live status of every vehicle a Messenger customer has in service,
+ * scoped strictly by their psid:
+ *
+ *   psid → customer_record → verified contact_number → all active job_orders
+ *          for that person (own record + any record/job sharing the phone)
+ *
+ * There is no plate-based path. A customer can never retrieve status for a
+ * vehicle that is not tied to their psid / verified phone number.
  */
-export function formatVehicleStatus(result: VehicleStatusResult): string {
-  if (!result.found) {
-    return "We do not have a vehicle record matching that plate number."
+export async function resolveOwnVehicleStatus(psid: string): Promise<OwnVehicleOutcome> {
+  const supabase = createAdminClient()
+
+  const { data: record } = await supabase
+    .from("customer_record")
+    .select("id, full_name, contact_number, plate_number, psid")
+    .eq("psid", psid)
+    .maybeSingle()
+
+  if (!record) return { kind: "not_linked" }
+
+  const canonicalPhone = normalizePhone(record.contact_number)
+  const phoneKey = isPlausibleMobile(canonicalPhone) ? canonicalPhone : ""
+
+  // Active jobs are a small, bounded set for a single shop — pull them and match
+  // in JS against the person (own record id OR verified phone).
+  const { data: activeJobs } = await supabase
+    .from("job_order")
+    .select(JOB_SELECT)
+    .eq("is_archived", false)
+    .in("status", ACTIVE_JOB_STATUSES)
+    .order("created_at", { ascending: false })
+    .limit(200)
+
+  const rows = (activeJobs ?? []) as unknown as JobRow[]
+  let mine = rows.filter(
+    (j) =>
+      j.customer_record_id === record.id ||
+      (phoneKey !== "" && normalizePhone(j.contact_number) === phoneKey)
+  )
+
+  if (mine.length > MAX_JOBS_PER_PHONE) {
+    console.warn("[vehicle] too many active jobs share this phone — scoping to psid record only", {
+      psid,
+      recordId: record.id,
+      matched: mine.length,
+    })
+    mine = rows.filter((j) => j.customer_record_id === record.id)
   }
-  if (result.needsVerification || !result.trusted) {
-    return "The customer identity must be verified. Ask the customer for their plate number and the phone number linked to their booking before sharing status."
-  }
-  if (!result.job) {
-    return "There is no active job order for this vehicle at the moment."
-  }
-  const j = result.job
+
+  const jobs = await Promise.all(
+    mine.map((j) => buildJobStatus(supabase, j, record.full_name ?? null))
+  )
+
+  return { kind: "ok", jobs }
+}
+
+const MISMATCH_TEXT =
+  "The plate number the customer mentioned is NOT a vehicle registered to their Messenger account. " +
+  "Do NOT share status for it and do NOT confirm any details about it. " +
+  "Politely explain that we can only share updates for a vehicle booked under their own account/job order, " +
+  "and offer to connect them with our team if they believe this is a mistake."
+
+const NOT_LINKED_TEXT =
+  "No vehicle is registered to this customer's Messenger account. Do NOT share any status. " +
+  "Offer to verify their booking: ask for their plate number and the phone number on their booking, " +
+  "or offer to connect them with our team."
+
+const NO_ACTIVE_JOB_TEXT =
+  "This customer has no vehicle currently in service. Tell them there is no active job order under their account. " +
+  "If they just booked, their vehicle may not be checked in yet."
+
+function renderJob(j: JobStatus): string {
   const stageLine = j.currentStage
     ? `Current stage: ${j.currentStage}`
     : "No stage is currently in progress."
@@ -205,4 +201,115 @@ export function formatVehicleStatus(result: VehicleStatusResult): string {
   ]
     .filter(Boolean)
     .join("\n")
+}
+
+/**
+ * Renders an ownership-scoped status outcome into a short, neutral block of text
+ * for injection into the Gemini prompt as authoritative context. No branch ever
+ * emits another customer's job data.
+ *
+ * `focusPlate` — when the customer named one of their own plates, render only
+ * that vehicle.
+ */
+export function formatOwnVehicleStatus(
+  outcome: OwnVehicleOutcome,
+  opts?: { plateMismatch?: boolean; focusPlate?: string }
+): string {
+  if (opts?.plateMismatch) return MISMATCH_TEXT
+  if (outcome.kind === "not_linked") return NOT_LINKED_TEXT
+
+  let jobs = outcome.jobs
+  if (opts?.focusPlate) {
+    const want = normalizePlate(opts.focusPlate)
+    const only = jobs.filter((j) => normalizePlate(j.plate) === want)
+    if (only.length > 0) jobs = only
+  }
+
+  if (jobs.length === 0) return NO_ACTIVE_JOB_TEXT
+  if (jobs.length === 1) return renderJob(jobs[0])
+
+  return (
+    `The customer has ${jobs.length} vehicles currently in service. ` +
+    "Give the update for the vehicle they asked about, or summarise all of them if they did not specify:\n\n" +
+    jobs.map(renderJob).join("\n\n")
+  )
+}
+
+export type LinkPsidResult =
+  | { kind: "linked"; outcome: OwnVehicleOutcome }         // record matched + psid attached
+  | { kind: "already_linked"; outcome: OwnVehicleOutcome } // record already this psid
+  | { kind: "no_match" }                                   // plate/phone did not verify
+  | { kind: "conflict" }                                   // plate belongs to a different psid
+
+/**
+ * Verifies a Messenger customer against an existing customer_record using the
+ * plate number and the phone number on file, and — on a match — links the record
+ * to their psid so future status checks resolve automatically.
+ *
+ * The plate is resolved via `customer_record.plate_number` (UNIQUE) first, then
+ * — for a returning customer whose 2nd car only exists as a job — via
+ * `job_order.plate_number`.
+ */
+export async function verifyAndLinkPsid(input: {
+  psid: string
+  plate: string
+  phone: string
+}): Promise<LinkPsidResult> {
+  const supabase = createAdminClient()
+  const plate = normalizePlate(input.plate)
+  const phone = normalizePhone(input.phone)
+  if (!plate || !isPlausibleMobile(phone)) return { kind: "no_match" }
+
+  let record:
+    | { id: string; contact_number: string | null; psid: string | null }
+    | null = null
+
+  const { data: byPlate } = await supabase
+    .from("customer_record")
+    .select("id, contact_number, psid")
+    .ilike("plate_number", plate)
+    .maybeSingle()
+  record = byPlate ?? null
+
+  if (!record) {
+    // The plate may only exist on a job_order (manual 2nd car).
+    const { data: job } = await supabase
+      .from("job_order")
+      .select("customer_record_id")
+      .ilike("plate_number", plate)
+      .not("customer_record_id", "is", null)
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle()
+    if (job?.customer_record_id) {
+      const { data: r2 } = await supabase
+        .from("customer_record")
+        .select("id, contact_number, psid")
+        .eq("id", job.customer_record_id)
+        .maybeSingle()
+      record = r2 ?? null
+    }
+  }
+
+  if (!record) return { kind: "no_match" }
+
+  if (record.psid && record.psid === input.psid) {
+    return { kind: "already_linked", outcome: await resolveOwnVehicleStatus(input.psid) }
+  }
+  if (record.psid && record.psid !== input.psid) {
+    return { kind: "conflict" }
+  }
+
+  if (normalizePhone(record.contact_number) !== phone) return { kind: "no_match" }
+
+  const { error } = await supabase
+    .from("customer_record")
+    .update({ psid: input.psid })
+    .eq("id", record.id)
+  if (error) {
+    console.error("[vehicle] psid link failed:", error.message)
+    return { kind: "no_match" }
+  }
+
+  return { kind: "linked", outcome: await resolveOwnVehicleStatus(input.psid) }
 }

@@ -82,6 +82,8 @@ export async function PATCH(
       updatePayload.awaiting_confirmation = false;
       updatePayload.active_booking_offered = false;
       updatePayload.conflict_pending      = false;
+      updatePayload.awaiting_link_verification = false;
+      updatePayload.link_attempts         = 0;
     }
 
     let { data, error } = await supabase
