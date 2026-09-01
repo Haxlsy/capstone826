@@ -1,4 +1,5 @@
 import { createAdminClient } from "@/lib/supabase/admin"
+import { toHistoryMessages } from "@/lib/messenger/chatbot"
 
 export type ConversationStatus = "open" | "pending" | "closed"
 
@@ -16,13 +17,15 @@ export async function getOrCreateConversationByPsid(
   conflict_pending: boolean
   awaiting_link_verification: boolean
   link_attempts: number
+  offtopic_streak: number
+  policy_streak: number
 }> {
   const supabase = createAdminClient()
 
   const { data: existing } = await supabase
     .from("messenger_conversation")
     .select(
-      "conversation_id, status, is_vehicle_inquiry, is_booking_flow, awaiting_confirmation, active_booking_offered, booking_duplicate_notified, conflict_pending, awaiting_link_verification, link_attempts"
+      "conversation_id, status, is_vehicle_inquiry, is_booking_flow, awaiting_confirmation, active_booking_offered, booking_duplicate_notified, conflict_pending, awaiting_link_verification, link_attempts, offtopic_streak, policy_streak"
     )
     .eq("psid", psid)
     .maybeSingle()
@@ -46,6 +49,8 @@ export async function getOrCreateConversationByPsid(
       conflict_pending: Boolean(existing.conflict_pending),
       awaiting_link_verification: Boolean(existing.awaiting_link_verification),
       link_attempts: Number(existing.link_attempts ?? 0),
+      offtopic_streak: Number(existing.offtopic_streak ?? 0),
+      policy_streak: Number(existing.policy_streak ?? 0),
     }
   }
 
@@ -66,7 +71,23 @@ export async function getOrCreateConversationByPsid(
     throw new Error(error?.message ?? "Failed to create conversation")
   }
 
-  return { conversation_id: data.conversation_id, status: "open", is_vehicle_inquiry: false, is_booking_flow: false, awaiting_confirmation: false, active_booking_offered: false, booking_duplicate_notified: false, conflict_pending: false, awaiting_link_verification: false, link_attempts: 0 }
+  return { conversation_id: data.conversation_id, status: "open", is_vehicle_inquiry: false, is_booking_flow: false, awaiting_confirmation: false, active_booking_offered: false, booking_duplicate_notified: false, conflict_pending: false, awaiting_link_verification: false, link_attempts: 0, offtopic_streak: 0, policy_streak: 0 }
+}
+
+/** Sets the consecutive off-topic / policy-violation streak counters for a conversation. */
+export async function setViolationStreaks(
+  conversation_id: number,
+  offtopic: number,
+  policy: number
+) {
+  const supabase = createAdminClient()
+
+  const { error } = await supabase
+    .from("messenger_conversation")
+    .update({ offtopic_streak: offtopic, policy_streak: policy })
+    .eq("conversation_id", conversation_id)
+
+  if (error) throw new Error(error.message)
 }
 
 /** Marks whether the next customer message is a plate/phone account-linking attempt. */
@@ -215,21 +236,22 @@ export async function setConversationStatus(
   return data
 }
 
-/** Builds the last N messages of a conversation as chatbot history (oldest → newest). */
-export async function getConversationHistory(conversation_id: number, limit = 12) {
+/**
+ * Builds the MOST RECENT N messages of a conversation as chatbot history
+ * (oldest → newest). The query orders newest-first so `limit` keeps the latest
+ * turns; `toHistoryMessages` reverses back to chronological order for the model.
+ */
+export async function getConversationHistory(conversation_id: number, limit = 20) {
   const supabase = createAdminClient()
 
   const { data, error } = await supabase
     .from("messenger_message")
     .select("sender_type, message_body, sent_at")
     .eq("conversation_id", conversation_id)
-    .order("sent_at", { ascending: true })
+    .order("sent_at", { ascending: false })
     .limit(limit)
 
   if (error) throw new Error(error.message)
 
-  return (data ?? []).map((m: any) => ({
-    role: m.sender_type === "customer" ? ("user" as const) : ("model" as const),
-    text: m.message_body ?? "",
-  }))
+  return toHistoryMessages(data ?? [])
 }
