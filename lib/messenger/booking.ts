@@ -86,6 +86,72 @@ export async function lookupActiveBooking(psid: string): Promise<ActiveBooking> 
   }
 }
 
+export interface PlateInService {
+  inService: boolean
+  status?: string
+  serviceName?: string | null
+  customerName?: string | null
+}
+
+const stripPlate = (s: string | null | undefined): string =>
+  (s ?? "").toUpperCase().replace(/[^A-Z0-9]/g, "")
+
+/**
+ * Looks up whether a plate number currently has a live job order with 826 Auto
+ * Care — regardless of which account/psid booked it. Used by the booking flow to
+ * refuse a new booking for a vehicle that is already in service.
+ *
+ * `job_order.plate_number` is denormalized free text, so rows are pulled and
+ * matched in JS on a strict-normalized plate (dashes/spaces removed).
+ */
+export async function lookupActiveJobByPlate(plate: string): Promise<PlateInService> {
+  const key = stripPlate(plate)
+  if (!key) return { inService: false }
+
+  const supabase = createAdminClient()
+  const { data } = await supabase
+    .from("job_order")
+    .select(`status, plate_number, customer_name, service:service_id(name)`)
+    .in("status", ACTIVE_JOB_STATUSES)
+    .eq("is_archived", false)
+    .order("created_at", { ascending: false })
+    .limit(200)
+
+  const rows = (data ?? []) as {
+    status: string
+    plate_number: string | null
+    customer_name: string | null
+    service?: { name?: string | null } | { name?: string | null }[] | null
+  }[]
+  const hit = rows.find((j) => stripPlate(j.plate_number) === key)
+  if (!hit) return { inService: false }
+
+  return {
+    inService: true,
+    status: hit.status,
+    serviceName: serviceNameFromJob(hit),
+    customerName: hit.customer_name ?? null,
+  }
+}
+
+/**
+ * Deterministic "this vehicle is already in service" notice. Must contain
+ * `plate ${normPlate}` and the literal phrase "currently in service" so the
+ * webhook can detect (from conversation history) that the customer has already
+ * been told, and escalate on a repeat push.
+ */
+export function buildVehicleInServiceNotice(
+  normPlate: string,
+  info?: PlateInService
+): string {
+  const status = info?.status ? ` (current status: ${info.status})` : ""
+  return (
+    `Your vehicle with plate ${normPlate} is currently in service with us${status}. ` +
+    "We can't take a new booking for it until the current job is completed. " +
+    "If you'd like to book a different vehicle, just send its plate number and details."
+  )
+}
+
 // PostgREST join shorthand (`service:service_id(name)`) resolves to a single
 // object for many-to-one relations; defensively unwrap an array if present.
 function serviceNameFromJob(

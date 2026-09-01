@@ -9,8 +9,10 @@ import {
   missingBookingFields,
   isCompleteBooking,
   buildBookingSummary,
+  buildSystemPrompt,
   type CustomerDetails,
 } from "@/lib/messenger/chatbot"
+import type { ChatbotSettings } from "@/types/chatbot"
 
 // Maps the §31 testing scenarios to the deterministic intent/decision helpers.
 // Scenarios that require a live Gemini/Supabase/Messenger environment are
@@ -144,5 +146,32 @@ describe("isPureConfirmation — final booking 'yes' vs. still giving details", 
   it("is false for non-confirmation chatter", () => {
     expect(isPureConfirmation("maybe")).toBe(false)
     expect(isPureConfirmation("what is my total")).toBe(false)
+  })
+})
+
+describe("buildSystemPrompt — booking guardrails (Testing Notes #8, #10)", () => {
+  const settings: ChatbotSettings = {
+    personality: "friendly",
+    enable_services: true,
+    enable_booking: true,
+    enable_status: true,
+    enable_faq: true,
+    booking_message: "A staff member will follow up to confirm your booking.",
+    notify_sales: true,
+    language: "english",
+    escalation_rules: ["speak_to_human"],
+    vehicle_status_template: "Please share your plate number.",
+  }
+
+  it("no longer tells the model to send the booking message verbatim", () => {
+    expect(buildSystemPrompt(settings)).not.toContain("Send them this message exactly")
+  })
+
+  it("forbids asking which service the customer wants (#8)", () => {
+    expect(buildSystemPrompt(settings)).toContain("Never ask the customer which service")
+  })
+
+  it("forbids claiming the booking is confirmed before Sales finalizes it (#10)", () => {
+    expect(buildSystemPrompt(settings)).toContain("Do NOT tell the customer their booking is confirmed")
   })
 })

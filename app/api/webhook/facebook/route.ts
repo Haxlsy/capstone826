@@ -12,6 +12,7 @@ import {
   setConflictPending,
   setAwaitingLinkVerification,
   setLinkAttempts,
+  setViolationStreaks,
   getConversationHistory,
 } from "@/lib/messenger/messenger-data"
 import {
@@ -27,6 +28,9 @@ import {
   isPureConfirmation,
   isCompleteBooking,
   buildBookingSummary,
+  buildMissingFieldsPrompt,
+  MISSING_FIELDS_PROMPT_LEAD,
+  nextViolationState,
   hasExistingBookingIntent,
   type ChatbotReply,
   type CustomerDetails,
@@ -37,6 +41,8 @@ import {
   lookupIdentityConflict,
   isSameVehicleOnFile,
   buildDuplicateBookingNotice,
+  lookupActiveJobByPlate,
+  buildVehicleInServiceNotice,
 } from "@/lib/messenger/booking"
 import {
   sendMessengerText,
@@ -67,20 +73,15 @@ export async function GET(req: NextRequest) {
 }
 
 const ESCALATION_ACK =
-  "A member of our team will assist you shortly. Thank you for reaching out to 826 Auto Care!"
+  "Thanks for reaching out to 826 Auto Care! I've passed this conversation to our team, " +
+  "and a staff member will follow up with you here personally. " +
+  "I won't be able to send automated replies on this chat until your request has been resolved."
 
 // Handoff message for existing-booking operations (change/cancel/modify/
 // reschedule). These always escalate to Sales — never collected as a new booking.
 const EXISTING_BOOKING_HANDOFF =
-  "I'll connect you with our team so they can assist with your existing booking."
-
-// Booking-flow context for the confirmation prompt: summarize the collected
-// details and ask the customer to confirm before the booking is escalated.
-const CONFIRM_BOOKING_CONTEXT =
-  "All required booking details are collected (Full Name, Contact Number, Plate Number, Vehicle Type, Email). " +
-  "Summarize the details back to the customer and ask them to confirm, phrased in the customer's configured language like: " +
-  "'Is this information correct? Reply YES to confirm.' " +
-  "Do NOT send the final booking confirmation message and do NOT escalate until the customer confirms."
+  "I'll connect you with our team for your existing booking. They'll follow up with you here — " +
+  "I won't send automated replies in the meantime."
 
 // Report-type concern keywords used by the escalation-type resolver.
 // Deliberately excludes "problema"/"issue" so casual phrases like
@@ -190,7 +191,7 @@ async function handleInboundMessage(
   const profile = await fetchMessengerProfile(senderId)
 
   // Get or create the conversation and capture its current status + flow flags.
-  const { conversation_id, status, is_vehicle_inquiry, is_booking_flow, awaiting_confirmation, active_booking_offered, booking_duplicate_notified, conflict_pending, awaiting_link_verification, link_attempts } =
+  const { conversation_id, status, is_vehicle_inquiry, is_booking_flow, awaiting_confirmation, active_booking_offered, booking_duplicate_notified, conflict_pending, awaiting_link_verification, link_attempts, offtopic_streak, policy_streak } =
     await getOrCreateConversationByPsid(senderId, profile.name)
 
   // Best-effort flag persistence: a failure here must not abort the reply.
@@ -352,6 +353,9 @@ async function handleInboundMessage(
       logAudit({ ...auditActor, category: "flag", action: "messenger status: plate not owned by requester", target: `psid=${senderId} requested_plate=${plateInMsg} account_plates=${jobPlates.join("/") || "none"}` })
     } else {
       vehicleContext = formatOwnVehicleStatus(outcome, { focusPlate })
+      if (outcome.kind === "ok" && outcome.soft) {
+        logAudit({ ...auditActor, category: "flag", action: "messenger status: soft-matched via own inquiry", target: `psid=${senderId} jobs=${jobPlates.join("/") || "none"}` })
+      }
       if (outcome.kind === "not_linked") {
         logAudit({ ...auditActor, category: "flag", action: "messenger status: no linked customer record", target: `psid=${senderId}${plateInMsg ? ` requested_plate=${plateInMsg}` : ""}` })
         // Ask for plate + booking phone so the next message can link the account.
@@ -374,6 +378,7 @@ async function handleInboundMessage(
       ? "customer wants to modify/cancel an existing booking"
       : null
   let aiReason: string | null = null
+  let aiViolation: "none" | "off_topic" | "policy" = "none"
   let extracted: ChatbotReply["customer"] = null
   let settings: Awaited<ReturnType<typeof loadChatbotConfig>>["settings"] = null
   let system_prompt: string | null = null
@@ -406,6 +411,7 @@ async function handleInboundMessage(
         ? "customer wants to modify/cancel an existing booking"
         : (result.reason ?? null)
     aiReason = result.reason ?? null
+    aiViolation = result.violation ?? "none"
     extracted = result.customer ?? null
 
     // Option B safety net: If we're in a vehicle status flow and the lookup
@@ -429,6 +435,44 @@ async function handleInboundMessage(
     escalateReason = "chatbot error"
   }
 
+  // Recorded on the inquiry when a booking / violation escalation needs a Sales
+  // note (identity conflict, repeat in-service booking, repeated violations…).
+  let conflictNote: string | null = null
+
+  // ── Graduated off-topic / policy-violation escalation ────────────────────
+  // Count consecutive violation turns. Off-topic escalates after 5 (warned on
+  // 4); safety/policy escalates after 2 (warned on 1). The streak resets on any
+  // valid on-topic message. Skipped when the current message carries a
+  // deterministic on-topic signal, so a real booking/status line misclassified
+  // by the model cannot accrue a strike.
+  let violationWarning: string | null = null
+  const onTopicSignal =
+    bookingIntent || statusIntent || existingBookingIntent ||
+    Boolean(quickReplyPayload) || signal || isPureConfirmation(messageBody)
+  if (
+    !escalate && !humanRequested && !reportIntent && !existingBookingIntent &&
+    !onTopicSignal
+  ) {
+    const vs = nextViolationState(
+      { offtopic: offtopic_streak, policy: policy_streak },
+      aiViolation
+    )
+    await safe(() => setViolationStreaks(conversation_id, vs.offtopic, vs.policy))
+    if (vs.action === "escalate") {
+      escalate = true
+      const isPolicy = vs.policy >= 2
+      escalateReason = isPolicy ? "repeated policy violations" : "repeated off-topic messages"
+      conflictNote =
+        `Auto-escalated after repeated ${isPolicy ? "policy-violating" : "off-topic"} messages. ` +
+        `Last message: "${messageBody}".`
+    } else if (vs.action === "warn") {
+      violationWarning =
+        vs.policy >= 1
+          ? " I can only help with 826 Auto Care topics, and I need our chat to stay respectful — if this continues I'll pass you to our team."
+          : " Note: if you keep sending messages unrelated to our services, I'll hand this conversation to our Sales team."
+    }
+  }
+
   // Booking flow: deterministic remind → confirm → escalate. This overrides the
   // AI's own escalate flag so a completed booking is never finalized before the
   // customer confirms their details, and missing fields are called out.
@@ -448,9 +492,6 @@ async function handleInboundMessage(
     !awaiting_link_verification && !linkEscalation &&
     ((signal && !statusIntent) || is_booking_flow || awaiting_confirmation)
   let escalateBooking = false
-  // Set when a complete booking carries an identity conflict that the customer
-  // confirmed anyway — recorded on the inquiry so Sales can verify (Phase 4).
-  let conflictNote: string | null = null
 
   // Every account-link claim is routed to Sales for out-of-band verification.
   if (linkEscalation) {
@@ -496,12 +537,82 @@ async function handleInboundMessage(
     }
   }
 
+  // Local flag: a vehicle-in-service notice owns the reply this turn; the rest
+  // of the booking block is skipped (same idea as `acknowledgeDuplicate`).
+  let vehicleInServiceHandled = false
+  // Set when the booking flow itself decides to hand the customer to a human
+  // (re-booking an in-service vehicle after being told; stuck on missing
+  // details). Lets the escalation survive the `!escalateBooking` guard below.
+  let forceHumanEscalation = false
+
   if (bookingFlow && !statusIntent && !humanRequested && !reportIntent && !existingBookingIntent) {
-    const missing = missingBookingFields(extracted)
-    // Whether we are about to re-ask for missing details. If the flow re-gen
-    // below refreshes the extraction and shows all details ARE present, we
-    // recover by switching to the confirmation prompt instead of re-asking.
-    let wasMissingBranch = false
+    // ── Vehicle already in service — cannot be re-booked ───────────────────
+    // Checked before any collect/forward branch. If the plate the customer is
+    // booking has ANY live job order, the bot refuses; a repeat push for the
+    // same plate (a prior in-service notice for it is in history) escalates.
+    const plateCandidate =
+      extracted?.plate_number || (messageBody.match(PLATE_PATTERN)?.[0] ?? "")
+    if (plateCandidate) {
+      const inSvc = await lookupActiveJobByPlate(plateCandidate)
+      if (inSvc.inService) {
+        const normPlate = normalizePlate(plateCandidate)
+        const plateStripped = normPlate.replace(/[^A-Z0-9]/g, "")
+        const alreadyTold = history.some(
+          (h) =>
+            h.role === "model" &&
+            /currently in service/i.test(h.text) &&
+            h.text.toUpperCase().replace(/[^A-Z0-9]/g, "").includes(plateStripped)
+        )
+        if (alreadyTold) {
+          escalate = true
+          escalateBooking = false
+          forceHumanEscalation = true
+          escalateReason = "customer insists on re-booking a vehicle already in service"
+          conflictNote =
+            `Re-booking plate ${normPlate}, currently in service (job status ${inSvc.status ?? "?"}). ` +
+            "Customer was already informed once and is still pushing to book it."
+        } else {
+          escalate = false
+          escalateBooking = false
+          reply = buildVehicleInServiceNotice(normPlate, inSvc)
+          vehicleInServiceHandled = true
+          await persistConfirmFlag(false)
+          await persistConflictPending(false)
+          await persistActiveBookingOffered(false)
+          await persistBookingFlowFlag(false)
+          // If the customer pushes again with the SAME plate, the history scan
+          // above ("currently in service" + plate) escalates to a human.
+        }
+      }
+    }
+  }
+
+  if (
+    bookingFlow && !vehicleInServiceHandled && !escalate &&
+    !statusIntent && !humanRequested && !reportIntent && !existingBookingIntent
+  ) {
+    let missing = missingBookingFields(extracted)
+
+    // Refresh the extraction with a focused second pass before deciding the
+    // booking is incomplete — the first reply pass sometimes drops a detail
+    // that is plainly in the (now most-recent) history.
+    if (missing.length > 0) {
+      try {
+        const refreshed = await extractCustomerDetails({
+          message: messageBody,
+          history,
+          settings,
+          system_prompt,
+          knowledge,
+        })
+        if (hasExtractedDetails(refreshed)) {
+          extracted = refreshed
+          missing = missingBookingFields(extracted)
+        }
+      } catch (err) {
+        console.error("[webhook/facebook] booking-flow extraction refresh failed:", err)
+      }
+    }
 
     // A returning customer (same psid) who already has an ACTIVE booking (a live
     // job) is briefly informed their booking is currently active, but the new
@@ -554,24 +665,45 @@ async function handleInboundMessage(
       await persistActiveBookingOffered(false)
     }
 
-    // Null while the duplicate-acknowledgement path owns the reply — the
-    // re-gen / confirmation logic below is skipped entirely in that case.
+    // Deterministic "you already have an active booking" line, prepended to the
+    // deterministic reply on the turn the notice is first shown.
+    const activeBookingLine =
+      !acknowledgeDuplicate && activeBooking.hasActiveBooking && !active_booking_offered
+        ? "Just so you know, you already have an active booking with us — I'll pass this along as a separate request.\n\n"
+        : ""
+
+    // branchContext is set only for branches that need a Gemini re-generation
+    // (identity-conflict clarification, wander-off). Missing-fields and the
+    // confirmation summary are rendered deterministically below.
     let branchContext: string | null = null
-    // Set when the branch wants the customer to see a details summary + confirm
-    // prompt. The summary is then rendered deterministically (buildBookingSummary)
-    // rather than left to Gemini, so the customer ALWAYS sees their details
-    // before a "yes" can hand the booking to Sales.
     let confirmSummary = false
     if (acknowledgeDuplicate) {
       // handled above — no branch context, no re-gen, no escalation
     } else if (missing.length > 0) {
-      escalate = false
-      wasMissingBranch = true
-      await persistConfirmFlag(false)
-      branchContext =
-        `The customer is in a booking flow but the following required detail(s) are not confirmed from the latest message: ${missing.join(", ")}. ` +
-        "If the customer already provided any of these details earlier in the conversation, treat them as collected and include them in your structured customer extraction. " +
-        "Politely ask the customer to provide only the truly missing details. Do NOT send the final booking confirmation and do NOT escalate until all details are collected."
+      // Deterministic re-ask (never rephrases, never asks for a service type).
+      // If the last two bot messages were already this same re-ask, the customer
+      // is stuck — hand the booking to a human instead of asking a third time.
+      const modelMsgs = history.filter((h) => h.role === "model")
+      let trailingReasks = 0
+      for (let i = modelMsgs.length - 1; i >= 0; i--) {
+        if (modelMsgs[i].text.startsWith(MISSING_FIELDS_PROMPT_LEAD)) trailingReasks++
+        else break
+      }
+      if (trailingReasks >= 2) {
+        escalate = true
+        escalateBooking = false
+        forceHumanEscalation = true
+        escalateReason = "customer stuck providing booking details"
+        conflictNote =
+          `Bot asked ${trailingReasks + 1}× in a row for the same booking detail(s) (${missing.join(", ")}) ` +
+          "with no progress. Handing to a human."
+        await persistConfirmFlag(false)
+        await persistBookingFlowFlag(false)
+      } else {
+        escalate = false
+        await persistConfirmFlag(false)
+        reply = activeBookingLine + buildMissingFieldsPrompt(missing)
+      }
     } else {
       // Phase 4 (identity conflict): a COMPLETE booking whose details contradict
       // the canonical customer record is never finalized silently. The AI asks a
@@ -587,8 +719,9 @@ async function handleInboundMessage(
 
       if (conflict) {
         if (conflict_pending) {
-          if (confirmRequested(messageBody) && !signal) {
-            // Customer confirmed the booking despite the conflict → Sales
+          if (confirmRequested(messageBody) && !signal && awaiting_confirmation) {
+            // Customer confirmed the booking despite the conflict, AND has
+            // already seen their details summary (awaiting_confirmation) → Sales
             // verifies identity before anything is finalized.
             escalate = true
             escalateBooking = true
@@ -599,6 +732,13 @@ async function handleInboundMessage(
             branchContext =
               "The customer confirmed a booking that conflicts with the customer record on file. " +
               "The booking is escalated to Sales for identity verification. Do NOT finalize the details as correct."
+          } else if (confirmRequested(messageBody) && !signal) {
+            // Confirmed despite the conflict but the details summary was never
+            // shown — show it first (keep conflict_pending so the next "yes"
+            // reaches the branch above). Rendered deterministically below.
+            escalate = false
+            confirmSummary = true
+            await persistConfirmFlag(true)
           } else {
             // Still conflicting and not confirmed → adapt the prompt so Gemini
             // understands the customer is responding to an existing identity
@@ -649,30 +789,26 @@ async function handleInboundMessage(
           "The customer was asked to confirm their booking details but the last message is not a confirmation and carries no booking details. " +
           "Answer the customer normally; you may briefly re-offer to continue their booking if it is natural to do so, but do not send the final booking confirmation and do not escalate."
       } else {
-        // All required details are collected but not yet confirmed. Summarize the
-        // details and ask the customer to confirm — this runs even when the
-        // current message carries no booking signal (e.g. it completed the set
-        // with just a vehicle type), and also swallows a premature "yes" so the
-        // prompt is always shown before the booking can escalate. Persist the
-        // confirmation flag so the next "Yes" escalates.
+        // All required details are collected but not yet confirmed. Show the
+        // deterministic summary + confirm prompt (rendered below). Runs even
+        // when the current message carries no booking signal, and swallows a
+        // premature "yes" so the prompt is always shown before a booking can
+        // escalate. Persist the confirmation flag so the next "Yes" escalates.
         escalate = false
         confirmSummary = true
         await persistConflictPending(false)
         await persistConfirmFlag(true)
-        branchContext = CONFIRM_BOOKING_CONTEXT
       }
     }
 
-    // branchContext is null only on the duplicate-acknowledgement path, which
-    // already owns `reply` and needs no Gemini re-gen.
+    // branchContext is set only for branches that still need Gemini phrasing
+    // (identity-conflict clarification, wander-off). Missing-fields, the
+    // confirmation summary, and the vehicle-in-service notice are deterministic.
     if (branchContext !== null) {
       const bookingContext: string = activeBookingContext
         ? `${activeBookingContext}\n\n${branchContext}`
         : branchContext
 
-      // Re-generate the reply with the booking-flow context (and get a more
-      // reliable customer extraction). The escalation path ignores `reply`, so
-      // this is safe for the confirmed case too.
       try {
         const flowResult = await generateChatbotReply({
           message: messageBody,
@@ -688,63 +824,40 @@ async function handleInboundMessage(
       } catch (err) {
         console.error("[webhook/facebook] booking-flow reply failed:", err)
       }
-
-      // Recovery: the re-gen's refreshed extraction (which sees the full history)
-      // can show all details are actually collected even though the first pass
-      // looked incomplete. Instead of sending a redundant re-ask for details the
-      // customer already gave, switch to the confirmation prompt. Costs one extra
-      // Gemini call only in this rare case.
-      if (wasMissingBranch && isCompleteBooking(extracted)) {
-        // If the completed details carry an identity conflict, surface the
-        // clarification instead of the normal confirmation prompt; otherwise
-        // switch to confirmation.
-        const conflict = await lookupIdentityConflict({
-          psid: senderId,
-          extracted,
-          record: activeBooking.record,
-        })
-        await persistConfirmFlag(!conflict)
-        await persistConflictPending(Boolean(conflict))
-        if (conflict) {
-          try {
-            const confirmResult = await generateChatbotReply({
-              message: messageBody,
-              history,
-              settings,
-              system_prompt,
-              knowledge,
-              vehicleContext,
-              bookingContext: conflict.clarification,
-            })
-            if (confirmResult.reply?.trim()) reply = confirmResult.reply.trim()
-            if (hasExtractedDetails(confirmResult.customer)) extracted = confirmResult.customer
-          } catch (err) {
-            console.error("[webhook/facebook] booking recovery reply failed:", err)
-          }
-        } else {
-          // No conflict → show the deterministic details summary + confirm prompt.
-          escalate = false
-          confirmSummary = true
-        }
-      }
     }
 
     // Render the confirmation summary deterministically from the freshest
     // extraction so the customer always sees every detail before confirming.
     if (confirmSummary && !escalate && extracted && isCompleteBooking(extracted)) {
-      reply = buildBookingSummary(extracted)
+      reply = activeBookingLine + buildBookingSummary(extracted)
+    }
+
+    // Bug 8/10 backstop: a booking-flow reply must never ask which service the
+    // customer wants, nor claim the booking is already done, before it has
+    // actually been handed to Sales. Fall back to the deterministic text.
+    if (!escalateBooking && reply) {
+      const asksService = /\b(which|what|anong)\b[^.?!]{0,24}\b(service|services|package|treatment)\b/i.test(reply)
+      const claimsDone = /\b(booking|appointment|reservation)\b[^.?!]{0,30}\b(is|has been|was|now|been)\b[^.?!]{0,14}\b(confirmed|submitted|received|scheduled|booked|placed)\b/i.test(reply)
+      if (asksService || claimsDone) {
+        reply =
+          extracted && isCompleteBooking(extracted)
+            ? activeBookingLine + buildBookingSummary(extracted)
+            : activeBookingLine + buildMissingFieldsPrompt(missingBookingFields(extracted))
+      }
     }
   }
 
   // A booking only ever reaches Sales through the deterministic confirm step
-  // inside the block above (escalateBooking). The model's own escalate flag must
-  // never shortcut the confirmation step for a booking-flow conversation.
+  // inside the block above (escalateBooking), or when the booking flow itself
+  // routes the customer to a human (forceHumanEscalation). The model's own
+  // escalate flag must never shortcut the confirmation step.
   if (
     bookingFlow &&
     !humanRequested &&
     !reportIntent &&
     !existingBookingIntent &&
-    !escalateBooking
+    !escalateBooking &&
+    !forceHumanEscalation
   ) {
     escalate = false
   }
@@ -783,6 +896,10 @@ async function handleInboundMessage(
     if (humanRequested) {
       inquiry_type = "Human Response"
     } else if (existingBookingIntent) {
+      inquiry_type = "Human Response"
+    } else if (forceHumanEscalation) {
+      // Booking flow routed the customer to a human (re-booking an in-service
+      // vehicle, or stuck on details) — NOT a booking to be confirmed.
       inquiry_type = "Human Response"
     } else if (reportIntent) {
       inquiry_type = "Report"
@@ -915,6 +1032,7 @@ async function handleInboundMessage(
     await persistConflictPending(false)
     await safe(() => setAwaitingLinkVerification(conversation_id, false))
     await safe(() => setLinkAttempts(conversation_id, 0))
+    await safe(() => setViolationStreaks(conversation_id, 0, 0))
     return
   }
 
@@ -924,6 +1042,9 @@ async function handleInboundMessage(
   // requested in plain text (no confirm buttons), so the standard menu is
   // always what the customer sees during the booking flow.
   if (reply) {
+    // Append the graduated-violation warning (set when the customer is one turn
+    // away from an off-topic / policy escalation).
+    if (violationWarning) reply = `${reply}${violationWarning}`
     const fbId = quickReplyPayload
       ? await sendMessengerText(senderId, reply)
       : await sendMessengerQuickReply(senderId, reply, QUICK_REPLIES)
