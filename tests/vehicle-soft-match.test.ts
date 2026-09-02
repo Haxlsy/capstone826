@@ -68,13 +68,16 @@ describe("resolveOwnVehicleStatus — inquiry soft-match (Testing Note #3)", () 
     await expect(resolveOwnVehicleStatus("psid-none")).resolves.toEqual({ kind: "not_linked" })
   })
 
-  it("returns not_linked when the inquiry plate/phone match no active job", async () => {
+  it("returns booked_no_active_job (not the verification wall) when the psid's inquiry matches no active job", async () => {
     store.responses = {
       customer_record: [{ data: null, error: null }],
       inquiry: [{ data: [{ extracted_plate: "XYZ 999", extracted_contact: "09990000000" }], error: null }],
       job_order: [{ data: [job()], error: null }],
     }
-    await expect(resolveOwnVehicleStatus("psid-nomatch")).resolves.toEqual({ kind: "not_linked" })
+    await expect(resolveOwnVehicleStatus("psid-nomatch")).resolves.toEqual({
+      kind: "booked_no_active_job",
+      plate: "XYZ 999",
+    })
   })
 
   it("ignores a phone-only match when a different plate matched", async () => {
@@ -122,12 +125,11 @@ describe("resolveOwnVehicleStatus — inquiry soft-match (Testing Note #3)", () 
     })
   })
 
-  it("does not return booked_no_active_job for a non-Booking inquiry", async () => {
+  it("still returns not_linked when the psid's inquiries carry no plate or phone", async () => {
     store.responses = {
       customer_record: [{ data: null, error: null }],
-      inquiry: [{ data: [{ inquiry_type: "Human Response", extracted_plate: "ABC-111", extracted_contact: null }], error: null }],
-      job_order: [{ data: [], error: null }],
+      inquiry: [{ data: [{ inquiry_type: "Human Response", extracted_plate: null, extracted_contact: null }], error: null }],
     }
-    await expect(resolveOwnVehicleStatus("psid-report")).resolves.toEqual({ kind: "not_linked" })
+    await expect(resolveOwnVehicleStatus("psid-noinfo")).resolves.toEqual({ kind: "not_linked" })
   })
 })
