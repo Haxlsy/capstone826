@@ -322,6 +322,60 @@ export function formatOwnVehicleStatus(
   )
 }
 
+/**
+ * Renders the status outcome as a customer-facing message sent DIRECTLY to
+ * Messenger (no Gemini). The model was unreliable here — it kept sending the
+ * "please provide your details" template even when the status was already known.
+ * Returns `null` for outcomes the model must still handle in prose
+ * (`not_linked` → ask to verify; `plateMismatch` → refuse).
+ */
+export function formatVehicleStatusForCustomer(
+  outcome: OwnVehicleOutcome,
+  opts?: { focusPlate?: string }
+): string | null {
+  if (outcome.kind === "not_linked") return null
+
+  if (outcome.kind === "booked_no_active_job") {
+    const p = outcome.plate ? ` for plate ${outcome.plate}` : ""
+    return (
+      `Good news — we have your booking${p} on file. It hasn't been scheduled into ` +
+      "service yet; our team will update you here as soon as work begins."
+    )
+  }
+
+  let jobs = outcome.jobs
+  if (opts?.focusPlate) {
+    const want = normalizePlate(opts.focusPlate)
+    const only = jobs.filter((j) => normalizePlate(j.plate) === want)
+    if (only.length > 0) jobs = only
+  }
+
+  if (jobs.length === 0) {
+    return (
+      "You don't have a vehicle in service with us right now. If you've just booked, " +
+      "we'll get started once your vehicle is checked in — and I'll have an update for you here."
+    )
+  }
+
+  const one = (j: JobStatus): string => {
+    const lines = [`🚗 Plate ${j.plate}`, `Status: ${j.status}`]
+    if (j.serviceName) lines.push(`Service: ${j.serviceName}`)
+    if (j.totalStages > 0) {
+      lines.push(
+        `Progress: ${j.completedStages} of ${j.totalStages} stages done` +
+          (j.currentStage ? ` (currently: ${j.currentStage})` : "")
+      )
+    }
+    if (j.expectedCompletionAt) lines.push(`Estimated ready: ${fmtDateTime(j.expectedCompletionAt)}`)
+    return lines.join("\n")
+  }
+
+  const body = jobs.map(one).join("\n\n")
+  return jobs.length === 1
+    ? `Here's the latest on your vehicle:\n\n${body}`
+    : `Here's the latest on your vehicles:\n\n${body}`
+}
+
 export type LinkClaim =
   | { kind: "no_record" }                                  // nothing matches the plate
   | { kind: "match_unlinked"; recordName: string | null }  // record exists, psid null, phone matches
