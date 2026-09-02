@@ -1,5 +1,6 @@
 import { createAdminClient } from "@/lib/supabase/admin"
 import { toHistoryMessages } from "@/lib/messenger/chatbot"
+import type { CustomerDetails } from "@/types/chatbot"
 
 export type ConversationStatus = "open" | "pending" | "closed"
 
@@ -19,13 +20,14 @@ export async function getOrCreateConversationByPsid(
   link_attempts: number
   offtopic_streak: number
   policy_streak: number
+  booking_draft: CustomerDetails
 }> {
   const supabase = createAdminClient()
 
   const { data: existing } = await supabase
     .from("messenger_conversation")
     .select(
-      "conversation_id, status, is_vehicle_inquiry, is_booking_flow, awaiting_confirmation, active_booking_offered, booking_duplicate_notified, conflict_pending, awaiting_link_verification, link_attempts, offtopic_streak, policy_streak"
+      "conversation_id, status, is_vehicle_inquiry, is_booking_flow, awaiting_confirmation, active_booking_offered, booking_duplicate_notified, conflict_pending, awaiting_link_verification, link_attempts, offtopic_streak, policy_streak, draft_name, draft_contact, draft_plate, draft_vehicle, draft_email"
     )
     .eq("psid", psid)
     .maybeSingle()
@@ -51,6 +53,13 @@ export async function getOrCreateConversationByPsid(
       link_attempts: Number(existing.link_attempts ?? 0),
       offtopic_streak: Number(existing.offtopic_streak ?? 0),
       policy_streak: Number(existing.policy_streak ?? 0),
+      booking_draft: {
+        full_name:      existing.draft_name    ?? null,
+        contact_number: existing.draft_contact ?? null,
+        plate_number:   existing.draft_plate   ?? null,
+        vehicle_unit:   existing.draft_vehicle ?? null,
+        email:          existing.draft_email   ?? null,
+      },
     }
   }
 
@@ -71,7 +80,32 @@ export async function getOrCreateConversationByPsid(
     throw new Error(error?.message ?? "Failed to create conversation")
   }
 
-  return { conversation_id: data.conversation_id, status: "open", is_vehicle_inquiry: false, is_booking_flow: false, awaiting_confirmation: false, active_booking_offered: false, booking_duplicate_notified: false, conflict_pending: false, awaiting_link_verification: false, link_attempts: 0, offtopic_streak: 0, policy_streak: 0 }
+  return { conversation_id: data.conversation_id, status: "open", is_vehicle_inquiry: false, is_booking_flow: false, awaiting_confirmation: false, active_booking_offered: false, booking_duplicate_notified: false, conflict_pending: false, awaiting_link_verification: false, link_attempts: 0, offtopic_streak: 0, policy_streak: 0, booking_draft: { full_name: null, contact_number: null, plate_number: null, vehicle_unit: null, email: null } }
+}
+
+/**
+ * Persists the current booking-flow draft (the details collected so far in this
+ * booking attempt). Pass `null` to clear it — done on every terminal path
+ * (escalation, wander-off, duplicate-ack, vehicle-in-service, flow reset).
+ */
+export async function setBookingDraft(
+  conversation_id: number,
+  d: CustomerDetails | null | undefined
+) {
+  const supabase = createAdminClient()
+
+  const { error } = await supabase
+    .from("messenger_conversation")
+    .update({
+      draft_name:    d?.full_name      ?? null,
+      draft_contact: d?.contact_number ?? null,
+      draft_plate:   d?.plate_number   ?? null,
+      draft_vehicle: d?.vehicle_unit   ?? null,
+      draft_email:   d?.email          ?? null,
+    })
+    .eq("conversation_id", conversation_id)
+
+  if (error) throw new Error(error.message)
 }
 
 /** Sets the consecutive off-topic / policy-violation streak counters for a conversation. */

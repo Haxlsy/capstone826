@@ -407,6 +407,30 @@ export function isCompleteBooking(details: CustomerDetails | null | undefined): 
 }
 
 /**
+ * Merges a freshly-extracted detail set onto the draft collected so far in the
+ * current booking attempt. A non-null/non-empty incoming value wins (the
+ * customer restated or corrected that field); a null/empty incoming value keeps
+ * the stored value — a field the customer already gave is never dropped just
+ * because their latest message is silent about it. This is the safety net for
+ * the Gemini extraction occasionally returning a partial `customer` object
+ * (e.g. on a bare "yes"), which would otherwise regress the booking flow.
+ */
+export function mergeBookingDetails(
+  prev: CustomerDetails | null | undefined,
+  incoming: CustomerDetails | null | undefined
+): CustomerDetails {
+  const pick = (a: string | null | undefined, b: string | null | undefined) =>
+    str(a) ?? str(b) ?? null
+  return {
+    full_name:      pick(incoming?.full_name,      prev?.full_name),
+    contact_number: pick(incoming?.contact_number, prev?.contact_number),
+    plate_number:   pick(incoming?.plate_number,   prev?.plate_number),
+    vehicle_unit:   pick(incoming?.vehicle_unit,   prev?.vehicle_unit),
+    email:          pick(incoming?.email,          prev?.email),
+  }
+}
+
+/**
  * Deterministic booking-details summary shown to the customer before the
  * booking is handed to Sales. Rendered in code (not via Gemini) so the
  * customer ALWAYS sees their details and an explicit confirm prompt before a
@@ -523,9 +547,10 @@ export async function generateChatbotReply(input: {
     systemPrompt += `\n\nAUTHORITATIVE BACKEND CONTEXT (follow this over conversation history):\n${authoritativeBlocks.join("\n\n")}`
   }
 
-  // Historical messages must never contaminate a new booking request, and the
-  // most recent value the customer gives for a field always wins.
-  systemPrompt += `\n\nFor each customer detail (full name, contact number, plate number, vehicle, email): if the customer gave more than one value across the conversation, ALWAYS use the value from their most recent message — earlier values are superseded and must not be returned. Do not merge details from earlier, unrelated booking requests.`
+  // Accumulate booking details across turns without ever dropping one: the most
+  // recent value the customer gave FOR A FIELD wins, but a field they are silent
+  // about this turn keeps its earlier value.
+  systemPrompt += `\n\nFor each customer detail (full name, contact number, plate number, vehicle, email): use the most recent value the customer has given for that specific field. If their latest message does not mention a field they already provided earlier in this booking, keep the earlier value — never return null for a detail the customer has already given. Only start over if the customer explicitly says they want to book a different vehicle.`
 
   // Instruct the model to also surface any customer booking details it sees so
   // the webhook can store them in the inquiry's extracted_* columns. Even when
@@ -619,7 +644,7 @@ export async function extractCustomerDetails(input: {
   const { message, history = [], settings, system_prompt, knowledge } = input
 
   let systemPrompt = buildRuntimeSystemPrompt(settings, system_prompt, knowledge)
-  systemPrompt += `\n\nExtract the customer's booking details from the conversation. Return them in the JSON "customer" object: full_name, contact_number, plate_number, vehicle_unit, and email. Leave any field you cannot determine as null. If the customer gave more than one value for a field, use the value from their most recent message. These are only noted for follow-up by our Sales team.`
+  systemPrompt += `\n\nExtract the customer's booking details from the conversation. Return them in the JSON "customer" object: full_name, contact_number, plate_number, vehicle_unit, and email. For each field, use the most recent value the customer has given for that specific field; if their latest message does not mention a field they already provided earlier, keep the earlier value — never return null for a detail that appears anywhere in the conversation. Leave a field null only when the customer has never provided it. These are only noted for follow-up by our Sales team.`
 
   const contents: { role: "user" | "model"; parts: { text: string }[] }[] = [
     ...(history as ChatMessage[]).map((h) => ({

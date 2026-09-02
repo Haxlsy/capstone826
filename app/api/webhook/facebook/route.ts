@@ -13,6 +13,7 @@ import {
   setAwaitingLinkVerification,
   setLinkAttempts,
   setViolationStreaks,
+  setBookingDraft,
   getConversationHistory,
 } from "@/lib/messenger/messenger-data"
 import {
@@ -29,6 +30,7 @@ import {
   isCompleteBooking,
   buildBookingSummary,
   buildMissingFieldsPrompt,
+  mergeBookingDetails,
   MISSING_FIELDS_PROMPT_LEAD,
   nextViolationState,
   hasExistingBookingIntent,
@@ -191,7 +193,7 @@ async function handleInboundMessage(
   const profile = await fetchMessengerProfile(senderId)
 
   // Get or create the conversation and capture its current status + flow flags.
-  const { conversation_id, status, is_vehicle_inquiry, is_booking_flow, awaiting_confirmation, active_booking_offered, booking_duplicate_notified, conflict_pending, awaiting_link_verification, link_attempts, offtopic_streak, policy_streak } =
+  const { conversation_id, status, is_vehicle_inquiry, is_booking_flow, awaiting_confirmation, active_booking_offered, booking_duplicate_notified, conflict_pending, awaiting_link_verification, link_attempts, offtopic_streak, policy_streak, booking_draft } =
     await getOrCreateConversationByPsid(senderId, profile.name)
 
   // Best-effort flag persistence: a failure here must not abort the reply.
@@ -551,7 +553,10 @@ async function handleInboundMessage(
     // booking has ANY live job order, the bot refuses; a repeat push for the
     // same plate (a prior in-service notice for it is in history) escalates.
     const plateCandidate =
-      extracted?.plate_number || (messageBody.match(PLATE_PATTERN)?.[0] ?? "")
+      extracted?.plate_number ||
+      (messageBody.match(PLATE_PATTERN)?.[0] ?? "") ||
+      booking_draft.plate_number ||
+      ""
     if (plateCandidate) {
       const inSvc = await lookupActiveJobByPlate(plateCandidate)
       if (inSvc.inService) {
@@ -580,6 +585,7 @@ async function handleInboundMessage(
           await persistConflictPending(false)
           await persistActiveBookingOffered(false)
           await persistBookingFlowFlag(false)
+          await safe(() => setBookingDraft(conversation_id, null))
           // If the customer pushes again with the SAME plate, the history scan
           // above ("currently in service" + plate) escalates to a human.
         }
@@ -591,6 +597,10 @@ async function handleInboundMessage(
     bookingFlow && !vehicleInServiceHandled && !escalate &&
     !statusIntent && !humanRequested && !reportIntent && !existingBookingIntent
   ) {
+    // Merge this turn's extraction onto the draft collected so far. A Gemini
+    // pass that omits a field (common on a bare "yes") can no longer regress the
+    // flow — a detail once given stays until the customer changes it.
+    extracted = mergeBookingDetails(booking_draft, extracted)
     let missing = missingBookingFields(extracted)
 
     // Refresh the extraction with a focused second pass before deciding the
@@ -606,13 +616,17 @@ async function handleInboundMessage(
           knowledge,
         })
         if (hasExtractedDetails(refreshed)) {
-          extracted = refreshed
+          extracted = mergeBookingDetails(extracted, refreshed)
           missing = missingBookingFields(extracted)
         }
       } catch (err) {
         console.error("[webhook/facebook] booking-flow extraction refresh failed:", err)
       }
     }
+
+    // Persist the merged draft so the next turn resumes from it, even if that
+    // turn's own extraction comes back partial. Cleared on every terminal path.
+    await safe(() => setBookingDraft(conversation_id, extracted))
 
     // A returning customer (same psid) who already has an ACTIVE booking (a live
     // job) is briefly informed their booking is currently active, but the new
@@ -639,6 +653,7 @@ async function handleInboundMessage(
       await persistConfirmFlag(false)
       await persistConflictPending(false)
       await persistActiveBookingOffered(false)
+      await safe(() => setBookingDraft(conversation_id, null))
     } else if (sameVehicleOnFile) {
       conflictNote =
         `Repeat booking: customer is already on file for plate ` +
@@ -785,6 +800,7 @@ async function handleInboundMessage(
         await persistBookingFlowFlag(false)
         await persistActiveBookingOffered(false)
         await persistBookingDuplicateNotified(false)
+        await safe(() => setBookingDraft(conversation_id, null))
         branchContext =
           "The customer was asked to confirm their booking details but the last message is not a confirmation and carries no booking details. " +
           "Answer the customer normally; you may briefly re-offer to continue their booking if it is natural to do so, but do not send the final booking confirmation and do not escalate."
@@ -1033,6 +1049,7 @@ async function handleInboundMessage(
     await safe(() => setAwaitingLinkVerification(conversation_id, false))
     await safe(() => setLinkAttempts(conversation_id, 0))
     await safe(() => setViolationStreaks(conversation_id, 0, 0))
+    await safe(() => setBookingDraft(conversation_id, null))
     return
   }
 
