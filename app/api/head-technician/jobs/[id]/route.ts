@@ -7,6 +7,7 @@ import { fmtDateTime } from "@/lib/time-display"
 import { getAuditCaller } from "@/lib/auth/caller"
 import { logAuditCall } from "@/hooks/audit-helpers"
 import { sendMessengerText, sendMessengerImage } from "@/lib/messenger/graph"
+import { buildStageUpdateMessage } from "@/lib/messenger/stage-update"
 
 export async function GET(
   _request: Request,
@@ -407,8 +408,10 @@ export async function PATCH(
         }
       }
 
-      // Resolve stage name (used for the audit target and the customer update).
+      // Resolve stage name + workflow category (used for the audit target and
+      // the customer update).
       let stageName = "Service stage"
+      let categoryName: string | null = null
       {
         const { data: jsp } = await admin
           .from("job_stage_progress")
@@ -419,10 +422,12 @@ export async function PATCH(
         if (ssId) {
           const { data: ss } = await admin
             .from("service_stage")
-            .select("name")
+            .select("name, workflow_category:category_id(name)")
             .eq("id", ssId)
             .single()
           stageName = (ss as any)?.name ?? stageName
+          const cat = (ss as any)?.workflow_category
+          categoryName = (Array.isArray(cat) ? cat[0]?.name : cat?.name) ?? null
         }
       }
 
@@ -449,10 +454,15 @@ export async function PATCH(
 
           const { data: custRow } = await admin
             .from("job_order")
-            .select("customer:customer_record_id(psid, full_name)")
+            .select(
+              `plate_number, vehicle_unit, customer_name,
+               service:service_id(name),
+               customer:customer_record_id(psid, full_name, vehicle_unit, plate_number)`
+            )
             .eq("id", jobId)
             .single()
-          const psid = (custRow as any)?.customer?.psid ?? null
+          const cr = custRow as any
+          const psid = cr?.customer?.psid ?? null
 
           if (!psid || !process.env.META_PAGE_ACCESS_TOKEN) {
             await admin
@@ -461,8 +471,20 @@ export async function PATCH(
               .eq("id", stage_id)
           } else {
             const customerName =
-              (custRow as any)?.customer?.full_name ?? (job as any)?.customer_name ?? "Customer"
-            const plate = (job as any)?.plate_number ?? ""
+              cr?.customer?.full_name ?? cr?.customer_name ?? "Customer"
+            const plate = cr?.customer?.plate_number ?? cr?.plate_number ?? null
+            const vehicleUnit = cr?.customer?.vehicle_unit ?? cr?.vehicle_unit ?? null
+            const serviceName = cr?.service?.name ?? null
+
+            // Progress across the whole job.
+            const { data: allStages } = await admin
+              .from("job_stage_progress")
+              .select("status")
+              .eq("job_order_id", jobId)
+            const totalCount = (allStages ?? []).length
+            const completedCount = (allStages ?? []).filter(
+              (s: any) => s.status === "done"
+            ).length
 
             const { data: media } = await admin
               .from("stage_media")
@@ -472,7 +494,16 @@ export async function PATCH(
               .filter((m) => m.media_type === "photo" && m.shareable_link)
               .map((m) => m.shareable_link as string)
 
-            const message = `✅ Stage Update: "${stageName}" has been completed for your vehicle (${plate}).\n\nThank you for your patience, ${customerName}!`
+            const message = buildStageUpdateMessage({
+              customerName,
+              stageName,
+              categoryName,
+              serviceName,
+              vehicleUnit,
+              plate,
+              completedCount,
+              totalCount,
+            })
 
             const textMid = await sendMessengerText(psid, message)
             if (textMid && photos.length > 0) {
