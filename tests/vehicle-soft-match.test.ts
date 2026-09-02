@@ -92,4 +92,42 @@ describe("resolveOwnVehicleStatus — inquiry soft-match (Testing Note #3)", () 
       expect(out.jobs.map((j) => j.plate)).toEqual(["ABC 123"])
     }
   })
+
+  it("bridges through the customer_record a 'picked a record' job is linked to", async () => {
+    // The job's own plate/phone are blank (or differ) but it is linked to the
+    // customer_record whose plate matches the psid's booking inquiry.
+    store.responses = {
+      customer_record: [{ data: null, error: null }],
+      inquiry: [{ data: [{ inquiry_type: "Booking", extracted_plate: "ABC-111", extracted_contact: "09664015109" }], error: null }],
+      job_order: [{ data: [job({ plate_number: null, contact_number: null, customer_record_id: "r1", customer: { full_name: "John", plate_number: "ABC-111", contact_number: null } })], error: null }],
+      job_stage_progress: [stages()],
+    }
+    const out = await resolveOwnVehicleStatus("psid-bridge")
+    expect(out.kind).toBe("ok")
+    if (out.kind === "ok") {
+      expect(out.soft).toBe(true)
+      expect(out.jobs).toHaveLength(1)
+    }
+  })
+
+  it("returns booked_no_active_job when the psid booked but no job matches", async () => {
+    store.responses = {
+      customer_record: [{ data: null, error: null }],
+      inquiry: [{ data: [{ inquiry_type: "Booking", extracted_plate: "ABC-111", extracted_contact: "09664015109" }], error: null }],
+      job_order: [{ data: [job({ plate_number: "ZZZ 999", contact_number: "09990000000", customer: null })], error: null }],
+    }
+    await expect(resolveOwnVehicleStatus("psid-booked")).resolves.toEqual({
+      kind: "booked_no_active_job",
+      plate: "ABC-111",
+    })
+  })
+
+  it("does not return booked_no_active_job for a non-Booking inquiry", async () => {
+    store.responses = {
+      customer_record: [{ data: null, error: null }],
+      inquiry: [{ data: [{ inquiry_type: "Human Response", extracted_plate: "ABC-111", extracted_contact: null }], error: null }],
+      job_order: [{ data: [], error: null }],
+    }
+    await expect(resolveOwnVehicleStatus("psid-report")).resolves.toEqual({ kind: "not_linked" })
+  })
 })
