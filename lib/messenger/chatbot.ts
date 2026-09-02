@@ -484,7 +484,7 @@ export function buildBookingSummary(details: CustomerDetails): string {
 // Fixed lead-in for the deterministic missing-fields re-ask. The webhook scans
 // conversation history for this exact prefix to detect a stuck re-ask loop, so
 // it must stay in sync with buildMissingFieldsPrompt below.
-export const MISSING_FIELDS_PROMPT_LEAD = "To continue your booking, I still need"
+export const MISSING_FIELDS_PROMPT_LEAD = "To continue your booking, please include"
 
 /**
  * Deterministic re-ask for the still-missing booking fields. Rendered in code
