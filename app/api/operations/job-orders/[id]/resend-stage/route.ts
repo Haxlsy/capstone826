@@ -3,6 +3,7 @@ import { cookies } from "next/headers"
 import { createClient } from "@/lib/supabase/server"
 import { createAdminClient } from "@/lib/supabase/admin"
 import { sendMessengerText, sendMessengerImage } from "@/lib/messenger/graph"
+import { buildStageUpdateMessage } from "@/lib/messenger/stage-update"
 
 // POST /api/operations/job-orders/[id]/resend-stage
 // Body: { stage_id: string }
@@ -33,7 +34,7 @@ export async function POST(
       .from("job_stage_progress")
       .select(
         `id, status,
-         stage:service_stage_id(name, category),
+         stage:service_stage_id(name, workflow_category:category_id(name)),
          media:stage_media(shareable_link, media_type)`
       )
       .eq("id", stage_id)
@@ -48,25 +49,54 @@ export async function POST(
       return NextResponse.json({ error: "Only completed stages can be resent." }, { status: 400 })
     }
 
-    // Fetch customer PSID from the job order
+    // Fetch customer PSID + everything the message needs from the job order
     const { data: job } = await admin
       .from("job_order")
-      .select(`customer:customer_record_id(psid, full_name), customer_name, plate_number`)
+      .select(
+        `customer:customer_record_id(psid, full_name, vehicle_unit, plate_number),
+         service:service_id(name),
+         customer_name, plate_number, vehicle_unit`
+      )
       .eq("id", jobId)
       .single()
 
-    const psid         = (job as any)?.customer?.psid ?? null
-    const customerName = (job as any)?.customer?.full_name ?? (job as any)?.customer_name ?? "Customer"
-    const stageName    = (stage as any).stage?.name ?? "Stage"
-    const photos       = ((stage as any).media ?? [])
+    const j            = job as any
+    const s            = stage as any
+    const psid         = j?.customer?.psid ?? null
+    const customerName = j?.customer?.full_name ?? j?.customer_name ?? "Customer"
+    const stageName    = s.stage?.name ?? "Stage"
+    const stageCat     = Array.isArray(s.stage?.workflow_category)
+      ? s.stage.workflow_category[0]?.name
+      : s.stage?.workflow_category?.name
+    const categoryName = stageCat ?? null
+    const serviceName  = j?.service?.name ?? null
+    const vehicleUnit  = j?.customer?.vehicle_unit ?? j?.vehicle_unit ?? null
+    const plate        = j?.customer?.plate_number ?? j?.plate_number ?? null
+    const photos       = (s.media ?? [])
       .filter((m: any) => m.media_type === "photo" && m.shareable_link)
       .map((m: any) => m.shareable_link as string)
+
+    // Progress across the whole job.
+    const { data: allStages } = await admin
+      .from("job_stage_progress")
+      .select("status")
+      .eq("job_order_id", jobId)
+    const totalCount     = (allStages ?? []).length
+    const completedCount = (allStages ?? []).filter((r: any) => r.status === "done").length
 
     let sendSuccess = false
 
     if (psid && process.env.META_PAGE_ACCESS_TOKEN) {
-      // Build the update message
-      const message = `✅ Stage Update: "${stageName}" has been completed for your vehicle (${(job as any)?.plate_number ?? ""}).\n\nThank you for your patience, ${customerName}!`
+      const message = buildStageUpdateMessage({
+        customerName,
+        stageName,
+        categoryName,
+        serviceName,
+        vehicleUnit,
+        plate,
+        completedCount,
+        totalCount,
+      })
 
       try {
         const textMid = await sendMessengerText(psid, message)
