@@ -36,9 +36,11 @@ import {
   normalizePlate,
   normalizePhone,
   formatOwnVehicleStatus,
+  formatVehicleStatusForCustomer,
   resolveOwnVehicleStatus,
   assessLinkClaim,
   type OwnVehicleOutcome,
+  type JobStatus,
 } from "@/lib/messenger/vehicle"
 
 const job = (over: Partial<any> = {}) => ({
@@ -118,6 +120,45 @@ describe("formatOwnVehicleStatus (pure rendering)", () => {
     expect(one).toContain("XYZ 789")
     expect(one).not.toContain("ABC 123")
     expect(one).not.toContain("2 vehicles")
+  })
+})
+
+describe("formatVehicleStatusForCustomer (deterministic reply, no Gemini)", () => {
+  const j = (over: Partial<JobStatus> = {}): JobStatus => ({
+    plate: "ABC-826", customerName: "John", serviceName: "Graphene Coating",
+    status: "Pending", currentStage: "Stage 1", completedStages: 0, totalStages: 6,
+    scheduledAt: null, expectedCompletionAt: null, ...over,
+  })
+
+  it("returns null for not_linked (Gemini still asks to verify)", () => {
+    expect(formatVehicleStatusForCustomer({ kind: "not_linked" })).toBeNull()
+  })
+
+  it("renders a single job with plate, status, service and progress", () => {
+    const out = formatVehicleStatusForCustomer({ kind: "ok", jobs: [j()] })!
+    expect(out).toContain("ABC-826")
+    expect(out).toContain("Status: Pending")
+    expect(out).toContain("Graphene Coating")
+    expect(out).toContain("0 of 6 stages")
+    expect(out).not.toMatch(/provide the following details/i)
+  })
+
+  it("friendly line for a booking with no active job", () => {
+    const out = formatVehicleStatusForCustomer({ kind: "booked_no_active_job", plate: "ABC-826" })!
+    expect(out).toContain("ABC-826")
+    expect(out).toMatch(/hasn't been scheduled/i)
+    expect(out).not.toMatch(/provide the following details/i)
+  })
+
+  it("linked customer with nothing in service is told so (no verification ask)", () => {
+    const out = formatVehicleStatusForCustomer({ kind: "ok", jobs: [] })!
+    expect(out).toMatch(/don't have a vehicle in service/i)
+  })
+
+  it("lists multiple jobs", () => {
+    const out = formatVehicleStatusForCustomer({ kind: "ok", jobs: [j(), j({ plate: "XYZ-789" })] })!
+    expect(out).toContain("ABC-826")
+    expect(out).toContain("XYZ-789")
   })
 })
 

@@ -56,6 +56,7 @@ import {
 import {
   resolveOwnVehicleStatus,
   formatOwnVehicleStatus,
+  formatVehicleStatusForCustomer,
   assessLinkClaim,
   normalizePlate,
   type OwnVehicleOutcome,
@@ -342,6 +343,10 @@ async function handleInboundMessage(
   // or (if it is nobody's of theirs) triggers a refusal — never a data lookup.
   const plateInMsg = normalizePlate(messageBody.match(PLATE_PATTERN)?.[0] ?? "")
   let vehicleContext: string | null = null
+  // Deterministic customer-facing status reply. When set, it is sent verbatim
+  // and the Gemini call is skipped — the model kept ignoring the resolved status
+  // and sending the "provide your details" template instead.
+  let statusReply: string | null = null
 
   if (linkedVehicleContext) {
     vehicleContext = linkedVehicleContext
@@ -363,6 +368,7 @@ async function handleInboundMessage(
       logAudit({ ...auditActor, category: "flag", action: "messenger status: plate not owned by requester", target: `psid=${senderId} requested_plate=${plateInMsg} account_plates=${jobPlates.join("/") || "none"}` })
     } else {
       vehicleContext = formatOwnVehicleStatus(outcome, { focusPlate })
+      statusReply = formatVehicleStatusForCustomer(outcome, { focusPlate })
       if (outcome.kind === "ok" && outcome.soft) {
         logAudit({ ...auditActor, category: "flag", action: "messenger status: soft-matched via own inquiry", target: `psid=${senderId} jobs=${jobPlates.join("/") || "none"}` })
       }
@@ -383,7 +389,7 @@ async function handleInboundMessage(
     quickReplyPayload === "report" ||
     REPORT_PATTERNS.some((re) => re.test(messageBody))
 
-  let reply: string | null = null
+  let reply: string | null = statusReply
   let escalate = humanRequested || reportIntent || existingBookingIntent
   let escalateReason: string | null = humanRequested
     ? "customer asked to speak with a human"
@@ -407,14 +413,17 @@ async function handleInboundMessage(
     system_prompt = loadedPrompt
     knowledge = loadedKnowledge
 
-    const result = await generateChatbotReply({
-      message: messageBody,
-      history,
-      settings,
-      system_prompt,
-      knowledge,
-      vehicleContext,
-    })
+    // A deterministic status answer owns the reply — skip Gemini entirely.
+    const result = statusReply
+      ? { reply: statusReply, escalate: false, reason: null, violation: "none" as const, customer: null }
+      : await generateChatbotReply({
+          message: messageBody,
+          history,
+          settings,
+          system_prompt,
+          knowledge,
+          vehicleContext,
+        })
 
     reply = result.reply?.trim() || null
     escalate = result.escalate || humanRequested || reportIntent || existingBookingIntent
