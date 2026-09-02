@@ -30,6 +30,7 @@ export interface JobStatus {
  */
 export type OwnVehicleOutcome =
   | { kind: "not_linked" }
+  | { kind: "booked_no_active_job"; plate: string | null }
   | { kind: "ok"; jobs: JobStatus[]; soft?: boolean }
 
 export function normalizePlate(plate: string | null | undefined): string {
@@ -111,7 +112,11 @@ async function buildJobStatus(
 const JOB_SELECT = `id, status, scheduled_at, actual_start_at, expected_completion_at,
    customer_record_id, plate_number, contact_number,
    service:service_id(name),
-   customer:customer_record_id(full_name)`
+   customer:customer_record_id(full_name, plate_number, contact_number)`
+
+/** plate_number / contact_number of the customer_record a job is linked to. */
+const jobCustomer = (j: JobRow): { plate_number?: string | null; contact_number?: string | null } | null =>
+  (Array.isArray(j.customer) ? j.customer[0] : j.customer) ?? null
 
 /**
  * Resolves the live status of every vehicle a Messenger customer has in service,
@@ -193,7 +198,7 @@ async function resolveInquirySoftMatch(
 ): Promise<OwnVehicleOutcome | null> {
   const { data: inquiries } = await supabase
     .from("inquiry")
-    .select("extracted_plate, extracted_contact, escalated_at")
+    .select("inquiry_type, extracted_plate, extracted_contact, escalated_at")
     .eq("psid", psid)
     .order("escalated_at", { ascending: false })
     .limit(5)
@@ -201,6 +206,7 @@ async function resolveInquirySoftMatch(
   if (!inquiries?.length) return null
 
   const inqRows = inquiries as {
+    inquiry_type: string | null
     extracted_plate: string | null
     extracted_contact: string | null
   }[]
@@ -212,7 +218,14 @@ async function resolveInquirySoftMatch(
       .map((i) => normalizePhone(i.extracted_contact))
       .filter((p) => isPlausibleMobile(p))
   )
-  if (plateKeys.size === 0 && phoneKeys.size === 0) return null
+  const bookingPlate =
+    inqRows.find((i) => i.inquiry_type === "Booking" && (i.extracted_plate || i.extracted_contact))
+      ?.extracted_plate ?? null
+
+  if (plateKeys.size === 0 && phoneKeys.size === 0) {
+    console.log("[vehicle/soft-match]", { psid, inquiries: inqRows.length, result: "no-keys" })
+    return null
+  }
 
   const { data: activeJobs } = await supabase
     .from("job_order")
@@ -224,20 +237,43 @@ async function resolveInquirySoftMatch(
 
   const rows = (activeJobs ?? []) as unknown as JobRow[]
 
-  const plateMatches = rows.filter((j) => plateKeys.has(stripPlateKey(j.plate_number)))
+  // A job matches the customer's own booking either directly (its denormalised
+  // plate / phone) or via the customer_record it is linked to (the shape a job
+  // created by "picking a customer record" has).
+  const plateHit = (j: JobRow) =>
+    plateKeys.has(stripPlateKey(j.plate_number)) ||
+    plateKeys.has(stripPlateKey(jobCustomer(j)?.plate_number))
+  const phoneHit = (j: JobRow) =>
+    phoneKeys.size > 0 &&
+    (phoneKeys.has(normalizePhone(j.contact_number)) ||
+      phoneKeys.has(normalizePhone(jobCustomer(j)?.contact_number)))
+
+  const plateMatches = rows.filter(plateHit)
   // Prefer plate matches; only fall back to phone matches when no plate matched
   // (a mistyped phone in a past inquiry must not surface a stranger's vehicle).
-  let mine =
-    plateMatches.length > 0
-      ? plateMatches
-      : rows.filter(
-          (j) => phoneKeys.size > 0 && phoneKeys.has(normalizePhone(j.contact_number))
-        )
+  let mine = plateMatches.length > 0 ? plateMatches : rows.filter(phoneHit)
 
-  if (mine.length === 0) return null
   if (mine.length > MAX_JOBS_PER_PHONE) {
-    mine = rows.filter((j) => plateKeys.has(stripPlateKey(j.plate_number)))
-    if (mine.length === 0) return null
+    mine = rows.filter(plateHit)
+  }
+
+  console.log("[vehicle/soft-match]", {
+    psid,
+    inquiries: inqRows.length,
+    plateKeys: [...plateKeys],
+    phoneKeys: [...phoneKeys],
+    activeJobs: rows.length,
+    matched: mine.length,
+    result: mine.length > 0 ? "ok" : bookingPlate ? "booked_no_active_job" : "null",
+  })
+
+  if (mine.length === 0) {
+    // Booking on file but no active job yet — a friendly "not scheduled" reply
+    // beats sending a Messenger booker to the plate+phone verification wall.
+    if (bookingPlate !== null) {
+      return { kind: "booked_no_active_job", plate: normalizePlate(bookingPlate) || null }
+    }
+    return null
   }
 
   const jobs = await Promise.all(mine.map((j) => buildJobStatus(supabase, j, null)))
@@ -291,6 +327,15 @@ export function formatOwnVehicleStatus(
 ): string {
   if (opts?.plateMismatch) return MISMATCH_TEXT
   if (outcome.kind === "not_linked") return NOT_LINKED_TEXT
+  if (outcome.kind === "booked_no_active_job") {
+    const p = outcome.plate ? ` for plate ${outcome.plate}` : ""
+    return (
+      `The customer has a booking${p} on file but there is no active job order yet — ` +
+      "the work has not been scheduled or started. Tell them their booking has been " +
+      "received and our team will update them here once it is scheduled or work begins. " +
+      "Do NOT ask them to verify their identity and do NOT escalate."
+    )
+  }
 
   let jobs = outcome.jobs
   if (opts?.focusPlate) {

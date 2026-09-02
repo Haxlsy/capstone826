@@ -58,6 +58,7 @@ import {
   formatOwnVehicleStatus,
   assessLinkClaim,
   normalizePlate,
+  type OwnVehicleOutcome,
 } from "@/lib/messenger/vehicle"
 import { logAudit } from "@/hooks/audit-helpers"
 
@@ -345,7 +346,13 @@ async function handleInboundMessage(
   if (linkedVehicleContext) {
     vehicleContext = linkedVehicleContext
   } else if (statusIntent && !bookingIntent && !linkEscalation) {
-    const outcome = await resolveOwnVehicleStatus(senderId)
+    let outcome: OwnVehicleOutcome
+    try {
+      outcome = await resolveOwnVehicleStatus(senderId)
+    } catch (err) {
+      console.error("[webhook/facebook] vehicle status resolution failed:", err)
+      outcome = { kind: "not_linked" }
+    }
     const jobPlates = outcome.kind === "ok" ? outcome.jobs.map((j) => normalizePlate(j.plate)) : []
     const focusPlate = plateInMsg && jobPlates.includes(plateInMsg) ? plateInMsg : undefined
     const plateMismatch =
@@ -358,6 +365,9 @@ async function handleInboundMessage(
       vehicleContext = formatOwnVehicleStatus(outcome, { focusPlate })
       if (outcome.kind === "ok" && outcome.soft) {
         logAudit({ ...auditActor, category: "flag", action: "messenger status: soft-matched via own inquiry", target: `psid=${senderId} jobs=${jobPlates.join("/") || "none"}` })
+      }
+      if (outcome.kind === "booked_no_active_job") {
+        logAudit({ ...auditActor, category: "flag", action: "messenger status: booking on file, no active job", target: `psid=${senderId} plate=${outcome.plate ?? "?"}` })
       }
       if (outcome.kind === "not_linked") {
         logAudit({ ...auditActor, category: "flag", action: "messenger status: no linked customer record", target: `psid=${senderId}${plateInMsg ? ` requested_plate=${plateInMsg}` : ""}` })

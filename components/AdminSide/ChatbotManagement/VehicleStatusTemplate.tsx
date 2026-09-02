@@ -46,7 +46,7 @@ export default function VehicleStatusTemplate({ value, onChange, onSave, saved, 
         <div className="flex-1 flex flex-col gap-4">
           <div className="bg-blue-50 border border-blue-100 rounded-xl px-4 py-3 text-sm text-blue-700">
             This is the message the chatbot sends when a customer asks for their vehicle&apos;s service status.
-            Customize the wording, but keep the four required fields: Full Name, Plate Number, Contact Number, and Email.
+            Customize the wording, but keep the four required fields: Plate Number and Contact Number.
             If the chatbot language is set to <strong>Filipino</strong>, this message will be automatically translated.
           </div>
 
