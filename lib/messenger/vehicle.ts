@@ -128,104 +128,68 @@ const jobCustomer = (j: JobRow): { plate_number?: string | null; contact_number?
  * There is no plate-based path. A customer can never retrieve status for a
  * vehicle that is not tied to their psid / verified phone number.
  */
-export async function resolveOwnVehicleStatus(psid: string): Promise<OwnVehicleOutcome> {
-  const supabase = createAdminClient()
-
-  const { data: record } = await supabase
-    .from("customer_record")
-    .select("id, full_name, contact_number, plate_number, psid")
-    .eq("psid", psid)
-    .maybeSingle()
-
-  if (!record) {
-    // No linked customer_record yet — a customer who booked through Messenger
-    // has an inquiry on file (with the plate / phone they gave) but Sales has
-    // not recorded them yet. Soft-match their own inquiry against active jobs so
-    // they can check status without a verification step. Nothing is written.
-    const soft = await resolveInquirySoftMatch(supabase, psid)
-    return soft ?? { kind: "not_linked" }
-  }
-
-  const canonicalPhone = normalizePhone(record.contact_number)
-  const phoneKey = isPlausibleMobile(canonicalPhone) ? canonicalPhone : ""
-
-  // Active jobs are a small, bounded set for a single shop — pull them and match
-  // in JS against the person (own record id OR verified phone).
-  const { data: activeJobs } = await supabase
-    .from("job_order")
-    .select(JOB_SELECT)
-    .eq("is_archived", false)
-    .in("status", ACTIVE_JOB_STATUSES)
-    .order("created_at", { ascending: false })
-    .limit(200)
-
-  const rows = (activeJobs ?? []) as unknown as JobRow[]
-  let mine = rows.filter(
-    (j) =>
-      j.customer_record_id === record.id ||
-      (phoneKey !== "" && normalizePhone(j.contact_number) === phoneKey)
-  )
-
-  if (mine.length > MAX_JOBS_PER_PHONE) {
-    console.warn("[vehicle] too many active jobs share this phone — scoping to psid record only", {
-      psid,
-      recordId: record.id,
-      matched: mine.length,
-    })
-    mine = rows.filter((j) => j.customer_record_id === record.id)
-  }
-
-  const jobs = await Promise.all(
-    mine.map((j) => buildJobStatus(supabase, j, record.full_name ?? null))
-  )
-
-  return { kind: "ok", jobs }
-}
-
 const stripPlateKey = (s: string | null | undefined): string =>
   normalizePlate(s ?? "").replace(/[^A-Z0-9]/g, "")
 
-/**
- * Fallback identity resolution for a Messenger customer with no linked
- * customer_record: match the plate / phone they submitted in their OWN inquiry
- * rows against active job orders. Scoped entirely to this psid's inquiries;
- * nothing is written. Returns `null` when there is no confident match (caller
- * then falls back to the plate+phone verification ask).
- */
-async function resolveInquirySoftMatch(
-  supabase: ReturnType<typeof createAdminClient>,
-  psid: string
-): Promise<OwnVehicleOutcome | null> {
-  const { data: inquiries } = await supabase
-    .from("inquiry")
-    .select("inquiry_type, extracted_plate, extracted_contact, escalated_at")
-    .eq("psid", psid)
-    .order("escalated_at", { ascending: false })
-    .limit(5)
+export async function resolveOwnVehicleStatus(psid: string): Promise<OwnVehicleOutcome> {
+  const supabase = createAdminClient()
 
-  if (!inquiries?.length) return null
+  // Every identity signal this psid owns: a customer_record linked to the psid
+  // (set when Sales records the inquiry) AND the plate / phone the customer gave
+  // in their own Messenger inquiries. A psid with ANY of these has "booked
+  // through Messenger" and must never hit the plate+phone verification wall —
+  // that ask is only for a genuine stranger (no record, no inquiry).
+  const [{ data: record }, { data: inquiries }] = await Promise.all([
+    supabase
+      .from("customer_record")
+      .select("id, full_name, contact_number, plate_number, psid")
+      .eq("psid", psid)
+      .maybeSingle(),
+    supabase
+      .from("inquiry")
+      .select("inquiry_type, extracted_plate, extracted_contact, escalated_at")
+      .eq("psid", psid)
+      .order("escalated_at", { ascending: false })
+      .limit(5),
+  ])
 
-  const inqRows = inquiries as {
+  const inqRows = (inquiries ?? []) as {
     inquiry_type: string | null
     extracted_plate: string | null
     extracted_contact: string | null
   }[]
-  const plateKeys = new Set(
-    inqRows.map((i) => stripPlateKey(i.extracted_plate)).filter(Boolean)
-  )
-  const phoneKeys = new Set(
-    inqRows
-      .map((i) => normalizePhone(i.extracted_contact))
-      .filter((p) => isPlausibleMobile(p))
-  )
-  const bookingPlate =
-    inqRows.find((i) => i.inquiry_type === "Booking" && (i.extracted_plate || i.extracted_contact))
-      ?.extracted_plate ?? null
 
-  if (plateKeys.size === 0 && phoneKeys.size === 0) {
-    console.log("[vehicle/soft-match]", { psid, inquiries: inqRows.length, result: "no-keys" })
-    return null
+  const plateKeys = new Set<string>()       // record + inquiry plates — strong signal
+  const verifiedPhones = new Set<string>()  // the linked record's phone — strong
+  const softPhones = new Set<string>()      // inquiry-only phones — fallback match only
+  const recordIds = new Set<string>()
+  const addPlate = (p: string | null | undefined) => {
+    const k = stripPlateKey(p)
+    if (k) plateKeys.add(k)
   }
+  const addPhone = (set: Set<string>, p: string | null | undefined) => {
+    const k = normalizePhone(p)
+    if (isPlausibleMobile(k)) set.add(k)
+  }
+
+  if (record) {
+    recordIds.add(record.id)
+    addPlate(record.plate_number)
+    addPhone(verifiedPhones, record.contact_number)
+  }
+  for (const i of inqRows) {
+    addPlate(i.extracted_plate)
+    addPhone(softPhones, i.extracted_contact)
+  }
+
+  // Genuine stranger — nothing on file to identify them by → ask to verify.
+  if (recordIds.size === 0 && plateKeys.size === 0 && verifiedPhones.size === 0 && softPhones.size === 0) {
+    console.log("[vehicle/status]", { psid, record: Boolean(record), inquiries: inqRows.length, result: "not_linked" })
+    return { kind: "not_linked" }
+  }
+
+  const bookingPlate =
+    inqRows.find((i) => i.extracted_plate)?.extracted_plate ?? record?.plate_number ?? null
 
   const { data: activeJobs } = await supabase
     .from("job_order")
@@ -237,47 +201,51 @@ async function resolveInquirySoftMatch(
 
   const rows = (activeJobs ?? []) as unknown as JobRow[]
 
-  // A job matches the customer's own booking either directly (its denormalised
-  // plate / phone) or via the customer_record it is linked to (the shape a job
-  // created by "picking a customer record" has).
+  // A job is the customer's when it is linked to their recorded customer_record,
+  // its plate matches (its own denormalised value OR the customer_record it is
+  // linked to), or it shares the record's verified phone. An inquiry-only phone
+  // is a weaker signal — used only when nothing stronger matched.
+  const idHit = (j: JobRow) => j.customer_record_id != null && recordIds.has(j.customer_record_id)
   const plateHit = (j: JobRow) =>
     plateKeys.has(stripPlateKey(j.plate_number)) ||
     plateKeys.has(stripPlateKey(jobCustomer(j)?.plate_number))
-  const phoneHit = (j: JobRow) =>
-    phoneKeys.size > 0 &&
-    (phoneKeys.has(normalizePhone(j.contact_number)) ||
-      phoneKeys.has(normalizePhone(jobCustomer(j)?.contact_number)))
+  const phoneIn = (set: Set<string>, j: JobRow) =>
+    set.size > 0 &&
+    (set.has(normalizePhone(j.contact_number)) ||
+      set.has(normalizePhone(jobCustomer(j)?.contact_number)))
+  const strongHit = (j: JobRow) => idHit(j) || plateHit(j) || phoneIn(verifiedPhones, j)
 
-  const plateMatches = rows.filter(plateHit)
-  // Prefer plate matches; only fall back to phone matches when no plate matched
-  // (a mistyped phone in a past inquiry must not surface a stranger's vehicle).
-  let mine = plateMatches.length > 0 ? plateMatches : rows.filter(phoneHit)
-
+  let mine = rows.filter(strongHit)
+  if (mine.length === 0) mine = rows.filter((j) => phoneIn(softPhones, j))
   if (mine.length > MAX_JOBS_PER_PHONE) {
-    mine = rows.filter(plateHit)
+    mine = rows.filter((j) => idHit(j) || plateHit(j))
   }
 
-  console.log("[vehicle/soft-match]", {
+  console.log("[vehicle/status]", {
     psid,
+    record: Boolean(record),
     inquiries: inqRows.length,
     plateKeys: [...plateKeys],
-    phoneKeys: [...phoneKeys],
+    verifiedPhones: [...verifiedPhones],
+    softPhones: [...softPhones],
     activeJobs: rows.length,
     matched: mine.length,
-    result: mine.length > 0 ? "ok" : bookingPlate ? "booked_no_active_job" : "null",
+    result: mine.length > 0 ? "ok" : record ? "ok-empty" : "booked_no_active_job",
   })
 
   if (mine.length === 0) {
-    // Booking on file but no active job yet — a friendly "not scheduled" reply
-    // beats sending a Messenger booker to the plate+phone verification wall.
-    if (bookingPlate !== null) {
-      return { kind: "booked_no_active_job", plate: normalizePlate(bookingPlate) || null }
-    }
-    return null
+    // No job matched. A recorded customer with nothing in service → the existing
+    // "no active job" message. A psid we only know from their inquiry → the
+    // friendly "booking received, not scheduled yet" reply. Neither asks them to
+    // verify their identity.
+    if (record) return { kind: "ok", jobs: [] }
+    return { kind: "booked_no_active_job", plate: bookingPlate ? normalizePlate(bookingPlate) || null : null }
   }
 
-  const jobs = await Promise.all(mine.map((j) => buildJobStatus(supabase, j, null)))
-  return { kind: "ok", jobs, soft: true }
+  const jobs = await Promise.all(
+    mine.map((j) => buildJobStatus(supabase, j, record?.full_name ?? null))
+  )
+  return record ? { kind: "ok", jobs } : { kind: "ok", jobs, soft: true }
 }
 
 const MISMATCH_TEXT =
