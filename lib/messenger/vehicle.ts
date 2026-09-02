@@ -358,7 +358,7 @@ export function formatVehicleStatusForCustomer(
   }
 
   const one = (j: JobStatus): string => {
-    const lines = [`🚗 Plate ${j.plate}`, `Status: ${j.status}`]
+    const lines = [`Plate: ${j.plate}`, `Status: ${j.status}`]
     if (j.serviceName) lines.push(`Service: ${j.serviceName}`)
     if (j.totalStages > 0) {
       lines.push(
@@ -366,7 +366,7 @@ export function formatVehicleStatusForCustomer(
           (j.currentStage ? ` (currently: ${j.currentStage})` : "")
       )
     }
-    if (j.expectedCompletionAt) lines.push(`Estimated ready: ${fmtDateTime(j.expectedCompletionAt)}`)
+    if (j.expectedCompletionAt) lines.push(`Estimated Completion: ${fmtDateTime(j.expectedCompletionAt)}`)
     return lines.join("\n")
   }
 
