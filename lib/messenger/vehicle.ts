@@ -118,18 +118,24 @@ const JOB_SELECT = `id, status, scheduled_at, actual_start_at, expected_completi
 const jobCustomer = (j: JobRow): { plate_number?: string | null; contact_number?: string | null } | null =>
   (Array.isArray(j.customer) ? j.customer[0] : j.customer) ?? null
 
-/**
- * Resolves the live status of every vehicle a Messenger customer has in service,
- * scoped strictly by their psid:
- *
- *   psid → customer_record → verified contact_number → all active job_orders
- *          for that person (own record + any record/job sharing the phone)
- *
- * There is no plate-based path. A customer can never retrieve status for a
- * vehicle that is not tied to their psid / verified phone number.
- */
 const stripPlateKey = (s: string | null | undefined): string =>
   normalizePlate(s ?? "").replace(/[^A-Z0-9]/g, "")
+
+/**
+ * Resolves the live status of every vehicle a Messenger customer has in service.
+ * Identity is resolved from the psid, in priority order:
+ *
+ *   1. The customer_record CURRENTLY linked to the psid (Sales links this after
+ *      verifying a walk-in). Its jobs = jobs under that record, under its plate,
+ *      or sharing its verified phone (a 2nd car on a separate record). The psid's
+ *      inquiry history is ignored — a record the psid used to be linked to must
+ *      not leak.
+ *   2. Otherwise, the psid's own UNHANDLED Messenger inquiries (status not yet
+ *      `recorded`/`resolved`) — the grace window for a booker Sales hasn't
+ *      recorded yet. A handled inquiry no longer confers identity.
+ *
+ * `not_linked` (→ verification ask) only when neither applies.
+ */
 
 export async function resolveOwnVehicleStatus(psid: string): Promise<OwnVehicleOutcome> {
   const supabase = createAdminClient()
@@ -147,7 +153,7 @@ export async function resolveOwnVehicleStatus(psid: string): Promise<OwnVehicleO
       .maybeSingle(),
     supabase
       .from("inquiry")
-      .select("inquiry_type, extracted_plate, extracted_contact, escalated_at")
+      .select("inquiry_type, status, extracted_plate, extracted_contact, escalated_at")
       .eq("psid", psid)
       .order("escalated_at", { ascending: false })
       .limit(5),
@@ -155,9 +161,14 @@ export async function resolveOwnVehicleStatus(psid: string): Promise<OwnVehicleO
 
   const inqRows = (inquiries ?? []) as {
     inquiry_type: string | null
+    status: string | null
     extracted_plate: string | null
     extracted_contact: string | null
   }[]
+  // Only inquiries Sales has NOT yet processed confer identity. Once an inquiry
+  // is recorded/resolved, the psid's identity is whatever customer_record it is
+  // (or is not) linked to.
+  const softInq = inqRows.filter((i) => i.status !== "recorded" && i.status !== "resolved")
 
   const plateKeys = new Set<string>()       // record + inquiry plates — strong signal
   const verifiedPhones = new Set<string>()  // the linked record's phone — strong
@@ -173,23 +184,26 @@ export async function resolveOwnVehicleStatus(psid: string): Promise<OwnVehicleO
   }
 
   if (record) {
+    // A linked psid IS its currently-linked record. Its inquiry history — which
+    // may name a record it used to be linked to — is deliberately ignored.
     recordIds.add(record.id)
     addPlate(record.plate_number)
     addPhone(verifiedPhones, record.contact_number)
-  }
-  for (const i of inqRows) {
-    addPlate(i.extracted_plate)
-    addPhone(softPhones, i.extracted_contact)
+  } else {
+    for (const i of softInq) {
+      addPlate(i.extracted_plate)
+      addPhone(softPhones, i.extracted_contact)
+    }
   }
 
   // Genuine stranger — nothing on file to identify them by → ask to verify.
   if (recordIds.size === 0 && plateKeys.size === 0 && verifiedPhones.size === 0 && softPhones.size === 0) {
-    console.log("[vehicle/status]", { psid, record: Boolean(record), inquiries: inqRows.length, result: "not_linked" })
+    console.log("[vehicle/status]", { psid, record: Boolean(record), inquiries: inqRows.length, softInquiries: softInq.length, result: "not_linked" })
     return { kind: "not_linked" }
   }
 
   const bookingPlate =
-    inqRows.find((i) => i.extracted_plate)?.extracted_plate ?? record?.plate_number ?? null
+    softInq.find((i) => i.extracted_plate)?.extracted_plate ?? record?.plate_number ?? null
 
   const { data: activeJobs } = await supabase
     .from("job_order")
@@ -225,6 +239,7 @@ export async function resolveOwnVehicleStatus(psid: string): Promise<OwnVehicleO
     psid,
     record: Boolean(record),
     inquiries: inqRows.length,
+    softInquiries: softInq.length,
     plateKeys: [...plateKeys],
     verifiedPhones: [...verifiedPhones],
     softPhones: [...softPhones],

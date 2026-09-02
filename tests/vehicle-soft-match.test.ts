@@ -133,3 +133,50 @@ describe("resolveOwnVehicleStatus — inquiry soft-match (Testing Note #3)", () 
     await expect(resolveOwnVehicleStatus("psid-noinfo")).resolves.toEqual({ kind: "not_linked" })
   })
 })
+
+describe("resolveOwnVehicleStatus — re-link / unlink isolation", () => {
+  it("after a psid is re-linked, only the CURRENT record's job shows (not the old one via a stale recorded inquiry)", async () => {
+    // psid now linked to the "Walk In" record (XYZ 1234). Its history still has a
+    // recorded Booking inquiry for ABC 826 (the record it used to be linked to).
+    store.responses = {
+      customer_record: [{ data: { id: "walkin", full_name: "Walk In", contact_number: "09121231234", plate_number: "XYZ 1234" }, error: null }],
+      inquiry: [{ data: [{ inquiry_type: "Booking", status: "recorded", extracted_plate: "ABC 826", extracted_contact: "09664015109" }], error: null }],
+      job_order: [{ data: [
+        job({ id: "jNew", plate_number: "XYZ 1234", contact_number: "09121231234", customer_record_id: "walkin", customer: { full_name: "Walk In", plate_number: "XYZ 1234", contact_number: "09121231234" } }),
+        job({ id: "jOld", plate_number: "ABC 826", contact_number: "09664015109", customer_record_id: "john", customer: { full_name: "John", plate_number: "ABC 826", contact_number: "09664015109" } }),
+      ], error: null }],
+      job_stage_progress: [stages()],
+    }
+    const out = await resolveOwnVehicleStatus("psid-relinked")
+    expect(out.kind).toBe("ok")
+    if (out.kind === "ok") {
+      expect(out.jobs.map((j) => j.plate)).toEqual(["XYZ 1234"])
+    }
+  })
+
+  it("after Sales unlinks the psid, a leftover recorded inquiry does NOT grant status", async () => {
+    store.responses = {
+      customer_record: [{ data: null, error: null }],
+      inquiry: [{ data: [{ inquiry_type: "Booking", status: "recorded", extracted_plate: "ABC 826", extracted_contact: "09664015109" }], error: null }],
+      job_order: [{ data: [job({ plate_number: "ABC 826", contact_number: "09664015109", customer_record_id: "john" })], error: null }],
+    }
+    await expect(resolveOwnVehicleStatus("psid-unlinked")).resolves.toEqual({ kind: "not_linked" })
+  })
+
+  it("a linked record still ignores an unrelated OPEN inquiry plate", async () => {
+    store.responses = {
+      customer_record: [{ data: { id: "r1", full_name: "Jane", contact_number: "09171234567", plate_number: "ABC 123" }, error: null }],
+      inquiry: [{ data: [{ inquiry_type: "Booking", status: "open", extracted_plate: "QQQ 000", extracted_contact: "09990000000" }], error: null }],
+      job_order: [{ data: [
+        job({ id: "mine", plate_number: "ABC 123", customer_record_id: "r1" }),
+        job({ id: "other", plate_number: "QQQ 000", contact_number: "09990000000", customer_record_id: "z9" }),
+      ], error: null }],
+      job_stage_progress: [stages()],
+    }
+    const out = await resolveOwnVehicleStatus("psid-linked")
+    expect(out.kind).toBe("ok")
+    if (out.kind === "ok") {
+      expect(out.jobs.map((j) => j.plate)).toEqual(["ABC 123"])
+    }
+  })
+})
