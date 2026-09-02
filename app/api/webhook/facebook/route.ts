@@ -31,6 +31,7 @@ import {
   buildBookingSummary,
   buildMissingFieldsPrompt,
   mergeBookingDetails,
+  extractDetailTokens,
   MISSING_FIELDS_PROMPT_LEAD,
   nextViolationState,
   hasExistingBookingIntent,
@@ -601,6 +602,11 @@ async function handleInboundMessage(
     // pass that omits a field (common on a bare "yes") can no longer regress the
     // flow — a detail once given stays until the customer changes it.
     extracted = mergeBookingDetails(booking_draft, extracted)
+
+    // Gemini (lite model) often omits phone/email/plate even from a clean
+    // comma-separated list — take them straight from the customer's text; a
+    // literal match beats a guess and overrides a mis-read value.
+    extracted = mergeBookingDetails(extracted, extractDetailTokens(messageBody))
     let missing = missingBookingFields(extracted)
 
     // Refresh the extraction with a focused second pass before deciding the
@@ -836,7 +842,9 @@ async function handleInboundMessage(
           bookingContext,
         })
         if (flowResult.reply?.trim()) reply = flowResult.reply.trim()
-        if (hasExtractedDetails(flowResult.customer)) extracted = flowResult.customer
+        // Merge, never replace — a partial re-gen must not drop fields already
+        // collected on the draft (would corrupt the inquiry handed to Sales).
+        extracted = mergeBookingDetails(extracted, flowResult.customer)
       } catch (err) {
         console.error("[webhook/facebook] booking-flow reply failed:", err)
       }
@@ -890,13 +898,17 @@ async function handleInboundMessage(
         system_prompt,
         knowledge,
       })
-      if (hasExtractedDetails(fallback)) extracted = fallback
+      extracted = mergeBookingDetails(extracted, fallback)
     } catch (err) {
       console.error("[webhook/facebook] extraction fallback failed:", err)
     }
   }
 
   if (escalate) {
+    // A booking escalation must never hand Sales fewer fields than the customer
+    // has already given — restore anything a late Gemini pass dropped.
+    if (bookingFlow) extracted = mergeBookingDetails(booking_draft, extracted)
+
     await setConversationStatus(conversation_id, "pending")
 
     // Inquiry record (only on escalation) so Inquiry Management keeps working.

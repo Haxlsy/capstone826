@@ -1,5 +1,6 @@
 import { GoogleGenAI } from "@google/genai"
 import { createAdminClient } from "@/lib/supabase/admin"
+import { normalizePhone } from "@/lib/phone"
 import {
   type ChatbotSettings,
   type ChatMessage,
@@ -427,6 +428,37 @@ export function mergeBookingDetails(
     plate_number:   pick(incoming?.plate_number,   prev?.plate_number),
     vehicle_unit:   pick(incoming?.vehicle_unit,   prev?.vehicle_unit),
     email:          pick(incoming?.email,          prev?.email),
+  }
+}
+
+// Deterministic booking-token patterns — mirror the intent-detection patterns in
+// app/api/webhook/facebook/route.ts (PLATE_PATTERN / PHONE_PATTERN / EMAIL_PATTERN).
+// Used to fill contact/email/plate straight from the customer's own text when
+// Gemini's extraction misses them.
+const TOKEN_PLATE = /\b[A-Z]{1,4}\s?-?\s?\d{1,6}(?:\s?-\s?[A-Z]{1,2})?\b/gi
+const TOKEN_PHONE = /(?:\+?63|0)\s?9\d{2}[\s.-]?\d{3}[\s.-]?\d{4}\b/g
+const TOKEN_EMAIL = /\b[\w.+-]+@[\w-]+\.[\w.]+\b/g
+
+const lastMatch = (text: string, re: RegExp): string | null => {
+  const m = text.match(re)
+  return m && m.length ? m[m.length - 1].trim() : null // last wins — a correction supersedes
+}
+
+/**
+ * Pulls the unambiguous booking tokens (contact number, email, plate) straight
+ * out of a customer message. `gemini-3.1-flash-lite-preview` routinely omits
+ * these even from a clean comma-separated list; a regex on the customer's own
+ * words does not. Fields with no match come back null. Name and vehicle can't be
+ * pattern-matched, so they stay null here and rely on the model.
+ */
+export function extractDetailTokens(text: string): CustomerDetails {
+  const phone = lastMatch(text, TOKEN_PHONE)
+  return {
+    full_name:      null,
+    contact_number: phone ? normalizePhone(phone) : null,
+    plate_number:   lastMatch(text, TOKEN_PLATE),
+    vehicle_unit:   null,
+    email:          lastMatch(text, TOKEN_EMAIL),
   }
 }
 
