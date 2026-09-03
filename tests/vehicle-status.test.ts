@@ -37,6 +37,7 @@ import {
   normalizePhone,
   formatOwnVehicleStatus,
   formatVehicleStatusForCustomer,
+  buildLinkVerificationPrompt,
   resolveOwnVehicleStatus,
   assessLinkClaim,
   type OwnVehicleOutcome,
@@ -81,8 +82,12 @@ describe("formatOwnVehicleStatus (pure rendering)", () => {
     expect(out).not.toContain("Status for plate")
   })
 
-  it("tells an unlinked customer no vehicle is registered", () => {
-    expect(formatOwnVehicleStatus({ kind: "not_linked" })).toContain("No vehicle is registered")
+  it("forbids the model from sharing status or faking a lookup when unlinked", () => {
+    const out = formatOwnVehicleStatus({ kind: "not_linked" })
+    expect(out).toMatch(/not linked to any customer record/i)
+    expect(out).toMatch(/Do NOT share any status/i)
+    expect(out).toMatch(/Do NOT claim to have checked/i)
+    expect(out).toMatch(/no such lookup was performed/i)
   })
 
   it("reports no active job for a linked customer with zero jobs", () => {
@@ -130,8 +135,42 @@ describe("formatVehicleStatusForCustomer (deterministic reply, no Gemini)", () =
     scheduledAt: null, expectedCompletionAt: null, ...over,
   })
 
-  it("returns null for not_linked (Gemini still asks to verify)", () => {
-    expect(formatVehicleStatusForCustomer({ kind: "not_linked" })).toBeNull()
+  it("returns the deterministic link ask for not_linked — never null", () => {
+    // Returning null used to hand the turn to Gemini, which then invented a
+    // lookup ("no active job order for plate XYZ-1234") that never ran.
+    const out = formatVehicleStatusForCustomer({ kind: "not_linked" })!
+    expect(out).toBe(buildLinkVerificationPrompt())
+    expect(out).toMatch(/isn't linked|not linked/i)
+    expect(out).toMatch(/plate number/i)
+    expect(out).toMatch(/phone number/i)
+    expect(out).toMatch(/sales/i)
+  })
+
+  it("never claims a lookup happened on not_linked", () => {
+    const out = formatVehicleStatusForCustomer({ kind: "not_linked" })!
+    expect(out).not.toMatch(/checked|searched|looked up|no active job order/i)
+  })
+
+  it("uses the admin's configured wording for not_linked", () => {
+    const notLinkedMessage = "Custom admin wording — send your plate and phone."
+    expect(formatVehicleStatusForCustomer({ kind: "not_linked" }, { notLinkedMessage }))
+      .toBe(notLinkedMessage)
+  })
+
+  it("falls back to the default when the configured wording is blank", () => {
+    for (const notLinkedMessage of ["", "  ", null, undefined]) {
+      expect(formatVehicleStatusForCustomer({ kind: "not_linked" }, { notLinkedMessage }))
+        .toBe(buildLinkVerificationPrompt())
+    }
+  })
+
+  it("ignores the configured wording for a linked customer's status", () => {
+    const notLinkedMessage = "SHOULD-NOT-APPEAR"
+    const withJob = formatVehicleStatusForCustomer({ kind: "ok", jobs: [j()] }, { notLinkedMessage })!
+    const noJob = formatVehicleStatusForCustomer({ kind: "ok", jobs: [] }, { notLinkedMessage })!
+    const booked = formatVehicleStatusForCustomer({ kind: "booked_no_active_job", plate: "ABC-826" }, { notLinkedMessage })!
+    for (const out of [withJob, noJob, booked]) expect(out).not.toContain(notLinkedMessage)
+    expect(withJob).toContain("ABC-826")
   })
 
   it("renders a single job with plate, status, service and progress", () => {

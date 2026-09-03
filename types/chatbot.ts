@@ -8,6 +8,20 @@ export const botPersonalitySchema = z.enum(["friendly", "formal", "casual"])
 export const botLanguageSchema = z.enum(["english", "filipino", "both"])
 
 /**
+ * Built-in wording for the "your account isn't linked" vehicle-status reply, used
+ * whenever `account_not_linked_message` is blank. Lives here — not in
+ * lib/messenger/vehicle.ts — because the admin UI is a client component and
+ * vehicle.ts pulls in the service-role Supabase client, which must never reach
+ * the browser bundle. vehicle.ts re-exports it for server-side callers.
+ */
+export const DEFAULT_NOT_LINKED_MESSAGE =
+  "Your Messenger account isn't linked to a customer record with us yet, so I can't pull up " +
+  "any active job for you.\n\n" +
+  "If you'd like to link it, please send your plate number and the phone number on your " +
+  "booking. Our Sales team will verify your details and link your account — after that I can " +
+  "give you your vehicle status here anytime."
+
+/**
  * Persisted chatbot settings. The admin page also stores a couple of
  * platform-level toggles (enable_ai_chatbot / enable_media_validation)
  * alongside this object in `chatbot_config.settings`; `.passthrough()`
@@ -24,7 +38,12 @@ export const chatbotSettingsSchema = z.object({
   notify_sales:            z.boolean(),
   language:                botLanguageSchema,
   escalation_rules:        z.array(z.string()).default([]),
-  vehicle_status_template: z.string().max(5000),
+  // Sent verbatim (no AI) when an unlinked Messenger account asks for vehicle
+  // status. Blank falls back to DEFAULT_NOT_LINKED_MESSAGE in lib/messenger/vehicle.ts.
+  // Replaces the old `vehicle_status_template`, which was injected into the system
+  // prompt for the model to "send" — it reworded it and invented lookup results.
+  // Any stored value for the old key is retained harmlessly by .passthrough().
+  account_not_linked_message: z.string().max(2000),
 }).passthrough()
 
 export type ChatbotSettings = z.infer<typeof chatbotSettingsSchema>
