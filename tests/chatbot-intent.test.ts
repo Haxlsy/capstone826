@@ -160,8 +160,22 @@ describe("buildSystemPrompt — booking guardrails (Testing Notes #8, #10)", () 
     notify_sales: true,
     language: "english",
     escalation_rules: ["speak_to_human"],
-    vehicle_status_template: "Please share your plate number.",
+    account_not_linked_message: "Please share your plate number.",
   }
+
+  it("never asks the model to send a status message — the system sends it", () => {
+    const prompt = buildSystemPrompt(settings)
+    // The admin's wording is sent verbatim by the system; it must never reach the
+    // prompt, or the model starts rewriting it and inventing lookups around it.
+    expect(prompt).not.toContain("Please share your plate number.")
+    // The old prompt told the model to "use the vehicle-status lookup tool" — a
+    // tool that does not exist, which is what it hallucinated results from. The
+    // new prompt says the opposite ("You have no lookup tool"), so assert on the
+    // instruction, not the bare phrase.
+    expect(prompt).not.toMatch(/use the .{0,20}lookup tool/i)
+    expect(prompt).toMatch(/You have no lookup tool/i)
+    expect(prompt).toMatch(/NEVER claim to have checked/i)
+  })
 
   it("no longer tells the model to send the booking message verbatim", () => {
     expect(buildSystemPrompt(settings)).not.toContain("Send them this message exactly")

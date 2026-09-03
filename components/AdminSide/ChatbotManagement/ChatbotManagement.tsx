@@ -14,21 +14,11 @@ import {
   type KBEntry,
   KB_CATEGORIES,
   KB_CATEGORY_COLORS,
+  DEFAULT_NOT_LINKED_MESSAGE,
 } from "@/types/chatbot"
 
 type Tab = "settings" | "knowledge_base" | "vehicle_template"
 type Personality = "friendly" | "formal" | "casual"
-
-const DEFAULT_VEHICLE_TEMPLATE = `Hello! Thank you for reaching out to 826 Auto Care. 🚗
-
-To check the status of your vehicle, please provide the following details:
-
-1. Full Name: [Your Full Name]
-2. Plate Number: [e.g., ABC-1234]
-3. Contact Number: [e.g., 09XX-XXX-XXXX]
-4. Email Address: [Your Email]
-
-Once we have your information, we'll look up your vehicle's current service status right away!`
 
 // The admin page also owns two platform-level master toggles that live in the
 // persisted settings JSON (kept by chatbotSettingsSchema's passthrough).
@@ -49,7 +39,9 @@ const DEFAULT_SETTINGS: AdminChatbotSettings = {
   notify_sales:            true,
   language:                "english",
   escalation_rules:        ["speak_to_human", "complaint", "unanswerable"],
-  vehicle_status_template: DEFAULT_VEHICLE_TEMPLATE,
+  // Seeded from the message the system actually sends, so the editor opens
+  // showing exactly what customers receive today.
+  account_not_linked_message: DEFAULT_NOT_LINKED_MESSAGE,
 }
 
 const ESCALATION_OPTIONS = [
@@ -215,7 +207,7 @@ export default function ChatbotManagement() {
       <div className="flex border-b border-gray-200 gap-1">
         <TabButton active={activeTab === "settings"} onClick={() => setActiveTab("settings")} icon={<Settings className="w-4 h-4" />} label="Chatbot Settings" />
         <TabButton active={activeTab === "knowledge_base"} onClick={() => setActiveTab("knowledge_base")} icon={<BookOpen className="w-4 h-4" />} label="Knowledge Base" />
-        <TabButton active={activeTab === "vehicle_template"} onClick={() => setActiveTab("vehicle_template")} icon={<Car className="w-4 h-4" />} label="Vehicle Status Template" />
+        <TabButton active={activeTab === "vehicle_template"} onClick={() => setActiveTab("vehicle_template")} icon={<Car className="w-4 h-4" />} label="Vehicle Status" />
       </div>
 
       {/* Settings Tab */}
@@ -392,8 +384,8 @@ export default function ChatbotManagement() {
       {/* Vehicle Status Template Tab */}
       {activeTab === "vehicle_template" && (
         <VehicleStatusTemplate
-          value={settings.vehicle_status_template}
-          onChange={(v) => patch("vehicle_status_template", v)}
+          value={settings.account_not_linked_message}
+          onChange={(v) => patch("account_not_linked_message", v)}
           onSave={handleSave}
           saved={settingsSaved}
           saving={settingsDirty}

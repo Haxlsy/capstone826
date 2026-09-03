@@ -3,8 +3,10 @@ import { computeExpectedCompletion } from "@/lib/job-estimates"
 import { fmtDateTime } from "@/lib/time-display"
 import { ACTIVE_JOB_STATUSES } from "@/lib/messenger/booking"
 import { normalizePhone, isPlausibleMobile } from "@/lib/phone"
+import { DEFAULT_NOT_LINKED_MESSAGE } from "@/types/chatbot"
 
 export { normalizePhone } from "@/lib/phone"
+export { DEFAULT_NOT_LINKED_MESSAGE } from "@/types/chatbot"
 
 export interface JobStatus {
   plate:               string
@@ -270,9 +272,52 @@ const MISMATCH_TEXT =
   "and offer to connect them with our team if they believe this is a mistake."
 
 const NOT_LINKED_TEXT =
-  "No vehicle is registered to this customer's Messenger account. Do NOT share any status. " +
-  "Offer to verify their booking: ask for their plate number and the phone number on their booking, " +
-  "or offer to connect them with our team."
+  "This Messenger account is not linked to any customer record, so NOTHING was looked up. " +
+  "Do NOT share any status. Do NOT claim to have checked, searched, or reviewed our system. " +
+  "Do NOT state whether any plate number or phone number has a job order — no such lookup was " +
+  "performed. Explain only that their Messenger account is not yet linked to a customer record, " +
+  "ask for their plate number and the phone number on their booking so our Sales team can verify " +
+  "and link it, or offer to connect them with our team."
+
+/**
+ * The customer-facing account-linking ask. Sent verbatim (no Gemini) whenever an
+ * unlinked psid requests vehicle status, and again on a failed attempt:
+ *
+ *   `unreadable` — the reply carried no readable plate + phone pair.
+ *   `no_match`   — both parsed fine, but no customer record matches them.
+ *
+ * `custom` is the admin's configured wording for the FIRST ask; blank or missing
+ * falls back to the built-in default, so a cleared settings box can never send an
+ * empty message. The retry variants are mechanical and stay built-in.
+ *
+ * It must never say a plate "has no job order": identity comes from the psid, and
+ * for an unlinked account no plate or phone lookup is ever performed. The only
+ * honest statement is that the account is not linked / the details do not match a
+ * record.
+ */
+export function buildLinkVerificationPrompt(opts?: {
+  retry?: "unreadable" | "no_match"
+  custom?: string | null
+}): string {
+  if (opts?.retry === "unreadable") {
+    return (
+      "I couldn't read a plate number and phone number in that message. " +
+      "Please send them together in this format:\n\n" +
+      "ABC-1234, 0917 555 0101\n\n" +
+      "Use the phone number on your booking — our Sales team will verify it and link your account."
+    )
+  }
+
+  if (opts?.retry === "no_match") {
+    return (
+      "Those details don't match a customer record on file. Please double-check your plate " +
+      "number and the phone number you used when booking, then send them again like this:\n\n" +
+      "ABC-1234, 0917 555 0101"
+    )
+  }
+
+  return opts?.custom?.trim() || DEFAULT_NOT_LINKED_MESSAGE
+}
 
 const NO_ACTIVE_JOB_TEXT =
   "This customer has no vehicle currently in service. Tell them there is no active job order under their account. " +
@@ -340,15 +385,20 @@ export function formatOwnVehicleStatus(
 /**
  * Renders the status outcome as a customer-facing message sent DIRECTLY to
  * Messenger (no Gemini). The model was unreliable here — it kept sending the
- * "please provide your details" template even when the status was already known.
- * Returns `null` for outcomes the model must still handle in prose
- * (`not_linked` → ask to verify; `plateMismatch` → refuse).
+ * "please provide your details" template even when the status was already known,
+ * and on `not_linked` it invented lookups it never ran ("no active job order for
+ * plate XYZ-1234"). Every outcome is now deterministic; only `plateMismatch` is
+ * still handled by the model in prose, via `formatOwnVehicleStatus`.
  */
 export function formatVehicleStatusForCustomer(
   outcome: OwnVehicleOutcome,
-  opts?: { focusPlate?: string }
+  opts?: { focusPlate?: string; notLinkedMessage?: string | null }
 ): string | null {
-  if (outcome.kind === "not_linked") return null
+  // The admin's configured wording applies ONLY here — a linked customer's job
+  // status is assembled from live data and is never affected by the setting.
+  if (outcome.kind === "not_linked") {
+    return buildLinkVerificationPrompt({ custom: opts?.notLinkedMessage })
+  }
 
   if (outcome.kind === "booked_no_active_job") {
     const p = outcome.plate ? ` for plate ${outcome.plate}` : ""
