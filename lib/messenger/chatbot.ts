@@ -1,7 +1,7 @@
 import { GoogleGenAI } from "@google/genai"
 import { createAdminClient } from "@/lib/supabase/admin"
 import { normalizePhone } from "@/lib/phone"
-import { TOKEN_PLATE, TOKEN_PHONE, TOKEN_EMAIL } from "@/lib/messenger/patterns"
+import { TOKEN_PLATE, TOKEN_PHONE, TOKEN_EMAIL, PLATE_PATTERN } from "@/lib/messenger/patterns"
 import {
   DEFAULT_NOT_LINKED_MESSAGE,
   type ChatbotSettings,
@@ -329,6 +329,22 @@ export function hasExistingBookingIntent(message: string): boolean {
 export function hasStatusIntent(message: string): boolean {
   const normalized = message.toLowerCase()
   return STATUS_INTENT_PATTERNS.some((re) => re.test(normalized))
+}
+
+/**
+ * True when, given a conversation ALREADY flagged `is_vehicle_inquiry` from an
+ * earlier turn, this message plausibly continues that status inquiry — the
+ * customer narrowing down which vehicle by sending a bare plate number, without
+ * repeating "status".
+ *
+ * Deliberately narrower than `hasStatusIntent`. Without this check, the webhook
+ * treated ANY non-booking message as a status continuation as long as the sticky
+ * flag was set, and the flag was never cleared on its own — so a plain "thank
+ * you" sent after a status reply re-triggered the exact same status block again,
+ * forever, on every later message. This is the fix for that bug.
+ */
+export function continuesStatusInquiry(message: string): boolean {
+  return PLATE_PATTERN.test(message)
 }
 
 const CONFIRMATION_PATTERNS = [

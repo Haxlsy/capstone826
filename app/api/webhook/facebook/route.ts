@@ -24,6 +24,7 @@ import {
   requestedHuman,
   hasBookingIntent,
   hasStatusIntent,
+  continuesStatusInquiry,
   missingBookingFields,
   confirmRequested,
   isPureConfirmation,
@@ -327,9 +328,17 @@ async function handleInboundMessage(
   // "update", "progress") must NOT flip the conversation into a status lookup —
   // that would clear is_booking_flow and drop the confirmation guardrail. Only an
   // explicit "Vehicle Status" quick-reply switches the customer out mid-booking.
+  //
+  // `is_vehicle_inquiry` alone is NOT enough to re-enter the status flow — it
+  // also requires `continuesStatusInquiry` (a plate number in this message).
+  // Otherwise ANY later message ("thank you", small talk, a new question) would
+  // count as a status continuation, since the flag was never cleared once set —
+  // that bug re-sent the exact same status reply after every single message the
+  // customer sent afterward, including a plain "thanks".
   const statusIntent =
     quickReplyPayload === "status" ||
-    ((hasStatusIntent(messageBody) || (!bookingIntent && is_vehicle_inquiry)) &&
+    ((hasStatusIntent(messageBody) ||
+      (!bookingIntent && is_vehicle_inquiry && continuesStatusInquiry(messageBody))) &&
       !is_booking_flow &&
       !awaiting_confirmation)
 
@@ -356,6 +365,12 @@ async function handleInboundMessage(
       } else if (bookingIntent || signal) {
         await setVehicleInquiry(conversation_id, false)
         await setBookingFlow(conversation_id, true)
+      } else if (is_vehicle_inquiry) {
+        // The status topic was answered and this message carries no
+        // continuation signal (see `continuesStatusInquiry` above) — the
+        // customer has moved on. Clear the flag now rather than leaving it to
+        // linger indefinitely; nothing else ever clears it on its own.
+        await setVehicleInquiry(conversation_id, false)
       }
     } catch (err) {
       console.error("[webhook/facebook] flow persistence failed:", err)
