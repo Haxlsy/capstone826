@@ -85,6 +85,7 @@ export async function PATCH(
       updatePayload.conflict_pending      = false;
       updatePayload.awaiting_link_verification = false;
       updatePayload.link_attempts         = 0;
+      updatePayload.link_conflict_pending = false;
     }
 
     // Releasing a human-owned thread back to the bot is the same event as Sales

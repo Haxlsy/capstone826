@@ -119,10 +119,24 @@ describe("buildLinkVerificationPrompt", () => {
     expect(out).toMatch(/couldn't read/i)
   })
 
-  it("says the details did not match when they parsed but found nothing", () => {
-    const out = buildLinkVerificationPrompt({ retry: "no_match" })
-    expect(out).toMatch(/don't match/i)
+  it("asks the customer to re-check, and offers Sales, when verification fails", () => {
+    const out = buildLinkVerificationPrompt({ retry: "unverified" })
+    expect(out).toMatch(/couldn't verify/i)
     expect(out).toContain("ABC-1234, 0917 555 0101")
+    expect(out).toMatch(/if you're sure/i)
+  })
+
+  it("never reveals WHY verification failed — no plate enumeration oracle", () => {
+    // The same message is sent whether the plate does not exist, its phone does
+    // not match, or it is already linked to somebody else's Messenger account.
+    // Any wording that separated those cases would let an attacker probe plate
+    // numbers and learn which ones are registered.
+    const out = buildLinkVerificationPrompt({ retry: "unverified" })
+    expect(out).not.toMatch(
+      /already (?:linked|registered|claimed|taken)|another account|someone else|belongs to|different (?:account|customer)|impersonat/i
+    )
+    // Nor may it confirm the opposite — that no such record exists.
+    expect(out).not.toMatch(/no (?:such )?(?:record|account|customer)|not found|doesn't exist/i)
   })
 
   it("sends the admin's wording verbatim when one is configured", () => {
@@ -141,11 +155,11 @@ describe("buildLinkVerificationPrompt", () => {
   it("keeps the custom wording out of the retry messages", () => {
     const custom = "CUSTOM-ONLY-TEXT"
     expect(buildLinkVerificationPrompt({ retry: "unreadable", custom })).not.toContain(custom)
-    expect(buildLinkVerificationPrompt({ retry: "no_match", custom })).not.toContain(custom)
+    expect(buildLinkVerificationPrompt({ retry: "unverified", custom })).not.toContain(custom)
   })
 
   it("never claims a lookup was performed, in any variant", () => {
-    for (const opts of [undefined, { retry: "unreadable" as const }, { retry: "no_match" as const }]) {
+    for (const opts of [undefined, { retry: "unreadable" as const }, { retry: "unverified" as const }]) {
       expect(buildLinkVerificationPrompt(opts)).not.toMatch(
         /checked our system|searched|no active job order/i
       )

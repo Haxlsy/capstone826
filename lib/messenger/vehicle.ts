@@ -283,20 +283,27 @@ const NOT_LINKED_TEXT =
  * The customer-facing account-linking ask. Sent verbatim (no Gemini) whenever an
  * unlinked psid requests vehicle status, and again on a failed attempt:
  *
- *   `unreadable` — the reply carried no readable plate + phone pair.
- *   `no_match`   — both parsed fine, but no customer record matches them.
+ *   `unreadable`  — the reply carried no readable plate + phone pair.
+ *   `unverified`  — a plate + phone were read, but we could not confirm the
+ *                   customer owns them.
+ *
+ * `unverified` deliberately covers THREE different outcomes with ONE message: no
+ * such record, a record whose phone does not match, and a record already linked
+ * to a DIFFERENT Messenger account. Wording that distinguished them would be an
+ * enumeration oracle — anyone could probe plate numbers and learn which ones are
+ * registered purely from which reply came back. The message must therefore stay
+ * silent about why verification failed, and must never confirm or deny that a
+ * plate exists or belongs to somebody.
  *
  * `custom` is the admin's configured wording for the FIRST ask; blank or missing
  * falls back to the built-in default, so a cleared settings box can never send an
  * empty message. The retry variants are mechanical and stay built-in.
  *
  * It must never say a plate "has no job order": identity comes from the psid, and
- * for an unlinked account no plate or phone lookup is ever performed. The only
- * honest statement is that the account is not linked / the details do not match a
- * record.
+ * for an unlinked account no plate or phone lookup is ever performed.
  */
 export function buildLinkVerificationPrompt(opts?: {
-  retry?: "unreadable" | "no_match"
+  retry?: "unreadable" | "unverified"
   custom?: string | null
 }): string {
   if (opts?.retry === "unreadable") {
@@ -308,11 +315,12 @@ export function buildLinkVerificationPrompt(opts?: {
     )
   }
 
-  if (opts?.retry === "no_match") {
+  if (opts?.retry === "unverified") {
     return (
-      "Those details don't match a customer record on file. Please double-check your plate " +
+      "I couldn't verify those details against your account. Please double-check your plate " +
       "number and the phone number you used when booking, then send them again like this:\n\n" +
-      "ABC-1234, 0917 555 0101"
+      "ABC-1234, 0917 555 0101\n\n" +
+      "If you're sure they're correct, I'll pass this to our Sales team to verify for you."
     )
   }
 
