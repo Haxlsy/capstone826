@@ -117,12 +117,12 @@ export default function AdminAccountTable() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-xl font-bold text-gray-800">Admin Accounts</h1>
-          <p className="text-sm text-gray-400 mt-0.5">Manage Admin user accounts. Visible to Super Admin only.</p>
+          <h1 className="text-xl font-bold text-heading">Admin Accounts</h1>
+          <p className="text-sm text-muted mt-0.5">Manage Admin user accounts. Visible to Super Admin only.</p>
         </div>
         <button
           onClick={() => { setEditAccount(undefined); setModalOpen(true) }}
-          className="flex items-center gap-2 px-4 py-2.5 bg-gray-900 text-white text-sm font-medium rounded-xl hover:bg-gray-800 transition-colors"
+          className="flex items-center gap-2 px-4 py-2.5 bg-primary text-white text-sm font-medium rounded-card hover:bg-primary-hover transition-colors"
         >
           <Plus className="w-4 h-4" />
           Add Admin Account
@@ -131,27 +131,27 @@ export default function AdminAccountTable() {
 
       {/* Search */}
       <div className="relative max-w-sm">
-        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
+        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted pointer-events-none" />
         <input
           type="text"
           placeholder="Search admin accounts…"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          className="w-full pl-9 pr-4 py-2 text-sm border border-gray-200 rounded-xl bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+          className="w-full pl-9 pr-4 py-2 text-sm border border-border rounded-card bg-surface focus:outline-none focus:ring-2 focus:ring-primary/30"
         />
       </div>
 
       {/* ── Confirmation modal ─────────────────────────────────── */}
       {resetTarget && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
-          <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm p-6 mx-4">
-            <div className="flex items-center justify-center w-12 h-12 rounded-full bg-amber-50 mx-auto mb-4">
-              <KeyRound className="w-6 h-6 text-amber-500" />
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-shell/50">
+          <div className="bg-surface rounded-card shadow-pop w-full max-w-sm p-6 mx-4">
+            <div className="flex items-center justify-center w-12 h-12 rounded-full bg-status-warning/10 mx-auto mb-4">
+              <KeyRound className="w-6 h-6 text-status-warning" />
             </div>
-            <h3 className="text-base font-semibold text-gray-900 text-center">Reset Password</h3>
-            <p className="text-sm text-gray-500 text-center mt-2">
+            <h3 className="text-base font-semibold text-heading text-center">Reset Password</h3>
+            <p className="text-sm text-body text-center mt-2">
               A new temporary password will be generated for{" "}
-              <span className="font-medium text-gray-700">{resetTarget.name}</span>.
+              <span className="font-medium text-body">{resetTarget.name}</span>.
               Share it with them directly.
             </p>
             <div className="flex gap-3 mt-6">
@@ -159,7 +159,7 @@ export default function AdminAccountTable() {
                 type="button"
                 onClick={() => setResetTarget(null)}
                 disabled={resetting}
-                className="flex-1 py-2 text-sm font-medium border border-gray-200 text-gray-600 rounded-xl hover:bg-gray-50 transition-colors disabled:opacity-50"
+                className="flex-1 py-2 text-sm font-medium border border-border text-body rounded-card hover:bg-surface-muted transition-colors disabled:opacity-50"
               >
                 Cancel
               </button>
@@ -167,7 +167,7 @@ export default function AdminAccountTable() {
                 type="button"
                 onClick={handleResetPassword}
                 disabled={resetting}
-                className="flex-1 py-2 text-sm font-medium bg-amber-500 text-white rounded-xl hover:bg-amber-600 transition-colors disabled:opacity-50"
+                className="flex-1 py-2 text-sm font-medium bg-status-warning text-white rounded-card hover:brightness-95 transition-colors disabled:opacity-50"
               >
                 {resetting ? "Resetting…" : "Reset"}
               </button>
@@ -178,32 +178,32 @@ export default function AdminAccountTable() {
 
       {/* ── Result modal ────────────────────────────────────────── */}
       {resetResult && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
-          <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm p-6 mx-4">
-            <div className="flex items-center justify-center w-12 h-12 rounded-full bg-green-50 mx-auto mb-4">
-              <KeyRound className="w-6 h-6 text-green-500" />
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-shell/50">
+          <div className="bg-surface rounded-card shadow-pop w-full max-w-sm p-6 mx-4">
+            <div className="flex items-center justify-center w-12 h-12 rounded-full bg-status-inspection/10 mx-auto mb-4">
+              <KeyRound className="w-6 h-6 text-status-inspection" />
             </div>
-            <h3 className="text-base font-semibold text-gray-900 text-center">Password Reset</h3>
-            <p className="text-sm text-gray-500 text-center mt-1">
+            <h3 className="text-base font-semibold text-heading text-center">Password Reset</h3>
+            <p className="text-sm text-body text-center mt-1">
               Copy this password and give it to the user. It won&apos;t be shown again.
             </p>
-            <div className="flex items-center gap-2 mt-4 bg-gray-50 border border-gray-200 rounded-xl px-4 py-3">
-              <span className="flex-1 font-mono text-sm text-gray-800 tracking-wider select-all">
+            <div className="flex items-center gap-2 mt-4 bg-surface-subtle border border-border rounded-card px-4 py-3">
+              <span className="flex-1 font-mono text-sm text-heading tracking-wider select-all">
                 {resetResult}
               </span>
               <button
                 type="button"
                 onClick={handleCopy}
-                className="shrink-0 p-1.5 rounded-lg text-gray-400 hover:text-gray-600 hover:bg-gray-200 transition-colors"
+                className="shrink-0 p-1.5 rounded-sm text-muted hover:text-body hover:bg-border/60 transition-colors"
                 aria-label="Copy password"
               >
-                {copied ? <Check className="w-4 h-4 text-green-500" /> : <Copy className="w-4 h-4" />}
+                {copied ? <Check className="w-4 h-4 text-status-inspection" /> : <Copy className="w-4 h-4" />}
               </button>
             </div>
             <button
               type="button"
               onClick={() => { setResetResult(null); setCopied(false) }}
-              className="mt-4 w-full py-2 text-sm font-medium bg-gray-900 text-white rounded-xl hover:bg-gray-700 transition-colors"
+              className="mt-4 w-full py-2 text-sm font-medium bg-primary text-white rounded-card hover:bg-shell-alt transition-colors"
             >
               Done
             </button>
@@ -212,52 +212,52 @@ export default function AdminAccountTable() {
       )}
 
       {/* Table */}
-      <div className="bg-white border border-gray-200 rounded-2xl overflow-hidden">
+      <div className="bg-surface border border-border rounded-card overflow-hidden">
         <table className="w-full text-sm">
           <thead>
-            <tr className="border-b border-gray-100 bg-gray-50">
-              <th className="text-left px-5 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Admin</th>
-              <th className="text-left px-5 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Username</th>
-              <th className="text-left px-5 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Status</th>
-              <th className="text-left px-5 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Added</th>
+            <tr className="border-b border-border-subtle bg-surface-subtle">
+              <th className="text-left px-5 py-3 text-xs font-semibold text-body uppercase tracking-wide">Admin</th>
+              <th className="text-left px-5 py-3 text-xs font-semibold text-body uppercase tracking-wide">Username</th>
+              <th className="text-left px-5 py-3 text-xs font-semibold text-body uppercase tracking-wide">Status</th>
+              <th className="text-left px-5 py-3 text-xs font-semibold text-body uppercase tracking-wide">Added</th>
               <th className="px-5 py-3" />
             </tr>
           </thead>
-          <tbody className="divide-y divide-gray-50">
+          <tbody className="divide-y divide-border-subtle">
             {loading ? (
               <tr>
-                <td colSpan={5} className="text-center py-10 text-sm text-gray-400">Loading...</td>
+                <td colSpan={5} className="text-center py-10 text-sm text-muted">Loading...</td>
               </tr>
             ) : fetchError ? (
               <tr>
-                <td colSpan={5} className="text-center py-10 text-sm text-red-400">{fetchError}</td>
+                <td colSpan={5} className="text-center py-10 text-sm text-status-delayed">{fetchError}</td>
               </tr>
             ) : filtered.length === 0 ? (
               <tr>
-                <td colSpan={5} className="text-center py-10 text-sm text-gray-400">No admin accounts found.</td>
+                <td colSpan={5} className="text-center py-10 text-sm text-muted">No admin accounts found.</td>
               </tr>
             ) : (
               filtered.map((account) => (
-                <tr key={account.id} className="hover:bg-gray-50/50 transition-colors">
+                <tr key={account.id} className="hover:bg-surface-muted/50 transition-colors">
                   <td className="px-5 py-4">
                     <div className="flex items-center gap-3">
-                      <div className="w-8 h-8 rounded-full bg-purple-100 flex items-center justify-center text-xs font-bold text-purple-600 shrink-0">
+                      <div className="w-8 h-8 rounded-full bg-status-concern/12 flex items-center justify-center text-xs font-bold text-status-concern shrink-0">
                         {getInitials(account.full_name)}
                       </div>
-                      <p className="font-medium text-gray-800">{account.full_name}</p>
+                      <p className="font-medium text-heading">{account.full_name}</p>
                     </div>
                   </td>
-                  <td className="px-5 py-4 text-gray-600 font-mono text-xs">{account.username}</td>
+                  <td className="px-5 py-4 text-body font-mono text-xs">{account.username}</td>
                   <td className="px-5 py-4">
                     {account.is_archived ? (
-                      <span className="px-2.5 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-500">Archived</span>
+                      <span className="px-2.5 py-1 rounded-full text-xs font-medium bg-surface-muted text-body">Archived</span>
                     ) : (
-                      <span className="flex items-center gap-1.5 text-xs font-medium text-green-600">
+                      <span className="flex items-center gap-1.5 text-xs font-medium text-status-inspection">
                         <ShieldCheck className="w-3.5 h-3.5" /> Active
                       </span>
                     )}
                   </td>
-                  <td className="px-5 py-4 text-gray-400 text-xs">
+                  <td className="px-5 py-4 text-muted text-xs">
                     {new Date(account.created_at).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
                   </td>
                   <td className="px-5 py-4">
@@ -265,21 +265,21 @@ export default function AdminAccountTable() {
                       <button
                         aria-label="Open account options"
                         onClick={() => setOpenMenuId(openMenuId === account.id ? null : account.id)}
-                        className="p-1.5 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
+                        className="p-1.5 text-muted hover:text-body hover:bg-surface-muted rounded-sm transition-colors"
                       >
                         <MoreHorizontal className="w-4 h-4" />
                       </button>
                       {openMenuId === account.id && (
-                        <div className="absolute right-0 top-8 w-44 bg-white border border-gray-100 rounded-xl shadow-lg z-10 py-1">
+                        <div className="absolute right-0 top-8 w-44 bg-surface border border-border-subtle rounded-card shadow-pop z-10 py-1">
                           <button
                             onClick={() => handleEdit(account)}
-                            className="flex items-center gap-2.5 w-full px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 transition-colors"
+                            className="flex items-center gap-2.5 w-full px-4 py-2.5 text-sm text-body hover:bg-surface-muted transition-colors"
                           >
-                            <Pencil className="w-3.5 h-3.5 text-gray-400" /> Edit Account
+                            <Pencil className="w-3.5 h-3.5 text-muted" /> Edit Account
                           </button>
                           <button
                             onClick={() => { setOpenMenuId(null); setResetTarget({ id: account.id, name: account.full_name }) }}
-                            className="flex items-center gap-2.5 w-full px-4 py-2.5 text-sm text-amber-600 hover:bg-amber-50 transition-colors"
+                            className="flex items-center gap-2.5 w-full px-4 py-2.5 text-sm text-status-warning hover:bg-status-warning/10 transition-colors"
                           >
                             <KeyRound className="w-3.5 h-3.5" /> Reset Password
                           </button>
@@ -287,8 +287,8 @@ export default function AdminAccountTable() {
                             onClick={() => { setArchiveConfirmId(account.id); setOpenMenuId(null) }}
                             className={`flex items-center gap-2.5 w-full px-4 py-2.5 text-sm transition-colors ${
                               account.is_archived
-                                ? "text-green-600 hover:bg-green-50"
-                                : "text-red-500 hover:bg-red-50"
+                                ? "text-status-inspection hover:bg-status-inspection/10"
+                                : "text-status-delayed hover:bg-status-delayed/10"
                             }`}
                           >
                             <Archive className="w-3.5 h-3.5" />
@@ -300,20 +300,20 @@ export default function AdminAccountTable() {
 
                     {/* Archive confirmation inline */}
                     {archiveConfirmId === account.id && (
-                      <div className="absolute right-16 mt-1 w-60 bg-white border border-red-100 rounded-xl shadow-lg z-20 p-4">
-                        <p className="text-sm text-gray-700 mb-3">
+                      <div className="absolute right-16 mt-1 w-60 bg-surface border border-status-delayed/30 rounded-card shadow-pop z-20 p-4">
+                        <p className="text-sm text-body mb-3">
                           {account.is_archived ? "Unarchive" : "Archive"} <strong>{account.full_name}</strong>?
                         </p>
                         <div className="flex gap-2">
                           <button
                             onClick={() => handleArchiveToggle(account)}
-                            className="flex-1 py-1.5 text-xs font-medium bg-red-500 text-white rounded-lg hover:bg-red-600 transition-colors"
+                            className="flex-1 py-1.5 text-xs font-medium bg-status-delayed/100 text-white rounded-sm hover:brightness-95 transition-colors"
                           >
                             Confirm
                           </button>
                           <button
                             onClick={() => setArchiveConfirmId(null)}
-                            className="flex-1 py-1.5 text-xs font-medium border border-gray-200 text-gray-600 rounded-lg hover:bg-gray-50 transition-colors"
+                            className="flex-1 py-1.5 text-xs font-medium border border-border text-body rounded-sm hover:bg-surface-muted transition-colors"
                           >
                             Cancel
                           </button>

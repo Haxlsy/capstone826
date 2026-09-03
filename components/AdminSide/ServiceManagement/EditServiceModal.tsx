@@ -306,23 +306,23 @@ export default function EditServiceModal({ serviceId, open, onClose, onSuccess }
   return (
     <>
       <div
-        className={`fixed inset-0 bg-black/30 z-40 transition-opacity duration-300 ${
+        className={`fixed inset-0 bg-shell/40 z-40 transition-opacity duration-300 ${
           open ? "opacity-100" : "opacity-0 pointer-events-none"
         }`}
         onClick={onClose}
       />
 
       <div
-        className={`fixed top-0 right-0 h-full w-[540px] bg-white z-50 shadow-2xl flex flex-col
+        className={`fixed top-0 right-0 h-full w-[540px] bg-surface z-50 shadow-pop flex flex-col
           transform transition-transform duration-300 ease-in-out
           ${open ? "translate-x-0" : "translate-x-full"}`}
       >
         {/* Header */}
-        <div className="flex items-center justify-between px-6 py-5 border-b border-gray-100 shrink-0">
-          <h2 className="text-lg font-semibold text-gray-800">Edit Service</h2>
+        <div className="flex items-center justify-between px-6 py-5 border-b border-border-subtle shrink-0">
+          <h2 className="text-lg font-semibold text-heading">Edit Service</h2>
           <button
             onClick={onClose}
-            className="p-1.5 rounded-lg text-gray-400 hover:bg-gray-100 hover:text-gray-600 transition-colors"
+            className="p-1.5 rounded-sm text-muted hover:bg-surface-muted hover:text-body transition-colors"
           >
             <X className="w-5 h-5" />
           </button>
@@ -330,13 +330,13 @@ export default function EditServiceModal({ serviceId, open, onClose, onSuccess }
 
         {/* Loading / error state */}
         {fetching && (
-          <div className="flex-1 flex items-center justify-center text-sm text-gray-400">
+          <div className="flex-1 flex items-center justify-center text-sm text-muted">
             Loading…
           </div>
         )}
         {fetchError && !fetching && (
           <div className="flex-1 flex items-center justify-center px-6">
-            <p className="text-sm text-red-500">{fetchError}</p>
+            <p className="text-sm text-status-delayed">{fetchError}</p>
           </div>
         )}
 
@@ -344,19 +344,19 @@ export default function EditServiceModal({ serviceId, open, onClose, onSuccess }
         {!fetching && !fetchError && (
           <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto px-6 py-5 space-y-5">
             {saveWarning && (
-              <div className="bg-amber-50 border border-amber-200 rounded-lg px-4 py-3 space-y-2">
-                <p className="text-sm font-medium text-amber-700">{saveWarning}</p>
+              <div className="bg-status-warning/10 border border-status-warning/30 rounded-sm px-4 py-3 space-y-2">
+                <p className="text-sm font-medium text-status-warning">{saveWarning}</p>
                 {blockedStageNames.length > 0 && (
                   <ul className="space-y-0.5 pl-3">
                     {blockedStageNames.map((n) => (
-                      <li key={n} className="text-xs text-amber-600 list-disc">{n}</li>
+                      <li key={n} className="text-xs text-status-warning list-disc">{n}</li>
                     ))}
                   </ul>
                 )}
                 <button
                   type="button"
                   onClick={() => { setSaveWarning(""); setBlockedStageNames([]); onClose() }}
-                  className="text-xs font-medium text-amber-700 underline hover:no-underline"
+                  className="text-xs font-medium text-status-warning underline hover:no-underline"
                 >
                   Close anyway
                 </button>
@@ -364,15 +364,15 @@ export default function EditServiceModal({ serviceId, open, onClose, onSuccess }
             )}
 
             {serverError && (
-              <div className="bg-red-50 border border-red-200 text-red-600 text-sm rounded-lg px-4 py-3">
+              <div className="bg-status-delayed/10 border border-status-delayed/30 text-status-delayed text-sm rounded-sm px-4 py-3">
                 {serverError}
               </div>
             )}
 
             {/* Service Type */}
             <div className="space-y-1.5">
-              <label className="block text-sm font-medium text-gray-700">
-                Service Type <span className="text-red-500">*</span>
+              <label className="block text-sm font-medium text-body">
+                Service Type <span className="text-status-delayed">*</span>
               </label>
               <ServiceTypeCombobox
                 value={serviceType}
@@ -382,17 +382,17 @@ export default function EditServiceModal({ serviceId, open, onClose, onSuccess }
               />
               {typeDeleteError && (
                 <div className="mt-1">
-                  <p className="text-xs text-red-500">{typeDeleteError}</p>
+                  <p className="text-xs text-status-delayed">{typeDeleteError}</p>
                   {typeDeleteAffected.length > 0 && (
                     <ul className="mt-0.5 space-y-0.5 pl-3">
-                      {typeDeleteAffected.map((n) => <li key={n} className="text-xs text-red-400 list-disc">{n}</li>)}
+                      {typeDeleteAffected.map((n) => <li key={n} className="text-xs text-status-delayed list-disc">{n}</li>)}
                     </ul>
                   )}
                   {typeDeleteLiveJobs.length > 0 && (
                     <>
-                      <p className="text-xs font-medium text-amber-600 mt-1">Active job orders:</p>
+                      <p className="text-xs font-medium text-status-warning mt-1">Active job orders:</p>
                       <ul className="mt-0.5 space-y-0.5 pl-3">
-                        {typeDeleteLiveJobs.map((j) => <li key={j} className="text-xs text-amber-500 list-disc">{j}</li>)}
+                        {typeDeleteLiveJobs.map((j) => <li key={j} className="text-xs text-status-warning list-disc">{j}</li>)}
                       </ul>
                     </>
                   )}
@@ -402,44 +402,44 @@ export default function EditServiceModal({ serviceId, open, onClose, onSuccess }
 
             {/* Service Name */}
             <div className="space-y-1.5">
-              <label className="block text-sm font-medium text-gray-700">
-                Service Name <span className="text-red-500">*</span>
+              <label className="block text-sm font-medium text-body">
+                Service Name <span className="text-status-delayed">*</span>
               </label>
               <input
                 type="text"
                 value={serviceName}
                 onChange={(e) => { setServiceName(e.target.value); clearError("serviceName") }}
                 placeholder="e.g. Full Detail Package"
-                className={`w-full px-3 py-2.5 text-sm border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-100 focus:border-blue-400 transition-colors ${
-                  errors.serviceName ? "border-red-400 bg-red-50" : "border-gray-200"
+                className={`w-full px-3 py-2.5 text-sm border rounded-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-colors ${
+                  errors.serviceName ? "border-status-delayed bg-status-delayed/10" : "border-border"
                 }`}
               />
-              {errors.serviceName && <p className="text-xs text-red-500">{errors.serviceName}</p>}
+              {errors.serviceName && <p className="text-xs text-status-delayed">{errors.serviceName}</p>}
             </div>
 
             {/* Description */}
             <div className="space-y-1.5">
-              <label className="block text-sm font-medium text-gray-700">Description</label>
+              <label className="block text-sm font-medium text-body">Description</label>
               <textarea
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
                 rows={4}
                 placeholder="Optional — describe what this service includes."
-                className="w-full px-3 py-2.5 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-100 focus:border-blue-400 transition-colors resize-none"
+                className="w-full px-3 py-2.5 text-sm border border-border rounded-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-colors resize-none"
               />
             </div>
 
             {/* Estimated Duration — computed from stage durations */}
             <div className="space-y-1.5">
-              <label className="block text-sm font-medium text-gray-700">Estimated Duration</label>
-              <div className="flex items-center gap-2 px-3 py-2.5 border border-gray-200 rounded-lg bg-gray-50">
-                <Clock className="w-4 h-4 text-gray-400 shrink-0" />
-                <span className="text-sm font-medium text-gray-700">
+              <label className="block text-sm font-medium text-body">Estimated Duration</label>
+              <div className="flex items-center gap-2 px-3 py-2.5 border border-border rounded-sm bg-surface-subtle">
+                <Clock className="w-4 h-4 text-muted shrink-0" />
+                <span className="text-sm font-medium text-body">
                   {minsToHHMM(totalDurationMins)}
                 </span>
-                <span className="text-xs text-gray-400">HH : MM</span>
+                <span className="text-xs text-muted">HH : MM</span>
               </div>
-              <p className="text-xs text-gray-400">
+              <p className="text-xs text-muted">
                 Auto-calculated from the sum of all stage durations below.
               </p>
             </div>
@@ -447,15 +447,15 @@ export default function EditServiceModal({ serviceId, open, onClose, onSuccess }
             {/* Workflow Stages */}
             <div className="space-y-5">
               <div>
-                <h3 className="text-sm font-semibold text-gray-800">Workflow Stages</h3>
-                <p className="text-xs text-gray-400 mt-0.5">
+                <h3 className="text-sm font-semibold text-heading">Workflow Stages</h3>
+                <p className="text-xs text-muted mt-0.5">
                   Add or remove category sections and their stages. Drag to reorder.
                 </p>
               </div>
 
-              {errors.sections && <p className="text-xs text-red-500">{errors.sections}</p>}
+              {errors.sections && <p className="text-xs text-status-delayed">{errors.sections}</p>}
               {sections.length === 0 && !errors.sections && (
-                <p className="text-xs text-gray-400 italic">No category sections added yet.</p>
+                <p className="text-xs text-muted italic">No category sections added yet.</p>
               )}
 
               {sections.map((sec, secIdx) => {
@@ -463,20 +463,20 @@ export default function EditServiceModal({ serviceId, open, onClose, onSuccess }
                 const dnd    = makeDragHandlers(sec.categoryId, sec.dragIndex)
                 return (
                   <div key={sec.categoryId}>
-                    {secIdx > 0 && <div className="border-t border-gray-100 mb-5" />}
+                    {secIdx > 0 && <div className="border-t border-border-subtle mb-5" />}
                     <div className="space-y-2.5">
                       <div className="flex items-center justify-between">
                         <span className={`text-xs font-semibold uppercase tracking-wide px-2.5 py-1 rounded-full ${
-                          errors[`section_${sec.categoryId}`] ? "text-red-700 bg-red-50" : styles.badge
+                          errors[`section_${sec.categoryId}`] ? "text-status-delayed bg-status-delayed/10" : styles.badge
                         }`}>
                           {sec.categoryName}
                           <span className="ml-1 font-normal normal-case opacity-60">({sec.technicianRole}s)</span>
-                          <span className="text-red-500 ml-0.5">*</span>
+                          <span className="text-status-delayed ml-0.5">*</span>
                         </span>
                         <button
                           type="button"
                           onClick={() => removeSection(sec.categoryId)}
-                          className="p-1 text-gray-300 hover:text-red-400 transition-colors rounded"
+                          className="p-1 text-muted hover:text-status-delayed transition-colors rounded"
                           title="Remove section"
                         >
                           <X className="w-3.5 h-3.5" />
@@ -497,10 +497,10 @@ export default function EditServiceModal({ serviceId, open, onClose, onSuccess }
                         placeholder="Stage name"
                       />
                       {sec.stages.length === 0 && !errors[`section_${sec.categoryId}`] && (
-                        <p className="text-xs text-gray-400 italic">No stages added yet.</p>
+                        <p className="text-xs text-muted italic">No stages added yet.</p>
                       )}
                       {errors[`section_${sec.categoryId}`] && (
-                        <p className="text-xs text-red-500">{errors[`section_${sec.categoryId}`]}</p>
+                        <p className="text-xs text-status-delayed">{errors[`section_${sec.categoryId}`]}</p>
                       )}
                       <button
                         type="button"
@@ -524,26 +524,26 @@ export default function EditServiceModal({ serviceId, open, onClose, onSuccess }
               </div>
             </div>
 
-            <p className="text-xs text-gray-400">
-              <span className="text-red-500">*</span> Required field
+            <p className="text-xs text-muted">
+              <span className="text-status-delayed">*</span> Required field
             </p>
           </form>
         )}
 
         {/* Footer */}
-        <div className="flex items-center justify-end gap-3 px-6 py-4 border-t border-gray-100 shrink-0">
+        <div className="flex items-center justify-end gap-3 px-6 py-4 border-t border-border-subtle shrink-0">
           <button
             type="button"
             onClick={onClose}
             disabled={submitting}
-            className="px-5 py-2.5 text-sm font-medium text-gray-600 hover:bg-gray-100 rounded-lg transition-colors disabled:opacity-50"
+            className="px-5 py-2.5 text-sm font-medium text-body hover:bg-surface-muted rounded-sm transition-colors disabled:opacity-50"
           >
             Cancel
           </button>
           <button
             onClick={handleSubmit}
             disabled={submitting || fetching}
-            className="px-6 py-2.5 text-sm font-medium bg-gray-900 text-white rounded-lg hover:bg-gray-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            className="px-6 py-2.5 text-sm font-medium bg-primary text-white rounded-sm hover:bg-shell-alt transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {submitting ? "Saving..." : "Save Changes"}
           </button>

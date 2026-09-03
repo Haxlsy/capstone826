@@ -28,7 +28,7 @@ export default function AccountManagementPage() {
   return (
     <div className="flex flex-col h-full">
       {/* Tab bar */}
-      <div className="flex border-b border-gray-200 px-6 pt-5 gap-1 shrink-0 bg-white">
+      <div className="flex border-b border-border px-6 pt-5 gap-1 shrink-0 bg-surface">
         <TabButton
           active={activeTab === "staff"}
           onClick={() => setActiveTab("staff")}
@@ -69,14 +69,14 @@ function TabButton({
       onClick={onClick}
       className={`flex items-center gap-2 px-4 py-2.5 text-sm font-medium border-b-2 transition-colors ${
         active
-          ? "border-gray-900 text-gray-900"
-          : "border-transparent text-gray-400 hover:text-gray-600"
+          ? "border-primary text-heading"
+          : "border-transparent text-muted hover:text-body"
       }`}
     >
       {icon}
       {label}
       {badge && (
-        <span className="ml-1 text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-purple-100 text-purple-600">
+        <span className="ml-1 text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-status-concern/12 text-status-concern">
           Super Admin
         </span>
       )}

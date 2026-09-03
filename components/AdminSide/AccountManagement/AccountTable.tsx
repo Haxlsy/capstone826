@@ -23,10 +23,10 @@ const ROLE_LABELS: Record<UserRole, string> = {
 }
 
 const ROLE_BADGE: Record<UserRole, string> = {
-  operations:     "bg-blue-50 text-blue-600",
-  sales:          "bg-green-50 text-green-600",
-  head_detailer:  "bg-orange-50 text-orange-500",
-  head_installer: "bg-amber-50 text-amber-600",
+  operations:     "bg-primary/10 text-primary",
+  sales:          "bg-status-inspection/10 text-status-inspection",
+  head_detailer:  "bg-status-rework/10 text-status-rework",
+  head_installer: "bg-status-warning/10 text-status-warning",
 }
 
 const PAGE_SIZE_OPTIONS = [10, 15, 20, 30]
@@ -187,20 +187,20 @@ export default function AccountTable() {
   const allSelected = accounts.length > 0 && selected.size === accounts.length
 
   return (
-    <div className="flex-1 overflow-y-auto p-6 space-y-5">
-      <h1 className="text-xl font-bold text-gray-800">Account Management</h1>
+    <div className="p-6 space-y-5">
+      <h1 className="text-xl font-bold text-heading">Account Management</h1>
 
       {/* Toolbar */}
       <div className="flex items-center gap-3">
         {/* Search */}
         <div className="relative">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted" />
           <input
             type="text"
             placeholder="Search accounts..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            className="pl-9 pr-4 py-2 text-sm border border-gray-200 rounded-lg w-72 focus:outline-none focus:ring-2 focus:ring-blue-100 focus:border-blue-400 bg-white"
+            className="pl-9 pr-4 py-2 text-sm border border-border rounded-sm w-72 focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary bg-surface"
           />
         </div>
 
@@ -208,10 +208,10 @@ export default function AccountTable() {
         <div className="relative" ref={filterRef}>
           <button
             onClick={() => setFilterOpen((v) => !v)}
-            className={`flex items-center gap-2 px-4 py-2 text-sm border rounded-lg font-medium transition-colors ${
+            className={`flex items-center gap-2 px-4 py-2 text-sm border rounded-sm font-medium transition-colors ${
               roleFilter !== "all" || statusFilter !== "all"
-                ? "border-blue-400 bg-blue-50 text-blue-600"
-                : "border-gray-200 bg-white text-gray-600 hover:bg-gray-50"
+                ? "border-primary bg-primary/10 text-primary"
+                : "border-border bg-surface text-body hover:bg-surface-muted"
             }`}
           >
             <Filter className="w-4 h-4" />
@@ -219,20 +219,20 @@ export default function AccountTable() {
           </button>
 
           {filterOpen && (
-            <div className="absolute top-full left-0 mt-1.5 w-52 bg-white border border-gray-100 rounded-xl shadow-lg z-10 p-3 space-y-3">
+            <div className="absolute top-full left-0 mt-1.5 w-52 bg-surface border border-border-subtle rounded-card shadow-pop z-10 p-3 space-y-3">
               {/* Role filter */}
               <div>
-                <p className="text-xs font-semibold text-gray-500 mb-1.5 uppercase tracking-wide">Role</p>
+                <p className="text-xs font-semibold text-body mb-1.5 uppercase tracking-wide">Role</p>
                 <div className="space-y-0.5">
                   {(["all", "operations", "sales", "head_detailer", "head_installer"] as const).map(
                     (r) => (
                       <button
                         key={r}
                         onClick={() => setRoleFilter(r)}
-                        className={`w-full text-left text-sm px-2.5 py-1.5 rounded-lg transition-colors ${
+                        className={`w-full text-left text-sm px-2.5 py-1.5 rounded-sm transition-colors ${
                           roleFilter === r
-                            ? "bg-blue-50 text-blue-600 font-medium"
-                            : "text-gray-600 hover:bg-gray-50"
+                            ? "bg-primary/10 text-primary font-medium"
+                            : "text-body hover:bg-surface-muted"
                         }`}
                       >
                         {r === "all" ? "All Roles" : ROLE_LABELS[r]}
@@ -244,16 +244,16 @@ export default function AccountTable() {
 
               {/* Status filter */}
               <div>
-                <p className="text-xs font-semibold text-gray-500 mb-1.5 uppercase tracking-wide">Status</p>
+                <p className="text-xs font-semibold text-body mb-1.5 uppercase tracking-wide">Status</p>
                 <div className="space-y-0.5">
                   {(["all", "active", "archived"] as const).map((s) => (
                     <button
                       key={s}
                       onClick={() => setStatusFilter(s)}
-                      className={`w-full text-left text-sm px-2.5 py-1.5 rounded-lg transition-colors ${
+                      className={`w-full text-left text-sm px-2.5 py-1.5 rounded-sm transition-colors ${
                         statusFilter === s
-                          ? "bg-blue-50 text-blue-600 font-medium"
-                          : "text-gray-600 hover:bg-gray-50"
+                          ? "bg-primary/10 text-primary font-medium"
+                          : "text-body hover:bg-surface-muted"
                       }`}
                     >
                       {s === "all" ? "All Status" : s.charAt(0).toUpperCase() + s.slice(1)}
@@ -264,7 +264,7 @@ export default function AccountTable() {
 
               <button
                 onClick={() => { setRoleFilter("all"); setStatusFilter("all") }}
-                className="w-full text-xs text-gray-400 hover:text-gray-600 text-center pt-1"
+                className="w-full text-xs text-muted hover:text-body text-center pt-1"
               >
                 Clear filters
               </button>
@@ -275,7 +275,7 @@ export default function AccountTable() {
         {/* Add Account */}
         <button
           onClick={() => setAddModalOpen(true)}
-          className="ml-auto flex items-center gap-1.5 bg-gray-900 text-white text-sm font-medium px-4 py-2 rounded-lg hover:bg-gray-700 transition-colors"
+          className="ml-auto flex items-center gap-1.5 bg-primary text-white text-sm font-medium px-4 py-2 rounded-sm hover:bg-shell-alt transition-colors"
         >
           + Add Account
         </button>
@@ -296,15 +296,15 @@ export default function AccountTable() {
 
       {/* ── Confirmation modal ─────────────────────────────────── */}
       {resetTarget && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
-          <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm p-6 mx-4">
-            <div className="flex items-center justify-center w-12 h-12 rounded-full bg-amber-50 mx-auto mb-4">
-              <KeyRound className="w-6 h-6 text-amber-500" />
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-shell/50">
+          <div className="bg-surface rounded-card shadow-pop w-full max-w-sm p-6 mx-4">
+            <div className="flex items-center justify-center w-12 h-12 rounded-full bg-status-warning/10 mx-auto mb-4">
+              <KeyRound className="w-6 h-6 text-status-warning" />
             </div>
-            <h3 className="text-base font-semibold text-gray-900 text-center">Reset Password</h3>
-            <p className="text-sm text-gray-500 text-center mt-2">
+            <h3 className="text-base font-semibold text-heading text-center">Reset Password</h3>
+            <p className="text-sm text-body text-center mt-2">
               A new temporary password will be generated for{" "}
-              <span className="font-medium text-gray-700">{resetTarget.name}</span>.
+              <span className="font-medium text-body">{resetTarget.name}</span>.
               Share it with them directly.
             </p>
             <div className="flex gap-3 mt-6">
@@ -312,7 +312,7 @@ export default function AccountTable() {
                 type="button"
                 onClick={() => setResetTarget(null)}
                 disabled={resetting}
-                className="flex-1 py-2 text-sm font-medium border border-gray-200 text-gray-600 rounded-xl hover:bg-gray-50 transition-colors disabled:opacity-50"
+                className="flex-1 py-2 text-sm font-medium border border-border text-body rounded-card hover:bg-surface-muted transition-colors disabled:opacity-50"
               >
                 Cancel
               </button>
@@ -320,7 +320,7 @@ export default function AccountTable() {
                 type="button"
                 onClick={handleResetPassword}
                 disabled={resetting}
-                className="flex-1 py-2 text-sm font-medium bg-amber-500 text-white rounded-xl hover:bg-amber-600 transition-colors disabled:opacity-50"
+                className="flex-1 py-2 text-sm font-medium bg-status-warning text-white rounded-card hover:brightness-95 transition-colors disabled:opacity-50"
               >
                 {resetting ? "Resetting…" : "Reset"}
               </button>
@@ -331,32 +331,32 @@ export default function AccountTable() {
 
       {/* ── Result modal ────────────────────────────────────────── */}
       {resetResult && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
-          <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm p-6 mx-4">
-            <div className="flex items-center justify-center w-12 h-12 rounded-full bg-green-50 mx-auto mb-4">
-              <KeyRound className="w-6 h-6 text-green-500" />
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-shell/50">
+          <div className="bg-surface rounded-card shadow-pop w-full max-w-sm p-6 mx-4">
+            <div className="flex items-center justify-center w-12 h-12 rounded-full bg-status-inspection/10 mx-auto mb-4">
+              <KeyRound className="w-6 h-6 text-status-inspection" />
             </div>
-            <h3 className="text-base font-semibold text-gray-900 text-center">Password Reset</h3>
-            <p className="text-sm text-gray-500 text-center mt-1">
+            <h3 className="text-base font-semibold text-heading text-center">Password Reset</h3>
+            <p className="text-sm text-body text-center mt-1">
               Copy this password and give it to the user. It won&apos;t be shown again.
             </p>
-            <div className="flex items-center gap-2 mt-4 bg-gray-50 border border-gray-200 rounded-xl px-4 py-3">
-              <span className="flex-1 font-mono text-sm text-gray-800 tracking-wider select-all">
+            <div className="flex items-center gap-2 mt-4 bg-surface-subtle border border-border rounded-card px-4 py-3">
+              <span className="flex-1 font-mono text-sm text-heading tracking-wider select-all">
                 {resetResult}
               </span>
               <button
                 type="button"
                 onClick={handleCopy}
-                className="shrink-0 p-1.5 rounded-lg text-gray-400 hover:text-gray-600 hover:bg-gray-200 transition-colors"
+                className="shrink-0 p-1.5 rounded-sm text-muted hover:text-body hover:bg-border/60 transition-colors"
                 aria-label="Copy password"
               >
-                {copied ? <Check className="w-4 h-4 text-green-500" /> : <Copy className="w-4 h-4" />}
+                {copied ? <Check className="w-4 h-4 text-status-inspection" /> : <Copy className="w-4 h-4" />}
               </button>
             </div>
             <button
               type="button"
               onClick={() => { setResetResult(null); setCopied(false) }}
-              className="mt-4 w-full py-2 text-sm font-medium bg-gray-900 text-white rounded-xl hover:bg-gray-700 transition-colors"
+              className="mt-4 w-full py-2 text-sm font-medium bg-primary text-white rounded-card hover:bg-shell-alt transition-colors"
             >
               Done
             </button>
@@ -365,29 +365,29 @@ export default function AccountTable() {
       )}
 
       {/* Table */}
-      <div className="bg-white rounded-xl border border-gray-100 overflow-hidden">
+      <div className="bg-surface rounded-card border border-border-subtle overflow-hidden">
         <table className="w-full text-sm">
           <thead>
-            <tr className="border-b border-gray-100">
+            <tr className="border-b border-border-subtle">
               <th className="w-10 px-4 py-3">
                 <input
                   type="checkbox"
                   checked={allSelected}
                   onChange={toggleSelectAll}
-                  className="rounded border-gray-300"
+                  className="rounded border-border"
                   aria-label="Select all accounts"
                 />
               </th>
-              <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">
+              <th className="text-left px-4 py-3 text-xs font-semibold text-body uppercase tracking-wide">
                 Name
               </th>
-              <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">
+              <th className="text-left px-4 py-3 text-xs font-semibold text-body uppercase tracking-wide">
                 Username
               </th>
-              <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">
+              <th className="text-left px-4 py-3 text-xs font-semibold text-body uppercase tracking-wide">
                 Role
               </th>
-              <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">
+              <th className="text-left px-4 py-3 text-xs font-semibold text-body uppercase tracking-wide">
                 Status
               </th>
               <th className="w-10" />
@@ -396,19 +396,19 @@ export default function AccountTable() {
           <tbody>
             {loading ? (
               <tr>
-                <td colSpan={6} className="text-center py-12 text-sm text-gray-400">
+                <td colSpan={6} className="text-center py-12 text-sm text-muted">
                   Loading...
                 </td>
               </tr>
             ) : fetchError ? (
               <tr>
-                <td colSpan={6} className="text-center py-12 text-sm text-red-400">
+                <td colSpan={6} className="text-center py-12 text-sm text-status-delayed">
                   Failed to load accounts: {fetchError}
                 </td>
               </tr>
             ) : accounts.length === 0 ? (
               <tr>
-                <td colSpan={6} className="text-center py-12 text-sm text-gray-400">
+                <td colSpan={6} className="text-center py-12 text-sm text-muted">
                   No accounts found.
                 </td>
               </tr>
@@ -416,7 +416,7 @@ export default function AccountTable() {
               accounts.map((account) => (
                 <tr
                   key={account.id}
-                  className="border-b border-gray-50 hover:bg-gray-50/50 transition-colors"
+                  className="border-b border-border-subtle hover:bg-surface-muted/50 transition-colors"
                 >
                   <td className="px-4 py-3.5">
                     <input
@@ -424,27 +424,27 @@ export default function AccountTable() {
                       type="checkbox"
                       checked={selected.has(account.id)}
                       onChange={() => toggleSelect(account.id)}
-                      className="rounded border-gray-300"
+                      className="rounded border-border"
                     />
                   </td>
 
                   {/* Name + avatar */}
                   <td className="px-4 py-3.5">
                     <div className="flex items-center gap-3">
-                      <div className="w-8 h-8 rounded-full bg-gray-200 text-gray-600 text-xs font-semibold flex items-center justify-center shrink-0">
+                      <div className="w-8 h-8 rounded-full bg-surface-muted text-body text-xs font-semibold flex items-center justify-center shrink-0">
                         {getInitials(account.full_name)}
                       </div>
-                      <span className="font-medium text-gray-800">{account.full_name}</span>
+                      <span className="font-medium text-heading">{account.full_name}</span>
                     </div>
                   </td>
 
                   {/* Username */}
-                  <td className="px-4 py-3.5 text-gray-500">{account.username}</td>
+                  <td className="px-4 py-3.5 text-body">{account.username}</td>
 
                   {/* Role */}
                   <td className="px-4 py-3.5">
                     <span
-                      className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${ROLE_BADGE[account.role] ?? "bg-gray-50 text-gray-500"}`}
+                      className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${ROLE_BADGE[account.role] ?? "bg-surface-subtle text-body"}`}
                     >
                       {ROLE_LABELS[account.role] ?? account.role}
                     </span>
@@ -453,9 +453,9 @@ export default function AccountTable() {
                   {/* Status */}
                   <td className="px-4 py-3.5">
                     {account.is_archived ? (
-                      <span className="text-gray-400 text-sm">Archived</span>
+                      <span className="text-muted text-sm">Archived</span>
                     ) : (
-                      <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-50 text-green-600">
+                      <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-status-inspection/10 text-status-inspection">
                         Active
                       </span>
                     )}
@@ -471,23 +471,23 @@ export default function AccountTable() {
                             prev === account.id ? null : account.id
                           )
                         }
-                        className="p-1 rounded-lg hover:bg-gray-100 text-gray-400 hover:text-gray-600 transition-colors"
+                        className="p-1 rounded-sm hover:bg-surface-muted text-muted hover:text-body transition-colors"
                       >
                         <MoreHorizontal className="w-4 h-4" />
                       </button>
 
                       {actionMenu === account.id && (
-                        <div className="absolute right-4 top-full mt-1 w-44 bg-white border border-gray-100 rounded-xl shadow-lg z-10 py-1">
+                        <div className="absolute right-4 top-full mt-1 w-44 bg-surface border border-border-subtle rounded-card shadow-pop z-10 py-1">
                           <button
                             onClick={() => { setActionMenu(null); setEditingAccount(account) }}
-                            className="flex items-center gap-2 w-full text-left text-sm px-3.5 py-2 text-blue-600 hover:bg-blue-50 transition-colors"
+                            className="flex items-center gap-2 w-full text-left text-sm px-3.5 py-2 text-primary hover:bg-primary/10 transition-colors"
                           >
                             <Pencil className="w-3.5 h-3.5" />
                             Edit
                           </button>
                           <button
                             onClick={() => { setActionMenu(null); setResetTarget({ id: account.id, name: account.full_name }) }}
-                            className="flex items-center gap-2 w-full text-left text-sm px-3.5 py-2 text-amber-600 hover:bg-amber-50 transition-colors"
+                            className="flex items-center gap-2 w-full text-left text-sm px-3.5 py-2 text-status-warning hover:bg-status-warning/10 transition-colors"
                           >
                             <KeyRound className="w-3.5 h-3.5" />
                             Reset Password
@@ -496,8 +496,8 @@ export default function AccountTable() {
                             onClick={() => handleArchiveToggle(account)}
                             className={`flex items-center gap-2 w-full text-left text-sm px-3.5 py-2 transition-colors ${
                               account.is_archived
-                                ? "text-emerald-600 hover:bg-emerald-50"
-                                : "text-red-500 hover:bg-red-50"
+                                ? "text-status-inspection hover:bg-status-inspection/10"
+                                : "text-status-delayed hover:bg-status-delayed/10"
                             }`}
                           >
                             {account.is_archived && <ArchiveRestore className="w-3.5 h-3.5" />}
@@ -514,14 +514,14 @@ export default function AccountTable() {
         </table>
 
         {/* Footer */}
-        <div className="flex items-center justify-between px-4 py-3 border-t border-gray-100">
-          <div className="flex items-center gap-2 text-sm text-gray-500">
+        <div className="flex items-center justify-between px-4 py-3 border-t border-border-subtle">
+          <div className="flex items-center gap-2 text-sm text-body">
             <span>Show Results:</span>
             <select
               aria-label="Select number of accounts to show per page"
               value={pageSize}
               onChange={(e) => setPageSize(Number(e.target.value))}
-              className="border border-gray-200 rounded-lg px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-blue-100"
+              className="border border-border rounded-sm px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-primary/20"
             >
               {PAGE_SIZE_OPTIONS.map((n) => (
                 <option key={n} value={n}>
@@ -536,7 +536,7 @@ export default function AccountTable() {
               aria-label="Go to previous page"
               onClick={() => setPage((p) => Math.max(1, p - 1))}
               disabled={page === 1}
-              className="p-1.5 rounded-lg text-gray-400 hover:bg-gray-100 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+              className="p-1.5 rounded-sm text-muted hover:bg-surface-muted disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
             >
               <ChevronLeft className="w-4 h-4" />
             </button>
@@ -550,17 +550,17 @@ export default function AccountTable() {
               }, [])
               .map((item, idx) =>
                 item === "..." ? (
-                  <span key={`ellipsis-${idx}`} className="px-2 text-gray-400 text-sm">
+                  <span key={`ellipsis-${idx}`} className="px-2 text-muted text-sm">
                     ...
                   </span>
                 ) : (
                   <button
                     key={item}
                     onClick={() => setPage(item as number)}
-                    className={`w-8 h-8 rounded-lg text-sm font-medium transition-colors ${
+                    className={`w-8 h-8 rounded-sm text-sm font-medium transition-colors ${
                       page === item
-                        ? "bg-gray-900 text-white"
-                        : "text-gray-600 hover:bg-gray-100"
+                        ? "bg-primary text-white"
+                        : "text-body hover:bg-surface-muted"
                     }`}
                   >
                     {item}
@@ -572,7 +572,7 @@ export default function AccountTable() {
               aria-label="Go to next page"
               onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
               disabled={page === totalPages}
-              className="p-1.5 rounded-lg text-gray-400 hover:bg-gray-100 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+              className="p-1.5 rounded-sm text-muted hover:bg-surface-muted disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
             >
               <ChevronRight className="w-4 h-4" />
             </button>

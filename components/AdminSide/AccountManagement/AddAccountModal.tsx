@@ -189,7 +189,7 @@ export default function AddAccountModal({
     <>
       {/* Backdrop */}
       <div
-        className={`fixed inset-0 bg-black/30 z-40 transition-opacity duration-300 ${
+        className={`fixed inset-0 bg-shell/40 z-40 transition-opacity duration-300 ${
           open ? "opacity-100" : "opacity-0 pointer-events-none"
         }`}
         onClick={onClose}
@@ -197,19 +197,19 @@ export default function AddAccountModal({
 
       {/* Drawer — slides in from right */}
       <div
-        className={`fixed top-0 right-0 h-full w-120 bg-white z-50 shadow-2xl flex flex-col
+        className={`fixed top-0 right-0 h-full w-120 bg-surface z-50 shadow-pop flex flex-col
           transform transition-transform duration-300 ease-in-out
           ${open ? "translate-x-0" : "translate-x-full"}`}
       >
         {/* Header */}
-        <div className="flex items-center justify-between px-6 py-5 border-b border-gray-100 shrink-0">
-          <h2 className="text-lg font-semibold text-gray-800">
+        <div className="flex items-center justify-between px-6 py-5 border-b border-border-subtle shrink-0">
+          <h2 className="text-lg font-semibold text-heading">
             {isEdit ? "Edit Account" : mode === "admin" ? "Add Admin Account" : "Add New Account"}
           </h2>
           <button
             aria-label="Close modal"
             onClick={onClose}
-            className="p-1.5 rounded-lg text-gray-400 hover:bg-gray-100 hover:text-gray-600 transition-colors"
+            className="p-1.5 rounded-sm text-muted hover:bg-surface-muted hover:text-body transition-colors"
           >
             <X className="w-5 h-5" />
           </button>
@@ -218,93 +218,93 @@ export default function AddAccountModal({
         {/* Form */}
         <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto px-6 py-5 space-y-5">
           {serverError && (
-            <div className="bg-red-50 border border-red-200 text-red-600 text-sm rounded-lg px-4 py-3">
+            <div className="bg-status-delayed/10 border border-status-delayed/30 text-status-delayed text-sm rounded-sm px-4 py-3">
               {serverError}
             </div>
           )}
 
-          <p className="text-xs text-gray-400"><span className="text-red-500">*</span> Required fields</p>
+          <p className="text-xs text-muted"><span className="text-status-delayed">*</span> Required fields</p>
 
           {/* Full Name */}
           <div className="space-y-1.5">
-            <label className="block text-sm font-medium text-gray-700">
-              Full Name <span className="text-red-500">*</span>
+            <label className="block text-sm font-medium text-body">
+              Full Name <span className="text-status-delayed">*</span>
             </label>
             <input
               type="text"
               value={form.fullName}
               onChange={(e) => setField("fullName", e.target.value)}
-              className={`w-full px-3 py-2.5 text-sm border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-100 focus:border-blue-400 transition-colors ${
-                errors.fullName ? "border-red-400 bg-red-50" : "border-gray-200"
+              className={`w-full px-3 py-2.5 text-sm border rounded-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-colors ${
+                errors.fullName ? "border-status-delayed bg-status-delayed/10" : "border-border"
               }`}
               placeholder="e.g. Juan Dela Cruz"
             />
-            {errors.fullName && <p className="text-xs text-red-500">{errors.fullName}</p>}
+            {errors.fullName && <p className="text-xs text-status-delayed">{errors.fullName}</p>}
           </div>
 
           {/* Username */}
           <div className="space-y-1.5">
-            <label className="block text-sm font-medium text-gray-700">
-              Username {!isEdit && <span className="text-red-500">*</span>}
-              {isEdit && <span className="text-gray-400 font-normal"> (cannot be changed)</span>}
+            <label className="block text-sm font-medium text-body">
+              Username {!isEdit && <span className="text-status-delayed">*</span>}
+              {isEdit && <span className="text-muted font-normal"> (cannot be changed)</span>}
             </label>
             <input
               type="text"
               value={form.username}
               readOnly={isEdit}
               onChange={(e) => !isEdit && setField("username", e.target.value)}
-              className={`w-full px-3 py-2.5 text-sm border rounded-lg focus:outline-none transition-colors font-mono ${
+              className={`w-full px-3 py-2.5 text-sm border rounded-sm focus:outline-none transition-colors font-mono ${
                 isEdit
-                  ? "border-gray-200 bg-gray-50 text-gray-400 cursor-not-allowed"
+                  ? "border-border bg-surface-subtle text-muted cursor-not-allowed"
                   : errors.username
-                  ? "border-red-400 bg-red-50 focus:ring-2 focus:ring-blue-100 focus:border-blue-400"
-                  : "border-gray-200 focus:ring-2 focus:ring-blue-100 focus:border-blue-400"
+                  ? "border-status-delayed bg-status-delayed/10 focus:ring-2 focus:ring-primary/20 focus:border-primary"
+                  : "border-border focus:ring-2 focus:ring-primary/20 focus:border-primary"
               }`}
               placeholder="Auto-filled from full name"
             />
             {!isEdit && (
-              <p className="text-xs text-blue-500">Auto-generated from full name (editable)</p>
+              <p className="text-xs text-primary">Auto-generated from full name (editable)</p>
             )}
-            {errors.username && <p className="text-xs text-red-500">{errors.username}</p>}
+            {errors.username && <p className="text-xs text-status-delayed">{errors.username}</p>}
           </div>
 
           {/* Password — new accounts only */}
           {!isEdit && (
             <div className="space-y-1.5">
-              <label className="block text-sm font-medium text-gray-700">
-                Password <span className="text-red-500">*</span>
+              <label className="block text-sm font-medium text-body">
+                Password <span className="text-status-delayed">*</span>
               </label>
               <div className="relative">
-                <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400 pointer-events-none" />
+                <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted pointer-events-none" />
                 <input
                   type={showPassword ? "text" : "password"}
                   value={form.password}
                   readOnly
                   aria-label="Auto-generated password"
-                  className="w-full pl-9 pr-10 py-2.5 text-sm border border-gray-200 rounded-lg bg-gray-50 text-gray-500 cursor-not-allowed font-mono"
+                  className="w-full pl-9 pr-10 py-2.5 text-sm border border-border rounded-sm bg-surface-subtle text-body cursor-not-allowed font-mono"
                 />
                 <button
                   type="button"
                   onClick={() => setShowPassword((v) => !v)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-muted hover:text-body"
                 >
                   {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                 </button>
               </div>
-              <p className="text-xs text-blue-500">
+              <p className="text-xs text-primary">
                 Auto-generated from full name: <span className="font-mono">{form.password || "—"}</span>
               </p>
-              {errors.password && <p className="text-xs text-red-500">{errors.password}</p>}
+              {errors.password && <p className="text-xs text-status-delayed">{errors.password}</p>}
             </div>
           )}
 
           {/* Role */}
           <div className="space-y-1.5">
-            <label className="block text-sm font-medium text-gray-700">
-              Role <span className="text-red-500">*</span>
+            <label className="block text-sm font-medium text-body">
+              Role <span className="text-status-delayed">*</span>
             </label>
             {mode === "admin" ? (
-              <div className="w-full px-3 py-2.5 text-sm border border-gray-200 rounded-lg bg-gray-50 text-gray-500 cursor-not-allowed">
+              <div className="w-full px-3 py-2.5 text-sm border border-border rounded-sm bg-surface-subtle text-body cursor-not-allowed">
                 Admin
               </div>
             ) : (
@@ -312,7 +312,7 @@ export default function AddAccountModal({
                 value={form.role}
                 onChange={(e) => setField("role", e.target.value)}
                 aria-label="Role"
-                className="w-full px-3 py-2.5 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-100 focus:border-blue-400 bg-white transition-colors"
+                className="w-full px-3 py-2.5 text-sm border border-border rounded-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary bg-surface transition-colors"
               >
                 {roleOptions.map(({ value, label }) => (
                   <option key={value} value={value}>
@@ -325,8 +325,8 @@ export default function AddAccountModal({
 
           {/* Edit mode hint */}
           {isEdit && (
-            <div className="flex items-start gap-2.5 bg-amber-50 border border-amber-100 rounded-lg px-4 py-3">
-              <p className="text-xs text-amber-700">
+            <div className="flex items-start gap-2.5 bg-status-warning/10 border border-amber-100 rounded-sm px-4 py-3">
+              <p className="text-xs text-status-warning">
                 To reset this account&apos;s password, use the <span className="font-semibold">Reset Password</span> option from the account menu.
               </p>
             </div>
@@ -334,19 +334,19 @@ export default function AddAccountModal({
         </form>
 
         {/* Footer */}
-        <div className="flex items-center justify-end gap-3 px-6 py-4 border-t border-gray-100 shrink-0">
+        <div className="flex items-center justify-end gap-3 px-6 py-4 border-t border-border-subtle shrink-0">
           <button
             type="button"
             onClick={onClose}
             disabled={submitting}
-            className="px-5 py-2.5 text-sm font-medium text-gray-600 hover:bg-gray-100 rounded-lg transition-colors disabled:opacity-50"
+            className="px-5 py-2.5 text-sm font-medium text-body hover:bg-surface-muted rounded-sm transition-colors disabled:opacity-50"
           >
             Cancel
           </button>
           <button
             onClick={handleSubmit}
             disabled={submitting}
-            className="px-6 py-2.5 text-sm font-medium bg-gray-900 text-white rounded-lg hover:bg-gray-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            className="px-6 py-2.5 text-sm font-medium bg-primary text-white rounded-sm hover:bg-shell-alt transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {submitting ? "Saving..." : isEdit ? "Save Changes" : "Save Account"}
           </button>

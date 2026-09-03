@@ -137,19 +137,19 @@ export default function ServiceTable({ canWrite = true }: { canWrite?: boolean }
   const allSelected = services.length > 0 && selected.size === services.length
 
   return (
-    <div className="flex-1 overflow-y-auto p-6 space-y-5">
-      <h1 className="text-xl font-bold text-gray-800">Service Catalog</h1>
+    <div className="p-6 space-y-5">
+      <h1 className="text-xl font-bold text-heading">Service Catalog</h1>
 
       {/* Toolbar */}
       <div className="flex items-center gap-3">
         <div className="relative">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted" />
           <input
             type="text"
             placeholder="Search services..."
             value={searchInput}
             onChange={(e) => setSearchInput(e.target.value)}
-            className="pl-9 pr-4 py-2 text-sm border border-gray-200 rounded-lg w-72 focus:outline-none focus:ring-2 focus:ring-blue-100 focus:border-blue-400 bg-white"
+            className="pl-9 pr-4 py-2 text-sm border border-border rounded-sm w-72 focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary bg-surface"
           />
         </div>
 
@@ -157,10 +157,10 @@ export default function ServiceTable({ canWrite = true }: { canWrite?: boolean }
         <div className="relative" ref={filterRef}>
           <button
             onClick={() => setFilterOpen((v) => !v)}
-            className={`flex items-center gap-2 px-4 py-2 text-sm border rounded-lg font-medium transition-colors ${
+            className={`flex items-center gap-2 px-4 py-2 text-sm border rounded-sm font-medium transition-colors ${
               statusFilter !== "all" || durationMin || durationMax
-                ? "border-blue-400 bg-blue-50 text-blue-600"
-                : "border-gray-200 bg-white text-gray-600 hover:bg-gray-50"
+                ? "border-primary bg-primary/10 text-primary"
+                : "border-border bg-surface text-body hover:bg-surface-muted"
             }`}
           >
             <Filter className="w-4 h-4" />
@@ -168,17 +168,17 @@ export default function ServiceTable({ canWrite = true }: { canWrite?: boolean }
           </button>
 
           {filterOpen && (
-            <div className="absolute top-full left-0 mt-1.5 w-56 bg-white border border-gray-100 rounded-xl shadow-lg z-10 p-3 space-y-3">
+            <div className="absolute top-full left-0 mt-1.5 w-56 bg-surface border border-border-subtle rounded-card shadow-pop z-10 p-3 space-y-3">
               <div className="space-y-1">
-                <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Status</p>
+                <p className="text-xs font-semibold text-body uppercase tracking-wide">Status</p>
                 {(["all", "active", "archived"] as const).map((s) => (
                   <button
                     key={s}
                     onClick={() => setStatusFilter(s)}
-                    className={`w-full text-left text-sm px-2.5 py-1.5 rounded-lg transition-colors ${
+                    className={`w-full text-left text-sm px-2.5 py-1.5 rounded-sm transition-colors ${
                       statusFilter === s
-                        ? "bg-blue-50 text-blue-600 font-medium"
-                        : "text-gray-600 hover:bg-gray-50"
+                        ? "bg-primary/10 text-primary font-medium"
+                        : "text-body hover:bg-surface-muted"
                     }`}
                   >
                     {s === "all" ? "All Status" : s.charAt(0).toUpperCase() + s.slice(1)}
@@ -186,8 +186,8 @@ export default function ServiceTable({ canWrite = true }: { canWrite?: boolean }
                 ))}
               </div>
 
-              <div className="border-t border-gray-100 pt-2 space-y-2">
-                <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Duration (hours)</p>
+              <div className="border-t border-border-subtle pt-2 space-y-2">
+                <p className="text-xs font-semibold text-body uppercase tracking-wide">Duration (hours)</p>
                 <div className="flex items-center gap-2">
                   <input
                     type="number"
@@ -195,22 +195,22 @@ export default function ServiceTable({ canWrite = true }: { canWrite?: boolean }
                     placeholder="Min"
                     value={durationMin}
                     onChange={(e) => setDurationMin(e.target.value)}
-                    className="w-full px-2.5 py-1.5 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-100 focus:border-blue-400"
+                    className="w-full px-2.5 py-1.5 text-sm border border-border rounded-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
                   />
-                  <span className="text-gray-400 text-xs shrink-0">to</span>
+                  <span className="text-muted text-xs shrink-0">to</span>
                   <input
                     type="number"
                     min="1"
                     placeholder="Max"
                     value={durationMax}
                     onChange={(e) => setDurationMax(e.target.value)}
-                    className="w-full px-2.5 py-1.5 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-100 focus:border-blue-400"
+                    className="w-full px-2.5 py-1.5 text-sm border border-border rounded-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
                   />
                 </div>
                 {(durationMin || durationMax) && (
                   <button
                     onClick={() => { setDurationMin(""); setDurationMax("") }}
-                    className="text-xs text-gray-400 hover:text-gray-600 transition-colors"
+                    className="text-xs text-muted hover:text-body transition-colors"
                   >
                     Clear duration
                   </button>
@@ -224,19 +224,19 @@ export default function ServiceTable({ canWrite = true }: { canWrite?: boolean }
           <div className="ml-auto flex items-center gap-2">
             <button
               onClick={() => setPresetsOpen(true)}
-              className="flex items-center gap-1.5 bg-white border border-gray-200 text-gray-700 text-sm font-medium px-4 py-2 rounded-lg hover:bg-gray-50 transition-colors"
+              className="flex items-center gap-1.5 bg-surface border border-border text-body text-sm font-medium px-4 py-2 rounded-sm hover:bg-surface-muted transition-colors"
             >
               Category Presets
             </button>
             <button
               onClick={() => setAddTypeModalOpen(true)}
-              className="flex items-center gap-1.5 bg-white border border-gray-200 text-gray-700 text-sm font-medium px-4 py-2 rounded-lg hover:bg-gray-50 transition-colors"
+              className="flex items-center gap-1.5 bg-surface border border-border text-body text-sm font-medium px-4 py-2 rounded-sm hover:bg-surface-muted transition-colors"
             >
               + Add Service Type
             </button>
             <button
               onClick={() => setAddModalOpen(true)}
-              className="flex items-center gap-1.5 bg-gray-900 text-white text-sm font-medium px-4 py-2 rounded-lg hover:bg-gray-700 transition-colors"
+              className="flex items-center gap-1.5 bg-primary text-white text-sm font-medium px-4 py-2 rounded-sm hover:bg-shell-alt transition-colors"
             >
               + Add Service
             </button>
@@ -270,39 +270,39 @@ export default function ServiceTable({ canWrite = true }: { canWrite?: boolean }
       )}
 
       {fetchError && (
-        <p className="text-sm text-red-500">{fetchError}</p>
+        <p className="text-sm text-status-delayed">{fetchError}</p>
       )}
 
 
       {/* Table */}
-      <div className="bg-white rounded-xl border border-gray-100 overflow-hidden">
+      <div className="bg-surface rounded-card border border-border-subtle overflow-hidden">
         <table className="w-full text-sm">
           <thead>
-            <tr className="border-b border-gray-100">
+            <tr className="border-b border-border-subtle">
               <th className="w-10 px-4 py-3">
                 <input
                   type="checkbox"
                   checked={allSelected}
                   onChange={toggleSelectAll}
-                  className="rounded border-gray-300"
+                  className="rounded border-border"
                 />
               </th>
-              <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide w-44">
+              <th className="text-left px-4 py-3 text-xs font-semibold text-body uppercase tracking-wide w-44">
                 Service Type
               </th>
-              <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide w-48">
+              <th className="text-left px-4 py-3 text-xs font-semibold text-body uppercase tracking-wide w-48">
                 Service Name
               </th>
-              <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">
+              <th className="text-left px-4 py-3 text-xs font-semibold text-body uppercase tracking-wide">
                 Description
               </th>
-              <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide w-36">
+              <th className="text-left px-4 py-3 text-xs font-semibold text-body uppercase tracking-wide w-36">
                 Est. Duration
               </th>
-              <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide w-36">
+              <th className="text-left px-4 py-3 text-xs font-semibold text-body uppercase tracking-wide w-36">
                 Workflow Stages
               </th>
-              <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide w-28">
+              <th className="text-left px-4 py-3 text-xs font-semibold text-body uppercase tracking-wide w-28">
                 Status
               </th>
               {canWrite && <th className="w-10" />}
@@ -311,52 +311,52 @@ export default function ServiceTable({ canWrite = true }: { canWrite?: boolean }
           <tbody>
             {loading ? (
               <tr>
-                <td colSpan={canWrite ? 8 : 7} className="text-center py-12 text-sm text-gray-400">Loading...</td>
+                <td colSpan={canWrite ? 8 : 7} className="text-center py-12 text-sm text-muted">Loading...</td>
               </tr>
             ) : services.length === 0 ? (
               <tr>
-                <td colSpan={canWrite ? 8 : 7} className="text-center py-12 text-sm text-gray-400">No services found.</td>
+                <td colSpan={canWrite ? 8 : 7} className="text-center py-12 text-sm text-muted">No services found.</td>
               </tr>
             ) : (
               services.map((service) => (
                 <tr
                   key={service.id}
-                  className="border-b border-gray-50 hover:bg-gray-50/50 transition-colors"
+                  className="border-b border-border-subtle hover:bg-surface-muted/50 transition-colors"
                 >
                   <td className="px-4 py-3.5">
                     <input
                       type="checkbox"
                       checked={selected.has(service.id)}
                       onChange={() => toggleSelect(service.id)}
-                      className="rounded border-gray-300"
+                      className="rounded border-border"
                     />
                   </td>
                   <td className="px-4 py-3.5">
                     {service.service_type ? (
-                      <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium whitespace-nowrap bg-teal-50 text-teal-700">
+                      <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium whitespace-nowrap bg-status-release/12 text-status-release">
                         {service.service_type}
                       </span>
                     ) : (
-                      <span className="text-xs text-gray-400">—</span>
+                      <span className="text-xs text-muted">—</span>
                     )}
                   </td>
-                  <td className="px-4 py-3.5 font-medium text-gray-800">{service.name}</td>
-                  <td className="px-4 py-3.5 text-gray-400 max-w-xs">{truncate(service.description)}</td>
-                  <td className="px-4 py-3.5 text-gray-600">{formatDuration(service.estimated_duration_mins)}</td>
+                  <td className="px-4 py-3.5 font-medium text-heading">{service.name}</td>
+                  <td className="px-4 py-3.5 text-muted max-w-xs">{truncate(service.description)}</td>
+                  <td className="px-4 py-3.5 text-body">{formatDuration(service.estimated_duration_mins)}</td>
                   <td className="px-4 py-3.5">
                     {service.stage_count > 0 ? (
-                      <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-600">
+                      <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-surface-muted text-body">
                         {service.stage_count} {service.stage_count === 1 ? "stage" : "stages"}
                       </span>
                     ) : (
-                      <span className="text-xs text-gray-400">No stages</span>
+                      <span className="text-xs text-muted">No stages</span>
                     )}
                   </td>
                   <td className="px-4 py-3.5">
                     {service.is_archived ? (
-                      <span className="text-gray-400 text-sm">Archived</span>
+                      <span className="text-muted text-sm">Archived</span>
                     ) : (
-                      <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-50 text-green-600">
+                      <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-status-inspection/10 text-status-inspection">
                         Active
                       </span>
                     )}
@@ -366,16 +366,16 @@ export default function ServiceTable({ canWrite = true }: { canWrite?: boolean }
                       <div ref={actionMenu === service.id ? actionRef : null}>
                         <button
                           onClick={() => setActionMenu((prev) => prev === service.id ? null : service.id)}
-                          className="p-1 rounded-lg hover:bg-gray-100 text-gray-400 hover:text-gray-600 transition-colors"
+                          className="p-1 rounded-sm hover:bg-surface-muted text-muted hover:text-body transition-colors"
                         >
                           <MoreHorizontal className="w-4 h-4" />
                         </button>
 
                         {actionMenu === service.id && (
-                          <div className="absolute right-4 bottom-8 w-36 bg-white border border-gray-100 rounded-xl shadow-lg z-10 py-1">
+                          <div className="absolute right-4 bottom-8 w-36 bg-surface border border-border-subtle rounded-card shadow-pop z-10 py-1">
                             <button
                               onClick={() => { setActionMenu(null); setEditServiceId(service.id) }}
-                              className="w-full text-left text-sm px-3.5 py-2 text-gray-700 hover:bg-gray-50 transition-colors"
+                              className="w-full text-left text-sm px-3.5 py-2 text-body hover:bg-surface-muted transition-colors"
                             >
                               Edit Service
                             </button>
@@ -383,8 +383,8 @@ export default function ServiceTable({ canWrite = true }: { canWrite?: boolean }
                               onClick={() => handleArchiveToggle(service)}
                               className={`w-full text-left text-sm px-3.5 py-2 transition-colors ${
                                 service.is_archived
-                                  ? "text-green-600 hover:bg-green-50"
-                                  : "text-red-500 hover:bg-red-50"
+                                  ? "text-status-inspection hover:bg-status-inspection/10"
+                                  : "text-status-delayed hover:bg-status-delayed/10"
                               }`}
                             >
                               {service.is_archived ? "Unarchive" : "Archive"}
@@ -401,13 +401,13 @@ export default function ServiceTable({ canWrite = true }: { canWrite?: boolean }
         </table>
 
         {/* Footer */}
-        <div className="flex items-center justify-between px-4 py-3 border-t border-gray-100">
-          <div className="flex items-center gap-2 text-sm text-gray-500">
+        <div className="flex items-center justify-between px-4 py-3 border-t border-border-subtle">
+          <div className="flex items-center gap-2 text-sm text-body">
             <span>Show Results:</span>
             <select
               value={pageSize}
               onChange={(e) => setPageSize(Number(e.target.value))}
-              className="border border-gray-200 rounded-lg px-2 py-1 text-sm focus:outline-none"
+              className="border border-border rounded-sm px-2 py-1 text-sm focus:outline-none"
             >
               {PAGE_SIZE_OPTIONS.map((n) => <option key={n} value={n}>{n}</option>)}
             </select>
@@ -417,7 +417,7 @@ export default function ServiceTable({ canWrite = true }: { canWrite?: boolean }
             <button
               onClick={() => setPage((p) => Math.max(1, p - 1))}
               disabled={page === 1}
-              className="p-1.5 rounded-lg text-gray-400 hover:bg-gray-100 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+              className="p-1.5 rounded-sm text-muted hover:bg-surface-muted disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
             >
               <ChevronLeft className="w-4 h-4" />
             </button>
@@ -431,13 +431,13 @@ export default function ServiceTable({ canWrite = true }: { canWrite?: boolean }
               }, [])
               .map((item, idx) =>
                 item === "..." ? (
-                  <span key={`e-${idx}`} className="px-2 text-gray-400 text-sm">...</span>
+                  <span key={`e-${idx}`} className="px-2 text-muted text-sm">...</span>
                 ) : (
                   <button
                     key={item}
                     onClick={() => setPage(item as number)}
-                    className={`w-8 h-8 rounded-lg text-sm font-medium transition-colors ${
-                      page === item ? "bg-gray-900 text-white" : "text-gray-600 hover:bg-gray-100"
+                    className={`w-8 h-8 rounded-sm text-sm font-medium transition-colors ${
+                      page === item ? "bg-primary text-white" : "text-body hover:bg-surface-muted"
                     }`}
                   >
                     {item}
@@ -448,7 +448,7 @@ export default function ServiceTable({ canWrite = true }: { canWrite?: boolean }
             <button
               onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
               disabled={page === totalPages}
-              className="p-1.5 rounded-lg text-gray-400 hover:bg-gray-100 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+              className="p-1.5 rounded-sm text-muted hover:bg-surface-muted disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
             >
               <ChevronRight className="w-4 h-4" />
             </button>

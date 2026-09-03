@@ -12,12 +12,12 @@ export const ROLE_LABEL: Record<AuditRole, string> = {
 }
 
 export const ROLE_BADGE: Record<AuditRole, string> = {
-  super_admin:    "bg-purple-100 text-purple-700 border border-purple-200",
-  admin:          "bg-indigo-100 text-indigo-700 border border-indigo-200",
-  operations:     "bg-blue-100 text-blue-700 border border-blue-200",
-  sales:          "bg-teal-100 text-teal-700 border border-teal-200",
-  head_detailer:  "bg-orange-100 text-orange-700 border border-orange-200",
-  head_installer: "bg-yellow-100 text-yellow-700 border border-yellow-200",
+  super_admin:    "bg-status-concern/12 text-status-concern border border-status-concern/30",
+  admin:          "bg-status-ongoing/12 text-status-ongoing border border-status-ongoing/30",
+  operations:     "bg-primary/12 text-primary border border-primary/30",
+  sales:          "bg-status-release/12 text-status-release border border-status-release/30",
+  head_detailer:  "bg-status-rework/12 text-status-rework border border-status-rework/30",
+  head_installer: "bg-status-warning/12 text-status-warning border border-status-warning/30",
 }
 
 export const CATEGORY_ICON: Record<AuditCategory, React.ReactNode> = {
@@ -36,12 +36,12 @@ export const ALL_ROLES: AuditRole[] = [
 ]
 
 export const CATEGORY_COLOR: Record<AuditCategory, string> = {
-  auth:    "text-gray-500  bg-gray-100",
-  view:    "text-blue-500  bg-blue-50",
-  create:  "text-emerald-600 bg-emerald-50",
-  update:  "text-blue-600  bg-blue-100",
-  approve: "text-green-600 bg-green-50",
-  flag:    "text-orange-600 bg-orange-50",
-  delete:  "text-red-600   bg-red-50",
-  message: "text-teal-600  bg-teal-50",
+  auth:    "text-body  bg-surface-muted",
+  view:    "text-primary  bg-primary/10",
+  create:  "text-status-inspection bg-status-inspection/10",
+  update:  "text-primary  bg-primary/12",
+  approve: "text-status-inspection bg-status-inspection/10",
+  flag:    "text-status-rework bg-status-rework/10",
+  delete:  "text-status-delayed   bg-status-delayed/10",
+  message: "text-status-release  bg-status-release/10",
 }

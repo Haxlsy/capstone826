@@ -219,36 +219,36 @@ export default function CategoryPresetsPanel({
     <>
       {/* Overlay */}
       <div
-        className={`fixed inset-0 bg-black/30 z-40 transition-opacity duration-300 ${open ? "opacity-100" : "opacity-0 pointer-events-none"}`}
+        className={`fixed inset-0 bg-shell/40 z-40 transition-opacity duration-300 ${open ? "opacity-100" : "opacity-0 pointer-events-none"}`}
         onClick={onClose}
       />
 
       {/* Drawer */}
       <div
-        className={`fixed top-0 right-0 h-full w-[480px] bg-white shadow-2xl z-50 flex flex-col transition-transform duration-300 ${open ? "translate-x-0" : "translate-x-full"}`}
+        className={`fixed top-0 right-0 h-full w-[480px] bg-surface shadow-pop z-50 flex flex-col transition-transform duration-300 ${open ? "translate-x-0" : "translate-x-full"}`}
       >
         {/* Header */}
-        <div className="flex items-center gap-3 px-5 py-4 border-b border-gray-100 shrink-0">
+        <div className="flex items-center gap-3 px-5 py-4 border-b border-border-subtle shrink-0">
           {mode !== "list" && (
             <button
               onClick={() => { setMode("list"); clearErrors() }}
-              className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-500 transition-colors"
+              className="p-1.5 rounded-sm hover:bg-surface-muted text-body transition-colors"
             >
               <ArrowLeft className="w-4 h-4" />
             </button>
           )}
           <div className="flex-1">
-            <h2 className="text-base font-semibold text-gray-800">
+            <h2 className="text-base font-semibold text-heading">
               {mode === "list"   ? "Manage Category Presets" :
                mode === "create" ? "New Preset" : "Edit Preset"}
             </h2>
             {mode === "list" && (
-              <p className="text-xs text-gray-400 mt-0.5">Reusable templates for workflow categories</p>
+              <p className="text-xs text-muted mt-0.5">Reusable templates for workflow categories</p>
             )}
           </div>
           <button
             onClick={onClose}
-            className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-400 transition-colors"
+            className="p-1.5 rounded-sm hover:bg-surface-muted text-muted transition-colors"
           >
             <X className="w-4 h-4" />
           </button>
@@ -256,7 +256,7 @@ export default function CategoryPresetsPanel({
 
         {/* Toast */}
         {toast && (
-          <div className={`mx-5 mt-3 px-4 py-2.5 rounded-xl text-sm font-medium flex items-center gap-2 shrink-0 ${toast.ok ? "bg-green-50 text-green-700 border border-green-100" : "bg-red-50 text-red-600 border border-red-100"}`}>
+          <div className={`mx-5 mt-3 px-4 py-2.5 rounded-card text-sm font-medium flex items-center gap-2 shrink-0 ${toast.ok ? "bg-status-inspection/10 text-status-inspection border border-status-inspection/30" : "bg-status-delayed/10 text-status-delayed border border-status-delayed/30"}`}>
             {toast.ok && <Check className="w-3.5 h-3.5 shrink-0" />}
             {toast.msg}
           </div>
@@ -269,38 +269,38 @@ export default function CategoryPresetsPanel({
             <div className="p-5 space-y-3">
               <button
                 onClick={openCreate}
-                className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl border-2 border-dashed border-gray-200 text-sm text-gray-500 hover:border-gray-400 hover:text-gray-700 transition-colors"
+                className="w-full flex items-center justify-center gap-2 py-2.5 rounded-card border-2 border-dashed border-border text-sm text-body hover:border-primary/40 hover:text-body transition-colors"
               >
                 <Plus className="w-4 h-4" />
                 New Preset
               </button>
 
               {loading ? (
-                <p className="text-center text-sm text-gray-400 py-8">Loading...</p>
+                <p className="text-center text-sm text-muted py-8">Loading...</p>
               ) : presets.length === 0 ? (
-                <p className="text-center text-sm text-gray-400 py-8">No presets yet. Create your first one above.</p>
+                <p className="text-center text-sm text-muted py-8">No presets yet. Create your first one above.</p>
               ) : (
                 presets.map((preset) => {
                   const cs = colorStyles(preset.display_color)
                   return (
-                    <div key={preset.id} className="border border-gray-100 rounded-xl p-4 space-y-3 hover:border-gray-200 transition-colors">
+                    <div key={preset.id} className="border border-border-subtle rounded-card p-4 space-y-3 hover:border-border transition-colors">
                       {/* Top row: badge + role + actions */}
                       <div className="flex items-start gap-3">
                         <div className="flex-1 min-w-0 space-y-1">
                           <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold ${cs.badge}`}>
                             {preset.name}
                           </span>
-                          <p className="text-xs text-gray-400">
-                            Assigned to: <span className="font-medium text-gray-600">{ROLE_LABELS[preset.technician_role]}</span>
+                          <p className="text-xs text-muted">
+                            Assigned to: <span className="font-medium text-body">{ROLE_LABELS[preset.technician_role]}</span>
                             {" · "}
-                            <span className="font-medium text-gray-600">{preset.stages.length} {preset.stages.length === 1 ? "stage" : "stages"}</span>
+                            <span className="font-medium text-body">{preset.stages.length} {preset.stages.length === 1 ? "stage" : "stages"}</span>
                           </p>
                         </div>
                         <div className="flex items-center gap-1 shrink-0">
                           <button
                             onClick={() => openEdit(preset)}
                             title="Edit preset"
-                            className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-400 hover:text-gray-600 transition-colors"
+                            className="p-1.5 rounded-sm hover:bg-surface-muted text-muted hover:text-body transition-colors"
                           >
                             <Pencil className="w-3.5 h-3.5" />
                           </button>
@@ -308,7 +308,7 @@ export default function CategoryPresetsPanel({
                             onClick={() => handleDelete(preset.id, preset.name)}
                             disabled={deletingId === preset.id}
                             title="Delete preset"
-                            className="p-1.5 rounded-lg hover:bg-red-50 text-gray-400 hover:text-red-500 transition-colors disabled:opacity-40"
+                            className="p-1.5 rounded-sm hover:bg-status-delayed/10 text-muted hover:text-status-delayed transition-colors disabled:opacity-40"
                           >
                             <Trash2 className="w-3.5 h-3.5" />
                           </button>
@@ -319,10 +319,10 @@ export default function CategoryPresetsPanel({
                       {preset.stages.length > 0 && (
                         <div className="space-y-1 pl-1">
                           {preset.stages.map((stage) => (
-                            <div key={stage.id ?? stage.sequence_order} className="flex items-center gap-2 text-xs text-gray-500">
-                              <span className="font-medium text-gray-400 w-4 shrink-0">{stage.sequence_order}.</span>
-                              <span className="flex-1 text-gray-700">{stage.name}</span>
-                              <span className="text-gray-400 shrink-0">{formatStageDuration(stage.stage_duration_mins)}</span>
+                            <div key={stage.id ?? stage.sequence_order} className="flex items-center gap-2 text-xs text-body">
+                              <span className="font-medium text-muted w-4 shrink-0">{stage.sequence_order}.</span>
+                              <span className="flex-1 text-body">{stage.name}</span>
+                              <span className="text-muted shrink-0">{formatStageDuration(stage.stage_duration_mins)}</span>
                             </div>
                           ))}
                         </div>
@@ -340,35 +340,35 @@ export default function CategoryPresetsPanel({
             <div className="p-5 space-y-5">
               {/* Name */}
               <div className="space-y-1.5">
-                <label className="text-xs font-semibold text-gray-600 uppercase tracking-wide">
-                  Preset Name <span className="text-red-500">*</span>
+                <label className="text-xs font-semibold text-body uppercase tracking-wide">
+                  Preset Name <span className="text-status-delayed">*</span>
                 </label>
                 <input
                   type="text"
                   value={fName}
                   onChange={(e) => { setFName(e.target.value); if (nameError) setNameError("") }}
                   placeholder="e.g. Quality Check"
-                  className={`w-full px-3 py-2.5 text-sm border rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-100 focus:border-blue-400 transition-colors ${
-                    nameError ? "border-red-400 bg-red-50" : "border-gray-200"
+                  className={`w-full px-3 py-2.5 text-sm border rounded-card focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-colors ${
+                    nameError ? "border-status-delayed bg-status-delayed/10" : "border-border"
                   }`}
                 />
-                {nameError && <p className="text-xs text-red-500">{nameError}</p>}
+                {nameError && <p className="text-xs text-status-delayed">{nameError}</p>}
               </div>
 
               {/* Assigned Role */}
               <div className="space-y-1.5">
-                <label className="text-xs font-semibold text-gray-600 uppercase tracking-wide">
-                  Assigned to <span className="text-red-500">*</span>
+                <label className="text-xs font-semibold text-body uppercase tracking-wide">
+                  Assigned to <span className="text-status-delayed">*</span>
                 </label>
                 <div className="flex gap-2">
                   {(["detailer", "installer"] as const).map((role) => (
                     <button
                       key={role}
                       onClick={() => setFRole(role)}
-                      className={`px-4 py-2 rounded-xl text-sm font-medium border transition-colors ${
+                      className={`px-4 py-2 rounded-card text-sm font-medium border transition-colors ${
                         fRole === role
-                          ? "bg-gray-900 text-white border-gray-900"
-                          : "bg-white text-gray-600 border-gray-200 hover:border-gray-400"
+                          ? "bg-primary text-white border-primary"
+                          : "bg-surface text-body border-border hover:border-primary/40"
                       }`}
                     >
                       {ROLE_LABELS[role]}
@@ -379,28 +379,28 @@ export default function CategoryPresetsPanel({
 
               {/* Stages */}
               <div className="space-y-2">
-                <label className="text-xs font-semibold text-gray-600 uppercase tracking-wide">
-                  Stages <span className="text-red-500">*</span>
+                <label className="text-xs font-semibold text-body uppercase tracking-wide">
+                  Stages <span className="text-status-delayed">*</span>
                 </label>
-                {stagesError && <p className="text-xs text-red-500">{stagesError}</p>}
+                {stagesError && <p className="text-xs text-status-delayed">{stagesError}</p>}
                 <div className="space-y-2">
                   {fStages.map((stage, idx) => {
                     const stageErr = stageErrors[stage.key]
                     return (
                       <div key={stage.key} className="space-y-1">
                         <div className="flex items-center gap-2">
-                          <span className="text-xs text-gray-400 w-5 shrink-0 text-right">{idx + 1}.</span>
+                          <span className="text-xs text-muted w-5 shrink-0 text-right">{idx + 1}.</span>
                           <input
                             type="text"
                             value={stage.name}
                             onChange={(e) => updateStage(stage.key, "name", e.target.value)}
                             placeholder="Stage name"
-                            className={`flex-1 min-w-0 px-3 py-2 text-sm border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-100 focus:border-blue-400 transition-colors ${
-                              stageErr?.name ? "border-red-400 bg-red-50" : "border-gray-200"
+                            className={`flex-1 min-w-0 px-3 py-2 text-sm border rounded-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-colors ${
+                              stageErr?.name ? "border-status-delayed bg-status-delayed/10" : "border-border"
                             }`}
                           />
-                          <div className={`flex items-center gap-1 shrink-0 border rounded-lg overflow-hidden transition-colors ${
-                            stageErr?.dur ? "border-red-400 bg-red-50" : "border-gray-200"
+                          <div className={`flex items-center gap-1 shrink-0 border rounded-sm overflow-hidden transition-colors ${
+                            stageErr?.dur ? "border-status-delayed bg-status-delayed/10" : "border-border"
                           }`}>
                             <input
                               type="number"
@@ -410,7 +410,7 @@ export default function CategoryPresetsPanel({
                               onChange={(e) => updateStage(stage.key, "hh", e.target.value.padStart(2, "0").slice(-2))}
                               className="w-12 px-2 py-2 text-sm text-center bg-transparent focus:outline-none"
                             />
-                            <span className="text-gray-400 text-sm font-medium">:</span>
+                            <span className="text-muted text-sm font-medium">:</span>
                             <input
                               type="number"
                               min="0"
@@ -423,15 +423,15 @@ export default function CategoryPresetsPanel({
                           <button
                             onClick={() => removeStage(stage.key)}
                             disabled={fStages.length === 1}
-                            className="p-1.5 rounded-lg hover:bg-red-50 text-gray-300 hover:text-red-400 transition-colors disabled:opacity-20 shrink-0"
+                            className="p-1.5 rounded-sm hover:bg-status-delayed/10 text-muted hover:text-status-delayed transition-colors disabled:opacity-20 shrink-0"
                           >
                             <Trash2 className="w-3.5 h-3.5" />
                           </button>
                         </div>
                         {(stageErr?.name || stageErr?.dur) && (
                           <div className="pl-7 space-y-0.5">
-                            {stageErr.name && <p className="text-xs text-red-500">{stageErr.name}</p>}
-                            {stageErr.dur  && <p className="text-xs text-red-500">{stageErr.dur}</p>}
+                            {stageErr.name && <p className="text-xs text-status-delayed">{stageErr.name}</p>}
+                            {stageErr.dur  && <p className="text-xs text-status-delayed">{stageErr.dur}</p>}
                           </div>
                         )}
                       </div>
@@ -440,33 +440,33 @@ export default function CategoryPresetsPanel({
                 </div>
                 <button
                   onClick={addStage}
-                  className="flex items-center gap-1.5 text-sm text-gray-500 hover:text-gray-700 transition-colors"
+                  className="flex items-center gap-1.5 text-sm text-body hover:text-body transition-colors"
                 >
                   <Plus className="w-3.5 h-3.5" />
                   Add Stage
                 </button>
               </div>
 
-              {serverError && <p className="text-sm text-red-500">{serverError}</p>}
+              {serverError && <p className="text-sm text-status-delayed">{serverError}</p>}
 
-              <p className="text-xs text-gray-400"><span className="text-red-500">*</span> Required field</p>
+              <p className="text-xs text-muted"><span className="text-status-delayed">*</span> Required field</p>
             </div>
           )}
         </div>
 
         {/* Footer (form only) */}
         {(mode === "create" || mode === "edit") && (
-          <div className="px-5 py-4 border-t border-gray-100 flex items-center gap-2 shrink-0">
+          <div className="px-5 py-4 border-t border-border-subtle flex items-center gap-2 shrink-0">
             <button
               onClick={handleSave}
               disabled={saving}
-              className="flex-1 py-2.5 rounded-xl bg-gray-900 text-white text-sm font-medium hover:bg-gray-700 disabled:opacity-50 transition-colors"
+              className="flex-1 py-2.5 rounded-card bg-primary text-white text-sm font-medium hover:bg-shell-alt disabled:opacity-50 transition-colors"
             >
               {saving ? "Saving…" : mode === "edit" ? "Update Preset" : "Save Preset"}
             </button>
             <button
               onClick={() => { setMode("list"); clearErrors() }}
-              className="px-4 py-2.5 rounded-xl border border-gray-200 text-sm text-gray-600 hover:bg-gray-50 transition-colors"
+              className="px-4 py-2.5 rounded-card border border-border text-sm text-body hover:bg-surface-muted transition-colors"
             >
               Cancel
             </button>

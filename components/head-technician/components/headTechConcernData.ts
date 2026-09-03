@@ -12,17 +12,17 @@ export type HeadTechConcern = {
 };
 
 export const HEAD_TECH_CONCERN_STATUS_STYLES: Record<HeadTechConcernStatus, string> = {
-  Unresolved: "bg-red-100 text-red-500",
-  Resolved: "bg-green-100 text-green-600",
+  Unresolved: "bg-status-delayed/12 text-status-delayed",
+  Resolved: "bg-status-inspection/12 text-status-inspection",
 };
 
 export const HEAD_TECH_CONCERN_TYPE_STYLES: Record<string, string> = {
-  "Material Issue": "bg-red-100 text-red-500",
-  "Equipment Problem": "bg-orange-100 text-orange-500",
-  "Rework Needed": "bg-purple-100 text-purple-600",
-  "Safety Issue": "bg-yellow-100 text-yellow-700",
-  "Customer Request": "bg-blue-100 text-blue-600",
-  Other: "bg-gray-100 text-gray-600",
+  "Material Issue": "bg-status-delayed/12 text-status-delayed",
+  "Equipment Problem": "bg-status-rework/12 text-status-rework",
+  "Rework Needed": "bg-status-concern/12 text-status-concern",
+  "Safety Issue": "bg-status-warning/12 text-status-warning",
+  "Customer Request": "bg-primary/12 text-primary",
+  Other: "bg-surface-muted text-body",
 };
 
 export const HEAD_TECH_CONCERNS: HeadTechConcern[] = [

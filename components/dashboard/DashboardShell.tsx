@@ -1,0 +1,33 @@
+"use client"
+
+import { usePathname } from "next/navigation"
+import { AppShell } from "@/components/ui/AppShell"
+import { useConcerns } from "@/hooks/use-concerns"
+import { resolveNavArea, navFor } from "@/lib/ui/nav"
+
+/**
+ * Single dashboard shell for operations / sales / admin. The nav config is
+ * chosen by pathname (same routing rule the old DynamicSidebar used). The
+ * Concerns badge count is injected for the operations nav.
+ */
+export default function DashboardShell({ children }: { children: React.ReactNode }) {
+  const pathname = usePathname()
+  const area = resolveNavArea(pathname)
+  const { nav, settingsHref, fallbackName } = navFor(area)
+
+  const { data: concerns } = useConcerns()
+  const pendingConcerns = (concerns ?? []).filter((c) => c.status === "Pending").length
+
+  const resolvedNav =
+    area === "operations"
+      ? nav.map((item) =>
+          item.label === "Concerns" ? { ...item, badge: pendingConcerns } : item,
+        )
+      : nav
+
+  return (
+    <AppShell nav={resolvedNav} settingsHref={settingsHref} fallbackName={fallbackName}>
+      {children}
+    </AppShell>
+  )
+}

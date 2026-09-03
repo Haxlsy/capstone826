@@ -23,13 +23,13 @@ type TabType = "All" | "Pending" | "Ongoing" | "For Rework" | "For Release" | "D
 const TABS: TabType[] = ["All", "Pending", "Ongoing", "For Rework", "For Release", "Delayed", "Cancelled"]
 
 const STATUS_BADGE: Record<string, string> = {
-  Pending:        "bg-yellow-50 text-yellow-700 border-yellow-100",
-  Ongoing:        "bg-blue-50 text-blue-700 border-blue-100",
-  "For Rework":   "bg-orange-50 text-orange-700 border-orange-100",
-  "For Release":  "bg-purple-50 text-purple-700 border-purple-100",
-  Released:       "bg-emerald-50 text-emerald-700 border-emerald-100",
-  Delayed:        "bg-red-50 text-red-700 border-red-100",
-  Cancelled:      "bg-gray-100 text-gray-500 border-gray-200",
+  Pending:        "bg-status-warning/12 text-status-warning border-status-warning/30",
+  Ongoing:        "bg-primary/10 text-primary border-primary/20",
+  "For Rework":   "bg-status-rework/10 text-status-rework border-orange-100",
+  "For Release":  "bg-status-concern/12 text-status-concern border-purple-100",
+  Released:       "bg-status-inspection/12 text-status-inspection border-status-inspection/30",
+  Delayed:        "bg-status-delayed/10 text-status-delayed border-status-delayed/30",
+  Cancelled:      "bg-surface-muted text-body border-border",
 }
 
 const PAGE_SIZE = 15
@@ -98,26 +98,26 @@ export default function SalesJobList({ jobOrders: rawOrders }: { jobOrders: any[
   return (
     <div className="flex flex-col gap-5">
       <div>
-        <h1 className="text-xl font-bold text-gray-800">View Job Orders</h1>
-        <p className="text-sm text-gray-400 mt-0.5">Read-only reference view of all active job orders.</p>
+        <h1 className="text-xl font-bold text-heading">View Job Orders</h1>
+        <p className="text-sm text-muted mt-0.5">Read-only reference view of all active job orders.</p>
       </div>
 
       {/* Tabs */}
-      <div className="flex gap-1 border-b border-gray-100 overflow-x-auto overflow-y-hidden">
+      <div className="flex gap-1 border-b border-border-subtle overflow-x-auto overflow-y-hidden">
         {TABS.map((t) => (
           <button
             key={t}
             onClick={() => changeTab(t)}
             className={`px-3 py-2 text-sm font-medium whitespace-nowrap transition-colors border-b-2 -mb-px ${
               activeTab === t
-                ? "border-gray-900 text-gray-900"
-                : "border-transparent text-gray-400 hover:text-gray-600"
+                ? "border-primary text-primary"
+                : "border-transparent text-muted hover:text-body"
             }`}
           >
             {t}
             {tabCounts[t] ? (
               <span className={`ml-1.5 text-xs px-1.5 py-0.5 rounded-full ${
-                activeTab === t ? "bg-gray-900 text-white" : "bg-gray-100 text-gray-500"
+                activeTab === t ? "bg-primary text-white" : "bg-surface-muted text-body"
               }`}>
                 {tabCounts[t]}
               </span>
@@ -129,62 +129,62 @@ export default function SalesJobList({ jobOrders: rawOrders }: { jobOrders: any[
       {/* Search + Filter */}
       <div className="flex items-center gap-3">
         <div className="relative flex-1 max-w-sm">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted" />
           <input
             type="text"
             placeholder="Search customer, job ID, plate, service…"
             value={searchQuery}
             onChange={(e) => changeSearch(e.target.value)}
-            className="w-full pl-9 pr-4 py-2 text-sm border border-gray-200 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className="w-full pl-9 pr-4 py-2 text-sm border border-border rounded-sm bg-surface focus:outline-none focus:ring-2 focus:ring-primary/30"
           />
         </div>
 
         <div className="relative" ref={filterRef}>
           <button
             onClick={() => setFilterOpen((v) => !v)}
-            className={`flex items-center gap-1.5 px-3 py-2 text-sm border rounded-lg transition-colors ${
+            className={`flex items-center gap-1.5 px-3 py-2 text-sm border rounded-sm transition-colors ${
               hasActiveFilter
-                ? "border-blue-400 bg-blue-50 text-blue-600"
-                : "border-gray-200 bg-white text-gray-500 hover:bg-gray-50"
+                ? "border-primary bg-primary/10 text-primary"
+                : "border-border bg-surface text-body hover:bg-surface-muted"
             }`}
           >
             <Filter className="w-3.5 h-3.5" />
             Filter
             {hasActiveFilter && (
-              <span className="ml-0.5 w-4 h-4 flex items-center justify-center rounded-full bg-blue-500 text-white text-[10px] font-bold">
+              <span className="ml-0.5 w-4 h-4 flex items-center justify-center rounded-full bg-primary text-white text-[10px] font-bold">
                 {[filterService, filterTechnician, filterDateFrom, filterDateTo].filter(Boolean).length}
               </span>
             )}
           </button>
 
           {filterOpen && (
-            <div className="absolute top-full right-0 mt-2 w-72 bg-white border border-gray-100 rounded-xl shadow-lg z-20 p-4 flex flex-col gap-3">
+            <div className="absolute top-full right-0 mt-2 w-72 bg-surface border border-border-subtle rounded-card shadow-pop z-20 p-4 flex flex-col gap-3">
               <div className="flex items-center justify-between">
-                <p className="text-xs font-semibold text-gray-700 uppercase tracking-wide">Filters</p>
+                <p className="text-xs font-semibold text-body uppercase tracking-wide">Filters</p>
                 {hasActiveFilter && (
                   <button
                     onClick={() => { setFilterService(""); setFilterTechnician(""); setFilterDateFrom(""); setFilterDateTo("") }}
-                    className="text-xs text-blue-500 hover:text-blue-700 flex items-center gap-0.5"
+                    className="text-xs text-primary hover:text-primary flex items-center gap-0.5"
                   >
                     <X className="w-3 h-3" /> Clear all
                   </button>
                 )}
               </div>
               <div className="flex flex-col gap-1">
-                <label className="text-xs font-medium text-gray-500">Service</label>
-                <input type="text" value={filterService} onChange={(e) => setFilterService(e.target.value)} placeholder="e.g. Ceramic Coating" className="border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                <label className="text-xs font-medium text-body">Service</label>
+                <input type="text" value={filterService} onChange={(e) => setFilterService(e.target.value)} placeholder="e.g. Ceramic Coating" className="border border-border rounded-sm px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary/30" />
               </div>
               <div className="flex flex-col gap-1">
-                <label className="text-xs font-medium text-gray-500">Technician</label>
-                <input type="text" value={filterTechnician} onChange={(e) => setFilterTechnician(e.target.value)} placeholder="Name" className="border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                <label className="text-xs font-medium text-body">Technician</label>
+                <input type="text" value={filterTechnician} onChange={(e) => setFilterTechnician(e.target.value)} placeholder="Name" className="border border-border rounded-sm px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary/30" />
               </div>
               <div className="flex flex-col gap-1">
-                <label className="text-xs font-medium text-gray-500">Scheduled From</label>
-                <input type="date" value={filterDateFrom} onChange={(e) => setFilterDateFrom(e.target.value)} className="border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                <label className="text-xs font-medium text-body">Scheduled From</label>
+                <input type="date" value={filterDateFrom} onChange={(e) => setFilterDateFrom(e.target.value)} className="border border-border rounded-sm px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary/30" />
               </div>
               <div className="flex flex-col gap-1">
-                <label className="text-xs font-medium text-gray-500">Scheduled To</label>
-                <input type="date" value={filterDateTo} onChange={(e) => setFilterDateTo(e.target.value)} className="border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                <label className="text-xs font-medium text-body">Scheduled To</label>
+                <input type="date" value={filterDateTo} onChange={(e) => setFilterDateTo(e.target.value)} className="border border-border rounded-sm px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary/30" />
               </div>
             </div>
           )}
@@ -192,12 +192,12 @@ export default function SalesJobList({ jobOrders: rawOrders }: { jobOrders: any[
       </div>
 
       {/* Table */}
-      <div className="bg-white rounded-xl border border-gray-100 overflow-hidden">
+      <div className="bg-surface rounded-card border border-border-subtle overflow-hidden">
         <table className="w-full text-sm">
           <thead>
-            <tr className="border-b border-gray-100 bg-gray-50">
+            <tr className="border-b border-border-subtle bg-surface-subtle">
               {["Job ID", "Customer", "Plate", "Vehicle", "Service", "Head Detailer", "Head Installer", "Scheduled", "Status"].map((h) => (
-                <th key={h} className="px-4 py-3 text-left text-[11px] font-semibold text-gray-400 uppercase tracking-wide whitespace-nowrap">
+                <th key={h} className="px-4 py-3 text-left text-[11px] font-semibold text-muted uppercase tracking-wide whitespace-nowrap">
                   {h}
                 </th>
               ))}
@@ -206,45 +206,45 @@ export default function SalesJobList({ jobOrders: rawOrders }: { jobOrders: any[
           </thead>
             <tbody>
               {paginated.length === 0 ? (
-              <tr><td colSpan={10} className="px-4 py-10 text-center text-sm text-gray-400">No job orders found.</td></tr>
+              <tr><td colSpan={10} className="px-4 py-10 text-center text-sm text-muted">No job orders found.</td></tr>
             ) : (
               paginated.map((j, idx) => (
                 <tr
                   key={j.id}
                   onClick={() => router.push(`/dashboard/sales/jobs/${j.id}`)}
-                  className={`border-b border-gray-50 hover:bg-blue-50/40 cursor-pointer transition-colors group ${idx === paginated.length - 1 ? "border-b-0" : ""}`}
+                  className={`border-b border-border-subtle hover:bg-primary/5 cursor-pointer transition-colors group ${idx === paginated.length - 1 ? "border-b-0" : ""}`}
                 >
                   <td className="px-4 py-3.5">
-                    <span className="font-mono text-xs font-semibold text-gray-700">{j.displayId}</span>
+                    <span className="font-mono text-xs font-semibold text-body">{j.displayId}</span>
                   </td>
                   <td className="px-4 py-3.5">
-                    <span className="text-sm text-gray-800 font-medium">{j.customer}</span>
+                    <span className="text-sm text-heading font-medium">{j.customer}</span>
                   </td>
                   <td className="px-4 py-3.5">
-                    <span className="text-sm text-gray-600">{j.plate}</span>
+                    <span className="text-sm text-body">{j.plate}</span>
                   </td>
                   <td className="px-4 py-3.5">
-                    <span className="text-sm text-gray-600 max-w-28 truncate block">{j.vehicle}</span>
+                    <span className="text-sm text-body max-w-28 truncate block">{j.vehicle}</span>
                   </td>
                   <td className="px-4 py-3.5">
-                    <span className="text-sm text-gray-700 max-w-36 truncate block">{j.service}</span>
+                    <span className="text-sm text-body max-w-36 truncate block">{j.service}</span>
                   </td>
                   <td className="px-4 py-3.5">
-                    <span className="text-xs text-gray-500">{j.headDetailer}</span>
+                    <span className="text-xs text-body">{j.headDetailer}</span>
                   </td>
                   <td className="px-4 py-3.5">
-                    <span className="text-xs text-gray-500">{j.headInstaller}</span>
+                    <span className="text-xs text-body">{j.headInstaller}</span>
                   </td>
                   <td className="px-4 py-3.5">
-                    <span className="text-xs text-gray-400 whitespace-nowrap">{j.scheduled}</span>
+                    <span className="text-xs text-muted whitespace-nowrap">{j.scheduled}</span>
                   </td>
                   <td className="px-4 py-3.5">
-                    <span className={`inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-semibold whitespace-nowrap ${STATUS_BADGE[j.status] ?? "bg-gray-100 text-gray-500 border-gray-200"}`}>
+                    <span className={`inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-semibold whitespace-nowrap ${STATUS_BADGE[j.status] ?? "bg-surface-muted text-body border-border"}`}>
                       {j.status}
                     </span>
                   </td>
                   <td className="px-4 py-3.5 w-8">
-                    <ArrowRight className="w-4 h-4 text-gray-300 opacity-0 group-hover:opacity-100 transition-opacity" />
+                    <ArrowRight className="w-4 h-4 text-muted opacity-0 group-hover:opacity-100 transition-opacity" />
                   </td>
                 </tr>
               ))
@@ -255,14 +255,14 @@ export default function SalesJobList({ jobOrders: rawOrders }: { jobOrders: any[
 
       {/* Pagination */}
       <div className="flex items-center justify-between">
-        <p className="text-xs text-gray-400">
+        <p className="text-xs text-muted">
           Showing {paginated.length} of {filtered.length} jobs
         </p>
         <div className="flex items-center gap-1">
           <button
             onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
             disabled={currentPage === 1}
-            className="w-8 h-8 flex items-center justify-center rounded-md text-gray-500 hover:bg-gray-100 disabled:opacity-40 disabled:cursor-not-allowed"
+            className="w-8 h-8 flex items-center justify-center rounded-md text-body hover:bg-surface-muted disabled:opacity-40 disabled:cursor-not-allowed"
           >
             <ChevronLeft className="w-4 h-4" />
           </button>
@@ -271,7 +271,7 @@ export default function SalesJobList({ jobOrders: rawOrders }: { jobOrders: any[
               key={p}
               onClick={() => setCurrentPage(p)}
               className={`w-8 h-8 flex items-center justify-center rounded-md text-sm font-medium transition-colors ${
-                p === currentPage ? "bg-gray-900 text-white" : "text-gray-500 hover:bg-gray-100"
+                p === currentPage ? "bg-primary text-white" : "text-body hover:bg-surface-muted"
               }`}
             >
               {p}
@@ -280,7 +280,7 @@ export default function SalesJobList({ jobOrders: rawOrders }: { jobOrders: any[
           <button
             onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
             disabled={currentPage === totalPages}
-            className="w-8 h-8 flex items-center justify-center rounded-md text-gray-500 hover:bg-gray-100 disabled:opacity-40 disabled:cursor-not-allowed"
+            className="w-8 h-8 flex items-center justify-center rounded-md text-body hover:bg-surface-muted disabled:opacity-40 disabled:cursor-not-allowed"
           >
             <ChevronRight className="w-4 h-4" />
           </button>

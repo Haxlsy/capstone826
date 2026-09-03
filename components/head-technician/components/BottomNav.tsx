@@ -2,6 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { BriefcaseBusiness, TriangleAlert, Settings, LogOut } from "lucide-react";
+import { useLogout } from "@/hooks/useLogout";
 
 export type ActiveTab = "jobs" | "concerns" | "settings";
 
@@ -26,12 +27,7 @@ type BottomNavProps = {
 
 export function BottomNav({ active = "jobs" }: BottomNavProps) {
   const router = useRouter();
-
-  async function handleLogout() {
-    try { await fetch("/api/auth/logout", { method: "POST" }) } catch {}
-    try { localStorage.removeItem("826_user") } catch {}
-    router.push("/");
-  }
+  const handleLogout = useLogout();
 
   function handlePress(item: NavItem) {
     if (item.id === "logout") {
@@ -42,7 +38,7 @@ export function BottomNav({ active = "jobs" }: BottomNavProps) {
   }
 
   return (
-    <div className="fixed bottom-0 left-0 right-0 z-50 bg-white border-t border-gray-100 shadow-[0_-4px_24px_-8px_rgba(0,0,0,0.08)]">
+    <div className="fixed bottom-0 left-0 right-0 z-50 bg-surface border-t border-border-subtle shadow-[0_-4px_24px_-8px_rgba(0,0,0,0.08)]">
       <nav className="flex items-center justify-around px-2 py-1 max-w-md mx-auto">
         {NAV_ITEMS.map((item) => {
           const isActive = item.id === active;
@@ -53,7 +49,7 @@ export function BottomNav({ active = "jobs" }: BottomNavProps) {
               <button
                 key={item.id}
                 onClick={() => handlePress(item)}
-                className="flex flex-col items-center gap-1 px-4 py-2.5 rounded-xl text-red-400 hover:text-red-500 hover:bg-red-50 transition-all duration-150"
+                className="flex flex-col items-center gap-1 px-4 py-2.5 rounded-card text-status-delayed hover:text-status-delayed hover:bg-status-delayed/10 transition-all duration-150"
               >
                 <Icon size={20} strokeWidth={1.8} />
                 <span className="text-[10px] font-medium">{item.label}</span>
@@ -65,22 +61,22 @@ export function BottomNav({ active = "jobs" }: BottomNavProps) {
             <button
               key={item.id}
               onClick={() => handlePress(item)}
-              className={`relative flex flex-col items-center gap-1 px-4 py-2.5 rounded-xl transition-all duration-150 ${
+              className={`relative flex flex-col items-center gap-1 px-4 py-2.5 rounded-card transition-all duration-150 ${
                 isActive
-                  ? "text-gray-900"
-                  : "text-gray-400 hover:text-gray-600 hover:bg-gray-50"
+                  ? "text-heading"
+                  : "text-muted hover:text-body hover:bg-surface-muted"
               }`}
             >
               <Icon
                 size={20}
                 strokeWidth={isActive ? 2.2 : 1.8}
               />
-              <span className={`text-[10px] font-semibold ${isActive ? "text-gray-900" : "text-gray-400"}`}>
+              <span className={`text-[10px] font-semibold ${isActive ? "text-heading" : "text-muted"}`}>
                 {item.label}
               </span>
               {/* Active indicator dot */}
               {isActive && (
-                <span className="absolute bottom-1 w-1 h-1 rounded-full bg-gray-900" />
+                <span className="absolute bottom-1 w-1 h-1 rounded-full bg-primary" />
               )}
             </button>
           );

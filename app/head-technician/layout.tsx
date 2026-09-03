@@ -1,5 +1,5 @@
 import { requireRole } from "@/lib/auth/guard"
-import HeadTechTopBar from "@/components/head-technician/components/HeadTechTopBar"
+import { MobileTopBar } from "@/components/ui/MobileTopBar"
 
 export default async function HeadTechnicianLayout({
   children,
@@ -9,9 +9,9 @@ export default async function HeadTechnicianLayout({
   await requireRole(["head_detailer", "head_installer"])
 
   return (
-    <>
-      <HeadTechTopBar />
+    <div className="min-h-screen bg-surface-subtle">
+      <MobileTopBar />
       {children}
-    </>
+    </div>
   )
 }

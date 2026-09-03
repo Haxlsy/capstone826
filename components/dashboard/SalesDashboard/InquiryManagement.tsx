@@ -41,15 +41,15 @@ const TABS: { key: Tab; label: string }[] = [
 ]
 
 const STATUS_COLORS: Record<InquiryStatus, string> = {
-  open:     "bg-orange-100 text-orange-700 border-orange-200",
-  recorded: "bg-blue-100 text-blue-700 border-blue-200",
-  resolved: "bg-gray-100 text-gray-500 border-gray-200",
+  open:     "bg-status-rework/12 text-status-rework border-status-rework/30",
+  recorded: "bg-primary/12 text-primary border-primary/30",
+  resolved: "bg-surface-muted text-body border-border",
 }
 
 const STATUS_DOT: Record<InquiryStatus, string> = {
-  open:     "bg-orange-400",
-  recorded: "bg-blue-500",
-  resolved: "bg-gray-300",
+  open:     "bg-status-rework",
+  recorded: "bg-primary",
+  resolved: "bg-border",
 }
 
 const STATUS_LABELS: Record<InquiryStatus, string> = {
@@ -59,9 +59,9 @@ const STATUS_LABELS: Record<InquiryStatus, string> = {
 }
 
 const TYPE_COLORS: Record<InquiryType, string> = {
-  Booking:         "bg-blue-50 text-blue-600 border-blue-200",
-  "Human Response":"bg-purple-50 text-purple-600 border-purple-200",
-  Report:          "bg-yellow-50 text-yellow-600 border-yellow-200",
+  Booking:         "bg-primary/10 text-primary border-primary/30",
+  "Human Response":"bg-status-concern/12 text-status-concern border-status-concern/30",
+  Report:          "bg-status-warning/12 text-status-warning border-status-warning/30",
 }
 
 function timeAgo(iso: string): string {
@@ -78,7 +78,7 @@ function getInitials(name: string) {
   return name.split(" ").slice(0, 2).map((n) => n[0]).join("").toUpperCase()
 }
 
-const INPUT_CLS = "w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+const INPUT_CLS = "w-full border border-border rounded-sm px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
 
 export default function InquiryManagement() {
   const tabBarRef = useRef<HTMLDivElement>(null)
@@ -291,35 +291,35 @@ export default function InquiryManagement() {
   return (
     <div className="flex flex-col h-full gap-5">
       <div>
-        <h1 className="text-xl font-bold text-gray-800">Inquiry Management</h1>
-        <p className="text-sm text-gray-400 mt-0.5">
+        <h1 className="text-xl font-bold text-heading">Inquiry Management</h1>
+        <p className="text-sm text-muted mt-0.5">
           Escalated chatbot conversations requiring Sales action.
         </p>
       </div>
 
       {/* Stats */}
       <div className="grid grid-cols-5 gap-4">
-        <StatPill label="Total"       count={totalCount}    icon={Layers}         color="text-indigo-500" bg="bg-indigo-50"  border="border-indigo-200" />
-        <StatPill label="Unresolved"  count={unresolvedCnt} icon={AlertCircle}    color="text-orange-500" bg="bg-orange-50"  border="border-orange-200" />
-        <StatPill label="Unrecorded"  count={openCount}     icon={Clock}          color="text-amber-500"  bg="bg-amber-50"   border="border-amber-200" />
-        <StatPill label="Recorded"    count={recCount}      icon={ArrowRightLeft} color="text-blue-600"   bg="bg-blue-50"    border="border-blue-200" />
-        <StatPill label="Resolved"    count={resCount}      icon={CheckCheck}     color="text-emerald-600" bg="bg-emerald-50" border="border-emerald-200" />
+        <StatPill label="Total"       count={totalCount}    icon={Layers}         color="text-status-ongoing" bg="bg-status-ongoing/10"  border="border-status-ongoing/30" />
+        <StatPill label="Unresolved"  count={unresolvedCnt} icon={AlertCircle}    color="text-status-rework" bg="bg-status-rework/10"  border="border-status-rework/30" />
+        <StatPill label="Unrecorded"  count={openCount}     icon={Clock}          color="text-status-warning"  bg="bg-status-warning/10"   border="border-status-warning/30" />
+        <StatPill label="Recorded"    count={recCount}      icon={ArrowRightLeft} color="text-primary"   bg="bg-primary/10"    border="border-primary/30" />
+        <StatPill label="Resolved"    count={resCount}      icon={CheckCheck}     color="text-status-inspection" bg="bg-status-inspection/10" border="border-emerald-200" />
       </div>
 
       {/* Main Panel */}
       <div className="flex flex-1 gap-4 min-h-0">
         {/* Left: List */}
-        <div className="flex flex-col w-96 shrink-0 bg-white border border-gray-200 rounded-2xl overflow-hidden">
+        <div className="flex flex-col w-96 shrink-0 bg-surface border border-border rounded-card overflow-hidden">
           {/* Tabs */}
-          <div ref={tabBarRef} className="flex border-b border-gray-100 px-3 pt-2 gap-0.5 overflow-x-auto overflow-y-hidden scrollbar-none">
+          <div ref={tabBarRef} className="flex border-b border-border-subtle px-3 pt-2 gap-0.5 overflow-x-auto overflow-y-hidden scrollbar-none">
             {TABS.map((tab) => (
               <button
                 key={tab.key}
                 onClick={() => setActiveTab(tab.key)}
                 className={`shrink-0 px-3 py-2 text-xs font-medium whitespace-nowrap transition-colors border-b-2 -mb-px ${
                   activeTab === tab.key
-                    ? "border-gray-900 text-gray-900"
-                    : "border-transparent text-gray-400 hover:text-gray-600"
+                    ? "border-primary text-primary"
+                    : "border-transparent text-muted hover:text-body"
                 }`}
               >
                 {tab.label}
@@ -328,39 +328,39 @@ export default function InquiryManagement() {
           </div>
 
           {/* Search */}
-          <div className="px-3 py-2 border-b border-gray-50">
+          <div className="px-3 py-2 border-b border-border-subtle">
             <div className="relative">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400" />
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted" />
               <input
                 type="text"
                 placeholder="Search by name, vehicle…"
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
-                className="w-full pl-8 pr-3 py-1.5 text-xs border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-100 focus:border-blue-400"
+                className="w-full pl-8 pr-3 py-1.5 text-xs border border-border rounded-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
               />
             </div>
           </div>
 
-          <div className="flex-1 overflow-y-auto divide-y divide-gray-50">
+          <div className="flex-1 overflow-y-auto divide-y divide-border-subtle">
             {loading ? (
-              <p className="text-sm text-gray-400 text-center py-10">Loading…</p>
+              <p className="text-sm text-muted text-center py-10">Loading…</p>
             ) : filtered.length === 0 ? (
-              <p className="text-sm text-gray-400 text-center py-10">No inquiries.</p>
+              <p className="text-sm text-muted text-center py-10">No inquiries.</p>
             ) : (
               filtered.map((inq) => (
                 <button
                   key={inq.id}
                   onClick={() => setSelectedId(inq.id)}
-                  className={`w-full text-left px-4 py-3.5 flex items-start gap-3 hover:bg-gray-50 transition-colors ${
-                    selectedId === inq.id ? "bg-blue-50/60" : ""
+                  className={`w-full text-left px-4 py-3.5 flex items-start gap-3 hover:bg-surface-muted transition-colors ${
+                    selectedId === inq.id ? "bg-primary" : ""
                   }`}
                 >
-                  <div className="w-9 h-9 rounded-full bg-gray-200 flex items-center justify-center text-xs font-bold shrink-0 text-gray-700">
+                  <div className="w-9 h-9 rounded-full bg-surface-muted flex items-center justify-center text-xs font-bold shrink-0 text-body">
                     {inq.extractedName ? getInitials(inq.extractedName) : "?"}
                   </div>
                   <div className="flex-1 min-w-0">
                     <div className="flex items-start justify-between gap-1">
-                      <span className="text-sm font-semibold text-gray-800 truncate leading-tight">{inq.messengerName}</span>
+                      <span className="text-sm font-semibold text-heading truncate leading-tight">{inq.messengerName}</span>
                       <span className={`text-[10px] font-medium px-2 py-0.5 rounded-full border shrink-0 ${STATUS_COLORS[inq.status]}`}>
                         {STATUS_LABELS[inq.status]}
                       </span>
@@ -370,12 +370,12 @@ export default function InquiryManagement() {
                         {inq.type}
                       </span>
                       {inq.conflictNote && (
-                        <AlertTriangle className="w-3 h-3 text-amber-500" aria-label="Identity conflict" />
+                        <AlertTriangle className="w-3 h-3 text-status-warning" aria-label="Identity conflict" />
                       )}
                     </div>
-                    <p className="text-[10px] text-gray-400 mt-1">{inq.timeElapsed}</p>
+                    <p className="text-[10px] text-muted mt-1">{inq.timeElapsed}</p>
                   </div>
-                  <ChevronRight className="w-4 h-4 text-gray-300 shrink-0 mt-1" />
+                  <ChevronRight className="w-4 h-4 text-muted shrink-0 mt-1" />
                 </button>
               ))
             )}
@@ -384,15 +384,15 @@ export default function InquiryManagement() {
 
         {/* Right: Detail */}
         {selected ? (
-          <div className="flex-1 bg-white border border-gray-200 rounded-2xl p-6 flex flex-col gap-5 overflow-y-auto">
+          <div className="flex-1 bg-surface border border-border rounded-card p-6 flex flex-col gap-5 overflow-y-auto">
             <div className="flex items-start justify-between gap-3">
               <div className="flex items-center gap-3">
-                <div className="w-12 h-12 rounded-full bg-gray-200 flex items-center justify-center text-sm font-bold text-gray-700">
+                <div className="w-12 h-12 rounded-full bg-surface-muted flex items-center justify-center text-sm font-bold text-body">
                   {selected.extractedName ? getInitials(selected.extractedName) : "?"}
                 </div>
                 <div>
-                  <p className="text-base font-bold text-gray-800">{selected.messengerName}</p>
-                  <p className="text-xs text-gray-400 mt-0.5">{selected.escalationDate}</p>
+                  <p className="text-base font-bold text-heading">{selected.messengerName}</p>
+                  <p className="text-xs text-muted mt-0.5">{selected.escalationDate}</p>
                 </div>
               </div>
               <div className="flex items-center gap-2">
@@ -405,48 +405,48 @@ export default function InquiryManagement() {
               </div>
             </div>
 
-            <hr className="border-gray-100" />
+            <hr className="border-border-subtle" />
 
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
-                <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Escalation Date</p>
-                <div className="bg-gray-50 border border-gray-100 rounded-xl px-4 py-3 flex items-center gap-3 h-[58px]">
-                  <Clock className="w-4 h-4 text-gray-400 shrink-0" />
+                <p className="text-xs font-semibold text-body uppercase tracking-wider">Escalation Date</p>
+                <div className="bg-surface-subtle border border-border-subtle rounded-card px-4 py-3 flex items-center gap-3 h-[58px]">
+                  <Clock className="w-4 h-4 text-muted shrink-0" />
                   <div>
-                    <p className="text-[10px] text-gray-400">Flagged At</p>
-                    <p className="text-sm font-semibold text-gray-700 whitespace-nowrap">{selected.escalationDate}</p>
+                    <p className="text-[10px] text-muted">Flagged At</p>
+                    <p className="text-sm font-semibold text-body whitespace-nowrap">{selected.escalationDate}</p>
                   </div>
                 </div>
               </div>
               <div className="space-y-2">
-                <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Messenger Identity</p>
-                <div className="bg-gray-50 border border-gray-100 rounded-xl px-4 py-3 flex items-center gap-3 h-[58px]">
-                  <Hash className="w-4 h-4 text-gray-400 shrink-0" />
+                <p className="text-xs font-semibold text-body uppercase tracking-wider">Messenger Identity</p>
+                <div className="bg-surface-subtle border border-border-subtle rounded-card px-4 py-3 flex items-center gap-3 h-[58px]">
+                  <Hash className="w-4 h-4 text-muted shrink-0" />
                   <div>
-                    <p className="text-[10px] text-gray-400">Page-Scoped ID</p>
-                    <p className="text-sm font-mono font-semibold text-gray-700 truncate">{selected.psid}</p>
+                    <p className="text-[10px] text-muted">Page-Scoped ID</p>
+                    <p className="text-sm font-mono font-semibold text-body truncate">{selected.psid}</p>
                   </div>
                 </div>
               </div>
             </div>
 
             {selected.conflictNote && (
-              <div className="flex items-start gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3">
-                <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+              <div className="flex items-start gap-3 rounded-card border border-status-warning/30 bg-status-warning/10 px-4 py-3">
+                <AlertTriangle className="w-4 h-4 text-status-warning shrink-0 mt-0.5" />
                 <div>
-                  <p className="text-xs font-semibold text-amber-700 uppercase tracking-wider">Identity Conflict</p>
-                  <p className="text-sm text-amber-800 mt-1">{selected.conflictNote}</p>
+                  <p className="text-xs font-semibold text-status-warning uppercase tracking-wider">Identity Conflict</p>
+                  <p className="text-sm text-status-warning mt-1">{selected.conflictNote}</p>
                 </div>
               </div>
             )}
 
             <div className="space-y-2">
-              <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider">AI-Extracted Fields</p>
-              <div className="bg-gray-50 border border-gray-100 rounded-xl divide-y divide-gray-100 overflow-hidden">
-                <FieldRow label="Full name"      value={selected.extractedName}    icon={<User  className="w-3.5 h-3.5 text-gray-400" />} />
-                <FieldRow label="Plate number"   value={selected.extractedPlate}   icon={<Car   className="w-3.5 h-3.5 text-gray-400" />} />
-                <FieldRow label="Contact number" value={selected.extractedContact} icon={<Phone className="w-3.5 h-3.5 text-gray-400" />} />
-                <FieldRow label="Email"          value={selected.extractedEmail}   icon={<Mail  className="w-3.5 h-3.5 text-gray-400" />} />
+              <p className="text-xs font-semibold text-body uppercase tracking-wider">AI-Extracted Fields</p>
+              <div className="bg-surface-subtle border border-border-subtle rounded-card divide-y divide-border-subtle overflow-hidden">
+                <FieldRow label="Full name"      value={selected.extractedName}    icon={<User  className="w-3.5 h-3.5 text-muted" />} />
+                <FieldRow label="Plate number"   value={selected.extractedPlate}   icon={<Car   className="w-3.5 h-3.5 text-muted" />} />
+                <FieldRow label="Contact number" value={selected.extractedContact} icon={<Phone className="w-3.5 h-3.5 text-muted" />} />
+                <FieldRow label="Email"          value={selected.extractedEmail}   icon={<Mail  className="w-3.5 h-3.5 text-muted" />} />
               </div>
             </div>
 
@@ -456,13 +456,13 @@ export default function InquiryManagement() {
                   <button
                     onClick={() => openRecordModal(selected)}
                     disabled={!selected.extractedName || !selected.extractedContact || !selected.extractedPlate || !selected.extractedVehicle}
-                    className="w-full py-2.5 rounded-xl bg-gray-900 text-white text-sm font-semibold hover:bg-gray-800 transition-colors flex items-center justify-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-gray-900"
+                    className="w-full py-2.5 rounded-card bg-primary text-white text-sm font-semibold hover:bg-primary-hover transition-colors flex items-center justify-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-primary"
                   >
                     <ArrowRightLeft className="w-4 h-4" />
                     Record Customer Details
                   </button>
                   {(!selected.extractedName || !selected.extractedContact || !selected.extractedPlate || !selected.extractedVehicle) && (
-                    <p className="text-[10px] text-gray-400 text-center mt-2 px-4">
+                    <p className="text-[10px] text-muted text-center mt-2 px-4">
                       AI fields must be populated before recording details.
                     </p>
                   )}
@@ -470,7 +470,7 @@ export default function InquiryManagement() {
               )}
 
               {selected.status === "recorded" && (
-                <div className="flex items-center justify-center gap-2 py-2.5 rounded-xl bg-blue-50 border border-blue-200 text-blue-700 text-sm font-medium">
+                <div className="flex items-center justify-center gap-2 py-2.5 rounded-card bg-primary/10 border border-primary/30 text-primary text-sm font-medium">
                   <CheckCircle2 className="w-4 h-4" />
                   Customer Details Recorded
                 </div>
@@ -480,7 +480,7 @@ export default function InquiryManagement() {
                 <button
                   onClick={() => setResolveTarget(selected.id)}
                   disabled={resolvingId === selected.id}
-                  className="w-full py-2.5 rounded-xl border border-gray-200 text-gray-700 text-sm font-medium hover:bg-gray-50 transition-colors flex items-center justify-center gap-2 disabled:opacity-60"
+                  className="w-full py-2.5 rounded-card border border-border text-body text-sm font-medium hover:bg-surface-muted transition-colors flex items-center justify-center gap-2 disabled:opacity-60"
                 >
                   <CircleDot className="w-4 h-4" />
                   Mark as Resolved
@@ -488,7 +488,7 @@ export default function InquiryManagement() {
               )}
 
               {selected.status === "resolved" && (
-                <div className="flex items-center justify-center gap-2 py-2.5 rounded-xl bg-gray-50 border border-gray-200 text-gray-500 text-sm font-medium">
+                <div className="flex items-center justify-center gap-2 py-2.5 rounded-card bg-surface-subtle border border-border text-body text-sm font-medium">
                   <CheckCheck className="w-4 h-4" />
                   Resolved
                 </div>
@@ -496,36 +496,36 @@ export default function InquiryManagement() {
             </div>
           </div>
         ) : (
-          <div className="flex-1 bg-white border border-gray-200 rounded-2xl flex items-center justify-center">
-            <p className="text-sm text-gray-400">Select an inquiry to view details.</p>
+          <div className="flex-1 bg-surface border border-border rounded-card flex items-center justify-center">
+            <p className="text-sm text-muted">Select an inquiry to view details.</p>
           </div>
         )}
       </div>
 
       {/* Resolve Confirm Dialog */}
       {resolveTarget && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm overflow-hidden">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-shell/50 backdrop-blur-sm p-4">
+          <div className="bg-surface rounded-card shadow-pop w-full max-w-sm overflow-hidden">
             <div className="px-5 pt-5 pb-4 text-center">
-              <div className="mx-auto w-12 h-12 rounded-full bg-gray-100 flex items-center justify-center mb-3">
-                <CheckCheck className="w-5 h-5 text-gray-500" />
+              <div className="mx-auto w-12 h-12 rounded-full bg-surface-muted flex items-center justify-center mb-3">
+                <CheckCheck className="w-5 h-5 text-body" />
               </div>
-              <h2 className="text-base font-bold text-gray-800">Mark as Resolved?</h2>
-              <p className="text-sm text-gray-500 mt-1.5">
+              <h2 className="text-base font-bold text-heading">Mark as Resolved?</h2>
+              <p className="text-sm text-body mt-1.5">
                 This inquiry will be marked as resolved and moved out of the active queue.
               </p>
             </div>
             <div className="flex gap-2 px-5 pb-5">
               <button
                 onClick={() => setResolveTarget(null)}
-                className="flex-1 py-2 text-sm font-medium text-gray-600 bg-gray-100 hover:bg-gray-200 rounded-xl transition-colors"
+                className="flex-1 py-2 text-sm font-medium text-body bg-surface-muted hover:bg-border/60 rounded-card transition-colors"
               >
                 Cancel
               </button>
               <button
                 onClick={confirmResolve}
                 disabled={!!resolvingId}
-                className="flex-1 py-2 text-sm font-semibold text-white bg-gray-900 hover:bg-gray-800 rounded-xl transition-colors disabled:opacity-60"
+                className="flex-1 py-2 text-sm font-semibold text-white bg-primary hover:bg-primary-hover rounded-card transition-colors disabled:opacity-60"
               >
                 {resolvingId ? "Resolving…" : "Confirm"}
               </button>
@@ -536,11 +536,11 @@ export default function InquiryManagement() {
 
       {/* Record Customer Details Modal */}
       {recordOpen && selected && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-          <div className="bg-white rounded-2xl shadow-xl w-full max-w-md p-6">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-shell/50 p-4">
+          <div className="bg-surface rounded-card shadow-pop w-full max-w-md p-6">
             <div className="flex items-center justify-between mb-5">
-              <h3 className="text-base font-semibold text-gray-800">Record Customer Details</h3>
-              <button aria-label="Close" onClick={() => setRecordOpen(false)} className="text-gray-400 hover:text-gray-600">
+              <h3 className="text-base font-semibold text-heading">Record Customer Details</h3>
+              <button aria-label="Close" onClick={() => setRecordOpen(false)} className="text-muted hover:text-body">
                 <X className="w-5 h-5" />
               </button>
             </div>
@@ -554,7 +554,7 @@ export default function InquiryManagement() {
                 { label: "Vehicle Unit *",   key: "vehicle_unit",   type: "text",  placeholder: "e.g. Toyota Fortuner" },
               ].map(({ label, key, type, placeholder }) => (
                 <div key={key}>
-                  <label className="block text-xs font-medium text-gray-600 mb-1">{label}</label>
+                  <label className="block text-xs font-medium text-body mb-1">{label}</label>
                   <input
                     type={type}
                     value={(recordForm as Record<string, string>)[key]}
@@ -563,28 +563,28 @@ export default function InquiryManagement() {
                       if (recordErrors[key]) setRecordErrors((prev) => { const n = { ...prev }; delete n[key]; return n })
                     }}
                     placeholder={placeholder}
-                    className={`${INPUT_CLS} ${recordErrors[key] ? "border-red-400 focus:ring-red-500" : ""}`}
+                    className={`${INPUT_CLS} ${recordErrors[key] ? "border-status-delayed focus:ring-status-delayed/30" : ""}`}
                   />
                   {recordErrors[key] && (
-                    <p className="text-[11px] text-red-500 mt-1">{recordErrors[key]}</p>
+                    <p className="text-[11px] text-status-delayed mt-1">{recordErrors[key]}</p>
                   )}
                 </div>
               ))}
             </div>
 
-            {recordErrors._submit && <p className="text-xs text-red-500 mt-3">{recordErrors._submit}</p>}
+            {recordErrors._submit && <p className="text-xs text-status-delayed mt-3">{recordErrors._submit}</p>}
 
             <div className="flex gap-3 mt-5">
               <button
                 onClick={() => setRecordOpen(false)}
-                className="flex-1 py-2 text-sm font-medium text-gray-600 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors"
+                className="flex-1 py-2 text-sm font-medium text-body border border-border rounded-sm hover:bg-surface-muted transition-colors"
               >
                 Cancel
               </button>
               <button
                 onClick={submitRecord}
                 disabled={recording}
-                className="flex-1 py-2 text-sm font-semibold text-white bg-gray-900 rounded-lg hover:bg-gray-800 disabled:opacity-50 transition-colors"
+                className="flex-1 py-2 text-sm font-semibold text-white bg-primary rounded-sm hover:bg-primary-hover disabled:opacity-50 transition-colors"
               >
                 {recording ? "Recording…" : "Record & Save"}
               </button>
@@ -601,13 +601,13 @@ function StatPill({ label, count, icon: Icon, color, bg, border }: {
   color: string; bg: string; border: string
 }) {
   return (
-    <div className={`flex items-center gap-3 bg-white border ${border} rounded-xl px-4 py-3`}>
-      <div className={`w-9 h-9 rounded-lg ${bg} flex items-center justify-center shrink-0`}>
+    <div className={`flex items-center gap-3 bg-surface border ${border} rounded-card px-4 py-3`}>
+      <div className={`w-9 h-9 rounded-sm ${bg} flex items-center justify-center shrink-0`}>
         <Icon className={`w-4 h-4 ${color}`} />
       </div>
       <div>
-        <p className="text-2xl font-bold text-gray-800 leading-none">{count}</p>
-        <p className="text-[11px] text-gray-400 mt-0.5">{label}</p>
+        <p className="text-2xl font-bold text-heading leading-none">{count}</p>
+        <p className="text-[11px] text-muted mt-0.5">{label}</p>
       </div>
     </div>
   )
@@ -616,11 +616,11 @@ function StatPill({ label, count, icon: Icon, color, bg, border }: {
 function FieldRow({ label, value, icon }: { label: string; value: string | null; icon: React.ReactNode }) {
   return (
     <div className="flex items-center justify-between px-4 py-3">
-      <div className="flex items-center gap-2 text-xs text-gray-500">
+      <div className="flex items-center gap-2 text-xs text-body">
         {icon}
         {label}
       </div>
-      <span className={`text-sm font-semibold ${value ? "text-blue-600" : "text-gray-300"}`}>
+      <span className={`text-sm font-semibold ${value ? "text-primary" : "text-muted"}`}>
         {value ?? "—"}
       </span>
     </div>

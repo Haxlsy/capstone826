@@ -16,7 +16,7 @@ interface CustomerRecord {
   createdAt:     string
 }
 
-const EDIT_INPUT = "text-sm border border-gray-300 rounded-lg px-2 py-1 focus:outline-none focus:ring-2 focus:ring-blue-500"
+const EDIT_INPUT = "text-sm border border-border rounded-sm px-2 py-1 focus:outline-none focus:ring-2 focus:ring-primary/30"
 
 export default function CustomerRecords() {
   const [records, setRecords]   = useState<CustomerRecord[]>([])
@@ -123,58 +123,58 @@ export default function CustomerRecords() {
   return (
     <div className="flex flex-col gap-5">
       <div>
-        <h1 className="text-xl font-bold text-gray-800">Customer Records</h1>
-        <p className="text-sm text-gray-400 mt-0.5">
+        <h1 className="text-xl font-bold text-heading">Customer Records</h1>
+        <p className="text-sm text-muted mt-0.5">
           Confirmed customer details from booking inquiries.
         </p>
       </div>
 
       {/* Search */}
       <div className="relative max-w-sm">
-        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
+        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted pointer-events-none" />
         <input
           type="text"
           placeholder="Search by name, plate, or contact…"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          className="w-full pl-9 pr-4 py-2 text-sm border border-gray-200 rounded-xl bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+          className="w-full pl-9 pr-4 py-2 text-sm border border-border rounded-card bg-surface focus:outline-none focus:ring-2 focus:ring-primary/30"
         />
       </div>
 
       {/* Table */}
-      <div className="bg-white border border-gray-200 rounded-2xl overflow-hidden">
+      <div className="bg-surface border border-border rounded-card overflow-hidden">
         <table className="w-full text-sm">
           <thead>
-            <tr className="border-b border-gray-100 bg-gray-50">
+            <tr className="border-b border-border-subtle bg-surface-subtle">
               {["Customer", "Vehicle", "Plate Number", "Contact", "Email", "Recorded", ""].map((h) => (
-                <th key={h} className="text-left px-5 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">
+                <th key={h} className="text-left px-5 py-3 text-xs font-semibold text-body uppercase tracking-wide">
                   {h}
                 </th>
               ))}
             </tr>
           </thead>
-          <tbody className="divide-y divide-gray-50">
+          <tbody className="divide-y divide-border-subtle">
             {loading ? (
               <tr>
-                <td colSpan={7} className="text-center py-10 text-sm text-gray-400">Loading records…</td>
+                <td colSpan={7} className="text-center py-10 text-sm text-muted">Loading records…</td>
               </tr>
             ) : fetchErr ? (
               <tr>
-                <td colSpan={7} className="text-center py-10 text-sm text-red-500">{fetchErr}</td>
+                <td colSpan={7} className="text-center py-10 text-sm text-status-delayed">{fetchErr}</td>
               </tr>
             ) : records.length === 0 ? (
               <tr>
-                <td colSpan={7} className="text-center py-10 text-sm text-gray-400">No records found.</td>
+                <td colSpan={7} className="text-center py-10 text-sm text-muted">No records found.</td>
               </tr>
             ) : (
               records.map((record) => {
                 const isEditing = editingId === record.id
                 return (
-                  <tr key={record.id} className="hover:bg-gray-50/50 transition-colors">
+                  <tr key={record.id} className="hover:bg-surface-muted/50 transition-colors">
                     {/* Customer */}
                     <td className="px-5 py-4">
                       <div className="flex items-center gap-3">
-                        <div className="w-8 h-8 rounded-full bg-gray-200 flex items-center justify-center text-xs font-bold text-gray-600 shrink-0">
+                        <div className="w-8 h-8 rounded-full bg-surface-muted flex items-center justify-center text-xs font-bold text-body shrink-0">
                           {getInitials(record.fullName)}
                         </div>
                         {isEditing ? (
@@ -195,9 +195,9 @@ export default function CustomerRecords() {
                           </div>
                         ) : (
                           <div>
-                            <p className="font-medium text-gray-800">{record.fullName}</p>
+                            <p className="font-medium text-heading">{record.fullName}</p>
                             {record.psid && (
-                              <p className="text-[11px] text-gray-400 font-mono">{record.psid}</p>
+                              <p className="text-[11px] text-muted font-mono">{record.psid}</p>
                             )}
                           </div>
                         )}
@@ -214,7 +214,7 @@ export default function CustomerRecords() {
                           onChange={(e) => setEditDraft((d) => ({ ...d, vehicleUnit: e.target.value }))}
                         />
                       ) : (
-                        <span className="text-gray-700">{record.vehicleUnit}</span>
+                        <span className="text-body">{record.vehicleUnit}</span>
                       )}
                     </td>
 
@@ -229,8 +229,8 @@ export default function CustomerRecords() {
                         />
                       ) : (
                         <div className="flex items-center gap-2">
-                          <Car className="w-3.5 h-3.5 text-gray-400 shrink-0" />
-                          <span className="font-mono font-medium text-gray-700">{record.plateNumber}</span>
+                          <Car className="w-3.5 h-3.5 text-muted shrink-0" />
+                          <span className="font-mono font-medium text-body">{record.plateNumber}</span>
                         </div>
                       )}
                     </td>
@@ -246,8 +246,8 @@ export default function CustomerRecords() {
                         />
                       ) : (
                         <div className="flex items-center gap-2">
-                          <Phone className="w-3.5 h-3.5 text-gray-400 shrink-0" />
-                          <span className="text-gray-700">{record.contactNumber}</span>
+                          <Phone className="w-3.5 h-3.5 text-muted shrink-0" />
+                          <span className="text-body">{record.contactNumber}</span>
                         </div>
                       )}
                     </td>
@@ -264,14 +264,14 @@ export default function CustomerRecords() {
                         />
                       ) : (
                         <div className="flex items-center gap-2">
-                          <Mail className="w-3.5 h-3.5 text-gray-400 shrink-0" />
-                          <span className="text-gray-700 text-sm">{record.email ?? <span className="text-gray-400">—</span>}</span>
+                          <Mail className="w-3.5 h-3.5 text-muted shrink-0" />
+                          <span className="text-body text-sm">{record.email ?? <span className="text-muted">—</span>}</span>
                         </div>
                       )}
                     </td>
 
                     {/* Recorded */}
-                    <td className="px-5 py-4 text-gray-400 text-xs">{record.createdAt}</td>
+                    <td className="px-5 py-4 text-muted text-xs">{record.createdAt}</td>
 
                     {/* Actions */}
                     <td className="px-5 py-4">
@@ -281,24 +281,24 @@ export default function CustomerRecords() {
                             <button
                               onClick={() => saveEdit(record.id)}
                               disabled={saving}
-                              className="flex items-center gap-1 px-3 py-1.5 text-xs font-medium bg-gray-900 text-white rounded-lg hover:bg-gray-800 transition-colors disabled:opacity-60"
+                              className="flex items-center gap-1 px-3 py-1.5 text-xs font-medium bg-primary text-white rounded-sm hover:bg-primary-hover transition-colors disabled:opacity-60"
                             >
                               <Check className="w-3.5 h-3.5" />
                               {saving ? "Saving…" : "Save"}
                             </button>
                             <button
                               onClick={cancelEdit}
-                              className="flex items-center gap-1 px-3 py-1.5 text-xs font-medium border border-gray-200 text-gray-600 rounded-lg hover:bg-gray-50 transition-colors"
+                              className="flex items-center gap-1 px-3 py-1.5 text-xs font-medium border border-border text-body rounded-sm hover:bg-surface-muted transition-colors"
                             >
                               <X className="w-3.5 h-3.5" /> Cancel
                             </button>
                           </div>
-                          {saveErr && <p className="text-[11px] text-red-500">{saveErr}</p>}
+                          {saveErr && <p className="text-[11px] text-status-delayed">{saveErr}</p>}
                         </div>
                       ) : (
                         <button
                           onClick={() => startEdit(record)}
-                          className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium border border-gray-200 text-gray-600 rounded-lg hover:bg-gray-50 transition-colors"
+                          className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium border border-border text-body rounded-sm hover:bg-surface-muted transition-colors"
                         >
                           <Pencil className="w-3.5 h-3.5" /> Edit
                         </button>

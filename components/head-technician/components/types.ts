@@ -31,11 +31,11 @@ export type HeadTechJob = {
 };
 
 export const STATUS_STYLES: Record<Status, string> = {
-  Pending:       "bg-yellow-100 text-yellow-700",
-  Ongoing:       "bg-blue-100 text-blue-600",
-  "For Rework":  "bg-orange-100 text-orange-600",
-  "For Release": "bg-green-100 text-green-600",
-  Released:      "bg-teal-100 text-teal-600",
-  Delayed:       "bg-red-100 text-red-600",
-  Cancelled:     "bg-gray-200 text-gray-600",
+  Pending:       "bg-status-warning/12 text-status-warning",
+  Ongoing:       "bg-primary/12 text-primary",
+  "For Rework":  "bg-status-rework/12 text-status-rework",
+  "For Release": "bg-status-inspection/12 text-status-inspection",
+  Released:      "bg-status-release/12 text-status-release",
+  Delayed:       "bg-status-delayed/12 text-status-delayed",
+  Cancelled:     "bg-surface-muted text-body",
 };
