@@ -18,6 +18,7 @@ export async function getOrCreateConversationByPsid(
   conflict_pending: boolean
   awaiting_link_verification: boolean
   link_attempts: number
+  link_conflict_pending: boolean
   offtopic_streak: number
   policy_streak: number
   booking_draft: CustomerDetails
@@ -27,7 +28,7 @@ export async function getOrCreateConversationByPsid(
   const { data: existing } = await supabase
     .from("messenger_conversation")
     .select(
-      "conversation_id, status, is_vehicle_inquiry, is_booking_flow, awaiting_confirmation, active_booking_offered, booking_duplicate_notified, conflict_pending, awaiting_link_verification, link_attempts, offtopic_streak, policy_streak, draft_name, draft_contact, draft_plate, draft_vehicle, draft_email"
+      "conversation_id, status, is_vehicle_inquiry, is_booking_flow, awaiting_confirmation, active_booking_offered, booking_duplicate_notified, conflict_pending, awaiting_link_verification, link_attempts, link_conflict_pending, offtopic_streak, policy_streak, draft_name, draft_contact, draft_plate, draft_vehicle, draft_email"
     )
     .eq("psid", psid)
     .maybeSingle()
@@ -51,6 +52,7 @@ export async function getOrCreateConversationByPsid(
       conflict_pending: Boolean(existing.conflict_pending),
       awaiting_link_verification: Boolean(existing.awaiting_link_verification),
       link_attempts: Number(existing.link_attempts ?? 0),
+      link_conflict_pending: Boolean(existing.link_conflict_pending),
       offtopic_streak: Number(existing.offtopic_streak ?? 0),
       policy_streak: Number(existing.policy_streak ?? 0),
       booking_draft: {
@@ -80,7 +82,7 @@ export async function getOrCreateConversationByPsid(
     throw new Error(error?.message ?? "Failed to create conversation")
   }
 
-  return { conversation_id: data.conversation_id, status: "open", is_vehicle_inquiry: false, is_booking_flow: false, awaiting_confirmation: false, active_booking_offered: false, booking_duplicate_notified: false, conflict_pending: false, awaiting_link_verification: false, link_attempts: 0, offtopic_streak: 0, policy_streak: 0, booking_draft: { full_name: null, contact_number: null, plate_number: null, vehicle_unit: null, email: null } }
+  return { conversation_id: data.conversation_id, status: "open", is_vehicle_inquiry: false, is_booking_flow: false, awaiting_confirmation: false, active_booking_offered: false, booking_duplicate_notified: false, conflict_pending: false, awaiting_link_verification: false, link_attempts: 0, link_conflict_pending: false, offtopic_streak: 0, policy_streak: 0, booking_draft: { full_name: null, contact_number: null, plate_number: null, vehicle_unit: null, email: null } }
 }
 
 /**
@@ -143,6 +145,22 @@ export async function setLinkAttempts(conversation_id: number, value: number) {
   const { error } = await supabase
     .from("messenger_conversation")
     .update({ link_attempts: value })
+    .eq("conversation_id", conversation_id)
+
+  if (error) throw new Error(error.message)
+}
+
+/**
+ * Marks that the customer has already been given the neutral "couldn't verify
+ * those details" warning for a plate owned by ANOTHER Messenger account. The
+ * next such claim escalates to Sales as a possible impersonation.
+ */
+export async function setLinkConflictPending(conversation_id: number, value: boolean) {
+  const supabase = createAdminClient()
+
+  const { error } = await supabase
+    .from("messenger_conversation")
+    .update({ link_conflict_pending: value })
     .eq("conversation_id", conversation_id)
 
   if (error) throw new Error(error.message)

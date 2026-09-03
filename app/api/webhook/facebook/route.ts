@@ -12,6 +12,7 @@ import {
   setConflictPending,
   setAwaitingLinkVerification,
   setLinkAttempts,
+  setLinkConflictPending,
   setViolationStreaks,
   setBookingDraft,
   getConversationHistory,
@@ -183,7 +184,7 @@ async function handleInboundMessage(
   const profile = await fetchMessengerProfile(senderId)
 
   // Get or create the conversation and capture its current status + flow flags.
-  const { conversation_id, status, is_vehicle_inquiry, is_booking_flow, awaiting_confirmation, active_booking_offered, booking_duplicate_notified, conflict_pending, awaiting_link_verification, link_attempts, offtopic_streak, policy_streak, booking_draft } =
+  const { conversation_id, status, is_vehicle_inquiry, is_booking_flow, awaiting_confirmation, active_booking_offered, booking_duplicate_notified, conflict_pending, awaiting_link_verification, link_attempts, link_conflict_pending, offtopic_streak, policy_streak, booking_draft } =
     await getOrCreateConversationByPsid(senderId, profile.name)
 
   // Best-effort flag persistence: a failure here must not abort the reply.
@@ -234,13 +235,28 @@ async function handleInboundMessage(
     const clearLink = async () => {
       await safe(() => setAwaitingLinkVerification(conversation_id, false))
       await safe(() => setLinkAttempts(conversation_id, 0))
+      await safe(() => setLinkConflictPending(conversation_id, false))
     }
+
+    // Sales-facing note for a claim on a record owned by another Messenger
+    // account. Nothing here is ever shown to the customer.
+    const impersonationEscalation = (attempt: "repeat" | "capped", phoneMatched: boolean) => ({
+      impersonation: true,
+      reason: "possible impersonation — link attempt on a record owned by another Messenger account",
+      note:
+        `POSSIBLE IMPERSONATION. Messenger PSID ${senderId} (FB name "${profile.name}") tried to claim plate ${plateNorm}, ` +
+        `which is already linked to a different Messenger account (phoneMatched=${phoneMatched}). ` +
+        (attempt === "repeat"
+          ? "They were given a neutral re-ask and claimed it again. "
+          : "They hit the attempt cap while claiming it. ") +
+        "Do NOT re-link without confirming with the current owner.",
+    })
 
     // One more failed link attempt. Under the 5-attempt cap the customer is asked
     // again (deterministically — the model must never own this turn, or it invents
     // a lookup it never ran); at the cap the claim goes to Sales.
     const countFailedAttempt = async (
-      retry: "unreadable" | "no_match",
+      retry: "unreadable" | "unverified",
       note: string
     ): Promise<boolean> => {
       const attempts = link_attempts + 1
@@ -299,20 +315,35 @@ async function handleInboundMessage(
             `Verify identity (call the number on file / confirm at drop-off) before setting the PSID on that customer record.`,
         }
       } else if (claim.kind === "owned_by_other") {
-        await clearLink()
-        logAudit({ ...auditActor, category: "flag", action: "messenger: impersonation-suspected link attempt", target: `psid=${senderId} plate=${plateNorm} phoneMatched=${claim.phoneMatched}` })
-        linkEscalation = {
-          impersonation: true,
-          reason: "possible impersonation — link attempt on a record owned by another Messenger account",
-          note:
-            `POSSIBLE IMPERSONATION. Messenger PSID ${senderId} (FB name "${profile.name}") tried to claim plate ${plateNorm}, ` +
-            `which is already linked to a different Messenger account (phoneMatched=${claim.phoneMatched}). ` +
-            `Do NOT re-link without confirming with the current owner.`,
+        // The plate belongs to a DIFFERENT Messenger account. The customer is
+        // never told that — a reply that differed from the "no such record" case
+        // would let anyone enumerate which plates are registered. They get the
+        // identical neutral re-ask once; a second claim is escalated to Sales.
+        //
+        // The first attempt is audit-logged even though nothing is escalated, so
+        // a probe that stops after one try still leaves a security trail.
+        logAudit({ ...auditActor, category: "flag", action: `messenger: link attempt on a record owned by another account (${link_conflict_pending ? "repeat — escalated" : "first — warned"})`, target: `psid=${senderId} plate=${plateNorm} phoneMatched=${claim.phoneMatched}` })
+
+        if (link_conflict_pending) {
+          await clearLink()
+          linkEscalation = impersonationEscalation("repeat", claim.phoneMatched)
+        } else if (link_attempts + 1 >= 5) {
+          // Already at the attempt cap — no room for a warning turn.
+          await clearLink()
+          linkEscalation = impersonationEscalation("capped", claim.phoneMatched)
+        } else {
+          await safe(() => setLinkConflictPending(conversation_id, true))
+          await safe(() => setLinkAttempts(conversation_id, link_attempts + 1))
+          const askAgain = buildLinkVerificationPrompt({ retry: "unverified" })
+          const mid = await sendMessengerText(senderId, askAgain)
+          await insertMessage({ conversation_id, sender_type: "agent", message_body: askAgain, sent_at: new Date().toISOString(), fb_message_id: mid })
+          return
         }
       } else {
         // no_record / phone_mismatch — let the customer self-correct, then escalate.
+        // Same message as the owned-by-another case above, deliberately.
         const handled = await countFailedAttempt(
-          "no_match",
+          "unverified",
           `Account link attempt failed verification 5 times. Last claim: plate ${plateNorm}, phone provided but no matching record.`
         )
         if (handled) return
@@ -1124,6 +1155,7 @@ async function handleInboundMessage(
     await persistConflictPending(false)
     await safe(() => setAwaitingLinkVerification(conversation_id, false))
     await safe(() => setLinkAttempts(conversation_id, 0))
+    await safe(() => setLinkConflictPending(conversation_id, false))
     await safe(() => setViolationStreaks(conversation_id, 0, 0))
     await safe(() => setBookingDraft(conversation_id, null))
     return

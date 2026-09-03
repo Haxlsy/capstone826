@@ -127,6 +127,7 @@ export async function resumeBotAfterHandoff(psid: string): Promise<void> {
         conflict_pending:           false,
         awaiting_link_verification: false,
         link_attempts:              0,
+        link_conflict_pending:      false,
         offtopic_streak:            0,
         policy_streak:              0,
         draft_name:                 null,
