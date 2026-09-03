@@ -4,6 +4,7 @@ import { createClient } from "@/lib/supabase/server"
 import { createAdminClient } from "@/lib/supabase/admin"
 import { getAuditCaller } from "@/lib/auth/caller"
 import { logAuditCall } from "@/hooks/audit-helpers"
+import { resumeBotAfterHandoff } from "@/lib/messenger/handoff"
 
 export async function PATCH(
   request: Request,
@@ -45,8 +46,10 @@ export async function PATCH(
     if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
     // When Sales records or resolves the inquiry, the human handoff is
-    // concluded. Close the customer's messenger conversation so the AI resumes
-    // handling any new messages (it re-escalates to a fresh inquiry if needed).
+    // concluded. `resumeBotAfterHandoff` closes the customer's messenger
+    // conversation so the AI resumes handling new messages (it re-escalates to a
+    // fresh inquiry if needed) and re-sends the quick-reply menu, so the customer
+    // does not have to start the chat again to get the buttons back.
     if (status === "resolved" || status === "recorded") {
       const { data: inq } = await admin
         .from("inquiry")
@@ -74,14 +77,7 @@ export async function PATCH(
       }
 
       if (inq?.psid) {
-        const { error: convErr } = await admin
-          .from("messenger_conversation")
-          .update({ status: "closed" })
-          .eq("psid", inq.psid)
-
-        if (convErr) {
-          console.error("[sales/inquiries] messenger_conversation close failed:", convErr.message)
-        }
+        await resumeBotAfterHandoff(inq.psid)
       }
     }
 

@@ -51,8 +51,8 @@ import {
   sendMessengerText,
   sendMessengerQuickReply,
   fetchMessengerProfile,
-  type MessengerQuickReply,
 } from "@/lib/messenger/graph"
+import { QUICK_REPLIES } from "@/lib/messenger/handoff"
 import {
   resolveOwnVehicleStatus,
   formatOwnVehicleStatus,
@@ -97,13 +97,6 @@ const REPORT_PATTERNS = [
   /\bconcern\b/i,
   /\breklamo\b/i,
   /\bmagreklamo\b/i,
-]
-
-const QUICK_REPLIES: MessengerQuickReply[] = [
-  { content_type: "text", title: "Services & Prices", payload: "services" },
-  { content_type: "text", title: "Booking",           payload: "booking"  },
-  { content_type: "text", title: "Report a Concern",  payload: "report"   },
-  { content_type: "text", title: "Vehicle Status",    payload: "status"   },
 ]
 
 /** True when the extracted customer object carries at least one real detail. */
@@ -1084,18 +1077,17 @@ async function handleInboundMessage(
     return
   }
 
-  // Not escalated → send the AI reply. Attach the standard quick-reply menu
-  // unless this inbound was itself a quick-reply tap (answer it plainly; the
-  // menu returns on the next free-text message). The booking confirmation is
-  // requested in plain text (no confirm buttons), so the standard menu is
-  // always what the customer sees during the booking flow.
+  // Not escalated → send the AI reply with the standard quick-reply menu always
+  // attached, including in answer to a quick-reply tap. Messenger drops the menu
+  // from the thread the moment a button is tapped, so re-sending it every turn is
+  // what keeps the buttons reachable without the customer typing. The booking
+  // confirmation is requested in plain text (no confirm buttons), so the standard
+  // menu is always what the customer sees during the booking flow.
   if (reply) {
     // Append the graduated-violation warning (set when the customer is one turn
     // away from an off-topic / policy escalation).
     if (violationWarning) reply = `${reply}${violationWarning}`
-    const fbId = quickReplyPayload
-      ? await sendMessengerText(senderId, reply)
-      : await sendMessengerQuickReply(senderId, reply, QUICK_REPLIES)
+    const fbId = await sendMessengerQuickReply(senderId, reply, QUICK_REPLIES)
     await insertMessage({
       conversation_id,
       sender_type: "agent",

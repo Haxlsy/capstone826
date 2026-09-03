@@ -4,6 +4,7 @@ import { createClient } from "@/lib/supabase/server";
 import { createClient as createAdminClient } from "@supabase/supabase-js";
 import { getAuditCaller } from "@/lib/auth/caller";
 import { logAuditCall } from "@/hooks/audit-helpers";
+import { resumeBotAfterHandoff } from "@/lib/messenger/handoff";
 
 export async function GET(
   request: Request,
@@ -84,6 +85,22 @@ export async function PATCH(
       updatePayload.conflict_pending      = false;
       updatePayload.awaiting_link_verification = false;
       updatePayload.link_attempts         = 0;
+    }
+
+    // Releasing a human-owned thread back to the bot is the same event as Sales
+    // resolving an inquiry: hand it back and re-send the quick-reply menu so the
+    // customer does not have to start the chat again. Run BEFORE the update below
+    // so the helper still sees the conversation at 'pending' — it no-ops (and
+    // sends nothing) when the thread was never human-owned, and the update below
+    // then closes it as usual.
+    if (status === "closed") {
+      const { data: conv } = await supabase
+        .from("messenger_conversation")
+        .select("psid")
+        .eq("conversation_id", Number(id))
+        .maybeSingle();
+
+      if (conv?.psid) await resumeBotAfterHandoff(conv.psid);
     }
 
     let { data, error } = await supabase
