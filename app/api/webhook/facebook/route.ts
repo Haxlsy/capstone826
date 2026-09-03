@@ -57,10 +57,12 @@ import {
   resolveOwnVehicleStatus,
   formatOwnVehicleStatus,
   formatVehicleStatusForCustomer,
+  buildLinkVerificationPrompt,
   assessLinkClaim,
   normalizePlate,
   type OwnVehicleOutcome,
 } from "@/lib/messenger/vehicle"
+import { PLATE_PATTERN, PHONE_PATTERN, EMAIL_PATTERN, parseLinkClaim } from "@/lib/messenger/patterns"
 import { logAudit } from "@/hooks/audit-helpers"
 
 const VERIFY_TOKEN = process.env.META_VERIFY_TOKEN!
@@ -105,15 +107,6 @@ const hasExtractedDetails = (c: CustomerDetails | null | undefined): boolean =>
     c &&
     (c.full_name || c.contact_number || c.plate_number || c.vehicle_unit || c.email)
   )
-
-// Loose PH plate-number pattern (e.g. ABC 1234, XYZ-567, 1234 ABC).
-const PLATE_PATTERN = /\b[A-Z]{1,4}\s?-?\s?\d{1,6}(?:\s?-\s?[A-Z]{1,2})?\b/i
-
-// Loose Philippine mobile-number pattern (e.g. 0917 555 0101, +639175550101).
-const PHONE_PATTERN = /(?:\+?63|0)\s?9\d{2}[\s.-]?\d{3}[\s.-]?\d{4}\b/
-
-// Loose email pattern (e.g. john@example.com).
-const EMAIL_PATTERN = /\b[\w.+-]+@[\w-]+\.[\w.]+\b/
 
 // A message carries a booking signal when it either states booking intent or
 // contains one of the booking detail tokens (plate / phone / email). This is
@@ -215,6 +208,14 @@ async function handleInboundMessage(
 
   const quickReplyPayload = msg.quick_reply?.payload ?? null
 
+  // Resolved before the link-verification block below, which needs them to tell a
+  // deliberate subject change ("I want to book", "let me talk to someone") from a
+  // failed attempt at sending a plate + phone.
+  const humanRequested = requestedHuman(messageBody)
+  const reportIntent =
+    quickReplyPayload === "report" ||
+    REPORT_PATTERNS.some((re) => re.test(messageBody))
+
   // ── Account-linking verification ─────────────────────────────────────────
   // When the bot has asked an unlinked customer for their plate + booking phone,
   // the next message is a link CLAIM. Handled BEFORE any booking-signal logic so
@@ -226,19 +227,61 @@ async function handleInboundMessage(
   let linkedVehicleContext: string | null = null
   let linkEscalation: { reason: string; note: string | null; impersonation?: boolean } | null = null
   if (awaiting_link_verification) {
-    const lp = messageBody.match(PLATE_PATTERN)?.[0] ?? ""
-    const lph = messageBody.match(PHONE_PATTERN)?.[0] ?? ""
+    const { plate: lp, phone: lph } = parseLinkClaim(messageBody)
     const plateNorm = normalizePlate(lp)
 
-    if (!lp || !lph) {
-      // Not a plate + phone pair — the customer wandered off the linking step.
+    const clearLink = async () => {
       await safe(() => setAwaitingLinkVerification(conversation_id, false))
+      await safe(() => setLinkAttempts(conversation_id, 0))
+    }
+
+    // One more failed link attempt. Under the 5-attempt cap the customer is asked
+    // again (deterministically — the model must never own this turn, or it invents
+    // a lookup it never ran); at the cap the claim goes to Sales.
+    const countFailedAttempt = async (
+      retry: "unreadable" | "no_match",
+      note: string
+    ): Promise<boolean> => {
+      const attempts = link_attempts + 1
+      if (attempts >= 5) {
+        await clearLink()
+        logAudit({ ...auditActor, category: "flag", action: "messenger: link verification failed 5x", target: `psid=${senderId} last_plate=${plateNorm || "none"}` })
+        linkEscalation = { reason: "account link — 5 unverified attempts", note }
+        return false
+      }
+      await safe(() => setLinkAttempts(conversation_id, attempts))
+      const askAgain = buildLinkVerificationPrompt({ retry })
+      const mid = await sendMessengerText(senderId, askAgain)
+      await insertMessage({ conversation_id, sender_type: "agent", message_body: askAgain, sent_at: new Date().toISOString(), fb_message_id: mid })
+      return true
+    }
+
+    // A different, clear intent means the customer deliberately changed the
+    // subject — let them out of the linking step rather than looping the ask.
+    const changedSubject =
+      Boolean(quickReplyPayload) ||
+      humanRequested ||
+      reportIntent ||
+      hasBookingIntent(messageBody) ||
+      hasExistingBookingIntent(messageBody)
+
+    if (!lp || !lph) {
+      if (changedSubject) {
+        // The customer wandered off the linking step on purpose.
+        await safe(() => setAwaitingLinkVerification(conversation_id, false))
+      } else {
+        // Still trying to link, but the message carries no readable plate + phone
+        // pair. Re-ask with a format example instead of dropping them into the AI,
+        // which would answer as though a lookup had happened.
+        const handled = await countFailedAttempt(
+          "unreadable",
+          `Account link attempt failed 5 times. The customer never sent a readable plate + phone pair. ` +
+          `Last message: "${messageBody}".`
+        )
+        if (handled) return
+      }
     } else {
       const claim = await assessLinkClaim({ psid: senderId, plate: lp, phone: lph })
-      const clearLink = async () => {
-        await safe(() => setAwaitingLinkVerification(conversation_id, false))
-        await safe(() => setLinkAttempts(conversation_id, 0))
-      }
 
       if (claim.kind === "owned_by_requester") {
         // Defensive — resolveOwnVehicleStatus should already have found this.
@@ -267,22 +310,11 @@ async function handleInboundMessage(
         }
       } else {
         // no_record / phone_mismatch — let the customer self-correct, then escalate.
-        const attempts = link_attempts + 1
-        if (attempts >= 5) {
-          await clearLink()
-          logAudit({ ...auditActor, category: "flag", action: "messenger: link verification failed 5x", target: `psid=${senderId} last_plate=${plateNorm}` })
-          linkEscalation = {
-            reason: "account link — 5 unverified attempts",
-            note: `Account link attempt failed verification 5 times. Last claim: plate ${plateNorm}, phone provided but no matching record.`,
-          }
-        } else {
-          await safe(() => setLinkAttempts(conversation_id, attempts))
-          const askAgain =
-            "That didn't match our records. Please double-check your plate number and the phone number on your booking, then send them again."
-          const mid = await sendMessengerText(senderId, askAgain)
-          await insertMessage({ conversation_id, sender_type: "agent", message_body: askAgain, sent_at: new Date().toISOString(), fb_message_id: mid })
-          return
-        }
+        const handled = await countFailedAttempt(
+          "no_match",
+          `Account link attempt failed verification 5 times. Last claim: plate ${plateNorm}, phone provided but no matching record.`
+        )
+        if (handled) return
       }
     }
   }
@@ -330,6 +362,24 @@ async function handleInboundMessage(
     }
   }
 
+  // Chatbot config is loaded BEFORE the vehicle-status block, which needs the
+  // admin's configured "account not linked" wording to compose its reply.
+  // Deliberately in its own try/catch: a settings-read blip must fall back to the
+  // built-in defaults, NOT escalate the conversation. A model failure still
+  // escalates — that stays in the generateChatbotReply try/catch further down.
+  let settings: Awaited<ReturnType<typeof loadChatbotConfig>>["settings"] = null
+  let system_prompt: string | null = null
+  let knowledge: string | null = null
+  try {
+    const [{ settings: loadedSettings, system_prompt: loadedPrompt }, loadedKnowledge] =
+      await Promise.all([loadChatbotConfig(), loadKnowledgeBase()])
+    settings = loadedSettings
+    system_prompt = loadedPrompt
+    knowledge = loadedKnowledge
+  } catch (err) {
+    console.error("[webhook/facebook] chatbot config load failed:", err)
+  }
+
   // Vehicle-status context. Identity is resolved STRICTLY from the sender's psid:
   //   psid → customer_record → verified phone → all active job_orders
   // A plate in the message only narrows to one of the customer's OWN vehicles,
@@ -361,7 +411,10 @@ async function handleInboundMessage(
       logAudit({ ...auditActor, category: "flag", action: "messenger status: plate not owned by requester", target: `psid=${senderId} requested_plate=${plateInMsg} account_plates=${jobPlates.join("/") || "none"}` })
     } else {
       vehicleContext = formatOwnVehicleStatus(outcome, { focusPlate })
-      statusReply = formatVehicleStatusForCustomer(outcome, { focusPlate })
+      statusReply = formatVehicleStatusForCustomer(outcome, {
+        focusPlate,
+        notLinkedMessage: settings?.account_not_linked_message,
+      })
       if (outcome.kind === "ok" && outcome.soft) {
         logAudit({ ...auditActor, category: "flag", action: "messenger status: soft-matched via own inquiry", target: `psid=${senderId} jobs=${jobPlates.join("/") || "none"}` })
       }
@@ -376,12 +429,8 @@ async function handleInboundMessage(
     }
   }
 
-  // AI auto-reply + escalation decision.
-  const humanRequested = requestedHuman(messageBody)
-  const reportIntent =
-    quickReplyPayload === "report" ||
-    REPORT_PATTERNS.some((re) => re.test(messageBody))
-
+  // AI auto-reply + escalation decision. `humanRequested` / `reportIntent` are
+  // resolved earlier — the link-verification block needs them.
   let reply: string | null = statusReply
   let escalate = humanRequested || reportIntent || existingBookingIntent
   let escalateReason: string | null = humanRequested
@@ -392,20 +441,8 @@ async function handleInboundMessage(
   let aiReason: string | null = null
   let aiViolation: "none" | "off_topic" | "policy" = "none"
   let extracted: ChatbotReply["customer"] = null
-  let settings: Awaited<ReturnType<typeof loadChatbotConfig>>["settings"] = null
-  let system_prompt: string | null = null
-  let knowledge: string | null = null
 
   try {
-    const [{ settings: loadedSettings, system_prompt: loadedPrompt }, loadedKnowledge] =
-      await Promise.all([
-        loadChatbotConfig(),
-        loadKnowledgeBase(),
-      ])
-    settings = loadedSettings
-    system_prompt = loadedPrompt
-    knowledge = loadedKnowledge
-
     // A deterministic status answer owns the reply — skip Gemini entirely.
     const result = statusReply
       ? { reply: statusReply, escalate: false, reason: null, violation: "none" as const, customer: null }

@@ -1,7 +1,9 @@
 import { GoogleGenAI } from "@google/genai"
 import { createAdminClient } from "@/lib/supabase/admin"
 import { normalizePhone } from "@/lib/phone"
+import { TOKEN_PLATE, TOKEN_PHONE, TOKEN_EMAIL } from "@/lib/messenger/patterns"
 import {
+  DEFAULT_NOT_LINKED_MESSAGE,
   type ChatbotSettings,
   type ChatMessage,
   type ChatbotReply,
@@ -122,16 +124,11 @@ export function buildSystemPrompt(s: ChatbotSettings): string {
   if (s.enable_status) {
     lines.push("")
     lines.push("When a customer asks about their vehicle status:")
-    lines.push("1. Send them this exact message to collect their details:")
-    lines.push("---")
-    lines.push(s.vehicle_status_template)
-    lines.push("---")
-    if (s.language === "filipino") {
-      lines.push("Translate the above message to natural Filipino (Tagalog) before sending it.")
-    }
-    lines.push("2. Once they provide their plate number, use the vehicle-status lookup tool to find their active job order.")
-    lines.push("3. Share the current status clearly and politely.")
-    lines.push("4. If no active job is found, let them know and offer to help further.")
+    lines.push("Our system resolves vehicle status from the customer's own linked Messenger account and hands you the answer directly. You have no lookup tool and you never perform a search yourself.")
+    lines.push("- NEVER claim to have checked, searched, looked up, or reviewed our system, records, or database.")
+    lines.push("- NEVER state whether a plate number or phone number does or does not have a job order. You were given no such information.")
+    lines.push("- NEVER invent a job order, status, stage, or completion date. Only ever relay status details supplied to you.")
+    lines.push("- Do NOT ask the customer for their plate number or phone number for a status check — our system handles identity and asks for those itself when they are needed.")
   }
 
   lines.push("")
@@ -205,8 +202,7 @@ function buildRuntimeSystemPrompt(
     notify_sales: true,
     language: "english",
     escalation_rules: ["speak_to_human", "complaint", "unanswerable"],
-    vehicle_status_template:
-      "Please share your vehicle's plate number so I can check the current status of your job.",
+    account_not_linked_message: DEFAULT_NOT_LINKED_MESSAGE,
   }, knowledge)
 }
 
@@ -431,13 +427,10 @@ export function mergeBookingDetails(
   }
 }
 
-// Deterministic booking-token patterns — mirror the intent-detection patterns in
-// app/api/webhook/facebook/route.ts (PLATE_PATTERN / PHONE_PATTERN / EMAIL_PATTERN).
-// Used to fill contact/email/plate straight from the customer's own text when
-// Gemini's extraction misses them.
-const TOKEN_PLATE = /\b[A-Z]{1,4}\s?-?\s?\d{1,6}(?:\s?-\s?[A-Z]{1,2})?\b/gi
-const TOKEN_PHONE = /(?:\+?63|0)\s?9\d{2}[\s.-]?\d{3}[\s.-]?\d{4}\b/g
-const TOKEN_EMAIL = /\b[\w.+-]+@[\w-]+\.[\w.]+\b/g
+// Deterministic booking-token patterns. Shared with the webhook's intent
+// detection via lib/messenger/patterns.ts — they used to be duplicated here and
+// drifted. Used to fill contact/email/plate straight from the customer's own text
+// when Gemini's extraction misses them.
 
 const lastMatch = (text: string, re: RegExp): string | null => {
   const m = text.match(re)

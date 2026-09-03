@@ -16,21 +16,21 @@ export default function VehicleStatusTemplate({ value, onChange, onSave, saved, 
       {/* Vehicle Status Setup */}
       <div className="bg-white border border-gray-200 rounded-xl p-5 flex flex-col gap-4">
         <div>
-          <p className="text-sm font-semibold text-gray-800">Vehicle Status Setup</p>
-          <p className="text-xs text-gray-400 mt-0.5">How the chatbot handles vehicle status inquiries.</p>
+          <p className="text-sm font-semibold text-gray-800">Account Not Linked Message</p>
+          <p className="text-xs text-gray-400 mt-0.5">What a customer sees when they ask for vehicle status and we can&apos;t identify them yet.</p>
         </div>
 
         <div className="flex items-start gap-2.5 bg-blue-50 border border-blue-100 rounded-xl px-4 py-3">
           <Info className="w-4 h-4 text-blue-500 mt-0.5 shrink-0" />
           <p className="text-sm text-blue-700">
-            The AI will ask for the customer&apos;s details, then automatically look up their active job order and share the current status.
+            Vehicle status is resolved automatically from the customer&apos;s linked Messenger account — the system finds their active job order and sends the status itself, without asking the AI to look anything up. If their account isn&apos;t linked yet, the system asks for their plate number and booking phone, then passes the request to Sales to verify.
           </p>
         </div>
 
         <div className="flex flex-col gap-1.5">
-          <p className="text-sm font-medium text-gray-700">Information requested from customer</p>
+          <p className="text-sm font-medium text-gray-700">Information read from the customer&apos;s reply</p>
           <div className="grid grid-cols-2 gap-2 max-w-sm">
-            {["Plate Number", "Full Name", "Contact Number", "Email Address"].map((f) => (
+            {["Plate Number", "Contact Number"].map((f) => (
               <div key={f} className="flex items-center gap-2 px-3 py-2 bg-gray-50 rounded-lg border border-gray-200">
                 <Check className="w-3.5 h-3.5 text-green-500 shrink-0" />
                 <span className="text-sm text-gray-600">{f}</span>
@@ -45,13 +45,18 @@ export default function VehicleStatusTemplate({ value, onChange, onSave, saved, 
         {/* Editor — left */}
         <div className="flex-1 flex flex-col gap-4">
           <div className="bg-blue-50 border border-blue-100 rounded-xl px-4 py-3 text-sm text-blue-700">
-            This is the message the chatbot sends when a customer asks for their vehicle&apos;s service status.
-            Customize the wording, but keep the four required fields: Plate Number and Contact Number.
-            If the chatbot language is set to <strong>Filipino</strong>, this message will be automatically translated.
+            Sent word for word when someone asks for their vehicle status and their Messenger account
+            isn&apos;t linked to a customer record yet. The AI never rewrites it.
+            <ul className="list-disc pl-5 mt-2 space-y-1">
+              <li>Keep asking for their <strong>plate number</strong> and <strong>phone number</strong> — the next message they send is read as those two.</li>
+              <li>Don&apos;t say we&apos;ve already checked or looked anything up. At this point we haven&apos;t, because we can&apos;t tell who they are yet.</li>
+              <li>Write it in whichever language you want customers to see — it is sent exactly as typed, with no translation.</li>
+              <li>Leave it empty and the built-in default message is used instead.</li>
+            </ul>
           </div>
 
           <div className="flex flex-col gap-2">
-            <label className="text-sm font-medium text-gray-700">Template Message</label>
+            <label className="text-sm font-medium text-gray-700">Message</label>
             <textarea
               value={value}
               onChange={(e) => onChange(e.target.value)}
