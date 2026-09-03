@@ -3,6 +3,7 @@ import {
   requestedHuman,
   hasBookingIntent,
   hasStatusIntent,
+  continuesStatusInquiry,
   hasExistingBookingIntent,
   confirmRequested,
   isPureConfirmation,
@@ -31,6 +32,23 @@ describe("Test 1 — FAQ", () => {
     const msg = "How much is an oil change?"
     expect(hasExistingBookingIntent(msg)).toBe(false)
     expect(hasBookingIntent(msg)).toBe(false)
+  })
+})
+
+describe("continuesStatusInquiry — regression: status reply resent after \"thank you\"", () => {
+  // The webhook only consults this when `is_vehicle_inquiry` is already true
+  // from an earlier turn (a status reply was already sent this conversation).
+  // Before this fix, ANY such message counted as a continuation — including
+  // these — so the exact same status block kept getting resent forever.
+  it("does NOT treat a closing / small-talk reply as a status continuation", () => {
+    for (const msg of ["Thank you", "thanks!", "salamat po", "ok", "okay", "noted", "👍", "Hi there"]) {
+      expect(continuesStatusInquiry(msg)).toBe(false)
+    }
+  })
+
+  it("DOES treat a bare plate number as a status continuation", () => {
+    expect(continuesStatusInquiry("ABC-1234")).toBe(true)
+    expect(continuesStatusInquiry("it's XYZ 5678")).toBe(true)
   })
 })
 
