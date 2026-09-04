@@ -3,8 +3,8 @@ import AddJobOrderForm from "@/components/dashboard/OperationComponents/AddJobOr
 
 export default function AddJobOrderPage() {
   return (
-    <div className="flex-1 overflow-y-auto p-6">
-      <Suspense fallback={<div className="text-sm text-gray-400">Loading…</div>}>
+    <div className="p-6">
+      <Suspense fallback={<div className="text-sm text-muted">Loading…</div>}>
         <AddJobOrderForm />
       </Suspense>
     </div>

@@ -3,6 +3,9 @@
 import { useCallback, useEffect, useState } from "react"
 import { Users, RefreshCw } from "lucide-react"
 import { useRealtimeRefetch } from "@/hooks/useRealtimeRefetch"
+import { Card } from "@/components/ui/Card"
+import { StatusBadge } from "@/components/ui/Badge"
+import { cn } from "@/lib/utils"
 
 interface Technician {
   id:             string
@@ -29,20 +32,20 @@ function TechList({ title, techs, loading }: { title: string; techs: Technician[
   return (
     <div className="flex-1 min-w-0">
       <div className="flex items-center justify-between mb-2">
-        <span className="text-xs font-semibold text-gray-600 uppercase tracking-wide">{title}</span>
+        <span className="text-xs font-semibold text-body uppercase tracking-wide">{title}</span>
         {!loading && (
-          <span className="text-xs text-gray-400">{availableToday}/{techs.length} available today</span>
+          <span className="text-xs text-muted">{availableToday}/{techs.length} available today</span>
         )}
       </div>
 
       {loading ? (
         <div className="space-y-2">
           {[0, 1, 2].map((i) => (
-            <div key={i} className="h-8 bg-gray-100 rounded animate-pulse" />
+            <div key={i} className="h-8 bg-surface-muted rounded animate-pulse" />
           ))}
         </div>
       ) : techs.length === 0 ? (
-        <p className="text-xs text-gray-400 py-4 text-center">No {title.toLowerCase()} assigned</p>
+        <p className="text-xs text-muted py-4 text-center">No {title.toLowerCase()} assigned</p>
       ) : (
         <ul className="space-y-1.5 overflow-y-auto max-h-72">
           {techs.map((t) => {
@@ -50,38 +53,31 @@ function TechList({ title, techs, loading }: { title: string; techs: Technician[
             const worksToday = t.available_days.includes(TODAY)
             const available  = !onJob && t.is_available && worksToday
 
-            const dotColor   = onJob ? "bg-orange-400" : available ? "bg-green-500" : "bg-gray-300"
-            const badgeCls   = onJob
-              ? "bg-orange-100 text-orange-700"
-              : available
-                ? "bg-green-100 text-green-700"
-                : "bg-gray-100 text-gray-500"
-            const badgeLabel = onJob ? "On Job" : available ? "Available" : "Unavailable"
+            const dotColor = onJob ? "bg-status-onjob" : available ? "bg-status-inspection" : "bg-border"
+            const badgeLabel = onJob ? "On Job" : available ? "Available" : "Not Available"
 
             return (
               <li
                 key={t.id}
-                className="flex items-start justify-between rounded-lg px-3 py-2 bg-gray-50 hover:bg-gray-100 transition-colors gap-2"
+                className="flex items-start justify-between gap-2 rounded-sm bg-surface-subtle px-3 py-2 transition-colors hover:bg-surface-muted"
               >
-                <div className="flex items-start gap-2 min-w-0">
-                  <span className={`w-2 h-2 rounded-full shrink-0 mt-1.5 ${dotColor}`} />
+                <div className="flex min-w-0 items-start gap-2">
+                  <span className={cn("mt-1.5 h-2 w-2 shrink-0 rounded-full", dotColor)} />
                   <div className="min-w-0">
-                    <span className="text-sm text-gray-800 truncate block">{t.full_name}</span>
+                    <span className="block truncate text-sm text-heading">{t.full_name}</span>
                     {onJob && t.active_job && (
-                      <span className="text-xs text-orange-500 truncate block">
+                      <span className="block truncate text-xs text-status-onjob">
                         {t.active_job.customer} — {t.active_job.service}
                       </span>
                     )}
                     {!onJob && !worksToday && (
-                      <span className="text-xs text-gray-400 block">Not scheduled today</span>
+                      <span className="block text-xs text-muted">Not scheduled today</span>
                     )}
                   </div>
                 </div>
-                <div className="flex items-center gap-2 shrink-0">
-                  <span className="text-xs text-gray-400">{roleLabel(t.role)}</span>
-                  <span className={`text-xs font-medium px-1.5 py-0.5 rounded ${badgeCls}`}>
-                    {badgeLabel}
-                  </span>
+                <div className="flex shrink-0 items-center gap-2">
+                  <span className="text-xs text-muted">{roleLabel(t.role)}</span>
+                  <StatusBadge status={badgeLabel} className="text-xs" />
                 </div>
               </li>
             )
@@ -114,22 +110,22 @@ export function TechnicianAvailability() {
   const installers = technicians.filter((t) => INSTALLER_ROLES.includes(t.role))
 
   return (
-    <div className="bg-white rounded-xl border border-gray-200 p-5">
-      <div className="flex items-center justify-between mb-4">
+    <Card className="p-5">
+      <div className="mb-4 flex items-center justify-between">
         <div className="flex items-center gap-2">
-          <Users className="w-4 h-4 text-indigo-500" />
-          <h2 className="text-sm font-semibold text-gray-700">Technician Availability</h2>
+          <Users className="h-4 w-4 text-status-ongoing" />
+          <h2 className="text-sm font-semibold text-body">Technician Availability</h2>
         </div>
-        <span className="text-xs text-gray-400 flex items-center gap-1">
-          <RefreshCw className="w-3 h-3" /> Live
+        <span className="flex items-center gap-1 text-xs text-muted">
+          <RefreshCw className="h-3 w-3" /> Live
         </span>
       </div>
 
-      <div className="flex gap-4 flex-col sm:flex-row">
-        <TechList title="Detailers"  techs={detailers}  loading={loading} />
-        <div className="hidden sm:block w-px bg-gray-100" />
+      <div className="flex flex-col gap-4 sm:flex-row">
+        <TechList title="Detailers" techs={detailers} loading={loading} />
+        <div className="hidden w-px bg-surface-muted sm:block" />
         <TechList title="Installers" techs={installers} loading={loading} />
       </div>
-    </div>
+    </Card>
   )
 }

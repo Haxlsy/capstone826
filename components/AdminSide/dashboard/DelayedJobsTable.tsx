@@ -4,6 +4,10 @@ import { useCallback, useEffect, useState } from "react"
 import { AlertTriangle, RefreshCw } from "lucide-react"
 import { useRealtimeRefetch } from "@/hooks/useRealtimeRefetch"
 import { fmtDateTimeShort } from "@/lib/time-display"
+import { Card } from "@/components/ui/Card"
+import { Badge } from "@/components/ui/Badge"
+import { EmptyState } from "@/components/ui/EmptyState"
+import { statusStyle } from "@/lib/ui/status"
 
 interface DelayedJob {
   id: string
@@ -49,63 +53,57 @@ export function DelayedJobsTable({ initialData }: { initialData?: DelayedJob[] }
   useRealtimeRefetch("job_order", fetchData)
 
   return (
-    <div className="bg-white rounded-xl border border-gray-200 p-5 flex flex-col">
-      <div className="flex items-center justify-between mb-4">
+    <Card className="flex flex-col p-5">
+      <div className="mb-4 flex items-center justify-between">
         <div className="flex items-center gap-2">
-          <AlertTriangle className="w-4 h-4 text-orange-500" />
-          <h2 className="text-sm font-semibold text-gray-700">Delayed Jobs</h2>
+          <AlertTriangle className="h-4 w-4 text-status-rework" />
+          <h2 className="text-sm font-semibold text-body">Delayed Jobs</h2>
           {!loading && jobs.length > 0 && (
-            <span className="text-xs bg-orange-100 text-orange-600 rounded-full px-2 py-0.5 font-medium">
-              {jobs.length}
-            </span>
+            <Badge className={statusStyle("rework").soft}>{jobs.length}</Badge>
           )}
         </div>
-        <span className="text-xs text-gray-400 flex items-center gap-1">
-          <RefreshCw className="w-3 h-3" /> Live
+        <span className="flex items-center gap-1 text-xs text-muted">
+          <RefreshCw className="h-3 w-3" /> Live
         </span>
       </div>
 
       {loading ? (
         <div className="space-y-2">
           {[0, 1, 2].map((i) => (
-            <div key={i} className="h-10 bg-gray-100 rounded animate-pulse" />
+            <div key={i} className="h-10 animate-pulse rounded bg-surface-muted" />
           ))}
         </div>
       ) : jobs.length === 0 ? (
-        <div className="flex-1 flex items-center justify-center text-sm text-gray-400 py-8">
-          No delayed jobs
-        </div>
+        <EmptyState title="No delayed jobs" compact />
       ) : (
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
-              <tr className="border-b border-gray-100">
-                <th className="text-left text-xs font-medium text-gray-400 pb-2 pr-3">Job ID</th>
-                <th className="text-left text-xs font-medium text-gray-400 pb-2 pr-3">Service</th>
-                <th className="text-left text-xs font-medium text-gray-400 pb-2 pr-3">Est. Completion</th>
-                <th className="text-left text-xs font-medium text-gray-400 pb-2">Delayed By</th>
+              <tr className="border-b border-border-subtle">
+                <th className="text-left text-xs font-medium text-muted pb-2 pr-3">Job ID</th>
+                <th className="text-left text-xs font-medium text-muted pb-2 pr-3">Service</th>
+                <th className="text-left text-xs font-medium text-muted pb-2 pr-3">Est. Completion</th>
+                <th className="text-left text-xs font-medium text-muted pb-2">Delayed By</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-gray-50">
+            <tbody className="divide-y divide-border-subtle">
               {jobs.map((job) => {
                 const delayedBy = formatDelayedBy(job.expected_completion_at)
                 const isOverdue = delayedBy !== "—"
                 return (
-                  <tr key={job.id} className="hover:bg-gray-50 transition-colors">
+                  <tr key={job.id} className="hover:bg-surface-muted transition-colors">
                     <td className="py-2 pr-3">
-                      <span className="font-mono text-xs text-gray-500">{shortId(job.id)}</span>
+                      <span className="font-mono text-xs text-body">{shortId(job.id)}</span>
                     </td>
-                    <td className="py-2 pr-3 text-gray-700">{job.service?.name ?? "—"}</td>
-                    <td className="py-2 pr-3 text-gray-500 text-xs">
+                    <td className="py-2 pr-3 text-body">{job.service?.name ?? "—"}</td>
+                    <td className="py-2 pr-3 text-body text-xs">
                       {fmtDateTimeShort(job.expected_completion_at)}
                     </td>
                     <td className="py-2">
                       {isOverdue ? (
-                        <span className="text-xs font-medium text-red-600 bg-red-50 rounded px-1.5 py-0.5">
-                          +{delayedBy}
-                        </span>
+                        <Badge className={statusStyle("delayed").soft}>+{delayedBy}</Badge>
                       ) : (
-                        <span className="text-xs text-orange-500 font-medium">Status: Delayed</span>
+                        <Badge className={statusStyle("rework").soft}>Delayed</Badge>
                       )}
                     </td>
                   </tr>
@@ -115,6 +113,6 @@ export function DelayedJobsTable({ initialData }: { initialData?: DelayedJob[] }
           </table>
         </div>
       )}
-    </div>
+    </Card>
   )
 }

@@ -7,7 +7,7 @@ export default async function JobOrderDetailPage({
 }) {
   const { id } = await params
   return (
-    <div className="flex-1 overflow-y-auto p-6">
+    <div className="p-6">
       <JobOrderDetail jobId={id} />
     </div>
   )

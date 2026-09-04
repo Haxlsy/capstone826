@@ -53,23 +53,23 @@ export function ShopPerformanceChart({ initialData }: { initialData?: ServiceBre
   }
 
   return (
-    <div className="bg-white rounded-xl border border-gray-200 p-5">
+    <div className="bg-surface rounded-card border border-border p-5">
       <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
         <div className="flex items-center gap-2">
-          <BarChart2 className="w-4 h-4 text-indigo-500" />
-          <h2 className="text-sm font-semibold text-gray-700">Shop Performance — Service Type Popularity</h2>
+          <BarChart2 className="w-4 h-4 text-status-ongoing" />
+          <h2 className="text-sm font-semibold text-body">Shop Performance — Service Type Popularity</h2>
         </div>
 
         <div className="flex items-center gap-2">
-          <div className="flex items-center gap-1 bg-gray-100 rounded-lg p-0.5">
+          <div className="flex items-center gap-1 bg-surface-muted rounded-sm p-0.5">
             {PERIODS.map(({ key, label }) => (
               <button
                 key={key}
                 onClick={() => handlePeriod(key)}
                 className={`px-3 py-1 text-xs font-medium rounded-md transition-all ${
                   period === key
-                    ? "bg-white text-gray-800 shadow-sm"
-                    : "text-gray-500 hover:text-gray-700"
+                    ? "bg-surface text-heading shadow-sm"
+                    : "text-body hover:text-body"
                 }`}
               >
                 {label}
@@ -77,39 +77,39 @@ export function ShopPerformanceChart({ initialData }: { initialData?: ServiceBre
             ))}
           </div>
 
-          <span className="text-xs text-gray-400 flex items-center gap-1">
+          <span className="text-xs text-muted flex items-center gap-1">
             <RefreshCw className="w-3 h-3" /> Live
           </span>
         </div>
       </div>
 
       {loading ? (
-        <div className="h-56 animate-pulse bg-gray-100 rounded-lg" />
+        <div className="h-56 animate-pulse bg-surface-muted rounded-sm" />
       ) : data.length === 0 ? (
-        <div className="h-56 flex items-center justify-center text-sm text-gray-400">
+        <div className="h-56 flex items-center justify-center text-sm text-muted">
           No job data for this period
         </div>
       ) : (
         <ResponsiveContainer width="100%" height={220}>
           <BarChart data={data} margin={{ top: 4, right: 8, left: -16, bottom: 4 }}>
-            <CartesianGrid strokeDasharray="3 3" stroke="#f3f4f6" />
+            <CartesianGrid strokeDasharray="3 3" stroke="var(--color-chart-grid)" />
             <XAxis
               dataKey="service_name"
-              tick={{ fontSize: 12, fill: "#6b7280" }}
+              tick={{ fontSize: 12, fill: "var(--color-chart-axis)" }}
               axisLine={false}
               tickLine={false}
             />
             <YAxis
               allowDecimals={false}
-              tick={{ fontSize: 12, fill: "#6b7280" }}
+              tick={{ fontSize: 12, fill: "var(--color-chart-axis)" }}
               axisLine={false}
               tickLine={false}
             />
             <Tooltip
-              contentStyle={{ fontSize: 13, borderRadius: 8, border: "1px solid #e5e7eb" }}
+              contentStyle={{ fontSize: 13, borderRadius: 8, border: "1px solid var(--color-chart-tooltip-border)", background: "var(--color-surface)", color: "var(--color-heading)" }}
               formatter={(value) => [String(value), "Jobs"]}
             />
-            <Bar dataKey="count" radius={[4, 4, 0, 0]} maxBarSize={60} fill="#6366f1" />
+            <Bar dataKey="count" radius={[4, 4, 0, 0]} maxBarSize={60} fill="var(--color-chart-1)" />
           </BarChart>
         </ResponsiveContainer>
       )}

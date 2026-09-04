@@ -1,7 +1,8 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import { Shield, Users } from "lucide-react"
+import { Tabs } from "@/components/ui/Tabs"
+import { Badge } from "@/components/ui/Badge"
 import AccountTable from "./AccountTable"
 import AdminAccountTable from "./AdminAccountTable"
 
@@ -26,21 +27,25 @@ export default function AccountManagementPage() {
   }
 
   return (
-    <div className="flex flex-col h-full">
-      {/* Tab bar */}
-      <div className="flex border-b border-gray-200 px-6 pt-5 gap-1 shrink-0 bg-white">
-        <TabButton
-          active={activeTab === "staff"}
-          onClick={() => setActiveTab("staff")}
-          icon={<Users className="w-4 h-4" />}
-          label="Staff Accounts"
-        />
-        <TabButton
-          active={activeTab === "admins"}
-          onClick={() => setActiveTab("admins")}
-          icon={<Shield className="w-4 h-4" />}
-          label="Admin Accounts"
-          badge
+    <div className="flex h-full flex-col">
+      <div className="shrink-0 bg-surface px-6 pt-5">
+        <Tabs
+          items={[
+            { key: "staff", label: "Staff Accounts" },
+            {
+              key: "admins",
+              label: (
+                <span className="flex items-center gap-2">
+                  Admin Accounts
+                  <Badge className="bg-status-concern/12 text-[10px] font-bold text-status-concern">
+                    Super Admin
+                  </Badge>
+                </span>
+              ),
+            },
+          ]}
+          value={activeTab}
+          onChange={(k) => setActiveTab(k as Tab)}
         />
       </div>
 
@@ -48,38 +53,5 @@ export default function AccountManagementPage() {
         {activeTab === "staff" ? <AccountTable /> : <AdminAccountTable />}
       </div>
     </div>
-  )
-}
-
-function TabButton({
-  active,
-  onClick,
-  icon,
-  label,
-  badge,
-}: {
-  active: boolean
-  onClick: () => void
-  icon: React.ReactNode
-  label: string
-  badge?: boolean
-}) {
-  return (
-    <button
-      onClick={onClick}
-      className={`flex items-center gap-2 px-4 py-2.5 text-sm font-medium border-b-2 transition-colors ${
-        active
-          ? "border-gray-900 text-gray-900"
-          : "border-transparent text-gray-400 hover:text-gray-600"
-      }`}
-    >
-      {icon}
-      {label}
-      {badge && (
-        <span className="ml-1 text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-purple-100 text-purple-600">
-          Super Admin
-        </span>
-      )}
-    </button>
   )
 }

@@ -9,22 +9,22 @@ export default function AuditLog({ initialLogs }: { initialLogs: any[] }) {
   const [activeTab, setActiveTab] = useState<Tab>("audit");
   return (
     <div className="space-y-6">
-      <div className="flex gap-4 border-b border-gray-200">
+      <div className="flex gap-4 border-b border-border">
         <button
-          className={`py-2 px-4 text-sm font-medium ${activeTab === "audit" ? "text-blue-600 border-b-2 border-blue-600" : "text-gray-500 hover:text-gray-700"}`}
+          className={`py-2 px-4 text-sm font-medium ${activeTab === "audit" ? "text-primary border-b-2 border-primary" : "text-body hover:text-body"}`}
           onClick={() => setActiveTab("audit")}
         >
           Audit Trails
         </button>
         <button
-          className={`py-2 px-4 text-sm font-medium ${activeTab === "security" ? "text-blue-600 border-b-2 border-blue-600" : "text-gray-500 hover:text-gray-700"}`}
+          className={`py-2 px-4 text-sm font-medium ${activeTab === "security" ? "text-primary border-b-2 border-primary" : "text-body hover:text-body"}`}
           onClick={() => setActiveTab("security")}
         >
           Security Logs
         </button>
       </div>
 
-      <div className="bg-white rounded-xl border border-gray-100">
+      <div className="bg-surface rounded-card border border-border-subtle">
         {activeTab === 'audit' ? <UserActivity initialLogs={initialLogs}/> :<Security initialLogs={initialLogs}/>}
       </div>
     </div>

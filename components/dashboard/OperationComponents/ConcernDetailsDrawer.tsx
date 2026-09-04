@@ -1,21 +1,26 @@
 "use client"
 
 import { useState } from "react"
-import { X, CheckCircle, Paperclip } from "lucide-react"
+import { CheckCircle, Paperclip } from "lucide-react"
+import { Drawer } from "@/components/ui/Drawer"
+import { Button } from "@/components/ui/Button"
+import { Badge } from "@/components/ui/Badge"
+import { Textarea } from "@/components/ui/Field"
+import { useToast } from "@/components/ui/Toast"
 import type { ConcernRecord } from "@/lib/operations/concern-record"
 
 interface ConcernDetailsDrawerProps {
-  record:    ConcernRecord | null
-  onClose:   () => void
+  record: ConcernRecord | null
+  onClose: () => void
   onResolve: (id: string, note: string) => void
 }
 
 export default function ConcernDetailsDrawer({ record, onClose, onResolve }: ConcernDetailsDrawerProps) {
+  const toast = useToast()
   const [responseNote, setResponseNote] = useState("")
-  const [resolving, setResolving]       = useState(false)
+  const [resolving, setResolving] = useState(false)
   const [resolveError, setResolveError] = useState<string | null>(null)
 
-  const isOpen     = record !== null
   const isResolved = record?.status === "Resolved"
 
   async function handleResolve() {
@@ -23,7 +28,7 @@ export default function ConcernDetailsDrawer({ record, onClose, onResolve }: Con
     setResolving(true)
     setResolveError(null)
     try {
-      const res  = await fetch(`/api/operations/job-concerns/${record.id}`, {
+      const res = await fetch(`/api/operations/job-concerns/${record.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ status: "Resolved", response_note: responseNote }),
@@ -32,6 +37,7 @@ export default function ConcernDetailsDrawer({ record, onClose, onResolve }: Con
       if (!res.ok) throw new Error(json?.error ?? "Failed to resolve concern")
       onResolve(record.id, responseNote)
       setResponseNote("")
+      toast.success("Concern marked as resolved.")
     } catch (err: unknown) {
       setResolveError(err instanceof Error ? err.message : String(err))
     } finally {
@@ -40,134 +46,114 @@ export default function ConcernDetailsDrawer({ record, onClose, onResolve }: Con
   }
 
   return (
-    <>
-      <div
-        onClick={onClose}
-        className={`fixed inset-0 bg-black/20 z-40 transition-opacity duration-300 ${
-          isOpen ? "opacity-100" : "opacity-0 pointer-events-none"
-        }`}
-      />
+    <Drawer
+      open={record !== null}
+      onClose={onClose}
+      title="Concern Details"
+      width="md"
+      footer={
+        record ? (
+          isResolved ? (
+            <div className="flex w-full items-center justify-center gap-2 rounded-sm bg-status-inspection/12 py-2.5 text-sm font-semibold text-status-inspection">
+              <CheckCircle className="h-4 w-4" />
+              Resolved
+            </div>
+          ) : (
+            <Button fullWidth onClick={handleResolve} disabled={resolving}>
+              {resolving ? "Resolving…" : "Mark as Resolved"}
+            </Button>
+          )
+        ) : null
+      }
+    >
+      {record && (
+        <div className="space-y-5">
+          <Field label="Submitted By">
+            <p className="text-sm font-semibold text-heading">{record.submitterName}</p>
+            <p className="text-xs capitalize text-muted">{record.submitterRole.replace("_", " ")}</p>
+          </Field>
+          <Field label="Submitted">
+            <p className="text-sm text-body">{record.submitted_at}</p>
+          </Field>
+          {record.stage_name && (
+            <Field label="Stage">
+              <Badge className="bg-primary/12 text-primary">{record.stage_name}</Badge>
+            </Field>
+          )}
+          <Field label="Title">
+            <p className="text-sm font-semibold text-heading">{record.title}</p>
+          </Field>
+          <Field label="Description">
+            <p className="text-sm leading-relaxed text-body">{record.description}</p>
+          </Field>
 
-      <div
-        className={`fixed top-0 right-0 h-full w-105 bg-white shadow-2xl z-50 flex flex-col transform transition-transform duration-300 ease-in-out ${
-          isOpen ? "translate-x-0" : "translate-x-full"
-        }`}
-      >
-        <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100 shrink-0">
-          <h2 className="text-base font-bold text-gray-800">Concern Details</h2>
-          <button
-            aria-label="Close concern details"
-            onClick={onClose}
-            className="w-7 h-7 flex items-center justify-center rounded-md text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors"
-          >
-            <X className="w-4 h-4" />
-          </button>
-        </div>
-
-        {record && (
-          <>
-            <div className="flex-1 overflow-y-auto px-6 py-5 space-y-5">
-              <div>
-                <p className="text-xs text-gray-400 mb-0.5">Submitted By</p>
-                <p className="text-sm font-semibold text-gray-800">{record.submitterName}</p>
-                <p className="text-xs text-gray-400 capitalize">{record.submitterRole.replace("_", " ")}</p>
-              </div>
-
-              <div>
-                <p className="text-xs text-gray-400 mb-0.5">Submitted</p>
-                <p className="text-sm text-gray-700">{record.submitted_at}</p>
-              </div>
-
-              {record.stage_name && (
-                <div>
-                  <p className="text-xs text-gray-400 mb-1">Stage</p>
-                  <span className="inline-flex items-center text-xs font-semibold bg-blue-50 text-blue-600 px-2.5 py-1 rounded-full">
-                    {record.stage_name}
-                  </span>
-                </div>
-              )}
-
-              <div>
-                <p className="text-xs text-gray-400 mb-1">Title</p>
-                <p className="text-sm font-semibold text-gray-800">{record.title}</p>
-              </div>
-
-              <div>
-                <p className="text-xs text-gray-400 mb-1">Description</p>
-                <p className="text-sm text-gray-700 leading-relaxed">{record.description}</p>
-              </div>
-
-              {record.media.length > 0 && (
-                <div>
-                  <p className="text-xs text-gray-400 mb-2 flex items-center gap-1">
-                    <Paperclip className="w-3 h-3" />
-                    Attachments ({record.media.length})
-                  </p>
-                  <div className="flex gap-2 flex-wrap">
-                    {record.media.map((m) =>
-                      m.media_type === "photo" ? (
-                        <a key={m.id} href={m.file_url} target="_blank" rel="noopener noreferrer">
-                          <img
-                            src={m.file_url}
-                            alt="concern attachment"
-                            className="w-16 h-16 rounded-lg object-cover border border-gray-200 hover:opacity-80 transition-opacity"
-                          />
-                        </a>
-                      ) : (
-                        <a
-                          key={m.id}
-                          href={m.file_url}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="flex items-center gap-1 text-xs text-blue-600 hover:underline"
-                        >
-                          ▶ Video
-                        </a>
-                      )
-                    )}
-                  </div>
-                </div>
-              )}
-
-              <div>
-                <p className="text-xs text-gray-400 mb-1.5">Response Note</p>
-                {isResolved ? (
-                  <div className="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm text-gray-600 bg-gray-50 min-h-[22.5]">
-                    {record.response_note ?? "—"}
-                  </div>
-                ) : (
-                  <textarea
-                    value={responseNote}
-                    onChange={(e) => setResponseNote(e.target.value)}
-                    placeholder="Add notes for this concern..."
-                    rows={4}
-                    className="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm text-gray-700 placeholder-gray-400 resize-none focus:outline-none focus:ring-2 focus:ring-green-400 focus:border-transparent"
-                  />
+          {record.media.length > 0 && (
+            <Field label={`Attachments (${record.media.length})`} icon={<Paperclip className="h-3 w-3" />}>
+              <div className="flex flex-wrap gap-2">
+                {record.media.map((m) =>
+                  m.media_type === "photo" ? (
+                    <a key={m.id} href={m.file_url} target="_blank" rel="noopener noreferrer">
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img
+                        src={m.file_url}
+                        alt="concern attachment"
+                        className="h-16 w-16 rounded-sm border border-border object-cover transition-opacity hover:opacity-80"
+                      />
+                    </a>
+                  ) : (
+                    <a
+                      key={m.id}
+                      href={m.file_url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="flex items-center gap-1 text-xs text-primary hover:underline"
+                    >
+                      ▶ Video
+                    </a>
+                  ),
                 )}
               </div>
+            </Field>
+          )}
 
-              {resolveError && <p className="text-xs text-red-500">{resolveError}</p>}
-            </div>
+          <Field label="Response Note">
+            {isResolved ? (
+              <div className="min-h-[3rem] rounded-sm border border-border bg-surface-subtle px-3 py-2.5 text-sm text-body">
+                {record.response_note ?? "—"}
+              </div>
+            ) : (
+              <Textarea
+                value={responseNote}
+                onChange={(e) => setResponseNote(e.target.value)}
+                placeholder="Add notes for this concern…"
+                rows={4}
+              />
+            )}
+          </Field>
 
-            <div className="px-6 py-4 border-t border-gray-100 shrink-0">
-              {isResolved ? (
-                <div className="w-full flex items-center justify-center gap-2 py-3 rounded-xl bg-green-50 text-green-600 text-sm font-semibold">
-                  <CheckCircle className="w-4 h-4" />
-                  Resolved
-                </div>
-              ) : (
-                <button
-                  onClick={handleResolve}
-                  disabled={resolving}
-                  className="w-full py-3 rounded-xl bg-green-500 hover:bg-green-600 text-white text-sm font-semibold transition-colors disabled:opacity-60"
-                >
-                  {resolving ? "Resolving…" : "Mark as Resolved"}
-                </button>
-              )}
-            </div>
-          </>
-        )}
-      </div>
-    </>
+          {resolveError && <p className="text-xs text-status-delayed">{resolveError}</p>}
+        </div>
+      )}
+    </Drawer>
+  )
+}
+
+function Field({
+  label,
+  icon,
+  children,
+}: {
+  label: string
+  icon?: React.ReactNode
+  children: React.ReactNode
+}) {
+  return (
+    <div>
+      <p className="mb-1 flex items-center gap-1 text-xs text-muted">
+        {icon}
+        {label}
+      </p>
+      {children}
+    </div>
   )
 }

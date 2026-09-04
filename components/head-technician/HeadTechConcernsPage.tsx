@@ -20,6 +20,10 @@ import {
   Search,
 } from "lucide-react"
 import { BottomNav } from "./components/BottomNav"
+import { StatCard } from "@/components/ui/StatCard"
+import { StatusBadge } from "@/components/ui/Badge"
+import { useToast } from "@/components/ui/Toast"
+import { MediaPreviewModal } from "@/components/ui/Modal"
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 type ConcernMedia = { id: string; url: string; type: string }
@@ -47,7 +51,7 @@ type FieldErrors = {
 
 function InlineError({ msg }: { msg?: string }) {
   if (!msg) return null
-  return <p className="text-[11px] text-red-500 mt-1 px-0.5">{msg}</p>
+  return <p className="text-[11px] text-status-delayed mt-1 px-0.5">{msg}</p>
 }
 
 // ── Expandable concern card ───────────────────────────────────────────────────
@@ -58,8 +62,8 @@ function ConcernCard({ concern }: { concern: Concern }) {
 
   return (
     <>
-      <div className={`bg-white rounded-2xl overflow-hidden border transition-colors duration-150 ${
-        open ? "border-gray-200 shadow-[0_2px_12px_-4px_rgba(0,0,0,0.06)]" : "border-gray-100"
+      <div className={`bg-surface rounded-card overflow-hidden border transition-colors duration-150 ${
+        open ? "border-border shadow-[0_2px_12px_-4px_rgba(0,0,0,0.06)]" : "border-border-subtle"
       }`}>
         {/* Header row — always visible */}
         <button
@@ -68,34 +72,28 @@ function ConcernCard({ concern }: { concern: Concern }) {
         >
           <div className="mt-0.5 shrink-0">
             {isPending
-              ? <Clock size={17} className="text-amber-500" />
-              : <CheckCircle2 size={17} className="text-emerald-500" />
+              ? <Clock size={17} className="text-status-warning" />
+              : <CheckCircle2 size={17} className="text-status-inspection" />
             }
           </div>
 
           <div className="flex-1 min-w-0">
             <div className="flex items-center justify-between gap-2">
-              <p className="text-sm font-semibold text-gray-900 truncate">{concern.title}</p>
-              <span className={`shrink-0 text-[11px] px-2.5 py-0.5 rounded-full font-semibold ${
-                isPending
-                  ? "bg-amber-50 text-amber-600"
-                  : "bg-emerald-50 text-emerald-600"
-              }`}>
-                {concern.status}
-              </span>
+              <p className="text-sm font-semibold text-heading truncate">{concern.title}</p>
+              <StatusBadge status={concern.status} className="shrink-0 text-[11px]" />
             </div>
-            <p className="text-[11px] text-gray-400 mt-0.5 font-medium">{concern.submitted_at}</p>
+            <p className="text-[11px] text-muted mt-0.5 font-medium">{concern.submitted_at}</p>
 
             {/* Job / Stage tags */}
             {(concern.job_display_id || concern.stage_name) && (
               <div className="flex flex-wrap gap-1.5 mt-1.5">
                 {concern.job_display_id && (
-                  <span className="text-[10px] font-mono font-semibold bg-gray-100 text-gray-500 px-2 py-0.5 rounded-full">
+                  <span className="text-[10px] font-mono font-semibold bg-surface-muted text-body px-2 py-0.5 rounded-full">
                     {concern.job_display_id}
                   </span>
                 )}
                 {concern.stage_name && (
-                  <span className="text-[10px] font-semibold bg-blue-50 text-blue-500 px-2 py-0.5 rounded-full">
+                  <span className="text-[10px] font-semibold bg-primary/10 text-primary px-2 py-0.5 rounded-full">
                     {concern.stage_name}
                   </span>
                 )}
@@ -103,20 +101,20 @@ function ConcernCard({ concern }: { concern: Concern }) {
             )}
           </div>
 
-          <div className="shrink-0 text-gray-300 mt-0.5">
+          <div className="shrink-0 text-muted mt-0.5">
             {open ? <ChevronUp size={15} /> : <ChevronDown size={15} />}
           </div>
         </button>
 
         {/* Expanded detail */}
         {open && (
-          <div className="px-4 pb-4 space-y-3 border-t border-gray-50 pt-3">
-            <p className="text-sm text-gray-600 leading-relaxed">{concern.description}</p>
+          <div className="px-4 pb-4 space-y-3 border-t border-border-subtle pt-3">
+            <p className="text-sm text-body leading-relaxed">{concern.description}</p>
 
             {/* Media thumbnails */}
             {concern.media.length > 0 && (
               <div>
-                <p className="text-[11px] font-semibold text-gray-400 uppercase tracking-wide mb-2">
+                <p className="text-[11px] font-semibold text-muted uppercase tracking-wide mb-2">
                   Attachments
                 </p>
                 <div className="flex flex-wrap gap-2">
@@ -126,16 +124,16 @@ function ConcernCard({ concern }: { concern: Concern }) {
                         aria-label="Preview video attachment"
                         key={m.id}
                         onClick={() => setPreview({ url: m.url, type: m.type })}
-                        className="w-16 h-16 rounded-xl bg-gray-100 flex items-center justify-center border border-gray-200"
+                        className="w-16 h-16 rounded-card bg-surface-muted flex items-center justify-center border border-border"
                       >
-                        <Play size={20} className="text-gray-500" />
+                        <Play size={20} className="text-body" />
                       </button>
                     ) : (
                       <button
                         aria-label="Preview photo attachment"
                         key={m.id}
                         onClick={() => setPreview({ url: m.url, type: m.type })}
-                        className="w-16 h-16 rounded-xl overflow-hidden border border-gray-200"
+                        className="w-16 h-16 rounded-card overflow-hidden border border-border"
                       >
                         <img
                           src={m.url}
@@ -151,60 +149,31 @@ function ConcernCard({ concern }: { concern: Concern }) {
             )}
 
             {concern.response_note && (
-              <div className="bg-blue-50 border border-blue-100 rounded-xl p-3 space-y-1.5">
+              <div className="bg-primary/10 border border-primary/20 rounded-card p-3 space-y-1.5">
                 <div className="flex items-center gap-1.5">
-                  <MessageSquareText size={13} className="text-blue-500" />
-                  <span className="text-xs font-semibold text-blue-600">Operations Response</span>
+                  <MessageSquareText size={13} className="text-primary" />
+                  <span className="text-xs font-semibold text-primary">Operations Response</span>
                 </div>
-                <p className="text-sm text-blue-800 leading-relaxed">{concern.response_note}</p>
+                <p className="text-sm text-primary-hover leading-relaxed">{concern.response_note}</p>
               </div>
             )}
           </div>
         )}
       </div>
 
-      {/* Full-screen media preview */}
-      {preview && (
-        <div
-          className="fixed inset-0 z-50 bg-black/95 flex items-center justify-center"
-          onClick={() => setPreview(null)}
-        >
-          <button
-            aria-label="Close media preview"
-            className="absolute top-5 right-5 text-white bg-white/10 hover:bg-white/20 rounded-full p-2.5"
-            onClick={() => setPreview(null)}
-          >
-            <X size={20} />
-          </button>
-          {preview.type === "video" ? (
-            <video
-              src={preview.url}
-              controls
-              autoPlay
-              className="max-w-full max-h-full rounded-lg"
-              onClick={(e) => e.stopPropagation()}
-            />
-          ) : (
-            <img
-              src={preview.url}
-              alt=""
-              className="max-w-full max-h-full object-contain rounded-lg"
-              onClick={(e) => e.stopPropagation()}
-            />
-          )}
-        </div>
-      )}
+      <MediaPreviewModal media={preview} onClose={() => setPreview(null)} />
     </>
   )
 }
 
 const INPUT_CLS = (err?: string) =>
-  `w-full text-sm border rounded-xl px-3.5 py-3 bg-gray-50 text-gray-800 focus:outline-none focus:ring-2 focus:border-transparent transition ${
-    err ? "border-red-300 focus:ring-red-300" : "border-gray-200 focus:ring-gray-300"
+  `w-full text-sm border rounded-card px-3.5 py-3 bg-surface-subtle text-heading focus:outline-none focus:ring-2 focus:border-transparent transition ${
+    err ? "border-status-delayed/40 focus:ring-status-delayed/30" : "border-border focus:ring-primary/20"
   }`
 
 // ── Main page ─────────────────────────────────────────────────────────────────
 export default function HeadTechConcernsPage() {
+  const toast = useToast()
   const [concerns, setConcerns] = useState<Concern[]>([])
   const [loading, setLoading]   = useState(true)
 
@@ -374,6 +343,8 @@ export default function HeadTechConcernsPage() {
 
       if (uploadErrors.length > 0) {
         setFieldErrors({ description: `Concern submitted, but ${uploadErrors.length} file(s) failed: ${uploadErrors.join("; ")}` })
+      } else {
+        toast.success("Concern submitted to Operations.")
       }
     } catch {
       setFieldErrors({ description: "Network error. Please try again." })
@@ -391,32 +362,26 @@ export default function HeadTechConcernsPage() {
 
         {/* ── Page header ─────────────────────────────────────────── */}
         <div className="flex items-center gap-3">
-          <div className="w-9 h-9 rounded-xl bg-amber-50 flex items-center justify-center shrink-0">
-            <TriangleAlert size={17} className="text-amber-500" />
+          <div className="w-9 h-9 rounded-card bg-status-warning/10 flex items-center justify-center shrink-0">
+            <TriangleAlert size={17} className="text-status-warning" />
           </div>
           <div>
-            <h1 className="text-xl font-bold text-gray-900 leading-tight tracking-tight">Concerns</h1>
-            <p className="text-xs text-gray-400 font-medium mt-0.5">Report issues to Operations</p>
+            <h1 className="text-xl font-bold text-heading leading-tight tracking-tight">Concerns</h1>
+            <p className="text-xs text-muted font-medium mt-0.5">Report issues to Operations</p>
           </div>
         </div>
 
-        {/* ── Stat pills ─────────────────────────────────────────── */}
+        {/* ── Stat cards ─────────────────────────────────────────── */}
         {!loading && concerns.length > 0 && (
           <div className="grid grid-cols-2 gap-2">
-            <div className="bg-amber-50 rounded-2xl px-3 py-3 text-center">
-              <p className="text-xl font-bold text-amber-600 leading-none">{pendingCount}</p>
-              <p className="text-[11px] font-medium text-amber-500 mt-1">Pending</p>
-            </div>
-            <div className="bg-emerald-50 rounded-2xl px-3 py-3 text-center">
-              <p className="text-xl font-bold text-emerald-600 leading-none">{resolvedCount}</p>
-              <p className="text-[11px] font-medium text-emerald-500 mt-1">Resolved</p>
-            </div>
+            <StatCard label="Pending" value={pendingCount} icon={Clock} tone="pending" />
+            <StatCard label="Resolved" value={resolvedCount} icon={CheckCircle2} tone="inspection" />
           </div>
         )}
 
         {/* ── Submit form ──────────────────────────────────────────── */}
-        <div className="bg-white rounded-2xl border border-gray-100 shadow-[0_2px_12px_-4px_rgba(0,0,0,0.06)] p-4 space-y-4">
-          <p className="text-xs font-semibold text-gray-400 uppercase tracking-widest">
+        <div className="bg-surface rounded-card border border-border-subtle shadow-[0_2px_12px_-4px_rgba(0,0,0,0.06)] p-4 space-y-4">
+          <p className="text-xs font-semibold text-muted uppercase tracking-widest">
             Submit New Concern
           </p>
 
@@ -424,12 +389,12 @@ export default function HeadTechConcernsPage() {
 
             {/* Related Job — required, searchable combobox */}
             <div>
-              <label className="flex items-center gap-1.5 text-xs font-semibold text-gray-600 mb-1.5">
-                <Briefcase size={11} className="text-gray-400" />
-                Related Job <span className="text-red-400">*</span>
+              <label className="flex items-center gap-1.5 text-xs font-semibold text-body mb-1.5">
+                <Briefcase size={11} className="text-muted" />
+                Related Job <span className="text-status-delayed">*</span>
               </label>
               <div className="relative">
-                <Search size={13} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+                <Search size={13} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-muted pointer-events-none" />
                 <input
                   type="text"
                   placeholder="Search job ID or plate…"
@@ -437,13 +402,13 @@ export default function HeadTechConcernsPage() {
                   onFocus={() => { if (selectedJobId) { setJobSearch(""); setSelectedJobId(""); setSelectedJobLabel("") } setJobDropOpen(true) }}
                   onBlur={() => setTimeout(() => setJobDropOpen(false), 180)}
                   onChange={(e) => { setJobSearch(e.target.value); setJobDropOpen(true); setSelectedJobId(""); setSelectedJobLabel("") }}
-                  className={`w-full text-sm rounded-xl pl-9 pr-3.5 py-3 bg-gray-50 focus:outline-none focus:ring-2 focus:border-transparent transition ${
-                    fieldErrors.job ? "border border-red-300 focus:ring-red-300" : "border border-gray-200 focus:ring-gray-300"
+                  className={`w-full text-sm rounded-card pl-9 pr-3.5 py-3 bg-surface-subtle focus:outline-none focus:ring-2 focus:border-transparent transition ${
+                    fieldErrors.job ? "border border-status-delayed/40 focus:ring-status-delayed/30" : "border border-border focus:ring-primary/20"
                   }`}
                 />
                 {/* Dropdown */}
                 {jobDropOpen && (
-                  <div className="absolute z-50 w-full mt-1 bg-white border border-gray-200 rounded-xl shadow-xl overflow-hidden">
+                  <div className="absolute z-50 w-full mt-1 bg-surface border border-border rounded-card shadow-pop overflow-hidden">
                     <div className="max-h-52 overflow-y-auto">
                       {filteredJobs.length > 0 ? filteredJobs.map((j) => (
                         <button
@@ -457,12 +422,12 @@ export default function HeadTechConcernsPage() {
                             setJobDropOpen(false)
                             setFieldErrors((prev) => ({ ...prev, job: undefined }))
                           }}
-                          className="w-full text-left px-4 py-3 text-sm hover:bg-blue-50 transition-colors border-b last:border-none border-gray-50"
+                          className="w-full text-left px-4 py-3 text-sm hover:bg-primary/10 transition-colors border-b last:border-none border-border-subtle"
                         >
-                          <span className="font-semibold text-gray-800 text-xs">{j.label}</span>
+                          <span className="font-semibold text-heading text-xs">{j.label}</span>
                         </button>
                       )) : (
-                        <div className="px-4 py-8 text-center text-sm text-gray-400">No matching jobs</div>
+                        <div className="px-4 py-8 text-center text-sm text-muted">No matching jobs</div>
                       )}
                     </div>
                   </div>
@@ -474,20 +439,20 @@ export default function HeadTechConcernsPage() {
             {/* Related Stage (optional, appears after job is selected) */}
             {selectedJobId && (
               <div>
-                <label className="flex items-center gap-1.5 text-xs font-semibold text-gray-600 mb-1.5">
-                  <Layers size={11} className="text-gray-400" />
+                <label className="flex items-center gap-1.5 text-xs font-semibold text-body mb-1.5">
+                  <Layers size={11} className="text-muted" />
                   Related Stage
-                  <span className="text-gray-400 font-normal ml-1">(optional)</span>
+                  <span className="text-muted font-normal ml-1">(optional)</span>
                 </label>
                 {stagesLoading ? (
-                  <p className="text-xs text-gray-400 px-1 flex items-center gap-1.5">
+                  <p className="text-xs text-muted px-1 flex items-center gap-1.5">
                     <Loader2 size={11} className="animate-spin" /> Loading stages…
                   </p>
                 ) : (
                   <select
                     value={selectedStageId}
                     onChange={(e) => setSelectedStageId(e.target.value)}
-                    className="w-full text-sm border border-gray-200 rounded-xl px-3.5 py-3 bg-gray-50 text-gray-800 focus:outline-none focus:ring-2 focus:ring-gray-300 focus:border-transparent transition appearance-none"
+                    className="w-full text-sm border border-border rounded-card px-3.5 py-3 bg-surface-subtle text-heading focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-transparent transition appearance-none"
                   >
                     <option value="">— Select a stage —</option>
                     {stages.map((s) => (
@@ -500,23 +465,23 @@ export default function HeadTechConcernsPage() {
 
             {/* Description */}
             <div>
-              <label className="block text-xs font-semibold text-gray-600 mb-1.5">
-                Description <span className="text-red-400">*</span>
+              <label className="block text-xs font-semibold text-body mb-1.5">
+                Description <span className="text-status-delayed">*</span>
               </label>
               <textarea
                 value={description}
                 onChange={(e) => { setDescription(e.target.value); setFieldErrors((p) => ({ ...p, description: undefined })) }}
                 placeholder="Describe the issue in detail…"
                 rows={4}
-                className={INPUT_CLS(fieldErrors.description) + " placeholder-gray-400 resize-none"}
+                className={INPUT_CLS(fieldErrors.description) + " placeholder:text-muted resize-none"}
               />
               <InlineError msg={fieldErrors.description} />
             </div>
 
             {/* Media attachments */}
             <div className="space-y-2">
-              <label className="block text-xs font-semibold text-gray-600">
-                Attachments <span className="text-gray-400 font-normal">(optional)</span>
+              <label className="block text-xs font-semibold text-body">
+                Attachments <span className="text-muted font-normal">(optional)</span>
               </label>
 
               {mediaFiles.length > 0 && (
@@ -527,21 +492,21 @@ export default function HeadTechConcernsPage() {
                     return (
                       <div key={idx} className="relative w-16 h-16">
                         {isVideo ? (
-                          <div className="w-16 h-16 rounded-xl bg-gray-200 flex items-center justify-center border border-gray-200">
-                            <Play size={18} className="text-gray-500" />
+                          <div className="w-16 h-16 rounded-card bg-surface-muted flex items-center justify-center border border-border">
+                            <Play size={18} className="text-body" />
                           </div>
                         ) : (
                           <img
                             src={url}
                             alt=""
-                            className="w-16 h-16 rounded-xl object-cover border border-gray-200"
+                            className="w-16 h-16 rounded-card object-cover border border-border"
                           />
                         )}
                         <button
                           aria-label="Remove attachment"
                           type="button"
                           onClick={() => removeFile(idx)}
-                          className="absolute -top-1.5 -right-1.5 w-5 h-5 bg-gray-900 rounded-full flex items-center justify-center shadow"
+                          className="absolute -top-1.5 -right-1.5 w-5 h-5 bg-primary rounded-full flex items-center justify-center shadow"
                         >
                           <X size={9} className="text-white" />
                         </button>
@@ -552,7 +517,7 @@ export default function HeadTechConcernsPage() {
               )}
 
               <div className="flex gap-2">
-                <label className="flex-1 flex items-center justify-center gap-1.5 text-xs font-semibold border border-gray-200 rounded-xl py-2.5 text-gray-600 hover:bg-gray-50 cursor-pointer transition-colors">
+                <label className="flex-1 flex items-center justify-center gap-1.5 text-xs font-semibold border border-border rounded-card py-2.5 text-body hover:bg-surface-muted cursor-pointer transition-colors">
                   <ImagePlus size={13} />
                   Photo
                   <input
@@ -565,7 +530,7 @@ export default function HeadTechConcernsPage() {
                     onChange={(e) => addFiles(e.target.files)}
                   />
                 </label>
-                <label className="flex-1 flex items-center justify-center gap-1.5 text-xs font-semibold border border-gray-200 rounded-xl py-2.5 text-gray-600 hover:bg-gray-50 cursor-pointer transition-colors">
+                <label className="flex-1 flex items-center justify-center gap-1.5 text-xs font-semibold border border-border rounded-card py-2.5 text-body hover:bg-surface-muted cursor-pointer transition-colors">
                   <Video size={13} />
                   Video
                   <input
@@ -577,7 +542,7 @@ export default function HeadTechConcernsPage() {
                     onChange={(e) => addFiles(e.target.files)}
                   />
                 </label>
-                <label className="flex-1 flex items-center justify-center gap-1.5 text-xs font-semibold border border-gray-200 rounded-xl py-2.5 text-gray-600 hover:bg-gray-50 cursor-pointer transition-colors">
+                <label className="flex-1 flex items-center justify-center gap-1.5 text-xs font-semibold border border-border rounded-card py-2.5 text-body hover:bg-surface-muted cursor-pointer transition-colors">
                   <Paperclip size={13} />
                   Attach
                   <input
@@ -595,7 +560,7 @@ export default function HeadTechConcernsPage() {
             <button
               type="submit"
               disabled={submitting}
-              className="w-full flex items-center justify-center gap-2 py-3 rounded-xl bg-gray-900 text-white text-sm font-semibold hover:bg-gray-800 active:scale-[0.98] transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+              className="w-full flex items-center justify-center gap-2 py-3 rounded-card bg-primary text-white text-sm font-semibold hover:bg-primary-hover active:scale-[0.98] transition-all disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {submitting
                 ? <><Loader2 size={14} className="animate-spin" /> Submitting…</>
@@ -607,28 +572,28 @@ export default function HeadTechConcernsPage() {
 
         {/* ── Concerns list ──────────────────────────────────────── */}
         <div className="space-y-2.5">
-          <p className="text-xs font-semibold text-gray-400 uppercase tracking-widest px-0.5">
+          <p className="text-xs font-semibold text-muted uppercase tracking-widest px-0.5">
             My Concerns
           </p>
 
           {loading && (
             <div className="space-y-2">
               {[1, 2].map((i) => (
-                <div key={i} className="bg-white rounded-2xl border border-gray-100 p-4 animate-pulse space-y-2">
+                <div key={i} className="bg-surface rounded-card border border-border-subtle p-4 animate-pulse space-y-2">
                   <div className="flex justify-between">
-                    <div className="h-3 w-32 bg-gray-100 rounded-full" />
-                    <div className="h-5 w-16 bg-gray-100 rounded-full" />
+                    <div className="h-3 w-32 bg-surface-muted rounded-full" />
+                    <div className="h-5 w-16 bg-surface-muted rounded-full" />
                   </div>
-                  <div className="h-2.5 w-20 bg-gray-100 rounded-full" />
+                  <div className="h-2.5 w-20 bg-surface-muted rounded-full" />
                 </div>
               ))}
             </div>
           )}
 
           {!loading && concerns.length === 0 && (
-            <div className="bg-white rounded-2xl border border-gray-100 px-4 py-12 text-center space-y-1">
-              <p className="text-sm font-medium text-gray-500">No concerns yet</p>
-              <p className="text-xs text-gray-400">Use the form above to report an issue.</p>
+            <div className="bg-surface rounded-card border border-border-subtle px-4 py-12 text-center space-y-1">
+              <p className="text-sm font-medium text-body">No concerns yet</p>
+              <p className="text-xs text-muted">Use the form above to report an issue.</p>
             </div>
           )}
 

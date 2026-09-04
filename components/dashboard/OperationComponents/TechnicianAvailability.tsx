@@ -1,160 +1,94 @@
 "use client"
 
-import { useState, useEffect, useCallback, useRef } from "react"
-import { UserCheck, UserX, Users, Search, Plus, X, Wrench, Pencil, Trash2, Filter, Clock, AlertTriangle } from "lucide-react"
+import { useState, useEffect, useCallback } from "react"
+import { UserCheck, UserX, Users, Wrench, Pencil, Trash2, Clock, AlertTriangle } from "lucide-react"
 import { TechnicianAvailabilitySkeleton } from "@/app/dashboard/technician-availability/loading"
+import { PageHeader } from "@/components/ui/PageHeader"
+import { Button, IconButton } from "@/components/ui/Button"
+import { SearchBar } from "@/components/ui/SearchBar"
+import { StatCard } from "@/components/ui/StatCard"
+import { Modal, ConfirmModal } from "@/components/ui/Modal"
+import { Toggle } from "@/components/ui/Toggle"
+import { Badge } from "@/components/ui/Badge"
+import { EmptyState } from "@/components/ui/EmptyState"
+import { Popover, MenuItem } from "@/components/ui/Popover"
+import { Input, Select, FieldLabel } from "@/components/ui/Field"
+import { DayPillSelector } from "@/components/ui/DayPillSelector"
+import { TimeRangeInputs } from "@/components/ui/TimeRange"
+import { useToast } from "@/components/ui/Toast"
+import { cn } from "@/lib/utils"
+import { avatarColor, initials } from "@/lib/ui/avatar"
+import { roleStyle } from "@/lib/ui/roles"
 
 interface ActiveJob {
-  job_id:   string
+  job_id: string
   customer: string
-  service:  string
+  service: string
 }
 
 interface Technician {
-  id:               string
-  full_name:        string
-  role:             "detailer" | "installer"
-  is_available:     boolean
-  available_days:   string[]
-  work_start_time:  string
-  work_end_time:    string
-  active_job:       ActiveJob | null
+  id: string
+  full_name: string
+  role: "detailer" | "installer"
+  is_available: boolean
+  available_days: string[]
+  work_start_time: string
+  work_end_time: string
+  active_job: ActiveJob | null
 }
 
-const DAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"] as const
-const ALL_DAYS: string[] = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
+const ALL_DAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
 
-function DayPicker({ value, onChange }: { value: string[]; onChange: (v: string[]) => void }) {
-  return (
-    <div className="flex gap-1">
-      {DAYS.map((d) => {
-        const active = value.includes(d)
-        return (
-          <button
-            key={d}
-            type="button"
-            onClick={() => onChange(active ? value.filter((x) => x !== d) : [...value, d])}
-            className={`w-9 h-9 rounded-lg text-xs font-semibold transition-colors ${
-              active ? "bg-gray-900 text-white" : "bg-gray-100 text-gray-400 hover:bg-gray-200"
-            }`}
-          >
-            {d[0]}
-          </button>
-        )
-      })}
-    </div>
-  )
+const ROLE_LABEL: Record<Technician["role"], string> = { detailer: "Detailer", installer: "Installer" }
+const ROLE_BADGE: Record<Technician["role"], string> = {
+  detailer: roleStyle("detailer").badge,
+  installer: roleStyle("installer").badge,
 }
-
-function TimePicker({ label, value, onChange }: { label: string; value: string; onChange: (v: string) => void }) {
-  return (
-    <div className="flex-1">
-      <p className="text-[10px] font-medium text-gray-400 mb-1">{label}</p>
-      <input
-        type="time"
-        min="08:00"
-        max="20:00"
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-      />
-    </div>
-  )
-}
+const GROUP_ORDER: Technician["role"][] = ["detailer", "installer"]
 
 function formatTime(t: string): string {
   const [hStr, mStr] = t.split(":")
   const h = parseInt(hStr, 10)
   const m = mStr?.padStart(2, "0") ?? "00"
   const period = h >= 12 ? "PM" : "AM"
-  const hour   = h % 12 === 0 ? 12 : h % 12
+  const hour = h % 12 === 0 ? 12 : h % 12
   return `${hour}:${m} ${period}`
 }
 
-const ROLE_LABEL: Record<Technician["role"], string> = {
-  detailer:  "Detailer",
-  installer: "Installer",
+interface TechForm {
+  name: string
+  role: Technician["role"]
+  days: string[]
+  start: string
+  end: string
 }
-
-const ROLE_BADGE: Record<Technician["role"], string> = {
-  detailer:  "bg-blue-50 text-blue-600",
-  installer: "bg-teal-50 text-teal-600",
-}
-
-const GROUP_ORDER: Technician["role"][] = ["detailer", "installer"]
-
-const AVATAR_COLORS = [
-  "bg-blue-100 text-blue-600",
-  "bg-purple-100 text-purple-600",
-  "bg-teal-100 text-teal-600",
-  "bg-amber-100 text-amber-600",
-  "bg-pink-100 text-pink-600",
-  "bg-indigo-100 text-indigo-600",
-  "bg-green-100 text-green-600",
-  "bg-orange-100 text-orange-600",
-]
-
-function initials(name: string) {
-  return name.split(" ").map((n) => n[0]).join("").slice(0, 2).toUpperCase()
-}
-
-function colorIdx(id: string) {
-  // stable colour derived from UUID characters
-  return id.split("").reduce((acc, c) => acc + c.charCodeAt(0), 0) % AVATAR_COLORS.length
-}
+const EMPTY_FORM: TechForm = { name: "", role: "detailer", days: ALL_DAYS, start: "08:00", end: "20:00" }
 
 export default function TechnicianAvailability() {
+  const toast = useToast()
   const [technicians, setTechnicians] = useState<Technician[]>([])
-  const [loading, setLoading]         = useState(true)
-  const [fetchError, setFetchError]   = useState<string | null>(null)
-  const [search, setSearch]           = useState("")
-  const [filterRole, setFilterRole]   = useState<Technician["role"] | "all">("all")
+  const [loading, setLoading] = useState(true)
+  const [fetchError, setFetchError] = useState<string | null>(null)
+  const [search, setSearch] = useState("")
+  const [filterRole, setFilterRole] = useState<Technician["role"] | "all">("all")
 
-  // Add technician modal
-  const [addOpen, setAddOpen]           = useState(false)
-  const [newName, setNewName]           = useState("")
-  const [newRole, setNewRole]           = useState<Technician["role"]>("detailer")
-  const [newDays, setNewDays]           = useState<string[]>(ALL_DAYS)
-  const [newStartTime, setNewStartTime] = useState("08:00")
-  const [newEndTime, setNewEndTime]     = useState("20:00")
-  const [adding, setAdding]             = useState(false)
-  const [addError, setAddError]         = useState<string | null>(null)
-  const [addDuplicate, setAddDuplicate] = useState<Technician | null>(null)
+  const [addOpen, setAddOpen] = useState(false)
+  const [editOpen, setEditOpen] = useState(false)
+  const [editingId, setEditingId] = useState<string | null>(null)
+  const [form, setForm] = useState<TechForm>(EMPTY_FORM)
+  const [submitting, setSubmitting] = useState(false)
+  const [formError, setFormError] = useState<string | null>(null)
+  const [duplicate, setDuplicate] = useState<Technician | null>(null)
 
-  // Edit technician modal
-  const [editOpen, setEditOpen]             = useState(false)
-  const [editingTech, setEditingTech]       = useState<Technician | null>(null)
-  const [editName, setEditName]             = useState("")
-  const [editRole, setEditRole]             = useState<Technician["role"]>("detailer")
-  const [editDays, setEditDays]             = useState<string[]>(ALL_DAYS)
-  const [editStartTime, setEditStartTime]   = useState("08:00")
-  const [editEndTime, setEditEndTime]       = useState("20:00")
-  const [updating, setUpdating]             = useState(false)
-  const [editError, setEditError]           = useState<string | null>(null)
-  const [editDuplicate, setEditDuplicate]   = useState<Technician | null>(null)
-
-  // Delete confirm dialog
   const [deleteTarget, setDeleteTarget] = useState<Technician | null>(null)
-  const [deleting, setDeleting]         = useState(false)
-  const [deleteError, setDeleteError]   = useState<string | null>(null)
-
-  // Filter dropdown
-  const [filterOpen, setFilterOpen] = useState(false)
-  const filterRef = useRef<HTMLDivElement>(null)
-
-  useEffect(() => {
-    function handleClick(e: MouseEvent) {
-      if (filterRef.current && !filterRef.current.contains(e.target as Node)) setFilterOpen(false)
-    }
-    document.addEventListener("mousedown", handleClick)
-    return () => document.removeEventListener("mousedown", handleClick)
-  }, [])
+  const [deleting, setDeleting] = useState(false)
+  const [deleteError, setDeleteError] = useState<string | null>(null)
 
   const load = useCallback(async () => {
     setLoading(true)
     setFetchError(null)
     try {
-      const res  = await fetch("/api/operations/technician-availability")
+      const res = await fetch("/api/operations/technician-availability")
       const json = await res.json()
       if (!res.ok) throw new Error(json?.error ?? "Failed to load technicians")
       setTechnicians(json.technicians ?? [])
@@ -165,96 +99,119 @@ export default function TechnicianAvailability() {
     }
   }, [])
 
-  useEffect(() => { load() }, [load])
+  useEffect(() => {
+    load()
+  }, [load])
 
   async function toggle(tech: Technician) {
     const next = !tech.is_available
-    // Optimistic update
-    setTechnicians((prev) => prev.map((t) => t.id === tech.id ? { ...t, is_available: next } : t))
+    setTechnicians((prev) => prev.map((t) => (t.id === tech.id ? { ...t, is_available: next } : t)))
     try {
-      const res  = await fetch("/api/operations/technician-availability", {
+      const res = await fetch("/api/operations/technician-availability", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ id: tech.id, is_available: next }),
       })
       if (!res.ok) {
-        // Revert on failure
-        setTechnicians((prev) => prev.map((t) => t.id === tech.id ? { ...t, is_available: !next } : t))
+        setTechnicians((prev) => prev.map((t) => (t.id === tech.id ? { ...t, is_available: !next } : t)))
+        toast.error("Could not update availability.")
       }
     } catch {
-      setTechnicians((prev) => prev.map((t) => t.id === tech.id ? { ...t, is_available: !next } : t))
+      setTechnicians((prev) => prev.map((t) => (t.id === tech.id ? { ...t, is_available: !next } : t)))
+      toast.error("Could not update availability.")
     }
   }
 
-  async function addTechnician() {
-    if (!newName.trim()) return
-    if (newEndTime <= newStartTime) {
-      setAddError("End time must be after start time.")
-      return
-    }
-    const duplicate = technicians.find(
-      (t) => t.full_name.trim().toLowerCase() === newName.trim().toLowerCase()
-    )
-    if (duplicate) {
-      setAddDuplicate(duplicate)
-      return
-    }
-    setAdding(true)
-    setAddError(null)
-    setAddDuplicate(null)
-    try {
-      const res  = await fetch("/api/operations/technician-availability", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ full_name: newName.trim(), role: newRole, available_days: newDays, work_start_time: newStartTime, work_end_time: newEndTime }),
-      })
-      const json = await res.json()
-      if (!res.ok) throw new Error(json?.error ?? "Failed to add technician")
-      setTechnicians((prev) => [...prev, { ...json.technician, active_job: null }])
-      setAddOpen(false)
-      setNewName("")
-      setNewRole("detailer")
-      setNewDays(ALL_DAYS)
-      setNewStartTime("08:00")
-      setNewEndTime("20:00")
-    } catch (err: unknown) {
-      setAddError(err instanceof Error ? err.message : String(err))
-    } finally {
-      setAdding(false)
-    }
+  function openAdd() {
+    setForm(EMPTY_FORM)
+    setFormError(null)
+    setDuplicate(null)
+    setAddOpen(true)
   }
 
-  async function updateTechnician() {
-    if (!editingTech || !editName.trim()) return
-    if (editEndTime <= editStartTime) {
-      setEditError("End time must be after start time.")
+  function openEdit(tech: Technician) {
+    setEditingId(tech.id)
+    setForm({
+      name: tech.full_name,
+      role: tech.role,
+      days: tech.available_days ?? ALL_DAYS,
+      start: tech.work_start_time?.slice(0, 5) ?? "08:00",
+      end: tech.work_end_time?.slice(0, 5) ?? "20:00",
+    })
+    setFormError(null)
+    setDuplicate(null)
+    setEditOpen(true)
+  }
+
+  async function submitForm(isEdit: boolean) {
+    if (!form.name.trim()) return
+    if (form.end <= form.start) {
+      setFormError("End time must be after start time.")
       return
     }
-    const duplicate = technicians.find(
-      (t) => t.id !== editingTech.id && t.full_name.trim().toLowerCase() === editName.trim().toLowerCase()
+    const dup = technicians.find(
+      (t) =>
+        t.id !== editingId &&
+        t.full_name.trim().toLowerCase() === form.name.trim().toLowerCase(),
     )
-    if (duplicate) {
-      setEditDuplicate(duplicate)
+    if (dup) {
+      setDuplicate(dup)
       return
     }
-    setUpdating(true)
-    setEditError(null)
-    setEditDuplicate(null)
+    setSubmitting(true)
+    setFormError(null)
+    setDuplicate(null)
     try {
-      const res  = await fetch("/api/operations/technician-availability", {
-        method: "PATCH",
+      const body = isEdit
+        ? {
+            id: editingId,
+            full_name: form.name.trim(),
+            role: form.role,
+            available_days: form.days,
+            work_start_time: form.start,
+            work_end_time: form.end,
+          }
+        : {
+            full_name: form.name.trim(),
+            role: form.role,
+            available_days: form.days,
+            work_start_time: form.start,
+            work_end_time: form.end,
+          }
+      const res = await fetch("/api/operations/technician-availability", {
+        method: isEdit ? "PATCH" : "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id: editingTech.id, full_name: editName.trim(), role: editRole, available_days: editDays, work_start_time: editStartTime, work_end_time: editEndTime }),
+        body: JSON.stringify(body),
       })
       const json = await res.json()
-      if (!res.ok) throw new Error(json?.error ?? "Failed to update technician")
-      setTechnicians((prev) => prev.map((t) => t.id === editingTech.id ? { ...t, full_name: editName.trim(), role: editRole, available_days: editDays, work_start_time: editStartTime, work_end_time: editEndTime } : t))
-      setEditOpen(false)
-      setEditingTech(null)
+      if (!res.ok) throw new Error(json?.error ?? "Failed to save technician")
+      if (isEdit) {
+        setTechnicians((prev) =>
+          prev.map((t) =>
+            t.id === editingId
+              ? {
+                  ...t,
+                  full_name: form.name.trim(),
+                  role: form.role,
+                  available_days: form.days,
+                  work_start_time: form.start,
+                  work_end_time: form.end,
+                }
+              : t,
+          ),
+        )
+        setEditOpen(false)
+        toast.success("Technician updated.")
+      } else {
+        setTechnicians((prev) => [...prev, { ...json.technician, active_job: null }])
+        setAddOpen(false)
+        toast.success("Technician added.")
+      }
+      setEditingId(null)
     } catch (err: unknown) {
-      setEditError(err instanceof Error ? err.message : String(err))
+      setFormError(err instanceof Error ? err.message : String(err))
     } finally {
-      setUpdating(false)
+      setSubmitting(false)
     }
   }
 
@@ -263,7 +220,7 @@ export default function TechnicianAvailability() {
     setDeleting(true)
     setDeleteError(null)
     try {
-      const res  = await fetch("/api/operations/technician-availability", {
+      const res = await fetch("/api/operations/technician-availability", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ id: deleteTarget.id, is_archived: true }),
@@ -272,6 +229,7 @@ export default function TechnicianAvailability() {
       if (!res.ok) throw new Error(json?.error ?? "Failed to delete technician")
       setTechnicians((prev) => prev.filter((t) => t.id !== deleteTarget.id))
       setDeleteTarget(null)
+      toast.success("Technician removed.")
     } catch (err: unknown) {
       setDeleteError(err instanceof Error ? err.message : String(err))
     } finally {
@@ -279,13 +237,13 @@ export default function TechnicianAvailability() {
     }
   }
 
-  const onJobCount       = technicians.filter((t) => !!t.active_job).length
-  const availableCount   = technicians.filter((t) => t.is_available && !t.active_job).length
+  const onJobCount = technicians.filter((t) => !!t.active_job).length
+  const availableCount = technicians.filter((t) => t.is_available && !t.active_job).length
   const unavailableCount = technicians.length - availableCount - onJobCount
 
   const filtered = technicians.filter((t) => {
     const matchSearch = t.full_name.toLowerCase().includes(search.toLowerCase())
-    const matchRole   = filterRole === "all" || t.role === filterRole
+    const matchRole = filterRole === "all" || t.role === filterRole
     return matchSearch && matchRole
   })
 
@@ -298,441 +256,323 @@ export default function TechnicianAvailability() {
   if (loading) return <TechnicianAvailabilitySkeleton />
 
   return (
-    <div className="flex-1 overflow-y-auto p-6 space-y-6">
-      {/* Header */}
-      <div className="flex items-start justify-between">
-        <div>
-          <h1 className="text-xl font-bold text-gray-800">Technician Availability</h1>
-          <p className="text-sm text-gray-400 mt-0.5">
-            View and manage which technicians are available for assignment.
-          </p>
-        </div>
-        <button
-          onClick={() => { setAddOpen(true); setAddError(null) }}
-          className="flex items-center gap-2 bg-gray-900 text-white text-sm font-semibold px-4 py-2 rounded-lg hover:bg-gray-800 transition-colors"
-        >
-          <Plus className="w-4 h-4" />
-          Add Technician
-        </button>
+    <div className="space-y-6">
+      <PageHeader
+        title="Technician Availability"
+        subtitle="View and manage which technicians are available for assignment."
+        actions={
+          <Button onClick={openAdd}>
+            <span className="text-base leading-none">+</span> Add Technician
+          </Button>
+        }
+      />
+
+      <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+        <StatCard label="Total" value={technicians.length} icon={Users} tone="total" variant="solid" />
+        <StatCard label="Available" value={availableCount} icon={UserCheck} tone="inspection" variant="solid" />
+        <StatCard label="On Job" value={onJobCount} icon={Wrench} tone="onjob" variant="solid" />
+        <StatCard label="Not Available" value={unavailableCount} icon={UserX} tone="delayed" variant="solid" />
       </div>
 
-      {/* Stat cards */}
-      <div className="grid grid-cols-4 gap-4">
-        <div className="bg-white rounded-xl border border-gray-100 p-4 flex items-center gap-4">
-          <div className="w-10 h-10 rounded-xl bg-gray-50 flex items-center justify-center shrink-0">
-            <Users className="w-5 h-5 text-gray-500" />
-          </div>
-          <div>
-            <p className="text-2xl font-bold text-gray-800">{technicians.length}</p>
-            <p className="text-xs text-gray-400 mt-0.5">Total</p>
-          </div>
-        </div>
-        <div className="bg-white rounded-xl border border-gray-100 p-4 flex items-center gap-4">
-          <div className="w-10 h-10 rounded-xl bg-green-50 flex items-center justify-center shrink-0">
-            <UserCheck className="w-5 h-5 text-green-500" />
-          </div>
-          <div>
-            <p className="text-2xl font-bold text-green-600">{availableCount}</p>
-            <p className="text-xs text-gray-400 mt-0.5">Available</p>
-          </div>
-        </div>
-        <div className="bg-white rounded-xl border border-gray-100 p-4 flex items-center gap-4">
-          <div className="w-10 h-10 rounded-xl bg-orange-50 flex items-center justify-center shrink-0">
-            <Wrench className="w-5 h-5 text-orange-500" />
-          </div>
-          <div>
-            <p className="text-2xl font-bold text-orange-500">{onJobCount}</p>
-            <p className="text-xs text-gray-400 mt-0.5">On Job</p>
-          </div>
-        </div>
-        <div className="bg-white rounded-xl border border-gray-100 p-4 flex items-center gap-4">
-          <div className="w-10 h-10 rounded-xl bg-red-50 flex items-center justify-center shrink-0">
-            <UserX className="w-5 h-5 text-red-400" />
-          </div>
-          <div>
-            <p className="text-2xl font-bold text-red-500">{unavailableCount}</p>
-            <p className="text-xs text-gray-400 mt-0.5">Unavailable</p>
-          </div>
-        </div>
-      </div>
-
-      {/* Filters */}
       <div className="flex items-center gap-3">
-        <div className="relative flex-1 max-w-xs">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
-          <input
-            type="text"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search technician..."
-            className="w-full pl-9 pr-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-100 focus:border-blue-400 transition-colors"
-          />
-        </div>
-        <div className="relative" ref={filterRef}>
-          <button
-            onClick={() => setFilterOpen((v) => !v)}
-            className={`flex items-center gap-2 px-4 py-2 text-sm border rounded-lg font-medium transition-colors ${
-              filterRole !== "all"
-                ? "border-blue-400 bg-blue-50 text-blue-600"
-                : "border-gray-200 bg-white text-gray-600 hover:bg-gray-50"
-            }`}
-          >
-            <Filter className="w-4 h-4" />
-            {filterRole === "all" ? "Filter" : ROLE_LABEL[filterRole]}
-          </button>
-          {filterOpen && (
-            <div className="absolute top-full left-0 mt-1.5 w-40 bg-white border border-gray-100 rounded-xl shadow-lg z-10 p-2 space-y-0.5">
-              <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide px-2 py-1">Role</p>
+        <SearchBar
+          value={search}
+          onChange={setSearch}
+          placeholder="Search technician…"
+          containerClassName="max-w-xs flex-1"
+        />
+        <Popover
+          align="start"
+          trigger={({ toggle: t, open }) => (
+            <Button variant={filterRole !== "all" ? "secondary" : "subtle"} onClick={t} aria-expanded={open}>
+              {filterRole === "all" ? "Filter" : ROLE_LABEL[filterRole]}
+            </Button>
+          )}
+        >
+          {(close) => (
+            <>
+              <p className="px-2.5 py-1 text-xs font-semibold uppercase tracking-wide text-muted">Role</p>
               {(["all", "detailer", "installer"] as const).map((r) => (
-                <button
+                <MenuItem
                   key={r}
-                  onClick={() => { setFilterRole(r); setFilterOpen(false) }}
-                  className={`w-full text-left text-sm px-2.5 py-1.5 rounded-lg transition-colors ${
-                    filterRole === r ? "bg-blue-50 text-blue-600 font-medium" : "text-gray-600 hover:bg-gray-50"
-                  }`}
+                  onClick={() => {
+                    setFilterRole(r)
+                    close()
+                  }}
+                  className={filterRole === r ? "bg-primary-soft text-primary" : undefined}
                 >
                   {r === "all" ? "All Roles" : ROLE_LABEL[r]}
-                </button>
+                </MenuItem>
               ))}
-            </div>
+            </>
           )}
+        </Popover>
+      </div>
+
+      {fetchError ? (
+        <EmptyState title="Could not load technicians" message={fetchError} />
+      ) : (
+        <div className="grid gap-6 xl:grid-cols-2">
+          {Object.entries(grouped).map(([role, members]) => {
+            const onJobN = members.filter((m) => m.active_job).length
+            const availN = members.filter((m) => m.is_available && !m.active_job).length
+            return (
+              <div key={role} className="overflow-hidden rounded-card border border-border-subtle bg-surface">
+                <div className="flex items-center justify-between border-b border-border-subtle bg-surface-subtle px-5 py-3">
+                  <Badge className={ROLE_BADGE[role as Technician["role"]]}>
+                    {ROLE_LABEL[role as Technician["role"]]}
+                  </Badge>
+                  <span className="text-xs text-muted">
+                    {onJobN > 0 && <span className="font-medium text-status-onjob">{onJobN} on job · </span>}
+                    {availN}/{members.length} available
+                  </span>
+                </div>
+                <div className="max-h-[26rem] divide-y divide-border-subtle overflow-y-auto scroll-track">
+                  {members.map((tech) => {
+                    const onJob = !!tech.active_job
+                    return (
+                      <div
+                        key={tech.id}
+                        className={cn("flex items-center gap-4 px-5 py-3.5", onJob && "bg-status-onjob/5")}
+                      >
+                        <span
+                          className={cn(
+                            "flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-xs font-bold",
+                            avatarColor(tech.id),
+                          )}
+                        >
+                          {initials(tech.full_name)}
+                        </span>
+                        <div className="min-w-0 flex-1">
+                          <p className="truncate text-sm font-medium text-heading">{tech.full_name}</p>
+                          {onJob ? (
+                            <div className="mt-0.5 flex items-center gap-1.5">
+                              <Wrench className="h-3 w-3 shrink-0 text-status-onjob" />
+                              <span className="truncate text-xs font-medium text-status-onjob">
+                                On Job — {tech.active_job?.customer}
+                              </span>
+                            </div>
+                          ) : (
+                            <div className="mt-0.5 flex items-center gap-1.5">
+                              <span
+                                className={cn(
+                                  "h-1.5 w-1.5 shrink-0 rounded-full",
+                                  tech.is_available ? "bg-status-inspection" : "bg-border",
+                                )}
+                              />
+                              <span className="text-xs text-muted">
+                                {tech.is_available ? "Available" : "Not Available"}
+                              </span>
+                            </div>
+                          )}
+                          <div className="mt-1.5">
+                            <DayPillSelector value={tech.available_days ?? ALL_DAYS} readOnly />
+                          </div>
+                          <div className="mt-1 flex items-center gap-1">
+                            <Clock className="h-3 w-3 shrink-0 text-muted" />
+                            <span className="text-[10px] text-muted">
+                              {formatTime(tech.work_start_time ?? "08:00:00")} –{" "}
+                              {formatTime(tech.work_end_time ?? "20:00:00")}
+                            </span>
+                          </div>
+                        </div>
+
+                        <div className="flex items-center gap-1">
+                          <IconButton
+                            aria-label="Edit technician"
+                            size="sm"
+                            onClick={() => openEdit(tech)}
+                            disabled={onJob}
+                            title={onJob ? "Cannot edit while on an active job" : "Edit details"}
+                          >
+                            <Pencil className="h-4 w-4" />
+                          </IconButton>
+                          <IconButton
+                            aria-label="Delete technician"
+                            size="sm"
+                            variant="ghost"
+                            onClick={() => {
+                              setDeleteTarget(tech)
+                              setDeleteError(null)
+                            }}
+                            disabled={onJob}
+                            title={onJob ? "Cannot delete while on an active job" : "Delete technician"}
+                            className="hover:bg-status-delayed/10 hover:text-status-delayed"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </IconButton>
+                        </div>
+
+                        <Toggle
+                          checked={onJob ? true : tech.is_available}
+                          onChange={() => toggle(tech)}
+                          disabled={onJob}
+                          label={`Toggle availability for ${tech.full_name}`}
+                        />
+                      </div>
+                    )
+                  })}
+                </div>
+              </div>
+            )
+          })}
+
+          {filtered.length === 0 && (
+            <EmptyState
+              className="xl:col-span-2"
+              title={
+                technicians.length === 0
+                  ? 'No technicians yet. Click "Add Technician" to get started.'
+                  : "No technicians match your search."
+              }
+            />
+          )}
+        </div>
+      )}
+
+      <TechFormModal
+        open={addOpen}
+        onClose={() => setAddOpen(false)}
+        title="Add Technician"
+        form={form}
+        setForm={setForm}
+        error={formError}
+        duplicate={duplicate}
+        roleBadge={ROLE_BADGE}
+        roleLabel={ROLE_LABEL}
+        submitting={submitting}
+        submitLabel="Add"
+        onSubmit={() => submitForm(false)}
+      />
+      <TechFormModal
+        open={editOpen}
+        onClose={() => {
+          setEditOpen(false)
+          setEditingId(null)
+        }}
+        title="Edit Technician"
+        form={form}
+        setForm={setForm}
+        error={formError}
+        duplicate={duplicate}
+        roleBadge={ROLE_BADGE}
+        roleLabel={ROLE_LABEL}
+        submitting={submitting}
+        submitLabel="Save Changes"
+        onSubmit={() => submitForm(true)}
+      />
+
+      <ConfirmModal
+        open={deleteTarget !== null}
+        onClose={() => {
+          setDeleteTarget(null)
+          setDeleteError(null)
+        }}
+        onConfirm={confirmDelete}
+        title="Delete Technician"
+        message={
+          deleteError ??
+          `Remove ${deleteTarget?.full_name ?? "this technician"} from active assignment?`
+        }
+        confirmLabel="Delete"
+        tone="danger"
+        loading={deleting}
+        icon={Trash2}
+      />
+    </div>
+  )
+}
+
+function TechFormModal({
+  open,
+  onClose,
+  title,
+  form,
+  setForm,
+  error,
+  duplicate,
+  roleBadge,
+  roleLabel,
+  submitting,
+  submitLabel,
+  onSubmit,
+}: {
+  open: boolean
+  onClose: () => void
+  title: string
+  form: TechForm
+  setForm: React.Dispatch<React.SetStateAction<TechForm>>
+  error: string | null
+  duplicate: Technician | null
+  roleBadge: Record<Technician["role"], string>
+  roleLabel: Record<Technician["role"], string>
+  submitting: boolean
+  submitLabel: string
+  onSubmit: () => void
+}) {
+  return (
+    <Modal
+      open={open}
+      onClose={onClose}
+      title={title}
+      size="md"
+      footer={
+        <>
+          <Button variant="ghost" onClick={onClose}>
+            Cancel
+          </Button>
+          <Button onClick={onSubmit} disabled={submitting || !form.name.trim()}>
+            {submitting ? "Saving…" : submitLabel}
+          </Button>
+        </>
+      }
+    >
+      <div className="space-y-4">
+        <div>
+          <FieldLabel>Full Name</FieldLabel>
+          <Input
+            value={form.name}
+            onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
+            placeholder="e.g. Juan Dela Cruz"
+          />
+        </div>
+        <div>
+          <FieldLabel>Role</FieldLabel>
+          <Select
+            value={form.role}
+            onChange={(e) => setForm((f) => ({ ...f, role: e.target.value as Technician["role"] }))}
+          >
+            <option value="detailer">Detailer</option>
+            <option value="installer">Installer</option>
+          </Select>
+        </div>
+        <div>
+          <FieldLabel>Working Days</FieldLabel>
+          <DayPillSelector value={form.days} onChange={(days) => setForm((f) => ({ ...f, days }))} />
+        </div>
+        <div>
+          <FieldLabel>Working Hours</FieldLabel>
+          <TimeRangeInputs
+            start={form.start}
+            end={form.end}
+            onStart={(start) => setForm((f) => ({ ...f, start }))}
+            onEnd={(end) => setForm((f) => ({ ...f, end }))}
+          />
         </div>
       </div>
 
-      {/* Content */}
-      {loading ? (
-        <div className="text-center py-12 text-sm text-gray-400">Loading technicians…</div>
-      ) : fetchError ? (
-        <div className="text-center py-12 text-sm text-red-500">{fetchError}</div>
-      ) : (
-        <div className="space-y-6">
-          {Object.entries(grouped).map(([role, members]) => (
-            <div key={role} className="bg-white rounded-2xl border border-gray-100 overflow-hidden">
-              <div className="flex items-center justify-between px-5 py-3 border-b border-gray-50 bg-gray-50/60">
-                <span className={`text-xs font-semibold px-2.5 py-1 rounded-full ${ROLE_BADGE[role as Technician["role"]]}`}>
-                  {ROLE_LABEL[role as Technician["role"]]}
-                </span>
-                <span className="text-xs text-gray-400">
-                  {members.filter((m) => m.active_job).length > 0 && (
-                    <span className="text-orange-500 font-medium">
-                      {members.filter((m) => m.active_job).length} on job ·{" "}
-                    </span>
-                  )}
-                  {members.filter((m) => m.is_available && !m.active_job).length}/{members.length} available
-                </span>
-              </div>
-              <div className="divide-y divide-gray-50">
-                {members.map((tech) => {
-                  const onJob = !!tech.active_job
-                  return (
-                    <div key={tech.id} className={`flex items-center gap-4 px-5 py-3.5 ${onJob ? "bg-orange-50/40" : ""}`}>
-                      <div className={`w-9 h-9 rounded-full flex items-center justify-center text-xs font-bold shrink-0 ${AVATAR_COLORS[colorIdx(tech.id)]}`}>
-                        {initials(tech.full_name)}
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm font-medium text-gray-800 truncate">{tech.full_name}</p>
-                        {onJob ? (
-                          <div className="flex items-center gap-1.5 mt-0.5">
-                            <Wrench className="w-3 h-3 text-orange-500 shrink-0" />
-                            <span className="text-xs text-orange-600 font-medium truncate">
-                              On Job — {tech.active_job?.customer}
-                            </span>
-                          </div>
-                        ) : (
-                          <div className="flex items-center gap-1.5 mt-0.5">
-                            <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${tech.is_available ? "bg-green-400" : "bg-gray-300"}`} />
-                            <span className="text-xs text-gray-400">
-                              {tech.is_available ? "Available" : "Unavailable"}
-                            </span>
-                          </div>
-                        )}
-                        <div className="flex gap-0.5 mt-1.5">
-                          {DAYS.map((d) => (
-                            <span
-                              key={d}
-                              title={d}
-                              className={`w-4 h-4 rounded-sm text-[8px] font-bold flex items-center justify-center ${
-                                (tech.available_days ?? ALL_DAYS).includes(d)
-                                  ? "bg-blue-100 text-blue-600"
-                                  : "bg-gray-100 text-gray-300"
-                              }`}
-                            >
-                              {d[0]}
-                            </span>
-                          ))}
-                        </div>
-                        <div className="flex items-center gap-1 mt-1">
-                          <Clock className="w-3 h-3 text-gray-300 shrink-0" />
-                          <span className="text-[10px] text-gray-400">
-                            {formatTime(tech.work_start_time ?? "08:00:00")} – {formatTime(tech.work_end_time ?? "20:00:00")}
-                          </span>
-                        </div>
-                      </div>
-
-                      <div className="flex items-center gap-1 group/actions">
-                        <button
-                          onClick={() => {
-                            setEditingTech(tech)
-                            setEditName(tech.full_name)
-                            setEditRole(tech.role)
-                            setEditDays(tech.available_days ?? ALL_DAYS)
-                            setEditStartTime(tech.work_start_time?.slice(0, 5) ?? "08:00")
-                            setEditEndTime(tech.work_end_time?.slice(0, 5)   ?? "20:00")
-                            setEditOpen(true)
-                            setEditError(null)
-                          }}
-                          disabled={onJob}
-                          title={onJob ? "Cannot edit while on an active job" : "Edit details"}
-                          className="p-2 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-all disabled:opacity-0 disabled:pointer-events-none"
-                        >
-                          <Pencil className="w-4 h-4" />
-                        </button>
-                        <button
-                          onClick={() => { setDeleteTarget(tech); setDeleteError(null) }}
-                          disabled={onJob}
-                          title={onJob ? "Cannot delete while on an active job" : "Delete technician"}
-                          className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-all disabled:opacity-0 disabled:pointer-events-none"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
-                      </div>
-
-                      <button
-                        onClick={() => toggle(tech)}
-                        disabled={onJob}
-                        title={onJob ? "Cannot change availability while on an active job" : undefined}
-                        className={`relative inline-flex h-6 w-11 shrink-0 rounded-full border-2 border-transparent transition-colors duration-200 focus:outline-none ${
-                          onJob
-                            ? "bg-orange-300 cursor-not-allowed opacity-70"
-                            : tech.is_available
-                              ? "bg-green-400 cursor-pointer"
-                              : "bg-gray-200 cursor-pointer"
-                        }`}
-                        role="switch"
-                        aria-checked={tech.is_available}
-                      >
-                        <span className={`pointer-events-none inline-block h-5 w-5 rounded-full bg-white shadow-sm transition-transform duration-200 ${tech.is_available || onJob ? "translate-x-5" : "translate-x-0"}`} />
-                      </button>
-                    </div>
-                  )
-                })}
-              </div>
-            </div>
-          ))}
-
-          {filtered.length === 0 && (
-            <div className="text-center py-12 text-sm text-gray-400">
-              {technicians.length === 0
-                ? "No technicians yet. Click \"Add Technician\" to get started."
-                : "No technicians match your search."}
-            </div>
-          )}
+      {duplicate && (
+        <div className="mt-3 flex items-center gap-3 rounded-sm bg-status-warning/10 px-3 py-2.5">
+          <AlertTriangle className="h-4 w-4 shrink-0 text-status-warning" />
+          <p className="text-xs text-status-warning">
+            <span className="font-semibold">{duplicate.full_name}</span> already exists as a{" "}
+            <span className={cn("inline-flex rounded-pill px-1.5 py-0.5 text-[10px] font-semibold", roleBadge[duplicate.role])}>
+              {roleLabel[duplicate.role]}
+            </span>
+          </p>
         </div>
       )}
-
-      {/* Add Technician Modal */}
-      {addOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-          <div className="bg-white rounded-2xl shadow-xl w-full max-w-md p-6">
-            <div className="flex items-center justify-between mb-5">
-              <h3 className="text-base font-semibold text-gray-800">Add Technician</h3>
-              <button onClick={() => setAddOpen(false)} className="text-gray-400 hover:text-gray-600">
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            <div className="space-y-4">
-              <div>
-                <label className="block text-xs font-medium text-gray-600 mb-1">Full Name</label>
-                <input
-                  type="text"
-                  value={newName}
-                  onChange={(e) => { setNewName(e.target.value); setAddDuplicate(null) }}
-                  placeholder="e.g. Juan Dela Cruz"
-                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
-              </div>
-              <div>
-                <label className="block text-xs font-medium text-gray-600 mb-1">Role</label>
-                <select
-                  value={newRole}
-                  onChange={(e) => setNewRole(e.target.value as Technician["role"])}
-                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
-                >
-                  <option value="detailer">Detailer</option>
-                  <option value="installer">Installer</option>
-                </select>
-              </div>
-              <div>
-                <label className="block text-xs font-medium text-gray-600 mb-2">Working Days</label>
-                <DayPicker value={newDays} onChange={setNewDays} />
-              </div>
-              <div>
-                <label className="block text-xs font-medium text-gray-600 mb-2">Working Hours</label>
-                <div className="flex gap-3">
-                  <TimePicker label="Start" value={newStartTime} onChange={setNewStartTime} />
-                  <TimePicker label="End"   value={newEndTime}   onChange={setNewEndTime}   />
-                </div>
-              </div>
-            </div>
-
-            {addDuplicate && (
-              <div className="flex items-center gap-3 mt-3 px-3 py-2.5 bg-amber-50 border border-amber-200 rounded-xl">
-                <AlertTriangle className="w-4 h-4 text-amber-500 shrink-0" />
-                <p className="text-xs text-amber-700">
-                  <span className="font-semibold">{addDuplicate.full_name}</span> already exists as a{" "}
-                  <span className={`inline-flex px-1.5 py-0.5 rounded-full text-[10px] font-semibold ${ROLE_BADGE[addDuplicate.role]}`}>
-                    {ROLE_LABEL[addDuplicate.role]}
-                  </span>
-                </p>
-              </div>
-            )}
-            {addError && <p className="text-xs text-red-500 mt-3">{addError}</p>}
-
-            <div className="flex gap-3 mt-5">
-              <button
-                onClick={() => { setAddOpen(false); setNewName(""); setNewRole("detailer"); setNewDays(ALL_DAYS); setNewStartTime("08:00"); setNewEndTime("20:00"); setAddError(null); setAddDuplicate(null) }}
-                className="flex-1 py-2 text-sm font-medium text-gray-600 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={addTechnician}
-                disabled={adding || !newName.trim()}
-                className="flex-1 py-2 text-sm font-semibold text-white bg-gray-900 rounded-lg hover:bg-gray-800 disabled:opacity-50 transition-colors"
-              >
-                {adding ? "Adding…" : "Add"}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Delete Confirm Dialog */}
-      {deleteTarget && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm overflow-hidden">
-            <div className="px-5 pt-5 pb-4 text-center">
-              <div className="mx-auto w-12 h-12 rounded-full bg-red-100 flex items-center justify-center mb-3">
-                <Trash2 className="w-5 h-5 text-red-500" />
-              </div>
-              <h2 className="text-base font-bold text-gray-800">Delete Technician</h2>
-              <p className="text-sm text-gray-500 mt-1.5">
-                Are you sure you want to delete{" "}
-                <span className="font-semibold text-gray-700">{deleteTarget.full_name}</span>?
-                This will remove them from active assignment.
-              </p>
-            </div>
-            {deleteError && (
-              <p className="mx-5 mb-3 text-xs text-red-500 bg-red-50 rounded-lg px-3 py-2">{deleteError}</p>
-            )}
-            <div className="flex gap-2 px-5 pb-5">
-              <button
-                onClick={() => { setDeleteTarget(null); setDeleteError(null) }}
-                disabled={deleting}
-                className="flex-1 py-2 text-sm font-medium text-gray-600 bg-gray-100 hover:bg-gray-200 rounded-xl transition-colors disabled:opacity-50"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={confirmDelete}
-                disabled={deleting}
-                className="flex-1 py-2 text-sm font-semibold text-white bg-red-500 hover:bg-red-600 rounded-xl transition-colors disabled:opacity-60"
-              >
-                {deleting ? "Deleting…" : "Delete"}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Edit Technician Modal */}
-      {editOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-          <div className="bg-white rounded-2xl shadow-xl w-full max-w-md p-6">
-            <div className="flex items-center justify-between mb-5">
-              <h3 className="text-base font-semibold text-gray-800">Edit Technician</h3>
-              <button
-                onClick={() => {
-                  setEditOpen(false)
-                  setEditingTech(null)
-                }}
-                className="text-gray-400 hover:text-gray-600"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            <div className="space-y-4">
-              <div>
-                <label className="block text-xs font-medium text-gray-600 mb-1">Full Name</label>
-                <input
-                  type="text"
-                  value={editName}
-                  onChange={(e) => { setEditName(e.target.value); setEditDuplicate(null) }}
-                  placeholder="e.g. Juan Dela Cruz"
-                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
-              </div>
-              <div>
-                <label className="block text-xs font-medium text-gray-600 mb-1">Role</label>
-                <select
-                  value={editRole}
-                  onChange={(e) => setEditRole(e.target.value as Technician["role"])}
-                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
-                >
-                  <option value="detailer">Detailer</option>
-                  <option value="installer">Installer</option>
-                </select>
-              </div>
-              <div>
-                <label className="block text-xs font-medium text-gray-600 mb-2">Working Days</label>
-                <DayPicker value={editDays} onChange={setEditDays} />
-              </div>
-              <div>
-                <label className="block text-xs font-medium text-gray-600 mb-2">Working Hours</label>
-                <div className="flex gap-3">
-                  <TimePicker label="Start" value={editStartTime} onChange={setEditStartTime} />
-                  <TimePicker label="End"   value={editEndTime}   onChange={setEditEndTime}   />
-                </div>
-              </div>
-            </div>
-
-            {editDuplicate && (
-              <div className="flex items-center gap-3 mt-3 px-3 py-2.5 bg-amber-50 border border-amber-200 rounded-xl">
-                <AlertTriangle className="w-4 h-4 text-red-400 shrink-0" />
-                <p className="text-xs text-amber-700">
-                  <span className="font-semibold">{editDuplicate.full_name}</span> already exists as a{" "}
-                  <span className={`inline-flex px-1.5 py-0.5 rounded-full text-[10px] font-semibold ${ROLE_BADGE[editDuplicate.role]}`}>
-                    {ROLE_LABEL[editDuplicate.role]}
-                  </span>
-                </p>
-              </div>
-            )}
-            {editError && <p className="text-xs text-red-500 mt-3">{editError}</p>}
-
-            <div className="flex gap-3 mt-5">
-              <button
-                onClick={() => {
-                  setEditOpen(false)
-                  setEditingTech(null)
-                  setEditDuplicate(null)
-                }}
-                className="flex-1 py-2 text-sm font-medium text-gray-600 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={updateTechnician}
-                disabled={updating || !editName.trim()}
-                className="flex-1 py-2 text-sm font-semibold text-white bg-gray-900 rounded-lg hover:bg-gray-800 disabled:opacity-50 transition-colors"
-              >
-                {updating ? "Updating…" : "Save Changes"}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-    </div>
+      {error && <p className="mt-3 text-xs text-status-delayed">{error}</p>}
+    </Modal>
   )
 }

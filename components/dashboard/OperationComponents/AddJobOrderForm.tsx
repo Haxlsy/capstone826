@@ -59,8 +59,8 @@ interface FieldErrors {
 }
 
 function inputCls(hasError?: boolean, locked?: boolean) {
-  if (locked) return "w-full border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-500 bg-gray-100 cursor-not-allowed focus:outline-none"
-  return `w-full border ${hasError ? "border-red-400 focus:ring-red-500 bg-red-50/30" : "border-gray-300 focus:ring-blue-500 bg-white"} rounded-lg px-3 py-2 text-sm text-gray-700 focus:outline-none focus:ring-2`
+  if (locked) return "w-full border border-border rounded-sm px-3 py-2 text-sm text-body bg-surface-muted cursor-not-allowed focus:outline-none"
+  return `w-full border ${hasError ? "border-status-delayed focus:ring-status-delayed/30 bg-status-delayed" : "border-border focus:ring-primary/30 bg-surface"} rounded-sm px-3 py-2 text-sm text-body focus:outline-none focus:ring-2`
 }
 
 function selectCls(hasError?: boolean) {
@@ -69,7 +69,7 @@ function selectCls(hasError?: boolean) {
 
 function FieldError({ msg }: { msg?: string }) {
   if (!msg) return null
-  return <p className="text-xs text-red-500 mt-1">{msg}</p>
+  return <p className="text-xs text-status-delayed mt-1">{msg}</p>
 }
 
 function CrewCheckboxList({
@@ -91,42 +91,42 @@ function CrewCheckboxList({
 }) {
   return (
     <div className="flex flex-col gap-1.5">
-      <label className="text-xs font-medium text-gray-600">
+      <label className="text-xs font-medium text-body">
         {label}
-        {required && <span className="text-red-500 ml-0.5">*</span>}
+        {required && <span className="text-status-delayed ml-0.5">*</span>}
         {selected.size > 0 && (
-          <span className="ml-1.5 text-blue-600 font-semibold">({selected.size} selected)</span>
+          <span className="ml-1.5 text-primary font-semibold">({selected.size} selected)</span>
         )}
       </label>
       {loading ? (
-        <p className="text-xs text-gray-400 py-2">Loading…</p>
+        <p className="text-xs text-muted py-2">Loading…</p>
       ) : members.length === 0 ? (
-        <p className="text-xs text-gray-400 py-2">No available {label.toLowerCase()} at the moment.</p>
+        <p className="text-xs text-muted py-2">No available {label.toLowerCase()} at the moment.</p>
       ) : (
-        <div className={`border rounded-lg divide-y divide-gray-50 max-h-40 overflow-y-auto ${error ? "border-red-400 bg-red-50/20" : "border-gray-200"}`}>
+        <div className={`border rounded-sm divide-y divide-border-subtle max-h-40 overflow-y-auto ${error ? "border-status-delayed bg-status-delayed" : "border-border"}`}>
           {members.map((c) => {
             const disabled = c.on_job || !c.is_available
             return (
               <label
                 key={c.id}
-                className={`flex items-center gap-3 px-3 py-2.5 ${disabled ? "bg-gray-50/60 cursor-not-allowed" : "hover:bg-gray-50 cursor-pointer"}`}
+                className={`flex items-center gap-3 px-3 py-2.5 ${disabled ? "bg-surface-subtle cursor-not-allowed" : "hover:bg-surface-muted cursor-pointer"}`}
               >
                 <input
                   type="checkbox"
                   checked={selected.has(c.id)}
                   onChange={() => !disabled && onToggle(c.id)}
                   disabled={disabled}
-                  className="w-4 h-4 rounded border-gray-300 disabled:opacity-40"
+                  className="w-4 h-4 rounded border-border disabled:opacity-40"
                 />
                 <div className="flex-1 min-w-0">
-                  <p className={`text-sm truncate ${disabled ? "text-gray-400" : "text-gray-700"}`}>{c.full_name}</p>
+                  <p className={`text-sm truncate ${disabled ? "text-muted" : "text-body"}`}>{c.full_name}</p>
                 </div>
                 <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded-full ${
                   c.on_job
-                    ? "bg-orange-100 text-orange-600"
+                    ? "bg-orange-100 text-status-rework"
                     : c.is_available
-                      ? "bg-green-50 text-green-600"
-                      : "bg-gray-100 text-gray-400"
+                      ? "bg-status-inspection/10 text-status-inspection"
+                      : "bg-surface-muted text-muted"
                 }`}>
                   {c.on_job ? "On Job" : c.is_available ? "Available" : "Unavailable"}
                 </span>
@@ -580,16 +580,16 @@ export default function AddJobOrderForm() {
     <div className="flex flex-col gap-5 max-w-5xl">
       {/* ── Page header (full width, above both columns) ─────────── */}
       <div>
-        <div className="text-xs text-gray-400 mb-1">
+        <div className="text-xs text-muted mb-1">
           <span>Job Order</span>
           <span className="mx-1.5">›</span>
-          <span className="text-gray-600">Add Job Order</span>
+          <span className="text-body">Add Job Order</span>
         </div>
-        <h1 className="text-xl font-bold text-gray-800">Create New Job Order</h1>
+        <h1 className="text-xl font-bold text-heading">Create New Job Order</h1>
       </div>
 
       {success && (
-        <div className="flex items-center gap-2 bg-green-50 border border-green-200 rounded-xl px-4 py-3 text-green-700 text-sm font-medium">
+        <div className="flex items-center gap-2 bg-status-inspection/10 border border-status-inspection/30 rounded-card px-4 py-3 text-status-inspection text-sm font-medium">
           <CheckCircle2 className="w-4 h-4 shrink-0" />
           Job order created! Redirecting…
         </div>
@@ -600,21 +600,21 @@ export default function AddJobOrderForm() {
       {/* ── Left: form ──────────────────────────────────────────── */}
       <div className="flex flex-col gap-5 flex-1 min-w-0">
         {/* Card 1: Customer & Vehicle Details */}
-        <div className="bg-white border border-gray-200 rounded-xl p-5 space-y-4">
+        <div className="bg-surface border border-border rounded-card p-5 space-y-4">
           <div>
-            <h2 className="font-semibold text-sm text-gray-800">Customer & Vehicle Details</h2>
-            <p className="text-xs text-gray-400 mt-0.5">Select from Sales records or enter manually.</p>
+            <h2 className="font-semibold text-sm text-heading">Customer & Vehicle Details</h2>
+            <p className="text-xs text-muted mt-0.5">Select from Sales records or enter manually.</p>
           </div>
 
           {!useManualCustomer ? (
             <div className="flex flex-col gap-4">
               <div className="flex flex-col gap-1.5">
                 <div className="flex items-center justify-between">
-                  <label className="text-xs font-medium text-gray-600">Customer <span className="text-red-500 ml-0.5">*</span></label>
+                  <label className="text-xs font-medium text-body">Customer <span className="text-status-delayed ml-0.5">*</span></label>
                   <button
                     type="button"
                     onClick={() => { setUseManualCustomer(true); setSelectedCustomerId(null); setFieldErrors({}); setMatchedPlateCustomer(null); setManualPlateNumber(""); setManualCustomerName(""); setManualContactNumber(""); setManualEmail(""); setManualVehicleUnit("") }}
-                    className="text-xs text-blue-600 hover:underline"
+                    className="text-xs text-primary hover:underline"
                   >
                     Enter manually
                   </button>
@@ -641,7 +641,7 @@ export default function AddJobOrderForm() {
                 
                 {/* Search Results Dropdown with Scrollbar */}
                 {isOpen && (
-                  <div className="absolute z-50 w-full mt-1 bg-white border border-gray-200 rounded-xl shadow-xl overflow-hidden">
+                  <div className="absolute z-50 w-full mt-1 bg-surface border border-border rounded-card shadow-pop overflow-hidden">
                     <div className="max-h-[220px] overflow-y-auto scrollbar-thin scrollbar-thumb-gray-200">
                       {filteredCustomers.length > 0 ? (
                         filteredCustomers.map((c) => (
@@ -649,10 +649,10 @@ export default function AddJobOrderForm() {
                             key={c.id}
                             type="button"
                             disabled={c.has_active_job}
-                            className={`w-full text-left px-4 py-3 text-sm transition-colors border-b last:border-none border-gray-50 flex flex-col ${
+                            className={`w-full text-left px-4 py-3 text-sm transition-colors border-b last:border-none border-border-subtle flex flex-col ${
                               c.has_active_job
-                                ? "opacity-50 cursor-not-allowed bg-gray-50"
-                                : "hover:bg-emerald-50 cursor-pointer"
+                                ? "opacity-50 cursor-not-allowed bg-surface-subtle"
+                                : "hover:bg-status-inspection/10 cursor-pointer"
                             }`}
                             onClick={() => {
                               if (c.has_active_job) return;
@@ -661,19 +661,19 @@ export default function AddJobOrderForm() {
                               setIsOpen(false);
                             }}
                           >
-                            <span className="font-semibold text-gray-900 flex items-center gap-2">
+                            <span className="font-semibold text-heading flex items-center gap-2">
                               {c.full_name}
                               {c.has_active_job && (
-                                <span className="text-[10px] font-medium bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded-full">
+                                <span className="text-[10px] font-medium bg-amber-100 text-status-warning px-1.5 py-0.5 rounded-full">
                                   Being Serviced
                                 </span>
                               )}
                             </span>
-                            <span className="text-[10px] text-gray-500 uppercase tracking-wider">{c.plate_number}</span>
+                            <span className="text-[10px] text-body uppercase tracking-wider">{c.plate_number}</span>
                           </button>
                         ))
                       ) : (
-                        <div className="px-4 py-8 text-center text-sm text-gray-400">
+                        <div className="px-4 py-8 text-center text-sm text-muted">
                           No matching customers
                         </div>
                       )}
@@ -685,12 +685,12 @@ export default function AddJobOrderForm() {
               </div>
 
               {selectedCustomer && (
-                <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 space-y-1.5">
+                <div className="bg-primary/10 border border-primary/30 rounded-sm p-4 space-y-1.5">
                   <p className="text-sm font-semibold text-blue-900">{selectedCustomer.full_name}</p>
-                  <p className="text-xs text-blue-700">📞 {selectedCustomer.contact_number}</p>
-                  <p className="text-xs text-blue-700">✉️ {selectedCustomer.email ?? "—"}</p>
-                  <p className="text-xs text-blue-700">🚗 {selectedCustomer.plate_number}</p>
-                  {selectedCustomer.vehicle_unit && <p className="text-xs text-blue-700">Unit: {selectedCustomer.vehicle_unit}</p>}
+                  <p className="text-xs text-primary">📞 {selectedCustomer.contact_number}</p>
+                  <p className="text-xs text-primary">✉️ {selectedCustomer.email ?? "—"}</p>
+                  <p className="text-xs text-primary">🚗 {selectedCustomer.plate_number}</p>
+                  {selectedCustomer.vehicle_unit && <p className="text-xs text-primary">Unit: {selectedCustomer.vehicle_unit}</p>}
                 </div>
               )}
             </div>
@@ -698,11 +698,11 @@ export default function AddJobOrderForm() {
             <div className="grid grid-cols-2 gap-4">
               <div className="flex flex-col gap-1.5 col-span-2">
                 <div className="flex items-center justify-between">
-                  <label className="text-xs font-medium text-gray-600">Customer Name *</label>
+                  <label className="text-xs font-medium text-body">Customer Name *</label>
                   <button
                     type="button"
                     onClick={() => { setUseManualCustomer(false); setFieldErrors({}); setMatchedPlateCustomer(null) }}
-                    className="text-xs text-blue-600 hover:underline"
+                    className="text-xs text-primary hover:underline"
                   >
                     Select from records
                   </button>
@@ -718,7 +718,7 @@ export default function AddJobOrderForm() {
                 <FieldError msg={fieldErrors.customerName} />
               </div>
               <div className="flex flex-col gap-1.5">
-                <label className="text-xs font-medium text-gray-600">Contact Number <span className="text-red-500 ml-0.5">*</span></label>
+                <label className="text-xs font-medium text-body">Contact Number <span className="text-status-delayed ml-0.5">*</span></label>
                 <input
                   type="tel"
                   value={manualContactNumber}
@@ -730,7 +730,7 @@ export default function AddJobOrderForm() {
                 <FieldError msg={fieldErrors.contactNumber} />
               </div>
               <div className="flex flex-col gap-1.5">
-                <label className="text-xs font-medium text-gray-600">Plate Number <span className="text-red-500 ml-0.5">*</span></label>
+                <label className="text-xs font-medium text-body">Plate Number <span className="text-status-delayed ml-0.5">*</span></label>
                 <input
                   type="text"
                   value={manualPlateNumber}
@@ -739,14 +739,14 @@ export default function AddJobOrderForm() {
                   className={inputCls(!!fieldErrors.plateNumber)}
                 />
                 {matchedPlateCustomer && (
-                  <p className="text-[11px] text-amber-700 bg-amber-50 border border-amber-200 rounded-md px-2 py-1 mt-0.5">
+                  <p className="text-[11px] text-status-warning bg-status-warning/10 border border-status-warning/30 rounded-md px-2 py-1 mt-0.5">
                     Existing record found — customer info auto-filled and locked.
                   </p>
                 )}
                 <FieldError msg={fieldErrors.plateNumber} />
               </div>
               <div className="flex flex-col gap-1.5 col-span-2">
-                <label className="text-xs font-medium text-gray-600">Email</label>
+                <label className="text-xs font-medium text-body">Email</label>
                 <input
                   type="email"
                   value={manualEmail}
@@ -757,7 +757,7 @@ export default function AddJobOrderForm() {
                 />
               </div>
               <div className="flex flex-col gap-1.5 col-span-2">
-                <label className="text-xs font-medium text-gray-600">Vehicle Unit <span className="text-red-500 ml-0.5">*</span></label>
+                <label className="text-xs font-medium text-body">Vehicle Unit <span className="text-status-delayed ml-0.5">*</span></label>
                 <input
                   type="text"
                   value={manualVehicleUnit}
@@ -774,11 +774,11 @@ export default function AddJobOrderForm() {
         </div>
 
         {/* Card 2: Service & Schedule */}
-        <div className="bg-white border border-gray-200 rounded-xl p-5 space-y-4">
-          <h2 className="font-semibold text-sm text-gray-800">Service & Schedule</h2>
+        <div className="bg-surface border border-border rounded-card p-5 space-y-4">
+          <h2 className="font-semibold text-sm text-heading">Service & Schedule</h2>
           <div className="grid grid-cols-2 gap-4">
             <div className="flex flex-col gap-1.5">
-              <label className="text-xs font-medium text-gray-600">Service <span className="text-red-500 ml-0.5">*</span></label>
+              <label className="text-xs font-medium text-body">Service <span className="text-status-delayed ml-0.5">*</span></label>
               <select
                 value={selectedServiceType ?? ""}
                 onChange={(e) => handleServiceTypeChange(e.target.value || null)}
@@ -792,9 +792,9 @@ export default function AddJobOrderForm() {
               <FieldError msg={fieldErrors.service} />
             </div>
             <div className="flex flex-col gap-1.5">
-              <label className="text-xs font-medium text-gray-600">
+              <label className="text-xs font-medium text-body">
                 {isPPF ? "Scheduled Date" : "Scheduled Date & Time"}
-                <span className="text-red-500 ml-0.5">*</span>
+                <span className="text-status-delayed ml-0.5">*</span>
               </label>
               {isPPF ? (
                 <input
@@ -816,49 +816,49 @@ export default function AddJobOrderForm() {
                 />
               )}
               {!fieldErrors.scheduledAt && !isPPF && (
-                <p className="text-[10px] text-gray-400">Working hours: 8:00 AM – 8:00 PM</p>
+                <p className="text-[10px] text-muted">Working hours: 8:00 AM – 8:00 PM</p>
               )}
               <FieldError msg={fieldErrors.scheduledAt} />
             </div>
           </div>
 
           {scheduledAt && (
-            <div className="bg-gray-50 rounded-lg p-4 grid grid-cols-2 gap-4">
+            <div className="bg-surface-subtle rounded-sm p-4 grid grid-cols-2 gap-4">
               <div>
-                <p className="text-xs text-gray-500">Scheduled Start</p>
-                <p className="text-sm font-medium text-gray-800 mt-1">
+                <p className="text-xs text-body">Scheduled Start</p>
+                <p className="text-sm font-medium text-heading mt-1">
                   {scheduledDisplay(scheduledAt, isPPF)}
                 </p>
                 {isPPF && (
-                  <p className="text-[10px] text-gray-400 mt-0.5">Starts at 8:00 AM</p>
+                  <p className="text-[10px] text-muted mt-0.5">Starts at 8:00 AM</p>
                 )}
               </div>
               <div>
-                <p className="text-xs text-gray-500">Expected Completion</p>
-                <p className="text-sm font-medium text-gray-800 mt-1">{expectedCompletion}</p>
+                <p className="text-xs text-body">Expected Completion</p>
+                <p className="text-sm font-medium text-heading mt-1">{expectedCompletion}</p>
               </div>
               <div>
-                <p className="text-xs text-gray-500">Service</p>
-                <p className="text-sm font-medium text-gray-800 mt-1">{effectiveServiceName}</p>
+                <p className="text-xs text-body">Service</p>
+                <p className="text-sm font-medium text-heading mt-1">{effectiveServiceName}</p>
               </div>
               <div>
-                <p className="text-xs text-gray-500">Estimated Duration</p>
-                <p className="text-sm font-medium text-gray-800 mt-1">{durationLabel}</p>
+                <p className="text-xs text-body">Estimated Duration</p>
+                <p className="text-sm font-medium text-heading mt-1">{durationLabel}</p>
               </div>
             </div>
           )}
         </div>
 
         {/* Card 3: Team Assignment */}
-        <div className="bg-white border border-gray-200 rounded-xl p-5 space-y-5">
+        <div className="bg-surface border border-border rounded-card p-5 space-y-5">
           <div>
-            <h2 className="font-semibold text-sm text-gray-800">Team Assignment</h2>
-            <p className="text-xs text-gray-400 mt-0.5">All team fields are required.</p>
+            <h2 className="font-semibold text-sm text-heading">Team Assignment</h2>
+            <p className="text-xs text-muted mt-0.5">All team fields are required.</p>
           </div>
 
           <div className="grid grid-cols-2 gap-4">
             <div className="flex flex-col gap-1.5">
-              <label className="text-xs font-medium text-gray-600">Head Detailer <span className="text-red-500">*</span></label>
+              <label className="text-xs font-medium text-body">Head Detailer <span className="text-status-delayed">*</span></label>
               <select
                 value={selectedHeadDetailerId ?? ""}
                 onChange={(e) => { setSelectedHeadDetailerId(e.target.value || null); clearField("headDetailer") }}
@@ -876,7 +876,7 @@ export default function AddJobOrderForm() {
               <FieldError msg={fieldErrors.headDetailer} />
             </div>
             <div className="flex flex-col gap-1.5">
-              <label className="text-xs font-medium text-gray-600">Head Installer <span className="text-red-500">*</span></label>
+              <label className="text-xs font-medium text-body">Head Installer <span className="text-status-delayed">*</span></label>
               <select
                 value={selectedHeadInstallerId ?? ""}
                 onChange={(e) => { setSelectedHeadInstallerId(e.target.value || null); clearField("headInstaller") }}
@@ -899,14 +899,14 @@ export default function AddJobOrderForm() {
             <div className="grid grid-cols-2 gap-4">
               {(["Detailers", "Installers"] as const).map((label) => (
                 <div key={label} className="flex flex-col gap-1.5">
-                  <label className="text-xs font-medium text-gray-600">
-                    {label} <span className="text-red-500">*</span>
+                  <label className="text-xs font-medium text-body">
+                    {label} <span className="text-status-delayed">*</span>
                   </label>
-                  <div className="border border-dashed border-gray-200 rounded-lg px-4 py-5 flex flex-col items-center gap-1.5 bg-gray-50/60 select-none">
-                    <svg className="w-4 h-4 text-gray-300" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <div className="border border-dashed border-border rounded-sm px-4 py-5 flex flex-col items-center gap-1.5 bg-surface-subtle select-none">
+                    <svg className="w-4 h-4 text-muted" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                       <path strokeLinecap="round" strokeLinejoin="round" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
                     </svg>
-                    <p className="text-xs text-gray-400 text-center leading-snug">
+                    <p className="text-xs text-muted text-center leading-snug">
                       Set a scheduled date &amp; time first to see available {label.toLowerCase()}.
                     </p>
                   </div>
@@ -940,14 +940,14 @@ export default function AddJobOrderForm() {
         {/* Footer */}
         <div className="flex flex-col gap-3">
           {apiError && (
-            <p className="text-xs text-red-500 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
+            <p className="text-xs text-status-delayed bg-status-delayed/10 border border-status-delayed/30 rounded-sm px-3 py-2">
               {apiError}
             </p>
           )}
           <div className="flex gap-3">
             <Link
               href="/dashboard/job-management"
-              className="flex-1 py-3 text-sm font-medium text-gray-700 border border-gray-300 rounded-xl text-center hover:bg-gray-50 transition-colors"
+              className="flex-1 py-3 text-sm font-medium text-body border border-border rounded-card text-center hover:bg-surface-muted transition-colors"
             >
               Cancel
             </Link>
@@ -955,8 +955,8 @@ export default function AddJobOrderForm() {
               type="button"
               onClick={handleConfirmClick}
               disabled={loading || success}
-              className={`flex-1 py-3 text-sm font-semibold text-white rounded-xl transition-colors ${
-                loading || success ? "bg-gray-400 cursor-not-allowed" : "bg-gray-900 hover:bg-gray-800"
+              className={`flex-1 py-3 text-sm font-semibold text-white rounded-card transition-colors ${
+                loading || success ? "bg-muted cursor-not-allowed" : "bg-primary hover:bg-primary-hover"
               }`}
             >
               {loading ? "Creating…" : success ? "Created!" : "Create Job Order"}

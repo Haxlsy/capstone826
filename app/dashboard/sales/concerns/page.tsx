@@ -4,7 +4,7 @@ import { getConcernsData } from "@/lib/sales/concerns-data"
 export default async function SalesConcernsPage() {
   const data = await getConcernsData()
   return (
-    <div className="h-full overflow-y-auto p-6 flex flex-col">
+    <div className="p-6">
       <SalesConcerns concerns={data.concerns} />
     </div>
   )

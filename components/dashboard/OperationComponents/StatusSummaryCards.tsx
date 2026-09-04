@@ -9,123 +9,49 @@ import {
   AlertTriangle,
   MessageCircleWarning,
 } from "lucide-react"
+import { StatCard } from "@/components/ui/StatCard"
 import { Sk } from "@/components/ui/skeleton"
 
 const STATUS_CONFIG = [
-  {
-    key:         "pending",
-    label:       "Pending",
-    icon:        Clock,
-    border:      "border-l-4 border-amber-400",
-    countColor:  "text-amber-600",
-    bg:          "bg-amber-50/40",
-    iconBg:      "bg-amber-100",
-    iconColor:   "text-amber-500",
-  },
-  {
-    key:         "ongoing",
-    label:       "Ongoing",
-    icon:        Wrench,
-    border:      "border-l-4 border-blue-400",
-    countColor:  "text-blue-600",
-    bg:          "bg-blue-50/40",
-    iconBg:      "bg-blue-100",
-    iconColor:   "text-blue-500",
-  },
-  {
-    key:         "for_rework",
-    label:       "For Rework",
-    icon:        RefreshCw,
-    border:      "border-l-4 border-orange-400",
-    countColor:  "text-orange-500",
-    bg:          "bg-orange-50/40",
-    iconBg:      "bg-orange-100",
-    iconColor:   "text-orange-500",
-  },
-  {
-    key:         "for_inspection",
-    label:       "For Inspection",
-    icon:        PackageCheck,
-    border:      "border-l-4 border-green-500",
-    countColor:  "text-green-600",
-    bg:          "bg-green-50/40",
-    iconBg:      "bg-green-100",
-    iconColor:   "text-green-500",
-  },
-  {
-    key:         "for_release",
-    label:       "For Release",
-    icon:        CheckCircle2,
-    border:      "border-l-4 border-teal-400",
-    countColor:  "text-teal-600",
-    bg:          "bg-teal-50/40",
-    iconBg:      "bg-teal-100",
-    iconColor:   "text-teal-500",
-  },
-  {
-    key:         "delayed",
-    label:       "Delayed",
-    icon:        AlertTriangle,
-    border:      "border-l-4 border-red-400",
-    countColor:  "text-red-500",
-    bg:          "bg-red-50/40",
-    iconBg:      "bg-red-100",
-    iconColor:   "text-red-400",
-  },
+  { key: "pending",        label: "Pending",        icon: Clock,        tone: "pending" as const },
+  { key: "ongoing",        label: "Ongoing",        icon: Wrench,       tone: "ongoing" as const },
+  { key: "for_rework",     label: "For Rework",     icon: RefreshCw,    tone: "rework" as const },
+  { key: "for_inspection", label: "For Inspection", icon: PackageCheck, tone: "inspection" as const },
+  { key: "for_release",    label: "For Release",    icon: CheckCircle2, tone: "release" as const },
+  { key: "delayed",        label: "Delayed",        icon: AlertTriangle, tone: "delayed" as const },
 ]
 
 interface Props {
-  loading:      boolean
-  counts:       Record<string, number>
+  loading: boolean
+  counts: Record<string, number>
   concernCount: number
 }
 
 export default function StatusSummaryCards({ loading, counts, concernCount }: Props) {
-  if (loading) return (
-    <div className="grid grid-cols-7 gap-3 animate-pulse">
-      {Array.from({ length: 7 }).map((_, i) => (
-        <div key={i} className="bg-white rounded-xl border border-gray-100 border-l-4 border-l-gray-200 p-4 flex flex-col gap-3">
-          <Sk className="h-8 w-8 rounded-lg" />
-          <div className="space-y-2">
-            <Sk className="h-6 w-10" />
-            <Sk className="h-3 w-16" />
+  if (loading) {
+    return (
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-7">
+        {Array.from({ length: 7 }).map((_, i) => (
+          <div key={i} className="flex flex-col gap-2.5 rounded-card bg-surface-muted p-4">
+            <Sk className="h-3.5 w-20" />
+            <Sk className="h-7 w-8" />
           </div>
-        </div>
-      ))}
-    </div>
-  )
+        ))}
+      </div>
+    )
+  }
 
   return (
-    <div className="grid grid-cols-7 gap-3">
-      {STATUS_CONFIG.map(({ key, label, icon: Icon, border, countColor, bg, iconBg, iconColor }) => (
-        <div
-          key={key}
-          className={`bg-white rounded-xl p-4 border border-gray-100 ${border} ${bg} flex flex-col gap-3`}
-        >
-          <div className={`w-8 h-8 rounded-lg ${iconBg} flex items-center justify-center shrink-0`}>
-            <Icon className={`w-4 h-4 ${iconColor}`} strokeWidth={2} />
-          </div>
-          <div>
-            <p className={`text-2xl font-bold leading-none ${countColor}`}>
-              {counts[key] ?? 0}
-            </p>
-            <p className="text-xs text-gray-400 mt-1.5 font-medium">{label}</p>
-          </div>
-        </div>
+    <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-7">
+      {STATUS_CONFIG.map(({ key, label, icon, tone }) => (
+        <StatCard key={key} label={label} value={counts[key] ?? 0} icon={icon} tone={tone} />
       ))}
-
-      {/* Concerns */}
-      <div className="bg-purple-50/40 rounded-xl p-4 border border-gray-100 border-l-4 border-l-purple-400 flex flex-col gap-3">
-        <div className="w-8 h-8 rounded-lg bg-purple-100 flex items-center justify-center shrink-0">
-          <MessageCircleWarning className="w-4 h-4 text-purple-500" strokeWidth={2} />
-        </div>
-        <div>
-          <p className="text-2xl font-bold leading-none text-purple-600">
-            {concernCount}
-          </p>
-          <p className="text-xs text-gray-400 mt-1.5 font-medium">Concerns</p>
-        </div>
-      </div>
+      <StatCard
+        label="Concerns"
+        value={concernCount}
+        icon={MessageCircleWarning}
+        tone="concern"
+      />
     </div>
   )
 }

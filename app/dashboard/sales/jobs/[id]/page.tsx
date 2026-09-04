@@ -9,7 +9,7 @@ export default async function SalesJobDetailPage({
   const { id } = await params
   const data = await getJobDetailData(id)
   return (
-    <div className="h-full overflow-y-auto p-6 flex flex-col">
+    <div className="p-6">
       <SalesJobDetail job={data.job} />
     </div>
   )
