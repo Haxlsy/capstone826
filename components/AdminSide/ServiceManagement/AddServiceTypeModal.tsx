@@ -1,7 +1,11 @@
 "use client"
 
 import { useCallback, useEffect, useState } from "react"
-import { X, Trash2, AlertTriangle, Plus, Loader2 } from "lucide-react"
+import { Trash2, AlertTriangle, Plus, Loader2 } from "lucide-react"
+import { Modal } from "@/components/ui/Modal"
+import { Button } from "@/components/ui/Button"
+import { Badge } from "@/components/ui/Badge"
+import { statusStyle } from "@/lib/ui/status"
 
 interface Props {
   open: boolean
@@ -40,7 +44,6 @@ export default function AddServiceTypeModal({ open, onClose, onSuccess }: Props)
 
   useEffect(() => { if (open) fetchTypes() }, [open, fetchTypes])
 
-  if (!open) return null
 
   async function handleAdd(e: React.FormEvent) {
     e.preventDefault()
@@ -104,19 +107,9 @@ export default function AddServiceTypeModal({ open, onClose, onSuccess }: Props)
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-shell/50 px-4">
-      <div className="bg-surface rounded-card shadow-pop w-full max-w-md flex flex-col max-h-[80vh]">
-
-        {/* Header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-border-subtle">
-          <h2 className="text-sm font-semibold text-heading">Manage Service Types</h2>
-          <button type="button" onClick={handleClose} className="p-1 text-muted hover:text-body rounded transition-colors">
-            <X className="w-4 h-4" />
-          </button>
-        </div>
-
+    <Modal open={open} onClose={handleClose} title="Manage Service Types" size="md">
         {/* List */}
-        <div className="overflow-y-auto flex-1 px-6 py-3">
+        <div className="py-1">
           {loadingList ? (
             <div className="flex justify-center py-8">
               <Loader2 className="w-5 h-5 animate-spin text-muted" />
@@ -154,15 +147,13 @@ export default function AddServiceTypeModal({ open, onClose, onSuccess }: Props)
                       </div>
                     ) : (
                       <div className="flex items-center justify-between px-3 py-2.5 hover:bg-surface-muted transition-colors">
-                        <span className="text-xs font-semibold px-2.5 py-1 rounded-full bg-status-release/12 text-status-release">
-                          {t.name}
-                        </span>
+                        <Badge className={statusStyle("release").soft}>{t.name}</Badge>
                         <button
                           type="button"
                           onClick={() => confirmDelete(t.name)}
-                          className="p-1 text-muted hover:text-status-delayed transition-colors rounded"
+                          className="rounded p-1 text-muted transition-colors hover:text-status-delayed"
                         >
-                          <Trash2 className="w-4 h-4" />
+                          <Trash2 className="h-4 w-4" />
                         </button>
                       </div>
                     )}
@@ -179,10 +170,9 @@ export default function AddServiceTypeModal({ open, onClose, onSuccess }: Props)
         </div>
 
         {/* Add new type form */}
-        <div className="border-t border-border-subtle px-6 py-4 space-y-3">
+        <div className="mt-3 space-y-3 border-t border-border-subtle pt-4">
           <p className="text-xs font-medium text-body">Add New Type</p>
 
-          {/* Name input + add button */}
           <form onSubmit={handleAdd} className="flex gap-2">
             <div className="flex-1 space-y-1">
               <input
@@ -191,28 +181,22 @@ export default function AddServiceTypeModal({ open, onClose, onSuccess }: Props)
                 value={newName}
                 onChange={(e) => { setNewName(e.target.value); setAddError("") }}
                 placeholder="e.g. Paint Protection Film"
-                className={`w-full px-3 py-2 text-sm border rounded-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-colors ${
+                className={`w-full rounded-sm border px-3 py-2 text-sm transition-colors focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary ${
                   addError ? "border-status-delayed bg-status-delayed/10" : "border-border"
                 }`}
               />
               {addError && <p className="text-xs text-status-delayed">{addError}</p>}
             </div>
-            <button
-              type="submit"
-              disabled={submitting}
-              className="flex items-center gap-1.5 px-4 py-2 text-sm font-medium text-white bg-primary rounded-sm hover:bg-shell-alt disabled:opacity-50 transition-colors shrink-0"
-            >
-              {submitting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Plus className="w-3.5 h-3.5" />}
+            <Button type="submit" disabled={submitting}>
+              {submitting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Plus className="h-3.5 w-3.5" />}
               Add
-            </button>
+            </Button>
           </form>
 
           <p className="text-xs text-muted">
             Duplicates are blocked regardless of capitalization or spacing.
           </p>
         </div>
-
-      </div>
-    </div>
+    </Modal>
   )
 }

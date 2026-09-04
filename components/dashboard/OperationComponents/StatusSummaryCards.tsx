@@ -30,14 +30,11 @@ interface Props {
 export default function StatusSummaryCards({ loading, counts, concernCount }: Props) {
   if (loading) {
     return (
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 xl:grid-cols-7">
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-7">
         {Array.from({ length: 7 }).map((_, i) => (
-          <div key={i} className="flex flex-col gap-3 rounded-card border border-border-subtle bg-surface p-4">
-            <Sk className="h-8 w-8 rounded-sm" />
-            <div className="space-y-2">
-              <Sk className="h-6 w-10" />
-              <Sk className="h-3 w-16" />
-            </div>
+          <div key={i} className="flex flex-col gap-2.5 rounded-card bg-surface-muted p-4">
+            <Sk className="h-3.5 w-20" />
+            <Sk className="h-7 w-8" />
           </div>
         ))}
       </div>
@@ -45,7 +42,7 @@ export default function StatusSummaryCards({ loading, counts, concernCount }: Pr
   }
 
   return (
-    <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 xl:grid-cols-7">
+    <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-7">
       {STATUS_CONFIG.map(({ key, label, icon, tone }) => (
         <StatCard key={key} label={label} value={counts[key] ?? 0} icon={icon} tone={tone} />
       ))}

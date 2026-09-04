@@ -220,24 +220,30 @@ export default function LoginPage() {
   )
 
   return (
-    <div className="relative flex min-h-screen flex-col bg-surface">
-      {/* Desktop background art */}
-      <img
-        src="/assets/login-bg.png"
-        alt=""
-        aria-hidden
-        className="pointer-events-none absolute inset-y-0 left-0 hidden h-full w-[62%] object-cover object-right md:block"
-      />
+    <div className="relative flex min-h-screen flex-col bg-surface-subtle md:overflow-hidden md:bg-surface">
+      {/* Desktop background art — the 826 car illustration, bleeding off the left edge */}
+      <picture>
+        <source srcSet="/assets/login-car.webp" type="image/webp" />
+        <img
+          src="/assets/login-car.png"
+          alt=""
+          aria-hidden
+          fetchPriority="high"
+          decoding="async"
+          className="animate-fade-in pointer-events-none absolute bottom-0 left-[-6%] hidden h-full w-auto max-w-none object-contain object-left-bottom md:block"
+          style={{ animationDuration: "0.9s" }}
+        />
+      </picture>
 
       {/* Mobile header band */}
-      <div className="relative flex flex-col items-center justify-center gap-2 bg-gradient-to-b from-primary to-shell px-6 pb-16 pt-16 text-center md:hidden">
-        <img src="/assets/826-logo.png" alt="826" className="h-20 w-auto object-contain" />
+      <div className="animate-fade-in relative flex flex-col items-center justify-center gap-2 bg-gradient-to-b from-primary to-shell px-6 pb-16 pt-16 text-center md:hidden">
+        <img src="/assets/main-logo.png" alt="826" className="h-24 w-auto object-contain" />
         <p className="text-sm font-semibold text-white/90">Auto Aesthetic &amp; Protection</p>
       </div>
 
       {/* Desktop brand */}
-      <header className="relative z-10 hidden items-center gap-3 px-10 py-8 md:flex">
-        <img src="/assets/826-logo.png" alt="826" className="h-10 w-auto object-contain" />
+      <header className="animate-fade-in relative z-10 hidden items-center gap-3 px-10 py-8 md:flex">
+        <img src="/assets/main-logo.png" alt="826" className="h-12 w-auto object-contain" />
         <span className="text-lg font-semibold text-display text-heading">
           Auto Aesthetic &amp; Protection
         </span>
@@ -245,7 +251,7 @@ export default function LoginPage() {
 
       {/* Form area */}
       <div className="relative z-10 -mt-8 flex flex-1 items-start justify-center rounded-t-[2rem] bg-surface px-6 pb-12 pt-9 md:mt-0 md:items-center md:justify-end md:rounded-none md:bg-transparent md:px-[8%] md:pb-0">
-        <div className="w-full max-w-[420px]">
+        <div className="animate-fade-in-up w-full max-w-[420px]">
           <div className="mb-6">
             <h1 className="text-3xl font-bold uppercase text-display text-heading md:text-4xl">
               Welcome Back!
@@ -257,7 +263,7 @@ export default function LoginPage() {
         </div>
       </div>
 
-      <div className="relative z-10 pb-4 text-center text-[11px] text-muted">
+      <div className="animate-fade-in relative z-10 pb-4 text-center text-[11px] text-muted">
         826 Auto Aesthetic &amp; Protection · Ortigas Extension
       </div>
     </div>

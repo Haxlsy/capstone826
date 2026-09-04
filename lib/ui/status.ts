@@ -129,9 +129,14 @@ const TABLE: Record<string, StatusStyle> = {
   done: make("inspection", "Done"),
 
   resolved: make("inspection", "Resolved"),
+  unresolved: make("delayed", "Unresolved"),
 
   open: make("pending", "Unrecorded"),
   recorded: make("ongoing", "Recorded"),
+
+  // account rows
+  active: make("inspection", "Active"),
+  archived: make("total", "Archived"),
 
   available: make("inspection", "Available"),
   "on job": make("onjob", "On Job"),

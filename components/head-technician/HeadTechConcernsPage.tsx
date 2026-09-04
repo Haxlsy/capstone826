@@ -20,6 +20,10 @@ import {
   Search,
 } from "lucide-react"
 import { BottomNav } from "./components/BottomNav"
+import { StatCard } from "@/components/ui/StatCard"
+import { StatusBadge } from "@/components/ui/Badge"
+import { useToast } from "@/components/ui/Toast"
+import { MediaPreviewModal } from "@/components/ui/Modal"
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 type ConcernMedia = { id: string; url: string; type: string }
@@ -76,13 +80,7 @@ function ConcernCard({ concern }: { concern: Concern }) {
           <div className="flex-1 min-w-0">
             <div className="flex items-center justify-between gap-2">
               <p className="text-sm font-semibold text-heading truncate">{concern.title}</p>
-              <span className={`shrink-0 text-[11px] px-2.5 py-0.5 rounded-full font-semibold ${
-                isPending
-                  ? "bg-status-warning/10 text-status-warning"
-                  : "bg-status-inspection/10 text-status-inspection"
-              }`}>
-                {concern.status}
-              </span>
+              <StatusBadge status={concern.status} className="shrink-0 text-[11px]" />
             </div>
             <p className="text-[11px] text-muted mt-0.5 font-medium">{concern.submitted_at}</p>
 
@@ -163,37 +161,7 @@ function ConcernCard({ concern }: { concern: Concern }) {
         )}
       </div>
 
-      {/* Full-screen media preview */}
-      {preview && (
-        <div
-          className="fixed inset-0 z-50 bg-shell/95 flex items-center justify-center"
-          onClick={() => setPreview(null)}
-        >
-          <button
-            aria-label="Close media preview"
-            className="absolute top-5 right-5 text-white bg-surface/10 hover:bg-surface/20 rounded-full p-2.5"
-            onClick={() => setPreview(null)}
-          >
-            <X size={20} />
-          </button>
-          {preview.type === "video" ? (
-            <video
-              src={preview.url}
-              controls
-              autoPlay
-              className="max-w-full max-h-full rounded-sm"
-              onClick={(e) => e.stopPropagation()}
-            />
-          ) : (
-            <img
-              src={preview.url}
-              alt=""
-              className="max-w-full max-h-full object-contain rounded-sm"
-              onClick={(e) => e.stopPropagation()}
-            />
-          )}
-        </div>
-      )}
+      <MediaPreviewModal media={preview} onClose={() => setPreview(null)} />
     </>
   )
 }
@@ -205,6 +173,7 @@ const INPUT_CLS = (err?: string) =>
 
 // ── Main page ─────────────────────────────────────────────────────────────────
 export default function HeadTechConcernsPage() {
+  const toast = useToast()
   const [concerns, setConcerns] = useState<Concern[]>([])
   const [loading, setLoading]   = useState(true)
 
@@ -374,6 +343,8 @@ export default function HeadTechConcernsPage() {
 
       if (uploadErrors.length > 0) {
         setFieldErrors({ description: `Concern submitted, but ${uploadErrors.length} file(s) failed: ${uploadErrors.join("; ")}` })
+      } else {
+        toast.success("Concern submitted to Operations.")
       }
     } catch {
       setFieldErrors({ description: "Network error. Please try again." })
@@ -400,17 +371,11 @@ export default function HeadTechConcernsPage() {
           </div>
         </div>
 
-        {/* ── Stat pills ─────────────────────────────────────────── */}
+        {/* ── Stat cards ─────────────────────────────────────────── */}
         {!loading && concerns.length > 0 && (
           <div className="grid grid-cols-2 gap-2">
-            <div className="bg-status-warning/10 rounded-card px-3 py-3 text-center">
-              <p className="text-xl font-bold text-status-warning leading-none">{pendingCount}</p>
-              <p className="text-[11px] font-medium text-status-warning mt-1">Pending</p>
-            </div>
-            <div className="bg-status-inspection/10 rounded-card px-3 py-3 text-center">
-              <p className="text-xl font-bold text-status-inspection leading-none">{resolvedCount}</p>
-              <p className="text-[11px] font-medium text-status-inspection mt-1">Resolved</p>
-            </div>
+            <StatCard label="Pending" value={pendingCount} icon={Clock} tone="pending" />
+            <StatCard label="Resolved" value={resolvedCount} icon={CheckCircle2} tone="inspection" />
           </div>
         )}
 

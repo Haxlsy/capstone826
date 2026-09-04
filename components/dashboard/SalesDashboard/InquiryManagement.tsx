@@ -3,12 +3,21 @@
 import { useState, useEffect, useCallback, useRef } from "react"
 import { createClient } from "@/lib/supabase/client"
 import {
-  MessageCircle, ArrowRightLeft, Clock,
+  ArrowRightLeft, Clock,
   CheckCircle2, ChevronRight, User, Car,
-  Phone, Hash, CheckCheck, CircleDot, X, Search,
+  Phone, Hash, CheckCheck, CircleDot, Search,
   AlertCircle, Mail, Layers, AlertTriangle,
 } from "lucide-react"
 import { fmtDateTime } from "@/lib/time-display"
+import { PageHeader } from "@/components/ui/PageHeader"
+import { StatCard } from "@/components/ui/StatCard"
+import { Modal, ConfirmModal } from "@/components/ui/Modal"
+import { Button } from "@/components/ui/Button"
+import { Input, FieldLabel } from "@/components/ui/Field"
+import { Badge, StatusBadge } from "@/components/ui/Badge"
+import { useToast } from "@/components/ui/Toast"
+import { cn } from "@/lib/utils"
+import { inquiryTypeStyle } from "@/lib/ui/status"
 
 type InquiryStatus = "open" | "resolved" | "recorded"
 type InquiryType   = "Booking" | "Human Response" | "Report"
@@ -40,30 +49,6 @@ const TABS: { key: Tab; label: string }[] = [
   { key: "resolved",   label: "Resolved" },
 ]
 
-const STATUS_COLORS: Record<InquiryStatus, string> = {
-  open:     "bg-status-rework/12 text-status-rework border-status-rework/30",
-  recorded: "bg-primary/12 text-primary border-primary/30",
-  resolved: "bg-surface-muted text-body border-border",
-}
-
-const STATUS_DOT: Record<InquiryStatus, string> = {
-  open:     "bg-status-rework",
-  recorded: "bg-primary",
-  resolved: "bg-border",
-}
-
-const STATUS_LABELS: Record<InquiryStatus, string> = {
-  open:     "Unrecorded",
-  recorded: "Recorded",
-  resolved: "Resolved",
-}
-
-const TYPE_COLORS: Record<InquiryType, string> = {
-  Booking:         "bg-primary/10 text-primary border-primary/30",
-  "Human Response":"bg-status-concern/12 text-status-concern border-status-concern/30",
-  Report:          "bg-status-warning/12 text-status-warning border-status-warning/30",
-}
-
 function timeAgo(iso: string): string {
   const diff = Date.now() - new Date(iso).getTime()
   const mins = Math.floor(diff / 60000)
@@ -78,9 +63,8 @@ function getInitials(name: string) {
   return name.split(" ").slice(0, 2).map((n) => n[0]).join("").toUpperCase()
 }
 
-const INPUT_CLS = "w-full border border-border rounded-sm px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
-
 export default function InquiryManagement() {
+  const toast = useToast()
   const tabBarRef = useRef<HTMLDivElement>(null)
   const [inquiries, setInquiries]   = useState<Inquiry[]>([])
   const [loading, setLoading]       = useState(true)
@@ -266,6 +250,7 @@ export default function InquiryManagement() {
 
       setInquiries((prev) => prev.map((i) => i.id === selected.id ? { ...i, status: "recorded" } : i))
       setRecordOpen(false)
+      toast.success("Customer details recorded.")
     } catch (err: unknown) {
       setRecordErrors({ _submit: err instanceof Error ? err.message : String(err) })
     } finally {
@@ -282,7 +267,10 @@ export default function InquiryManagement() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ status: "resolved" }),
       })
-      if (res.ok) setInquiries((prev) => prev.map((i) => i.id === resolveTarget ? { ...i, status: "resolved" } : i))
+      if (res.ok) {
+        setInquiries((prev) => prev.map((i) => i.id === resolveTarget ? { ...i, status: "resolved" } : i))
+        toast.success("Inquiry marked as resolved.")
+      }
     } catch {}
     setResolvingId(null)
     setResolveTarget(null)
@@ -290,20 +278,18 @@ export default function InquiryManagement() {
 
   return (
     <div className="flex flex-col h-full gap-5">
-      <div>
-        <h1 className="text-xl font-bold text-heading">Inquiry Management</h1>
-        <p className="text-sm text-muted mt-0.5">
-          Escalated chatbot conversations requiring Sales action.
-        </p>
-      </div>
+      <PageHeader
+        title="Inquiry Management"
+        subtitle="Escalated chatbot conversations requiring Sales action."
+      />
 
       {/* Stats */}
-      <div className="grid grid-cols-5 gap-4">
-        <StatPill label="Total"       count={totalCount}    icon={Layers}         color="text-status-ongoing" bg="bg-status-ongoing/10"  border="border-status-ongoing/30" />
-        <StatPill label="Unresolved"  count={unresolvedCnt} icon={AlertCircle}    color="text-status-rework" bg="bg-status-rework/10"  border="border-status-rework/30" />
-        <StatPill label="Unrecorded"  count={openCount}     icon={Clock}          color="text-status-warning"  bg="bg-status-warning/10"   border="border-status-warning/30" />
-        <StatPill label="Recorded"    count={recCount}      icon={ArrowRightLeft} color="text-primary"   bg="bg-primary/10"    border="border-primary/30" />
-        <StatPill label="Resolved"    count={resCount}      icon={CheckCheck}     color="text-status-inspection" bg="bg-status-inspection/10" border="border-emerald-200" />
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
+        <StatCard label="Total" value={totalCount} icon={Layers} tone="total" />
+        <StatCard label="Unresolved" value={unresolvedCnt} icon={AlertCircle} tone="delayed" />
+        <StatCard label="Unrecorded" value={openCount} icon={Clock} tone="pending" />
+        <StatCard label="Recorded" value={recCount} icon={ArrowRightLeft} tone="ongoing" />
+        <StatCard label="Resolved" value={resCount} icon={CheckCheck} tone="inspection" />
       </div>
 
       {/* Main Panel */}
@@ -351,9 +337,10 @@ export default function InquiryManagement() {
                 <button
                   key={inq.id}
                   onClick={() => setSelectedId(inq.id)}
-                  className={`w-full text-left px-4 py-3.5 flex items-start gap-3 hover:bg-surface-muted transition-colors ${
-                    selectedId === inq.id ? "bg-primary" : ""
-                  }`}
+                  className={cn(
+                    "w-full text-left px-4 py-3.5 flex items-start gap-3 hover:bg-surface-muted transition-colors",
+                    selectedId === inq.id && "bg-primary-soft",
+                  )}
                 >
                   <div className="w-9 h-9 rounded-full bg-surface-muted flex items-center justify-center text-xs font-bold shrink-0 text-body">
                     {inq.extractedName ? getInitials(inq.extractedName) : "?"}
@@ -361,14 +348,10 @@ export default function InquiryManagement() {
                   <div className="flex-1 min-w-0">
                     <div className="flex items-start justify-between gap-1">
                       <span className="text-sm font-semibold text-heading truncate leading-tight">{inq.messengerName}</span>
-                      <span className={`text-[10px] font-medium px-2 py-0.5 rounded-full border shrink-0 ${STATUS_COLORS[inq.status]}`}>
-                        {STATUS_LABELS[inq.status]}
-                      </span>
+                      <StatusBadge status={inq.status} className="shrink-0 text-[10px]" />
                     </div>
                     <div className="mt-1 flex items-center gap-1.5">
-                      <span className={`text-[10px] font-medium px-2 py-0.5 rounded-full border ${TYPE_COLORS[inq.type]}`}>
-                        {inq.type}
-                      </span>
+                      <Badge className={cn("text-[10px]", inquiryTypeStyle(inq.type))}>{inq.type}</Badge>
                       {inq.conflictNote && (
                         <AlertTriangle className="w-3 h-3 text-status-warning" aria-label="Identity conflict" />
                       )}
@@ -396,12 +379,8 @@ export default function InquiryManagement() {
                 </div>
               </div>
               <div className="flex items-center gap-2">
-                <span className={`text-xs font-medium px-2.5 py-1 rounded-full border ${TYPE_COLORS[selected.type]}`}>
-                  {selected.type}
-                </span>
-                <span className={`text-xs font-medium px-2.5 py-1 rounded-full border ${STATUS_COLORS[selected.status]}`}>
-                  {STATUS_LABELS[selected.status]}
-                </span>
+                <Badge className={inquiryTypeStyle(selected.type)}>{selected.type}</Badge>
+                <StatusBadge status={selected.status} />
               </div>
             </div>
 
@@ -502,113 +481,64 @@ export default function InquiryManagement() {
         )}
       </div>
 
-      {/* Resolve Confirm Dialog */}
-      {resolveTarget && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-shell/50 backdrop-blur-sm p-4">
-          <div className="bg-surface rounded-card shadow-pop w-full max-w-sm overflow-hidden">
-            <div className="px-5 pt-5 pb-4 text-center">
-              <div className="mx-auto w-12 h-12 rounded-full bg-surface-muted flex items-center justify-center mb-3">
-                <CheckCheck className="w-5 h-5 text-body" />
-              </div>
-              <h2 className="text-base font-bold text-heading">Mark as Resolved?</h2>
-              <p className="text-sm text-body mt-1.5">
-                This inquiry will be marked as resolved and moved out of the active queue.
-              </p>
+      <ConfirmModal
+        open={resolveTarget !== null}
+        onClose={() => setResolveTarget(null)}
+        onConfirm={confirmResolve}
+        title="Mark as Resolved?"
+        message="This inquiry will be marked as resolved and moved out of the active queue."
+        confirmLabel="Confirm"
+        loading={!!resolvingId}
+        icon={CheckCheck}
+      />
+
+      <Modal
+        open={recordOpen && !!selected}
+        onClose={() => setRecordOpen(false)}
+        title="Record Customer Details"
+        size="md"
+        footer={
+          <>
+            <Button variant="ghost" onClick={() => setRecordOpen(false)}>
+              Cancel
+            </Button>
+            <Button onClick={submitRecord} disabled={recording}>
+              {recording ? "Recording…" : "Record & Save"}
+            </Button>
+          </>
+        }
+      >
+        <div className="space-y-3">
+          {[
+            { label: "Full Name *", key: "full_name", type: "text", placeholder: "e.g. Juan Dela Cruz" },
+            { label: "Contact Number *", key: "contact_number", type: "tel", placeholder: "e.g. 09171234567" },
+            { label: "Email", key: "email", type: "email", placeholder: "e.g. juan@email.com" },
+            { label: "Plate Number *", key: "plate_number", type: "text", placeholder: "e.g. ABC 1234" },
+            { label: "Vehicle Unit *", key: "vehicle_unit", type: "text", placeholder: "e.g. Toyota Fortuner" },
+          ].map(({ label, key, type, placeholder }) => (
+            <div key={key}>
+              <FieldLabel>{label}</FieldLabel>
+              <Input
+                type={type}
+                value={(recordForm as Record<string, string>)[key]}
+                onChange={(e) => {
+                  setRecordForm((prev) => ({ ...prev, [key]: e.target.value }))
+                  if (recordErrors[key])
+                    setRecordErrors((prev) => {
+                      const n = { ...prev }
+                      delete n[key]
+                      return n
+                    })
+                }}
+                placeholder={placeholder}
+                invalid={!!recordErrors[key]}
+              />
+              {recordErrors[key] && <p className="mt-1 text-[11px] text-status-delayed">{recordErrors[key]}</p>}
             </div>
-            <div className="flex gap-2 px-5 pb-5">
-              <button
-                onClick={() => setResolveTarget(null)}
-                className="flex-1 py-2 text-sm font-medium text-body bg-surface-muted hover:bg-border/60 rounded-card transition-colors"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={confirmResolve}
-                disabled={!!resolvingId}
-                className="flex-1 py-2 text-sm font-semibold text-white bg-primary hover:bg-primary-hover rounded-card transition-colors disabled:opacity-60"
-              >
-                {resolvingId ? "Resolving…" : "Confirm"}
-              </button>
-            </div>
-          </div>
+          ))}
         </div>
-      )}
-
-      {/* Record Customer Details Modal */}
-      {recordOpen && selected && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-shell/50 p-4">
-          <div className="bg-surface rounded-card shadow-pop w-full max-w-md p-6">
-            <div className="flex items-center justify-between mb-5">
-              <h3 className="text-base font-semibold text-heading">Record Customer Details</h3>
-              <button aria-label="Close" onClick={() => setRecordOpen(false)} className="text-muted hover:text-body">
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            <div className="space-y-3">
-              {[
-                { label: "Full Name *",      key: "full_name",      type: "text",  placeholder: "e.g. Juan Dela Cruz" },
-                { label: "Contact Number *", key: "contact_number", type: "tel",   placeholder: "e.g. 09171234567" },
-                { label: "Email",            key: "email",          type: "email", placeholder: "e.g. juan@email.com" },
-                { label: "Plate Number *",   key: "plate_number",   type: "text",  placeholder: "e.g. ABC 1234" },
-                { label: "Vehicle Unit *",   key: "vehicle_unit",   type: "text",  placeholder: "e.g. Toyota Fortuner" },
-              ].map(({ label, key, type, placeholder }) => (
-                <div key={key}>
-                  <label className="block text-xs font-medium text-body mb-1">{label}</label>
-                  <input
-                    type={type}
-                    value={(recordForm as Record<string, string>)[key]}
-                    onChange={(e) => {
-                      setRecordForm((prev) => ({ ...prev, [key]: e.target.value }))
-                      if (recordErrors[key]) setRecordErrors((prev) => { const n = { ...prev }; delete n[key]; return n })
-                    }}
-                    placeholder={placeholder}
-                    className={`${INPUT_CLS} ${recordErrors[key] ? "border-status-delayed focus:ring-status-delayed/30" : ""}`}
-                  />
-                  {recordErrors[key] && (
-                    <p className="text-[11px] text-status-delayed mt-1">{recordErrors[key]}</p>
-                  )}
-                </div>
-              ))}
-            </div>
-
-            {recordErrors._submit && <p className="text-xs text-status-delayed mt-3">{recordErrors._submit}</p>}
-
-            <div className="flex gap-3 mt-5">
-              <button
-                onClick={() => setRecordOpen(false)}
-                className="flex-1 py-2 text-sm font-medium text-body border border-border rounded-sm hover:bg-surface-muted transition-colors"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={submitRecord}
-                disabled={recording}
-                className="flex-1 py-2 text-sm font-semibold text-white bg-primary rounded-sm hover:bg-primary-hover disabled:opacity-50 transition-colors"
-              >
-                {recording ? "Recording…" : "Record & Save"}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-    </div>
-  )
-}
-
-function StatPill({ label, count, icon: Icon, color, bg, border }: {
-  label: string; count: number; icon: React.ElementType
-  color: string; bg: string; border: string
-}) {
-  return (
-    <div className={`flex items-center gap-3 bg-surface border ${border} rounded-card px-4 py-3`}>
-      <div className={`w-9 h-9 rounded-sm ${bg} flex items-center justify-center shrink-0`}>
-        <Icon className={`w-4 h-4 ${color}`} />
-      </div>
-      <div>
-        <p className="text-2xl font-bold text-heading leading-none">{count}</p>
-        <p className="text-[11px] text-muted mt-0.5">{label}</p>
-      </div>
+        {recordErrors._submit && <p className="mt-3 text-xs text-status-delayed">{recordErrors._submit}</p>}
+      </Modal>
     </div>
   )
 }

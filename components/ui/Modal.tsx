@@ -180,3 +180,53 @@ export function ConfirmModal({
     </Modal>
   )
 }
+
+/** Fullscreen media viewer — dark scrim, centred image/video, close on backdrop/Esc. */
+export function MediaPreviewModal({
+  media,
+  onClose,
+}: {
+  media: { url: string; type: string } | null
+  onClose: () => void
+}) {
+  useLockedBody(media !== null)
+  useEscape(media !== null, onClose)
+  if (!media) return null
+  const isVideo = media.type.startsWith("video") || media.type === "video"
+  return (
+    <Portal>
+      <div
+        role="dialog"
+        aria-modal="true"
+        className="fixed inset-0 z-[120] flex items-center justify-center bg-shell/95 p-6"
+        onClick={onClose}
+      >
+        <button
+          type="button"
+          aria-label="Close"
+          onClick={onClose}
+          className="absolute right-4 top-4 rounded-full p-2 text-white/70 hover:bg-white/10 hover:text-white"
+        >
+          <X className="h-5 w-5" />
+        </button>
+        {isVideo ? (
+          <video
+            src={media.url}
+            controls
+            autoPlay
+            className="max-h-full max-w-full rounded-sm"
+            onClick={(e) => e.stopPropagation()}
+          />
+        ) : (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={media.url}
+            alt=""
+            className="max-h-full max-w-full rounded-sm object-contain"
+            onClick={(e) => e.stopPropagation()}
+          />
+        )}
+      </div>
+    </Portal>
+  )
+}

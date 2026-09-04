@@ -8,6 +8,7 @@ import {
 } from "lucide-react"
 import VehicleStatusTemplate from "./VehicleStatusTemplate"
 import ChatbotPreview from "./ChatbotPreview"
+import { useToast } from "@/components/ui/Toast"
 import {
   type ChatbotSettings,
   type KBCategory,
@@ -59,6 +60,7 @@ interface KBForm {
 const EMPTY_KB_FORM: KBForm = { category: "FAQ", topic: "", content: "" }
 
 export default function ChatbotManagement() {
+  const toast = useToast()
   const [activeTab, setActiveTab] = useState<Tab>("settings")
 
   // --- Settings state ---
@@ -138,6 +140,7 @@ export default function ChatbotManagement() {
       setDirty(false)
       setSaved(true)
       setTimeout(() => setSaved(false), 2500)
+      toast.success("Chatbot settings saved.")
     } catch {
       setError("Network error. Please try again.")
     }
@@ -510,7 +513,7 @@ export default function ChatbotManagement() {
                     <div className="px-5 py-3 bg-status-delayed/10 border-t border-status-delayed/30 flex items-center justify-between">
                       <p className="text-sm text-status-delayed">Remove this entry?</p>
                       <div className="flex gap-2">
-                        <button onClick={() => deleteEntry(entry.id)} disabled={kbSaving} className="px-3 py-1.5 text-xs font-medium bg-status-delayed/100 text-white rounded-sm hover:brightness-95 transition-colors">Remove</button>
+                        <button onClick={() => deleteEntry(entry.id)} disabled={kbSaving} className="px-3 py-1.5 text-xs font-medium bg-status-delayed text-white rounded-sm hover:brightness-95 transition-colors">Remove</button>
                         <button onClick={() => setDeleteConfirmId(null)} className="px-3 py-1.5 text-xs font-medium border border-border text-body rounded-sm hover:bg-surface transition-colors">Cancel</button>
                       </div>
                     </div>

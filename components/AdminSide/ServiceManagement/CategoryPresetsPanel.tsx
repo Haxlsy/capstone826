@@ -1,8 +1,11 @@
 "use client"
 
 import { useCallback, useEffect, useState } from "react"
-import { X, ArrowLeft, Pencil, Trash2, Plus, Check } from "lucide-react"
+import { ArrowLeft, Pencil, Trash2, Plus } from "lucide-react"
 import { COLOR_OPTIONS, colorStyles, minsToHHMM, hhmmToMins } from "./service-form-helpers"
+import { Drawer } from "@/components/ui/Drawer"
+import { Button } from "@/components/ui/Button"
+import { useToast } from "@/components/ui/Toast"
 
 interface PresetStage {
   id?:                string
@@ -65,8 +68,8 @@ export default function CategoryPresetsPanel({
   const [editingId, setEditingId]   = useState<string | null>(null)
   const [saving, setSaving]         = useState(false)
   const [deletingId, setDeletingId] = useState<string | null>(null)
-  const [toast, setToast]           = useState<{ msg: string; ok: boolean } | null>(null)
   const [serverError, setServerError] = useState<string | null>(null)
+  const toast = useToast()
 
   // Form state
   const [fName,  setFName]   = useState("")
@@ -102,8 +105,8 @@ export default function CategoryPresetsPanel({
   }, [open])
 
   function showToast(msg: string, ok: boolean) {
-    setToast({ msg, ok })
-    setTimeout(() => setToast(null), 3000)
+    if (ok) toast.success(msg)
+    else toast.error(msg)
   }
 
   function clearErrors() {
@@ -216,54 +219,39 @@ export default function CategoryPresetsPanel({
   }
 
   return (
-    <>
-      {/* Overlay */}
-      <div
-        className={`fixed inset-0 bg-shell/40 z-40 transition-opacity duration-300 ${open ? "opacity-100" : "opacity-0 pointer-events-none"}`}
-        onClick={onClose}
-      />
-
-      {/* Drawer */}
-      <div
-        className={`fixed top-0 right-0 h-full w-[480px] bg-surface shadow-pop z-50 flex flex-col transition-transform duration-300 ${open ? "translate-x-0" : "translate-x-full"}`}
-      >
-        {/* Header */}
-        <div className="flex items-center gap-3 px-5 py-4 border-b border-border-subtle shrink-0">
+    <Drawer
+      open={open}
+      onClose={onClose}
+      width="md"
+      title={
+        <span className="flex items-center gap-2">
           {mode !== "list" && (
             <button
               onClick={() => { setMode("list"); clearErrors() }}
-              className="p-1.5 rounded-sm hover:bg-surface-muted text-body transition-colors"
+              className="-ml-1 rounded-sm p-1 text-body transition-colors hover:bg-surface-muted"
+              aria-label="Back to list"
             >
-              <ArrowLeft className="w-4 h-4" />
+              <ArrowLeft className="h-4 w-4" />
             </button>
           )}
-          <div className="flex-1">
-            <h2 className="text-base font-semibold text-heading">
-              {mode === "list"   ? "Manage Category Presets" :
-               mode === "create" ? "New Preset" : "Edit Preset"}
-            </h2>
-            {mode === "list" && (
-              <p className="text-xs text-muted mt-0.5">Reusable templates for workflow categories</p>
-            )}
-          </div>
-          <button
-            onClick={onClose}
-            className="p-1.5 rounded-sm hover:bg-surface-muted text-muted transition-colors"
-          >
-            <X className="w-4 h-4" />
-          </button>
-        </div>
-
-        {/* Toast */}
-        {toast && (
-          <div className={`mx-5 mt-3 px-4 py-2.5 rounded-card text-sm font-medium flex items-center gap-2 shrink-0 ${toast.ok ? "bg-status-inspection/10 text-status-inspection border border-status-inspection/30" : "bg-status-delayed/10 text-status-delayed border border-status-delayed/30"}`}>
-            {toast.ok && <Check className="w-3.5 h-3.5 shrink-0" />}
-            {toast.msg}
-          </div>
-        )}
-
-        {/* Body */}
-        <div className="flex-1 overflow-y-auto">
+          {mode === "list" ? "Manage Category Presets" : mode === "create" ? "New Preset" : "Edit Preset"}
+        </span>
+      }
+      description={mode === "list" ? "Reusable templates for workflow categories" : undefined}
+      footer={
+        mode === "create" || mode === "edit" ? (
+          <>
+            <Button variant="ghost" onClick={() => { setMode("list"); clearErrors() }}>
+              Cancel
+            </Button>
+            <Button onClick={handleSave} disabled={saving}>
+              {saving ? "Saving…" : mode === "edit" ? "Update Preset" : "Save Preset"}
+            </Button>
+          </>
+        ) : undefined
+      }
+    >
+        <div className="-mx-5 -my-4">
           {/* ─── LIST VIEW ─── */}
           {mode === "list" && (
             <div className="p-5 space-y-3">
@@ -453,26 +441,6 @@ export default function CategoryPresetsPanel({
             </div>
           )}
         </div>
-
-        {/* Footer (form only) */}
-        {(mode === "create" || mode === "edit") && (
-          <div className="px-5 py-4 border-t border-border-subtle flex items-center gap-2 shrink-0">
-            <button
-              onClick={handleSave}
-              disabled={saving}
-              className="flex-1 py-2.5 rounded-card bg-primary text-white text-sm font-medium hover:bg-shell-alt disabled:opacity-50 transition-colors"
-            >
-              {saving ? "Saving…" : mode === "edit" ? "Update Preset" : "Save Preset"}
-            </button>
-            <button
-              onClick={() => { setMode("list"); clearErrors() }}
-              className="px-4 py-2.5 rounded-card border border-border text-sm text-body hover:bg-surface-muted transition-colors"
-            >
-              Cancel
-            </button>
-          </div>
-        )}
-      </div>
-    </>
+    </Drawer>
   )
 }

@@ -1,23 +1,26 @@
 import { AuditCategory, AuditRole } from "../../../types/audit"
 import  { LogIn, Eye, Plus, RefreshCw, CheckCircle2, AlertTriangle,
   MessageSquare, Trash2 } from "lucide-react"
+import { roleStyle, roleLabel } from "@/lib/ui/roles"
 
+/** @deprecated use `roleLabel()` from `@/lib/ui/roles` */
 export const ROLE_LABEL: Record<AuditRole, string> = {
-  super_admin:    "Super Admin",
-  admin:          "Admin",
-  operations:     "Operations",
-  sales:          "Sales",
-  head_detailer:  "Head Detailer",
-  head_installer: "Head Installer",
+  super_admin:    roleLabel("super_admin"),
+  admin:          roleLabel("admin"),
+  operations:     roleLabel("operations"),
+  sales:          roleLabel("sales"),
+  head_detailer:  roleLabel("head_detailer"),
+  head_installer: roleLabel("head_installer"),
 }
 
+/** @deprecated use `roleStyle().badge` from `@/lib/ui/roles` */
 export const ROLE_BADGE: Record<AuditRole, string> = {
-  super_admin:    "bg-status-concern/12 text-status-concern border border-status-concern/30",
-  admin:          "bg-status-ongoing/12 text-status-ongoing border border-status-ongoing/30",
-  operations:     "bg-primary/12 text-primary border border-primary/30",
-  sales:          "bg-status-release/12 text-status-release border border-status-release/30",
-  head_detailer:  "bg-status-rework/12 text-status-rework border border-status-rework/30",
-  head_installer: "bg-status-warning/12 text-status-warning border border-status-warning/30",
+  super_admin:    roleStyle("super_admin").badge,
+  admin:          roleStyle("admin").badge,
+  operations:     roleStyle("operations").badge,
+  sales:          roleStyle("sales").badge,
+  head_detailer:  roleStyle("head_detailer").badge,
+  head_installer: roleStyle("head_installer").badge,
 }
 
 export const CATEGORY_ICON: Record<AuditCategory, React.ReactNode> = {

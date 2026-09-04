@@ -7,7 +7,7 @@ export function OperationsSkeleton() {
         <Sk className="h-7 w-52" />
         <Sk className="h-4 w-72" />
       </div>
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 xl:grid-cols-7">
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-7">
         {Array.from({ length: 7 }).map((_, i) => (
           <div
             key={i}

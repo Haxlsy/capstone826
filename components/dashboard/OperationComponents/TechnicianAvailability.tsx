@@ -18,6 +18,7 @@ import { TimeRangeInputs } from "@/components/ui/TimeRange"
 import { useToast } from "@/components/ui/Toast"
 import { cn } from "@/lib/utils"
 import { avatarColor, initials } from "@/lib/ui/avatar"
+import { roleStyle } from "@/lib/ui/roles"
 
 interface ActiveJob {
   job_id: string
@@ -40,8 +41,8 @@ const ALL_DAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
 
 const ROLE_LABEL: Record<Technician["role"], string> = { detailer: "Detailer", installer: "Installer" }
 const ROLE_BADGE: Record<Technician["role"], string> = {
-  detailer: "bg-status-inspection/12 text-status-inspection",
-  installer: "bg-status-release/12 text-status-release",
+  detailer: roleStyle("detailer").badge,
+  installer: roleStyle("installer").badge,
 }
 const GROUP_ORDER: Technician["role"][] = ["detailer", "installer"]
 

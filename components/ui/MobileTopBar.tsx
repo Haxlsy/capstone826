@@ -9,11 +9,11 @@ export function MobileTopBar() {
     <header className="sticky top-0 z-40 flex h-12 shrink-0 items-center justify-between bg-shell px-4">
       <div className="flex items-center gap-2">
         <Image
-          src="/assets/826-logo.png"
+          src="/assets/main-logo.png"
           alt="826"
-          width={24}
-          height={24}
-          className="h-6 w-6 object-contain"
+          width={346}
+          height={107}
+          className="h-6 w-auto object-contain"
         />
         <span className="text-xs font-semibold uppercase tracking-[0.14em] text-white/70">
           826 Auto Care

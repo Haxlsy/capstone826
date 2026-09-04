@@ -8,6 +8,11 @@ import {
 } from "lucide-react";
 import { BottomNav } from "./components/BottomNav";
 import { useToast } from "@/components/ui/Toast";
+import { StatusBadge } from "@/components/ui/Badge";
+import { Modal, MediaPreviewModal } from "@/components/ui/Modal";
+import { Button } from "@/components/ui/Button";
+import { Textarea, FieldLabel } from "@/components/ui/Field";
+import { categorySwatch } from "@/lib/ui/category-colors";
 import { fmtDateTime, fmtDateTimeShort } from "@/lib/time-display";
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
@@ -94,15 +99,6 @@ interface CategoryGroup {
   minOrder: number;
 }
 
-const STATUS_BADGE: Record<string, string> = {
-  Pending:       "bg-status-warning/12 text-status-warning border border-status-warning/30",
-  Ongoing:       "bg-primary/10 text-primary border border-primary/20",
-  "For Rework":  "bg-status-rework/10 text-status-rework border border-status-rework/30",
-  "For Release": "bg-status-inspection/10 text-status-inspection border border-status-inspection/30",
-  Released:      "bg-status-release/12 text-status-release border border-status-release/30",
-  Delayed:       "bg-status-delayed/10 text-status-delayed border border-status-delayed/30",
-  Cancelled:     "bg-surface-muted text-body border border-border",
-};
 
 // ── Component ────────────────────────────────────────────────────────────────
 
@@ -497,9 +493,7 @@ export default function HeadTechJobHistoryPage({ jobId }: { jobId: string }) {
 
         {/* Status row */}
         <div className="flex items-center gap-2 flex-wrap">
-          <span className={`text-xs font-semibold px-3 py-1 rounded-full ${STATUS_BADGE[job.status] ?? "bg-surface-muted text-body"}`}>
-            {job.status}
-          </span>
+          <StatusBadge status={job.status} className="px-3 py-1" />
           {finishingAlreadyApproved && (
             <span className="text-xs font-semibold px-3 py-1 rounded-full bg-status-inspection/10 text-status-inspection border border-status-inspection/30">
               Passed to Operations
@@ -706,7 +700,7 @@ export default function HeadTechJobHistoryPage({ jobId }: { jobId: string }) {
                     <div className="flex gap-2">
                       <button
                         onClick={() => openRework(g.id)}
-                        className="flex-1 flex items-center justify-center gap-2 text-sm font-semibold text-white bg-status-rework/100 rounded-card py-3.5 hover:brightness-95 active:scale-[0.98] transition-all"
+                        className="flex-1 flex items-center justify-center gap-2 text-sm font-semibold text-white bg-status-rework rounded-card py-3.5 hover:brightness-95 active:scale-[0.98] transition-all"
                       >
                         <AlertTriangle size={15} />
                         Flag for Rework
@@ -766,7 +760,7 @@ export default function HeadTechJobHistoryPage({ jobId }: { jobId: string }) {
               <div className="flex gap-2">
                 <button
                   onClick={() => openRework(lastGroup?.id ?? "__finishing__")}
-                  className="flex-1 flex items-center justify-center gap-2 text-sm font-semibold text-white bg-status-rework/100 rounded-card py-3.5 hover:brightness-95 active:scale-[0.98] transition-all"
+                  className="flex-1 flex items-center justify-center gap-2 text-sm font-semibold text-white bg-status-rework rounded-card py-3.5 hover:brightness-95 active:scale-[0.98] transition-all"
                 >
                   <AlertTriangle size={15} />
                   Flag for Rework
@@ -801,52 +795,22 @@ export default function HeadTechJobHistoryPage({ jobId }: { jobId: string }) {
         />
       )}
 
-      {/* Full-screen media preview */}
-      {preview && (
-        <div
-          className="fixed inset-0 z-50 bg-shell/95 flex items-center justify-center"
-          onClick={() => setPreview(null)}
-        >
-          <button
-            type="button"
-            aria-label="Close preview"
-            className="absolute top-5 right-5 text-white bg-surface/10 hover:bg-surface/20 rounded-full p-2.5 transition-colors"
-            onClick={() => setPreview(null)}
-          >
-            <X size={20} />
-          </button>
-          {preview.type === "video" ? (
-            <video src={preview.url} controls autoPlay className="max-w-full max-h-full rounded-sm" onClick={(e) => e.stopPropagation()} />
-          ) : (
-            <img src={preview.url} alt="" className="max-w-full max-h-full object-contain rounded-sm" onClick={(e) => e.stopPropagation()} />
-          )}
-        </div>
-      )}
+      <MediaPreviewModal media={preview} onClose={() => setPreview(null)} />
 
-      {/* Image rejection alert */}
-      {rejectionAlert && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-shell/50 p-6">
-          <div className="bg-surface rounded-card shadow-pop w-full max-w-sm p-5 space-y-4">
-            <div className="flex items-start gap-3">
-              <div className="w-10 h-10 bg-status-delayed/12 rounded-full flex items-center justify-center shrink-0">
-                <AlertTriangle size={20} className="text-status-delayed" />
-              </div>
-              <div>
-                <h3 className="text-sm font-semibold text-heading">Image Not Accepted</h3>
-                <p className="text-xs text-muted mt-0.5">Please retake your photo</p>
-              </div>
-            </div>
-            <p className="text-sm text-body leading-snug">{rejectionAlert.message}</p>
-            <button
-              type="button"
-              onClick={() => setRejectionAlert(null)}
-              className="w-full text-sm font-semibold text-white bg-primary rounded-card py-3 hover:bg-primary-hover active:scale-[0.98] transition-all"
-            >
-              OK, Retake Photo
-            </button>
-          </div>
+      <Modal open={rejectionAlert !== null} onClose={() => setRejectionAlert(null)} size="sm" bare>
+        <div className="flex flex-col items-center gap-3 py-2 text-center">
+          <span className="flex h-11 w-11 items-center justify-center rounded-full bg-status-delayed/12 text-status-delayed">
+            <AlertTriangle size={20} />
+          </span>
+          <h2 className="text-base font-semibold text-heading">Image Not Accepted</h2>
+          <p className="text-sm text-body">{rejectionAlert?.message ?? "Please retake your photo."}</p>
         </div>
-      )}
+        <div className="mt-4">
+          <Button fullWidth onClick={() => setRejectionAlert(null)}>
+            OK, Retake Photo
+          </Button>
+        </div>
+      </Modal>
 
       <BottomNav active="jobs" />
     </>
@@ -871,84 +835,72 @@ function ReworkModal({
   onClose:      () => void;
 }) {
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-shell/50 p-4">
-      <div className="bg-surface rounded-card shadow-pop w-full max-w-md p-5 space-y-4">
-        <div className="flex items-center gap-2">
-          <AlertTriangle size={18} className="text-status-rework" />
-          <h3 className="text-sm font-semibold text-heading">{title}</h3>
-        </div>
-        <p className="text-xs text-body">
-          Select the stage that needs to be redone. It will be reverted to In Progress with your instructions.
-        </p>
-
-        <div className="flex flex-col gap-1 max-h-48 overflow-y-auto">
-          {stages.map((s) => (
-            <label key={s.id} className="flex items-center gap-3 px-3 py-2.5 rounded-card hover:bg-surface-muted cursor-pointer">
-              <input
-                type="radio"
-                name="rework-stage"
-                checked={selected === s.id}
-                onChange={() => onSelect(s.id)}
-                className="w-4 h-4 accent-orange-500"
-              />
-              <span className="text-sm text-body flex-1">{s.order}. {s.name}</span>
-            </label>
-          ))}
-          {stages.length === 0 && (
-            <p className="text-xs text-muted text-center py-4">No completed stages to flag.</p>
-          )}
-        </div>
-
-        <div>
-          <label className="block text-xs font-medium text-body mb-1.5">
-            Instructions <span className="text-status-delayed">*</span>
-          </label>
-          <textarea
-            value={note}
-            onChange={(e) => onNoteChange(e.target.value)}
-            placeholder="Describe what needs to be redone…"
-            rows={3}
-            className="w-full text-sm border border-border rounded-card px-3.5 py-3 resize-none focus:outline-none focus:ring-2 focus:ring-status-rework/30 bg-surface-subtle text-heading placeholder:text-muted transition"
-          />
-        </div>
-
-        {error && <p className="text-xs text-status-delayed">{error}</p>}
-
-        <div className="flex gap-2">
-          <button type="button" onClick={onClose} className="flex-1 text-sm font-semibold text-body border border-border rounded-card py-3 hover:bg-surface-muted transition-colors">
+    <Modal
+      open
+      onClose={onClose}
+      title={title}
+      description="Select the stage that needs to be redone. It will be reverted to In Progress with your instructions."
+      size="md"
+      footer={
+        <>
+          <Button variant="ghost" onClick={onClose}>
             Cancel
-          </button>
-          <button
-            type="button"
+          </Button>
+          <Button
+            variant="danger"
             onClick={onSubmit}
             disabled={submitting || !selected || !note.trim()}
-            className="flex-1 flex items-center justify-center gap-2 text-sm font-semibold text-white bg-status-rework/100 rounded-card py-3 hover:brightness-95 active:scale-[0.98] transition-all disabled:opacity-50"
           >
             {submitting ? <Loader2 size={14} className="animate-spin" /> : <AlertTriangle size={14} />}
             {submitting ? "Flagging…" : "Flag for Rework"}
-          </button>
-        </div>
+          </Button>
+        </>
+      }
+    >
+      <div className="mb-4 flex max-h-48 flex-col gap-1 overflow-y-auto">
+        {stages.map((s) => (
+          <label
+            key={s.id}
+            className="flex cursor-pointer items-center gap-3 rounded-sm px-3 py-2.5 hover:bg-surface-muted"
+          >
+            <input
+              type="radio"
+              name="rework-stage"
+              checked={selected === s.id}
+              onChange={() => onSelect(s.id)}
+              className="h-4 w-4 accent-[var(--color-status-rework)]"
+            />
+            <span className="flex-1 text-sm text-body">
+              {s.order}. {s.name}
+            </span>
+          </label>
+        ))}
+        {stages.length === 0 && (
+          <p className="py-4 text-center text-xs text-muted">No completed stages to flag.</p>
+        )}
       </div>
-    </div>
+
+      <FieldLabel>
+        Instructions <span className="text-status-delayed">*</span>
+      </FieldLabel>
+      <Textarea
+        value={note}
+        onChange={(e) => onNoteChange(e.target.value)}
+        placeholder="Describe what needs to be redone…"
+        rows={3}
+      />
+      {error && <p className="mt-2 text-xs text-status-delayed">{error}</p>}
+    </Modal>
   );
 }
 
 // ── CategoryBadge ─────────────────────────────────────────────────────────────
 
-const COLOR_BADGE: Record<string, string> = {
-  blue:    "bg-primary/10 text-primary border-primary/30",
-  purple:  "bg-status-concern/12 text-status-concern border-status-concern/30",
-  emerald: "bg-status-inspection/12 text-status-inspection border-emerald-200",
-  orange:  "bg-status-rework/10 text-status-rework border-status-rework/30",
-  rose:    "bg-status-delayed/10 text-status-delayed border-status-delayed/30",
-  teal:    "bg-status-release/12 text-status-release border-teal-200",
-  yellow:  "bg-status-warning/12 text-status-warning border-status-warning/30",
-};
-
 function CategoryBadge({ name, color }: { name: string; color: string }) {
-  const cls = COLOR_BADGE[color] ?? COLOR_BADGE.blue;
   return (
-    <span className={`inline-block text-xs font-semibold px-2 py-0.5 rounded-full uppercase tracking-wide border ${cls}`}>
+    <span
+      className={`inline-block rounded-pill px-2 py-0.5 text-xs font-semibold uppercase tracking-wide ${categorySwatch(color).badge}`}
+    >
       {name}
     </span>
   );

@@ -60,13 +60,19 @@ export function resolveNavArea(pathname: string): NavArea {
   return "sales"
 }
 
-export function navFor(area: NavArea): { nav: NavItem[]; settingsHref: string; fallbackName: string } {
+export function navFor(area: NavArea): {
+  nav: NavItem[]
+  settingsHref: string
+  fallbackName: string
+  showBell: boolean
+} {
   switch (area) {
     case "admin":
-      return { nav: ADMIN_NAV, settingsHref: "/dashboard/admin/settings", fallbackName: "Admin" }
+      // Admin/super-admin keep the previous (no-bell) top bar.
+      return { nav: ADMIN_NAV, settingsHref: "/dashboard/admin/settings", fallbackName: "Admin", showBell: false }
     case "operations":
-      return { nav: OPERATIONS_NAV, settingsHref: "/dashboard/operations/settings", fallbackName: "Operations" }
+      return { nav: OPERATIONS_NAV, settingsHref: "/dashboard/operations/settings", fallbackName: "Operations", showBell: true }
     case "sales":
-      return { nav: SALES_NAV, settingsHref: "/dashboard/settings", fallbackName: "Sales" }
+      return { nav: SALES_NAV, settingsHref: "/dashboard/settings", fallbackName: "Sales", showBell: true }
   }
 }

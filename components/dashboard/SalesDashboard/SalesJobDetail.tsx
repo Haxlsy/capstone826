@@ -4,6 +4,9 @@ import { useState } from "react"
 import Link from "next/link"
 import { ArrowLeft, ChevronDown, CheckCircle2, RefreshCw, Clock } from "lucide-react"
 import { fmtDateTime } from "@/lib/time-display"
+import { StatusBadge, Badge } from "@/components/ui/Badge"
+import { cn } from "@/lib/utils"
+import { statusStyle } from "@/lib/ui/status"
 
 interface StageMedia {
   id:         string
@@ -53,22 +56,6 @@ interface JobDetail {
   stages:                 Stage[]
 }
 
-const STATUS_COLORS: Record<string, string> = {
-  Pending:       "bg-status-warning/12 text-status-warning border-status-warning/30",
-  Ongoing:       "bg-primary/10 text-primary border-primary/30",
-  "For Rework":  "bg-status-rework/10 text-status-rework border-status-rework/30",
-  "For Release": "bg-status-concern/12 text-status-concern border-status-concern/30",
-  Released:      "bg-status-inspection/10 text-status-inspection border-status-inspection/30",
-  Delayed:       "bg-status-delayed/10 text-status-delayed border-status-delayed/30",
-  Cancelled:     "bg-surface-subtle text-body border-border",
-}
-
-const STAGE_STATUS_PILL: Record<string, string> = {
-  pending:     "bg-surface-muted text-body",
-  in_progress: "bg-primary/12 text-primary",
-  done:        "bg-status-inspection/12 text-status-inspection",
-  for_rework:  "bg-status-rework/12 text-status-rework",
-}
 
 function StageIcon({ status }: { status: string }) {
   if (status === "done")       return <CheckCircle2 className="w-4 h-4 text-status-inspection shrink-0" />
@@ -124,9 +111,7 @@ export default function SalesJobDetail({ job }: { job: JobDetail }) {
           </Link>
           <h1 className="text-xl font-bold text-heading">{displayId}</h1>
         </div>
-        <span className={`mt-6 inline-flex items-center rounded-full border px-3 py-1 text-sm font-semibold ${STATUS_COLORS[job.status] ?? "bg-surface-muted text-body border-border"}`}>
-          {job.status}
-        </span>
+        <StatusBadge status={job.status} className="mt-6 px-3 py-1 text-sm" />
       </div>
 
       {/* Read-only notice */}
@@ -263,9 +248,9 @@ function StageRow({ stage }: { stage: Stage }) {
         <span className="text-sm font-medium text-heading flex-1">
           {stage.sequence_order}. {stage.name}
         </span>
-        <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${STAGE_STATUS_PILL[stage.status] ?? "bg-surface-muted text-body"}`}>
+        <Badge className={cn("capitalize", statusStyle(stage.status).soft)}>
           {stage.status.replace("_", " ")}
-        </span>
+        </Badge>
       </div>
       {stage.rework_instructions && (
         <p className="text-xs text-status-rework ml-6.5 bg-status-rework/10 rounded-sm px-2.5 py-1.5">

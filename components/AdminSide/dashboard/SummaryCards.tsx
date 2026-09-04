@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react"
 import { Briefcase, MessageSquare, RefreshCw } from "lucide-react"
 import { useRealtimeRefetch } from "@/hooks/useRealtimeRefetch"
+import { Card } from "@/components/ui/Card"
 
 interface DashboardData {
   activeJobCount: number
@@ -34,18 +35,18 @@ export function SummaryCards({ initialData }: { initialData?: DashboardData }) {
 
   const capacityPct = data ? Math.min((data.activeJobCount / data.maxCapacity) * 100, 100) : 0
   const capacityColor =
-    capacityPct >= 90 ? "bg-status-delayed/100" :
+    capacityPct >= 90 ? "bg-status-delayed" :
     capacityPct >= 70 ? "bg-status-warning" :
-    "bg-status-inspection/100"
+    "bg-status-inspection"
 
   if (loading) {
     return (
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         {[0, 1].map((i) => (
-          <div key={i} className="bg-surface rounded-card border border-border p-5 animate-pulse">
+          <Card key={i} className="animate-pulse p-5">
             <div className="h-4 w-32 bg-surface-muted rounded mb-3" />
             <div className="h-8 w-20 bg-surface-muted rounded" />
-          </div>
+          </Card>
         ))}
       </div>
     )
@@ -53,7 +54,7 @@ export function SummaryCards({ initialData }: { initialData?: DashboardData }) {
 
   return (
     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-      <div className="bg-surface rounded-card border border-border p-5 space-y-3">
+      <Card className="space-y-3 p-5">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2 text-sm font-medium text-body">
             <Briefcase className="w-4 h-4" />
@@ -79,9 +80,9 @@ export function SummaryCards({ initialData }: { initialData?: DashboardData }) {
             />
           </div>
         </div>
-      </div>
+      </Card>
 
-      <div className="bg-surface rounded-card border border-border p-5 space-y-3">
+      <Card className="space-y-3 p-5">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2 text-sm font-medium text-body">
             <MessageSquare className="w-4 h-4" />
@@ -96,7 +97,7 @@ export function SummaryCards({ initialData }: { initialData?: DashboardData }) {
           <span className="text-lg text-muted mb-0.5">%</span>
         </div>
         <p className="text-xs text-muted">Conversations handled by Gemini without human escalation</p>
-      </div>
+      </Card>
     </div>
   )
 }

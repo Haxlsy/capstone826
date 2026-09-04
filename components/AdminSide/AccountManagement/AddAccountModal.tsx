@@ -1,7 +1,9 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import { X, Eye, EyeOff, Lock } from "lucide-react"
+import { Eye, EyeOff, Lock } from "lucide-react"
+import { Drawer } from "@/components/ui/Drawer"
+import { Button } from "@/components/ui/Button"
 
 function generateUsername(fullName: string): string {
   const parts = fullName.trim().split(/\s+/).filter(Boolean)
@@ -109,12 +111,6 @@ export default function AddAccountModal({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [form.fullName, isEdit])
 
-  // Prevent background scroll when open
-  useEffect(() => {
-    document.body.style.overflow = open ? "hidden" : ""
-    return () => { document.body.style.overflow = "" }
-  }, [open])
-
   function validate() {
     const e: Partial<typeof EMPTY_FORM> = {}
     if (!form.fullName.trim()) e.fullName = "Full name is required."
@@ -186,37 +182,23 @@ export default function AddAccountModal({
   }
 
   return (
-    <>
-      {/* Backdrop */}
-      <div
-        className={`fixed inset-0 bg-shell/40 z-40 transition-opacity duration-300 ${
-          open ? "opacity-100" : "opacity-0 pointer-events-none"
-        }`}
-        onClick={onClose}
-      />
-
-      {/* Drawer — slides in from right */}
-      <div
-        className={`fixed top-0 right-0 h-full w-120 bg-surface z-50 shadow-pop flex flex-col
-          transform transition-transform duration-300 ease-in-out
-          ${open ? "translate-x-0" : "translate-x-full"}`}
-      >
-        {/* Header */}
-        <div className="flex items-center justify-between px-6 py-5 border-b border-border-subtle shrink-0">
-          <h2 className="text-lg font-semibold text-heading">
-            {isEdit ? "Edit Account" : mode === "admin" ? "Add Admin Account" : "Add New Account"}
-          </h2>
-          <button
-            aria-label="Close modal"
-            onClick={onClose}
-            className="p-1.5 rounded-sm text-muted hover:bg-surface-muted hover:text-body transition-colors"
-          >
-            <X className="w-5 h-5" />
-          </button>
-        </div>
-
-        {/* Form */}
-        <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto px-6 py-5 space-y-5">
+    <Drawer
+      open={open}
+      onClose={onClose}
+      width="lg"
+      title={isEdit ? "Edit Account" : mode === "admin" ? "Add Admin Account" : "Add New Account"}
+      footer={
+        <>
+          <Button variant="ghost" onClick={onClose} disabled={submitting}>
+            Cancel
+          </Button>
+          <Button onClick={handleSubmit} disabled={submitting}>
+            {submitting ? "Saving…" : isEdit ? "Save Changes" : "Save Account"}
+          </Button>
+        </>
+      }
+    >
+        <form onSubmit={handleSubmit} className="space-y-5">
           {serverError && (
             <div className="bg-status-delayed/10 border border-status-delayed/30 text-status-delayed text-sm rounded-sm px-4 py-3">
               {serverError}
@@ -325,33 +307,13 @@ export default function AddAccountModal({
 
           {/* Edit mode hint */}
           {isEdit && (
-            <div className="flex items-start gap-2.5 bg-status-warning/10 border border-amber-100 rounded-sm px-4 py-3">
+            <div className="flex items-start gap-2.5 rounded-sm border border-status-warning/30 bg-status-warning/10 px-4 py-3">
               <p className="text-xs text-status-warning">
                 To reset this account&apos;s password, use the <span className="font-semibold">Reset Password</span> option from the account menu.
               </p>
             </div>
           )}
         </form>
-
-        {/* Footer */}
-        <div className="flex items-center justify-end gap-3 px-6 py-4 border-t border-border-subtle shrink-0">
-          <button
-            type="button"
-            onClick={onClose}
-            disabled={submitting}
-            className="px-5 py-2.5 text-sm font-medium text-body hover:bg-surface-muted rounded-sm transition-colors disabled:opacity-50"
-          >
-            Cancel
-          </button>
-          <button
-            onClick={handleSubmit}
-            disabled={submitting}
-            className="px-6 py-2.5 text-sm font-medium bg-primary text-white rounded-sm hover:bg-shell-alt transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            {submitting ? "Saving..." : isEdit ? "Save Changes" : "Save Account"}
-          </button>
-        </div>
-      </div>
-    </>
+    </Drawer>
   )
 }

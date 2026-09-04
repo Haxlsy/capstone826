@@ -78,23 +78,23 @@ export function AppSidebar({
     <aside
       data-collapsed={collapsed}
       className={cn(
-        "flex h-full shrink-0 flex-col bg-shell text-white transition-[width] duration-200",
+        "flex h-full shrink-0 flex-col bg-shell text-white transition-[width] duration-300 ease-in-out",
         collapsed ? "w-[72px]" : "w-64",
       )}
     >
       {/* Brand + collapse toggle */}
       <div
         className={cn(
-          "flex items-center border-b border-shell-border px-4 py-4",
-          collapsed ? "flex-col gap-2" : "gap-2.5",
+          "flex items-center border-b border-shell-border py-4",
+          collapsed ? "flex-col gap-2 px-2" : "gap-2.5 px-4",
         )}
       >
         <Image
-          src="/assets/826-logo.png"
+          src="/assets/main-logo.png"
           alt="826"
-          width={32}
-          height={32}
-          className="h-8 w-8 shrink-0 object-contain"
+          width={342}
+          height={100}
+          className="h-4 w-auto shrink-0 object-contain object-left"
         />
         {!collapsed && (
           <span className="flex-1 truncate text-sm font-semibold text-display">{brand}</span>
@@ -170,17 +170,9 @@ function NavNode({
     )
   }
 
-  // Collapsed: render the group as a flat icon that links to the first child.
+  // Collapsed: icon that reveals the child links in a hover flyout.
   if (collapsed) {
-    return (
-      <SidebarLink
-        href={item.children[0].href}
-        icon={item.icon}
-        label={item.label}
-        active={childActive}
-        collapsed
-      />
-    )
+    return <CollapsedGroup item={item} pathname={pathname} childActive={childActive} />
   }
 
   return (
@@ -208,6 +200,77 @@ function NavNode({
               active={isActive(pathname, c.href, c.exact)}
               collapsed={false}
               nested
+            />
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+/** Collapsed-sidebar nav group: icon trigger + hover flyout with the child links. */
+function CollapsedGroup({
+  item,
+  pathname,
+  childActive,
+}: {
+  item: NavItem
+  pathname: string
+  childActive: boolean
+}) {
+  const [open, setOpen] = React.useState(false)
+  const [pos, setPos] = React.useState<{ top: number; left: number }>({ top: 0, left: 0 })
+  const wrapRef = React.useRef<HTMLDivElement>(null)
+  const closeTimer = React.useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  const show = () => {
+    if (closeTimer.current) clearTimeout(closeTimer.current)
+    const r = wrapRef.current?.getBoundingClientRect()
+    if (r) setPos({ top: r.top, left: r.right + 8 })
+    setOpen(true)
+  }
+  const scheduleHide = () => {
+    if (closeTimer.current) clearTimeout(closeTimer.current)
+    closeTimer.current = setTimeout(() => setOpen(false), 120)
+  }
+  React.useEffect(() => () => {
+    if (closeTimer.current) clearTimeout(closeTimer.current)
+  }, [])
+
+  return (
+    <div
+      ref={wrapRef}
+      className="relative"
+      onMouseEnter={show}
+      onMouseLeave={scheduleHide}
+      onFocusCapture={show}
+      onBlurCapture={scheduleHide}
+    >
+      <SidebarLink
+        href={item.children![0].href}
+        icon={item.icon}
+        label={item.label}
+        active={childActive}
+        collapsed
+      />
+      {open && (
+        <div
+          onMouseEnter={show}
+          onMouseLeave={scheduleHide}
+          style={{ top: pos.top, left: pos.left }}
+          className="fixed z-50 min-w-52 rounded-md border border-shell-border bg-shell p-1.5 shadow-pop"
+        >
+          <p className="px-2.5 py-1.5 text-xs font-semibold uppercase tracking-wide text-white/40">
+            {item.label}
+          </p>
+          {item.children!.map((c) => (
+            <SidebarLink
+              key={c.href}
+              href={c.href}
+              icon={c.icon}
+              label={c.label}
+              active={isActive(pathname, c.href, c.exact)}
+              collapsed={false}
             />
           ))}
         </div>

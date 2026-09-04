@@ -2,7 +2,8 @@
 
 import { useRouter } from "next/navigation"
 import { Car, User, ChevronRight, Clock, AlertCircle } from "lucide-react"
-import { HeadTechJob, STATUS_STYLES } from "./types"
+import { HeadTechJob } from "./types"
+import { StatusBadge } from "@/components/ui/Badge"
 
 type HeadTechJobCardProps = {
   job: HeadTechJob
@@ -30,14 +31,12 @@ export function HeadTechJobCard({ job }: HeadTechJobCardProps) {
         </span>
         <div className="flex items-center gap-1.5">
           {job.has_delayed_stage && (
-            <span className="flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full font-semibold bg-status-delayed/12 text-status-delayed">
+            <span className="flex items-center gap-1 rounded-pill bg-status-delayed/12 px-2 py-0.5 text-[10px] font-semibold text-status-delayed">
               <AlertCircle size={10} />
               Stage Delayed
             </span>
           )}
-          <span className={`text-[11px] px-2.5 py-0.5 rounded-full font-semibold ${STATUS_STYLES[job.status]}`}>
-            {job.status}
-          </span>
+          <StatusBadge status={job.status} className="text-[11px]" />
           <ChevronRight size={14} className="text-muted" />
         </div>
       </div>

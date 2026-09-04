@@ -13,7 +13,7 @@ import { resolveNavArea, navFor } from "@/lib/ui/nav"
 export default function DashboardShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname()
   const area = resolveNavArea(pathname)
-  const { nav, settingsHref, fallbackName } = navFor(area)
+  const { nav, settingsHref, fallbackName, showBell } = navFor(area)
 
   const { data: concerns } = useConcerns()
   const pendingConcerns = (concerns ?? []).filter((c) => c.status === "Pending").length
@@ -26,7 +26,12 @@ export default function DashboardShell({ children }: { children: React.ReactNode
       : nav
 
   return (
-    <AppShell nav={resolvedNav} settingsHref={settingsHref} fallbackName={fallbackName}>
+    <AppShell
+      nav={resolvedNav}
+      settingsHref={settingsHref}
+      fallbackName={fallbackName}
+      showBell={showBell}
+    >
       {children}
     </AppShell>
   )

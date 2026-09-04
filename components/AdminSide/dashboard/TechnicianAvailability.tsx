@@ -3,6 +3,9 @@
 import { useCallback, useEffect, useState } from "react"
 import { Users, RefreshCw } from "lucide-react"
 import { useRealtimeRefetch } from "@/hooks/useRealtimeRefetch"
+import { Card } from "@/components/ui/Card"
+import { StatusBadge } from "@/components/ui/Badge"
+import { cn } from "@/lib/utils"
 
 interface Technician {
   id:             string
@@ -50,38 +53,31 @@ function TechList({ title, techs, loading }: { title: string; techs: Technician[
             const worksToday = t.available_days.includes(TODAY)
             const available  = !onJob && t.is_available && worksToday
 
-            const dotColor   = onJob ? "bg-status-rework" : available ? "bg-status-inspection/100" : "bg-border"
-            const badgeCls   = onJob
-              ? "bg-status-rework/12 text-status-rework"
-              : available
-                ? "bg-status-inspection/12 text-status-inspection"
-                : "bg-surface-muted text-body"
-            const badgeLabel = onJob ? "On Job" : available ? "Available" : "Unavailable"
+            const dotColor = onJob ? "bg-status-onjob" : available ? "bg-status-inspection" : "bg-border"
+            const badgeLabel = onJob ? "On Job" : available ? "Available" : "Not Available"
 
             return (
               <li
                 key={t.id}
-                className="flex items-start justify-between rounded-sm px-3 py-2 bg-surface-subtle hover:bg-surface-muted transition-colors gap-2"
+                className="flex items-start justify-between gap-2 rounded-sm bg-surface-subtle px-3 py-2 transition-colors hover:bg-surface-muted"
               >
-                <div className="flex items-start gap-2 min-w-0">
-                  <span className={`w-2 h-2 rounded-full shrink-0 mt-1.5 ${dotColor}`} />
+                <div className="flex min-w-0 items-start gap-2">
+                  <span className={cn("mt-1.5 h-2 w-2 shrink-0 rounded-full", dotColor)} />
                   <div className="min-w-0">
-                    <span className="text-sm text-heading truncate block">{t.full_name}</span>
+                    <span className="block truncate text-sm text-heading">{t.full_name}</span>
                     {onJob && t.active_job && (
-                      <span className="text-xs text-status-rework truncate block">
+                      <span className="block truncate text-xs text-status-onjob">
                         {t.active_job.customer} — {t.active_job.service}
                       </span>
                     )}
                     {!onJob && !worksToday && (
-                      <span className="text-xs text-muted block">Not scheduled today</span>
+                      <span className="block text-xs text-muted">Not scheduled today</span>
                     )}
                   </div>
                 </div>
-                <div className="flex items-center gap-2 shrink-0">
+                <div className="flex shrink-0 items-center gap-2">
                   <span className="text-xs text-muted">{roleLabel(t.role)}</span>
-                  <span className={`text-xs font-medium px-1.5 py-0.5 rounded ${badgeCls}`}>
-                    {badgeLabel}
-                  </span>
+                  <StatusBadge status={badgeLabel} className="text-xs" />
                 </div>
               </li>
             )
@@ -114,22 +110,22 @@ export function TechnicianAvailability() {
   const installers = technicians.filter((t) => INSTALLER_ROLES.includes(t.role))
 
   return (
-    <div className="bg-surface rounded-card border border-border p-5">
-      <div className="flex items-center justify-between mb-4">
+    <Card className="p-5">
+      <div className="mb-4 flex items-center justify-between">
         <div className="flex items-center gap-2">
-          <Users className="w-4 h-4 text-status-ongoing" />
+          <Users className="h-4 w-4 text-status-ongoing" />
           <h2 className="text-sm font-semibold text-body">Technician Availability</h2>
         </div>
-        <span className="text-xs text-muted flex items-center gap-1">
-          <RefreshCw className="w-3 h-3" /> Live
+        <span className="flex items-center gap-1 text-xs text-muted">
+          <RefreshCw className="h-3 w-3" /> Live
         </span>
       </div>
 
-      <div className="flex gap-4 flex-col sm:flex-row">
-        <TechList title="Detailers"  techs={detailers}  loading={loading} />
-        <div className="hidden sm:block w-px bg-surface-muted" />
+      <div className="flex flex-col gap-4 sm:flex-row">
+        <TechList title="Detailers" techs={detailers} loading={loading} />
+        <div className="hidden w-px bg-surface-muted sm:block" />
         <TechList title="Installers" techs={installers} loading={loading} />
       </div>
-    </div>
+    </Card>
   )
 }

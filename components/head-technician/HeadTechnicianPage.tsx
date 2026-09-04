@@ -1,10 +1,12 @@
 "use client"
 
 import { useState } from "react"
-import { Wrench, SlidersHorizontal, X, Search } from "lucide-react"
+import { Wrench, SlidersHorizontal, X, Search, Layers, RefreshCw } from "lucide-react"
 import { Status } from "./components/types"
 import { HeadTechJobCard } from "./components/HeadTechJobCard"
 import { BottomNav } from "./components/BottomNav"
+import { StatCard } from "@/components/ui/StatCard"
+import { Tabs } from "@/components/ui/Tabs"
 import type { TechnicianJob } from "@/lib/head-technician/jobs-data"
 
 const STATUS_OPTIONS: Status[] = [
@@ -82,30 +84,12 @@ export default function HeadTechnicianPage({
           </button>
         </div>
 
-        {/* ── Stat pills ──────────────────────────────────────────── */}
+        {/* ── Stat cards ──────────────────────────────────────────── */}
         {!loading && jobs.length > 0 && (
           <div className="grid grid-cols-3 gap-2">
-            <StatPill
-              value={jobs.length}
-              label="Total"
-              colorClass="text-body"
-              bgClass="bg-surface-subtle"
-              subColorClass="text-muted"
-            />
-            <StatPill
-              value={ongoingCount}
-              label="Ongoing"
-              colorClass="text-primary"
-              bgClass="bg-primary/10"
-              subColorClass="text-primary/70"
-            />
-            <StatPill
-              value={reworkCount}
-              label="Rework"
-              colorClass="text-status-rework"
-              bgClass="bg-status-rework/10"
-              subColorClass="text-status-rework"
-            />
+            <StatCard label="Total" value={jobs.length} icon={Layers} tone="total" />
+            <StatCard label="Ongoing" value={ongoingCount} icon={Wrench} tone="ongoing" />
+            <StatCard label="Rework" value={reworkCount} icon={RefreshCw} tone="rework" />
           </div>
         )}
 
@@ -146,21 +130,15 @@ export default function HeadTechnicianPage({
                 </button>
               )}
             </div>
-            <div className="flex flex-wrap gap-1.5">
-              <FilterChip
-                label="All"
-                active={statusFilter === "all"}
-                onClick={() => setStatusFilter("all")}
-              />
-              {STATUS_OPTIONS.map((s) => (
-                <FilterChip
-                  key={s}
-                  label={s}
-                  active={statusFilter === s}
-                  onClick={() => setStatusFilter(s)}
-                />
-              ))}
-            </div>
+            <Tabs
+              variant="pill"
+              items={[
+                { key: "all", label: "All" },
+                ...STATUS_OPTIONS.map((s) => ({ key: s, label: s })),
+              ]}
+              value={statusFilter}
+              onChange={setStatusFilter}
+            />
           </div>
         )}
 
@@ -204,32 +182,3 @@ export default function HeadTechnicianPage({
   )
 }
 
-// ── Sub-components ─────────────────────────────────────────────────────────────
-
-function StatPill({
-  value, label, colorClass, bgClass, subColorClass
-}: {
-  value: number; label: string
-  colorClass: string; bgClass: string; subColorClass: string
-}) {
-  return (
-    <div className={`${bgClass} rounded-card px-3 py-3 text-center`}>
-      <p className={`text-xl font-bold ${colorClass} leading-none`}>{value}</p>
-      <p className={`text-[11px] font-medium mt-1 ${subColorClass}`}>{label}</p>
-    </div>
-  )
-}
-
-function FilterChip({ label, active, onClick }: { label: string; active: boolean; onClick: () => void }) {
-  return (
-    <button
-      onClick={onClick}
-      className={`text-xs px-3 py-1.5 rounded-full font-medium transition-all duration-150 ${active
-          ? "bg-primary text-white"
-          : "bg-surface-muted text-body hover:bg-border/60"
-        }`}
-    >
-      {label}
-    </button>
-  )
-}
