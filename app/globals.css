@@ -1,2 +1,137 @@
 @import "tailwindcss";
 
+/* ============================================================================
+   826 Auto Aesthetic & Protection — Design System
+   Single source of truth for colour, radius, shadow and type tokens.
+   Every page/component pulls from here — no hardcoded hex in feature code.
+   ========================================================================== */
+
+@theme {
+  /* -- Brand / shell ------------------------------------------------------- */
+  --color-shell: #0b211f;         /* top bar, sidebar base, dark ground        */
+  --color-shell-alt: #0f2b28;     /* sidebar gradient bottom / hover surface   */
+  --color-shell-border: #1c3b37;  /* dividers on dark surfaces                 */
+  --color-primary: #2c6e68;       /* primary buttons, active underline, links  */
+  --color-primary-hover: #245853; /* pressed / hover                           */
+  --color-primary-soft: #e6f0ef;  /* tinted primary background                 */
+  --color-accent: #3edbd1;        /* logo, glow accents, login gradient top    */
+
+  /* -- Surfaces / neutrals ---------------------------------------------------*/
+  --color-surface: #ffffff;
+  --color-surface-muted: #ededed; /* empty-state blocks, disabled              */
+  --color-surface-subtle: #f7f8f8;/* page ground behind cards                  */
+  --color-border: #dddddd;        /* inputs, dividers                          */
+  --color-border-subtle: #ececec;
+  --color-heading: #141414;
+  --color-body: #6b7280;          /* subtitles, table labels, placeholder      */
+  --color-muted: #9ca3af;
+
+  /* -- Status (stat cards, badges, tabs, dots, toggles) ---------------------*/
+  --color-status-pending: #e8862a;
+  --color-status-ongoing: #7b93d4;
+  --color-status-rework: #ef9b3e;
+  --color-status-inspection: #3eb878;
+  --color-status-release: #2a9d93;
+  --color-status-delayed: #d6564f;
+  --color-status-concern: #8d72c9;
+  --color-status-onjob: #e8862a;
+  --color-status-total: #6b7280;
+  --color-status-success: #3eb878;
+  --color-status-error: #d6564f;
+  --color-status-info: #2c6e68;
+  --color-status-warning: #e8862a;
+
+  /* -- Chart palette (recharts, dashboards) -------------------------------- */
+  --color-chart-1: #2c6e68;
+  --color-chart-2: #7b93d4;
+  --color-chart-3: #e8862a;
+  --color-chart-4: #3eb878;
+  --color-chart-5: #8d72c9;
+  --color-chart-grid: #eceff1;
+  --color-chart-axis: #6b7280;
+  --color-chart-tooltip-border: #e2e5e7;
+
+  /* -- Radius ------------------------------------------------------------- */
+  --radius-pill: 999px;
+  --radius-sm: 8px;
+  --radius-card: 14px;
+  --radius-panel: 24px;           /* white content surface top-left corner    */
+
+  /* -- Shadow ------------------------------------------------------------- */
+  --shadow-card: 0 1px 3px rgba(11, 33, 31, 0.06), 0 1px 2px rgba(11, 33, 31, 0.04);
+  --shadow-pop: 0 8px 28px -6px rgba(11, 33, 31, 0.18);
+  --shadow-glow: 0 8px 24px -4px rgba(62, 219, 209, 0.45);
+
+  /* -- Type ------------------------------------------------------------- */
+  --font-display: var(--font-poppins), var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
+  --font-sans: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-geist-mono), ui-monospace, monospace;
+}
+
+/* ----------------------------------------------------------------------------
+   Base layer
+   -------------------------------------------------------------------------- */
+@layer base {
+  body {
+    background-color: var(--color-surface-subtle);
+    color: var(--color-heading);
+    font-family: var(--font-sans);
+  }
+
+  ::placeholder {
+    color: var(--color-muted);
+  }
+
+  /* thin scroll track used by the technician-availability lists, etc. */
+  .scroll-track {
+    scrollbar-width: thin;
+    scrollbar-color: var(--color-border) transparent;
+  }
+  .scroll-track::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+  .scroll-track::-webkit-scrollbar-thumb {
+    background-color: var(--color-border);
+    border-radius: var(--radius-pill);
+  }
+}
+
+@layer utilities {
+  .text-display {
+    font-family: var(--font-display);
+  }
+}
+
+/* ----------------------------------------------------------------------------
+   Entrance animations (login page, empty-state reveals)
+   -------------------------------------------------------------------------- */
+@keyframes fade-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+@keyframes fade-in-up {
+  from { opacity: 0; transform: translateY(10px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+@layer utilities {
+  .animate-fade-in {
+    animation: fade-in 0.5s ease-out both;
+  }
+  .animate-fade-in-up {
+    animation: fade-in-up 0.55s cubic-bezier(0.22, 1, 0.36, 1) both;
+  }
+  /* stagger helpers */
+  .anim-delay-1 { animation-delay: 0.08s; }
+  .anim-delay-2 { animation-delay: 0.16s; }
+  .anim-delay-3 { animation-delay: 0.24s; }
+  .anim-delay-4 { animation-delay: 0.32s; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-fade-in,
+  .animate-fade-in-up {
+    animation: none;
+  }
+}

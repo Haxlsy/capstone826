@@ -1,23 +1,26 @@
 import { AuditCategory, AuditRole } from "../../../types/audit"
 import  { LogIn, Eye, Plus, RefreshCw, CheckCircle2, AlertTriangle,
   MessageSquare, Trash2 } from "lucide-react"
+import { roleStyle, roleLabel } from "@/lib/ui/roles"
 
+/** @deprecated use `roleLabel()` from `@/lib/ui/roles` */
 export const ROLE_LABEL: Record<AuditRole, string> = {
-  super_admin:    "Super Admin",
-  admin:          "Admin",
-  operations:     "Operations",
-  sales:          "Sales",
-  head_detailer:  "Head Detailer",
-  head_installer: "Head Installer",
+  super_admin:    roleLabel("super_admin"),
+  admin:          roleLabel("admin"),
+  operations:     roleLabel("operations"),
+  sales:          roleLabel("sales"),
+  head_detailer:  roleLabel("head_detailer"),
+  head_installer: roleLabel("head_installer"),
 }
 
+/** @deprecated use `roleStyle().badge` from `@/lib/ui/roles` */
 export const ROLE_BADGE: Record<AuditRole, string> = {
-  super_admin:    "bg-purple-100 text-purple-700 border border-purple-200",
-  admin:          "bg-indigo-100 text-indigo-700 border border-indigo-200",
-  operations:     "bg-blue-100 text-blue-700 border border-blue-200",
-  sales:          "bg-teal-100 text-teal-700 border border-teal-200",
-  head_detailer:  "bg-orange-100 text-orange-700 border border-orange-200",
-  head_installer: "bg-yellow-100 text-yellow-700 border border-yellow-200",
+  super_admin:    roleStyle("super_admin").badge,
+  admin:          roleStyle("admin").badge,
+  operations:     roleStyle("operations").badge,
+  sales:          roleStyle("sales").badge,
+  head_detailer:  roleStyle("head_detailer").badge,
+  head_installer: roleStyle("head_installer").badge,
 }
 
 export const CATEGORY_ICON: Record<AuditCategory, React.ReactNode> = {
@@ -36,12 +39,12 @@ export const ALL_ROLES: AuditRole[] = [
 ]
 
 export const CATEGORY_COLOR: Record<AuditCategory, string> = {
-  auth:    "text-gray-500  bg-gray-100",
-  view:    "text-blue-500  bg-blue-50",
-  create:  "text-emerald-600 bg-emerald-50",
-  update:  "text-blue-600  bg-blue-100",
-  approve: "text-green-600 bg-green-50",
-  flag:    "text-orange-600 bg-orange-50",
-  delete:  "text-red-600   bg-red-50",
-  message: "text-teal-600  bg-teal-50",
+  auth:    "text-body  bg-surface-muted",
+  view:    "text-primary  bg-primary/10",
+  create:  "text-status-inspection bg-status-inspection/10",
+  update:  "text-primary  bg-primary/12",
+  approve: "text-status-inspection bg-status-inspection/10",
+  flag:    "text-status-rework bg-status-rework/10",
+  delete:  "text-status-delayed   bg-status-delayed/10",
+  message: "text-status-release  bg-status-release/10",
 }

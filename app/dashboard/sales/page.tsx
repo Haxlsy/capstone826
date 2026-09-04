@@ -2,7 +2,7 @@ import InquiryManagement from "@/components/dashboard/SalesDashboard/InquiryMana
 
 export default function SalesDashboardPage() {
   return (
-    <div className="h-full overflow-y-auto p-6 flex flex-col">
+    <div className="flex h-full flex-col p-6">
       <InquiryManagement />
     </div>
   )

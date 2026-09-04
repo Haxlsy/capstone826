@@ -7,6 +7,12 @@ import {
   ThumbsUp, AlertTriangle, Loader2, Info, RefreshCw, Play, X, Users, ChevronDown, Clock, AlarmClock,
 } from "lucide-react";
 import { BottomNav } from "./components/BottomNav";
+import { useToast } from "@/components/ui/Toast";
+import { StatusBadge } from "@/components/ui/Badge";
+import { Modal, MediaPreviewModal } from "@/components/ui/Modal";
+import { Button } from "@/components/ui/Button";
+import { Textarea, FieldLabel } from "@/components/ui/Field";
+import { categorySwatch } from "@/lib/ui/category-colors";
 import { fmtDateTime, fmtDateTimeShort } from "@/lib/time-display";
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
@@ -93,20 +99,12 @@ interface CategoryGroup {
   minOrder: number;
 }
 
-const STATUS_BADGE: Record<string, string> = {
-  Pending:       "bg-yellow-50 text-yellow-600 border border-yellow-100",
-  Ongoing:       "bg-blue-50 text-blue-600 border border-blue-100",
-  "For Rework":  "bg-orange-50 text-orange-600 border border-orange-100",
-  "For Release": "bg-emerald-50 text-emerald-600 border border-emerald-100",
-  Released:      "bg-teal-50 text-teal-600 border border-teal-100",
-  Delayed:       "bg-red-50 text-red-600 border border-red-100",
-  Cancelled:     "bg-gray-100 text-gray-500 border border-gray-200",
-};
 
 // ── Component ────────────────────────────────────────────────────────────────
 
 export default function HeadTechJobHistoryPage({ jobId }: { jobId: string }) {
   const router = useRouter();
+  const toast = useToast();
 
   const [job, setJob]             = useState<JobDetail | null>(null);
   const [loading, setLoading]     = useState(true);
@@ -243,7 +241,7 @@ export default function HeadTechJobHistoryPage({ jobId }: { jobId: string }) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action: "start_job" }),
       });
-      if (!res.ok) { const j = await res.json(); alert(j.error ?? "Failed to start job."); return; }
+      if (!res.ok) { const j = await res.json(); toast.error(j.error ?? "Failed to start job."); return; }
       setJob((prev) => prev ? { ...prev, status: "Ongoing" } : prev);
     } catch {}
     finally { setStartingJob(false); }
@@ -390,7 +388,7 @@ export default function HeadTechJobHistoryPage({ jobId }: { jobId: string }) {
       setHandoffNotes("");
       await load();
     } catch (err: unknown) {
-      alert(err instanceof Error ? err.message : "Failed to approve.");
+      toast.error(err instanceof Error ? err.message : "Failed to approve.");
     } finally {
       setApproving(false);
     }
@@ -435,14 +433,14 @@ export default function HeadTechJobHistoryPage({ jobId }: { jobId: string }) {
 
   if (loading) return (
     <main className="flex items-center justify-center min-h-screen">
-      <Loader2 size={22} className="text-gray-300 animate-spin" />
+      <Loader2 size={22} className="text-muted animate-spin" />
     </main>
   );
 
   if (!job) return (
     <main className="px-4 py-6 max-w-md mx-auto text-center space-y-3 mt-20">
-      <p className="text-sm text-red-500">{loadError ?? "Job not found."}</p>
-      <button onClick={() => router.back()} className="text-xs text-gray-400 underline">Go back</button>
+      <p className="text-sm text-status-delayed">{loadError ?? "Job not found."}</p>
+      <button onClick={() => router.back()} className="text-xs text-muted underline">Go back</button>
     </main>
   );
 
@@ -485,26 +483,24 @@ export default function HeadTechJobHistoryPage({ jobId }: { jobId: string }) {
         <div className="flex items-center justify-between">
           <button
             onClick={() => router.back()}
-            className="flex items-center gap-1.5 text-sm font-semibold text-gray-700 hover:text-gray-900 transition-colors"
+            className="flex items-center gap-1.5 text-sm font-semibold text-body hover:text-heading transition-colors"
           >
             <ChevronLeft size={18} strokeWidth={2.5} />
             Jobs
           </button>
-          <span className="text-[11px] text-gray-400 font-mono tracking-wide">{job.job_id}</span>
+          <span className="text-[11px] text-muted font-mono tracking-wide">{job.job_id}</span>
         </div>
 
         {/* Status row */}
         <div className="flex items-center gap-2 flex-wrap">
-          <span className={`text-xs font-semibold px-3 py-1 rounded-full ${STATUS_BADGE[job.status] ?? "bg-gray-100 text-gray-500"}`}>
-            {job.status}
-          </span>
+          <StatusBadge status={job.status} className="px-3 py-1" />
           {finishingAlreadyApproved && (
-            <span className="text-xs font-semibold px-3 py-1 rounded-full bg-emerald-50 text-emerald-600 border border-emerald-100">
+            <span className="text-xs font-semibold px-3 py-1 rounded-full bg-status-inspection/10 text-status-inspection border border-status-inspection/30">
               Passed to Operations
             </span>
           )}
           {job.status === "For Rework" && (
-            <span className="text-xs font-semibold px-3 py-1 rounded-full bg-orange-50 text-orange-600 border border-orange-100 flex items-center gap-1">
+            <span className="text-xs font-semibold px-3 py-1 rounded-full bg-status-rework/10 text-status-rework border border-status-rework/30 flex items-center gap-1">
               <AlertTriangle size={11} />
               Rework Required
             </span>
@@ -513,19 +509,19 @@ export default function HeadTechJobHistoryPage({ jobId }: { jobId: string }) {
 
         {/* Delay summary */}
         {delayedStages.length > 0 && (
-          <div className="bg-red-50 rounded-2xl p-4 flex gap-3 border border-red-100">
-            <AlarmClock size={15} className="text-red-500 mt-0.5 shrink-0" />
+          <div className="bg-status-delayed/10 rounded-card p-4 flex gap-3 border border-status-delayed/30">
+            <AlarmClock size={15} className="text-status-delayed mt-0.5 shrink-0" />
             <div className="flex-1 min-w-0">
-              <p className="text-xs font-semibold text-red-700 mb-1.5">
+              <p className="text-xs font-semibold text-status-delayed mb-1.5">
                 {delayedStages.length} Stage{delayedStages.length > 1 ? "s" : ""} Delayed
               </p>
               <ul className="space-y-1">
                 {delayedStages.map((s) => (
-                  <li key={s.id} className="text-xs text-red-700 flex items-center gap-1.5">
-                    <span className="w-1 h-1 rounded-full bg-red-400 shrink-0" />
+                  <li key={s.id} className="text-xs text-status-delayed flex items-center gap-1.5">
+                    <span className="w-1 h-1 rounded-full bg-status-delayed shrink-0" />
                     <span className="font-medium">{s.order}. {s.name}</span>
                     {s.expected_end_at && (
-                      <span className="text-red-400 truncate">
+                      <span className="text-status-delayed truncate">
                         · was due {fmtDateTimeShort(s.expected_end_at)}
                       </span>
                     )}
@@ -537,7 +533,7 @@ export default function HeadTechJobHistoryPage({ jobId }: { jobId: string }) {
         )}
 
         {/* Job info */}
-        <div className="bg-white rounded-2xl border border-gray-100 shadow-[0_2px_12px_-4px_rgba(0,0,0,0.06)] divide-y divide-gray-50">
+        <div className="bg-surface rounded-card border border-border-subtle shadow-[0_2px_12px_-4px_rgba(0,0,0,0.06)] divide-y divide-border-subtle">
           <InfoRow label="Customer"       value={job.customer_name} />
           <InfoRow label="Vehicle"        value={`${job.plate_number}${job.car_make ? ` · ${job.car_make}` : ""}`} />
           <InfoRow label="Service"        value={job.service} accent="orange" />
@@ -552,15 +548,15 @@ export default function HeadTechJobHistoryPage({ jobId }: { jobId: string }) {
             <button
               onClick={handleStartJob}
               disabled={startingJob || isInstaller}
-              className={`w-full flex items-center justify-center gap-2 text-sm font-semibold text-white rounded-2xl py-3.5 transition-all disabled:opacity-50 ${
-                isInstaller ? "bg-gray-300 cursor-not-allowed" : "bg-gray-900 hover:bg-gray-800 active:scale-[0.98]"
+              className={`w-full flex items-center justify-center gap-2 text-sm font-semibold text-white rounded-card py-3.5 transition-all disabled:opacity-50 ${
+                isInstaller ? "bg-border cursor-not-allowed" : "bg-primary hover:bg-primary-hover active:scale-[0.98]"
               }`}
             >
               {startingJob ? <Loader2 size={15} className="animate-spin" /> : isInstaller ? <Clock size={15} /> : <Play size={15} />}
               {startingJob ? "Starting…" : isInstaller ? "Waiting for Preparation" : "Start Job"}
             </button>
             {isInstaller && (
-              <p className="text-[10px] text-gray-400 text-center px-6">
+              <p className="text-[10px] text-muted text-center px-6">
                 Only the Head Detailer can start the job. Please wait for preparation to begin.
               </p>
             )}
@@ -569,22 +565,22 @@ export default function HeadTechJobHistoryPage({ jobId }: { jobId: string }) {
 
         {/* Finishing passed notice */}
         {!isInstaller && finishingAlreadyApproved && (
-          <div className="bg-emerald-50 rounded-2xl p-4 flex gap-3 border border-emerald-100">
-            <ThumbsUp size={15} className="text-emerald-500 mt-0.5 shrink-0" />
+          <div className="bg-status-inspection/10 rounded-card p-4 flex gap-3 border border-status-inspection/30">
+            <ThumbsUp size={15} className="text-status-inspection mt-0.5 shrink-0" />
             <div>
-              <p className="text-xs font-semibold text-emerald-700 mb-1">Passed to Operations</p>
-              <p className="text-sm text-emerald-700 leading-snug">All stages are complete and the job has been handed off to Operations.</p>
+              <p className="text-xs font-semibold text-status-inspection mb-1">Passed to Operations</p>
+              <p className="text-sm text-status-inspection leading-snug">All stages are complete and the job has been handed off to Operations.</p>
             </div>
           </div>
         )}
 
         {/* Locked stages notice */}
         {myGroups.some((g) => g.stages.some((s) => !s.is_unlocked)) && (
-          <div className="bg-amber-50 rounded-2xl p-4 flex gap-3 border border-amber-100">
-            <Clock size={15} className="text-amber-500 mt-0.5 shrink-0" />
+          <div className="bg-status-warning/10 rounded-card p-4 flex gap-3 border border-amber-100">
+            <Clock size={15} className="text-status-warning mt-0.5 shrink-0" />
             <div>
-              <p className="text-xs font-semibold text-amber-700 mb-1">Stages Pending</p>
-              <p className="text-sm text-amber-700 leading-snug">
+              <p className="text-xs font-semibold text-status-warning mb-1">Stages Pending</p>
+              <p className="text-sm text-status-warning leading-snug">
                 Some of your stages are locked until the other team completes and approves their preceding work.
               </p>
             </div>
@@ -594,14 +590,14 @@ export default function HeadTechJobHistoryPage({ jobId }: { jobId: string }) {
         {/* Progress bar */}
         {myUnlockedStages.length > 0 && (
           <div className="space-y-2">
-            <div className="flex justify-between text-xs font-medium text-gray-500">
+            <div className="flex justify-between text-xs font-medium text-body">
               <span>Progress</span>
               <span>{progressDone} / {myUnlockedStages.length} stages · {progress}%</span>
             </div>
-            <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
+            <div className="h-2 bg-surface-muted rounded-full overflow-hidden">
               <div
                 className={`h-full rounded-full transition-all duration-500 ${
-                  progress === 100 ? "bg-emerald-500" : progress >= 50 ? "bg-blue-500" : "bg-gray-400"
+                  progress === 100 ? "bg-status-inspection" : progress >= 50 ? "bg-primary" : "bg-status-total"
                 }`}
                 style={{ width: `${progress}%` }}
               />
@@ -626,17 +622,17 @@ export default function HeadTechJobHistoryPage({ jobId }: { jobId: string }) {
               <div className="flex items-center gap-2 flex-wrap">
                 <CategoryBadge name={g.name} color={g.color} />
                 {isMine && isLastOverall && isLastRole && (
-                  <span className="text-[11px] font-medium px-2 py-0.5 rounded-full bg-violet-50 text-violet-700 border border-violet-200">
+                  <span className="text-[11px] font-medium px-2 py-0.5 rounded-full bg-status-concern/12 text-status-concern border border-status-concern/30">
                     Last stage before Operations Inspection
                   </span>
                 )}
                 {isMine && isApproved && !isLastOverall && (
-                  <span className="text-[11px] font-medium px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200">
+                  <span className="text-[11px] font-medium px-2 py-0.5 rounded-full bg-status-inspection/12 text-status-inspection border border-emerald-200">
                     ✓ Handed off
                   </span>
                 )}
                 {!isMine && isApproved && (
-                  <span className="text-[11px] font-medium px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200">
+                  <span className="text-[11px] font-medium px-2 py-0.5 rounded-full bg-status-inspection/12 text-status-inspection border border-emerald-200">
                     ✓ Handed off
                   </span>
                 )}
@@ -644,11 +640,11 @@ export default function HeadTechJobHistoryPage({ jobId }: { jobId: string }) {
 
               {/* Handoff notes received from preceding other-role category (only for my groups) */}
               {isMine && precedingNotes && (
-                <div className="bg-blue-50 rounded-2xl p-3 flex gap-2 border border-blue-100">
-                  <Info size={13} className="text-blue-500 mt-0.5 shrink-0" />
+                <div className="bg-primary/10 rounded-card p-3 flex gap-2 border border-primary/20">
+                  <Info size={13} className="text-primary mt-0.5 shrink-0" />
                   <div>
-                    <p className="text-[11px] font-semibold text-blue-700 mb-0.5">Handoff Notes</p>
-                    <p className="text-xs text-blue-700 leading-snug">{precedingNotes}</p>
+                    <p className="text-[11px] font-semibold text-primary mb-0.5">Handoff Notes</p>
+                    <p className="text-xs text-primary leading-snug">{precedingNotes}</p>
                   </div>
                 </div>
               )}
@@ -674,26 +670,26 @@ export default function HeadTechJobHistoryPage({ jobId }: { jobId: string }) {
               {isMine && allGroupDone && !isApproved && !finishingAlreadyApproved && !isLastOverall && (
                 <div className="pt-1">
                   {approvingCategoryId === g.id ? (
-                    <div className="bg-white rounded-2xl p-4 space-y-3 border border-emerald-100 shadow-[0_2px_12px_-4px_rgba(0,0,0,0.06)]">
-                      <p className="text-sm font-semibold text-gray-900">Approve {g.name}</p>
+                    <div className="bg-surface rounded-card p-4 space-y-3 border border-status-inspection/30 shadow-[0_2px_12px_-4px_rgba(0,0,0,0.06)]">
+                      <p className="text-sm font-semibold text-heading">Approve {g.name}</p>
                       <textarea
                         value={handoffNotes}
                         onChange={(e) => setHandoffNotes(e.target.value)}
                         placeholder="Optional handoff notes for the next team…"
                         rows={3}
-                        className="w-full text-sm border border-gray-200 rounded-xl px-3.5 py-3 resize-none focus:outline-none focus:ring-2 focus:ring-gray-200 bg-gray-50 text-gray-800 placeholder-gray-400 transition"
+                        className="w-full text-sm border border-border rounded-card px-3.5 py-3 resize-none focus:outline-none focus:ring-2 focus:ring-gray-200 bg-surface-subtle text-heading placeholder:text-muted transition"
                       />
                       <div className="flex gap-2">
                         <button
                           onClick={() => { setApprovingCategoryId(null); setHandoffNotes(""); }}
-                          className="flex-1 text-sm font-semibold text-gray-600 border border-gray-200 rounded-xl py-3 hover:bg-gray-50 transition-colors"
+                          className="flex-1 text-sm font-semibold text-body border border-border rounded-card py-3 hover:bg-surface-muted transition-colors"
                         >
                           Cancel
                         </button>
                         <button
                           onClick={() => handleApprove(g.id)}
                           disabled={approving}
-                          className="flex-1 flex items-center justify-center gap-2 text-sm font-semibold text-white bg-emerald-600 rounded-xl py-3 hover:bg-emerald-700 active:scale-[0.98] transition-all disabled:opacity-50"
+                          className="flex-1 flex items-center justify-center gap-2 text-sm font-semibold text-white bg-status-inspection rounded-card py-3 hover:brightness-95 active:scale-[0.98] transition-all disabled:opacity-50"
                         >
                           {approving ? <Loader2 size={14} className="animate-spin" /> : <ThumbsUp size={14} />}
                           Confirm
@@ -704,14 +700,14 @@ export default function HeadTechJobHistoryPage({ jobId }: { jobId: string }) {
                     <div className="flex gap-2">
                       <button
                         onClick={() => openRework(g.id)}
-                        className="flex-1 flex items-center justify-center gap-2 text-sm font-semibold text-white bg-orange-500 rounded-2xl py-3.5 hover:bg-orange-600 active:scale-[0.98] transition-all"
+                        className="flex-1 flex items-center justify-center gap-2 text-sm font-semibold text-white bg-status-rework rounded-card py-3.5 hover:brightness-95 active:scale-[0.98] transition-all"
                       >
                         <AlertTriangle size={15} />
                         Flag for Rework
                       </button>
                       <button
                         onClick={() => { setApprovingCategoryId(g.id); setHandoffNotes(""); }}
-                        className="flex-1 flex items-center justify-center gap-2 text-sm font-semibold text-white bg-emerald-600 rounded-2xl py-3.5 hover:bg-emerald-700 active:scale-[0.98] transition-all"
+                        className="flex-1 flex items-center justify-center gap-2 text-sm font-semibold text-white bg-status-inspection rounded-card py-3.5 hover:brightness-95 active:scale-[0.98] transition-all"
                       >
                         <ThumbsUp size={15} />
                         Approve {g.name}
@@ -723,9 +719,9 @@ export default function HeadTechJobHistoryPage({ jobId }: { jobId: string }) {
 
               {/* Approved banner */}
               {isMine && isApproved && !isLastOverall && (
-                <div className="bg-emerald-50 border border-emerald-100 rounded-2xl p-3 flex items-start gap-2">
-                  <ThumbsUp size={14} className="text-emerald-600 mt-0.5 shrink-0" />
-                  <p className="text-xs font-semibold text-emerald-800">
+                <div className="bg-status-inspection/10 border border-status-inspection/30 rounded-card p-3 flex items-start gap-2">
+                  <ThumbsUp size={14} className="text-status-inspection mt-0.5 shrink-0" />
+                  <p className="text-xs font-semibold text-status-inspection">
                     {g.name} approved — handed off to the next team.
                   </p>
                 </div>
@@ -738,22 +734,22 @@ export default function HeadTechJobHistoryPage({ jobId }: { jobId: string }) {
         {isLastRole && allJobStagesDone && !finishingAlreadyApproved && (
           <div className="pt-1">
             {approvingCategoryId === "__finishing__" ? (
-              <div className="bg-white rounded-2xl p-4 space-y-3 border border-emerald-100 shadow-[0_2px_12px_-4px_rgba(0,0,0,0.06)]">
-                <p className="text-sm font-semibold text-gray-900">Pass to Operations</p>
-                <p className="text-xs text-gray-500">
+              <div className="bg-surface rounded-card p-4 space-y-3 border border-status-inspection/30 shadow-[0_2px_12px_-4px_rgba(0,0,0,0.06)]">
+                <p className="text-sm font-semibold text-heading">Pass to Operations</p>
+                <p className="text-xs text-body">
                   All finishing stages are done. Passing to Operations will allow them to mark this job for release.
                 </p>
                 <div className="flex gap-2">
                   <button
                     onClick={() => { setApprovingCategoryId(null); setHandoffNotes(""); }}
-                    className="flex-1 text-sm font-semibold text-gray-600 border border-gray-200 rounded-xl py-3 hover:bg-gray-50 transition-colors"
+                    className="flex-1 text-sm font-semibold text-body border border-border rounded-card py-3 hover:bg-surface-muted transition-colors"
                   >
                     Cancel
                   </button>
                   <button
                     onClick={() => handleApprove(lastGroup?.id ?? "__finishing__")}
                     disabled={approving}
-                    className="flex-1 flex items-center justify-center gap-2 text-sm font-semibold text-white bg-emerald-600 rounded-xl py-3 hover:bg-emerald-700 active:scale-[0.98] transition-all disabled:opacity-50"
+                    className="flex-1 flex items-center justify-center gap-2 text-sm font-semibold text-white bg-status-inspection rounded-card py-3 hover:brightness-95 active:scale-[0.98] transition-all disabled:opacity-50"
                   >
                     {approving ? <Loader2 size={14} className="animate-spin" /> : <ThumbsUp size={14} />}
                     Confirm
@@ -764,14 +760,14 @@ export default function HeadTechJobHistoryPage({ jobId }: { jobId: string }) {
               <div className="flex gap-2">
                 <button
                   onClick={() => openRework(lastGroup?.id ?? "__finishing__")}
-                  className="flex-1 flex items-center justify-center gap-2 text-sm font-semibold text-white bg-orange-500 rounded-2xl py-3.5 hover:bg-orange-600 active:scale-[0.98] transition-all"
+                  className="flex-1 flex items-center justify-center gap-2 text-sm font-semibold text-white bg-status-rework rounded-card py-3.5 hover:brightness-95 active:scale-[0.98] transition-all"
                 >
                   <AlertTriangle size={15} />
                   Flag for Rework
                 </button>
                 <button
                   onClick={() => setApprovingCategoryId("__finishing__")}
-                  className="flex-1 flex items-center justify-center gap-2 text-sm font-semibold text-white bg-emerald-600 rounded-2xl py-3.5 hover:bg-emerald-700 active:scale-[0.98] transition-all"
+                  className="flex-1 flex items-center justify-center gap-2 text-sm font-semibold text-white bg-status-inspection rounded-card py-3.5 hover:brightness-95 active:scale-[0.98] transition-all"
                 >
                   <ThumbsUp size={15} />
                   Pass to Operation
@@ -799,52 +795,22 @@ export default function HeadTechJobHistoryPage({ jobId }: { jobId: string }) {
         />
       )}
 
-      {/* Full-screen media preview */}
-      {preview && (
-        <div
-          className="fixed inset-0 z-50 bg-black/95 flex items-center justify-center"
-          onClick={() => setPreview(null)}
-        >
-          <button
-            type="button"
-            aria-label="Close preview"
-            className="absolute top-5 right-5 text-white bg-white/10 hover:bg-white/20 rounded-full p-2.5 transition-colors"
-            onClick={() => setPreview(null)}
-          >
-            <X size={20} />
-          </button>
-          {preview.type === "video" ? (
-            <video src={preview.url} controls autoPlay className="max-w-full max-h-full rounded-lg" onClick={(e) => e.stopPropagation()} />
-          ) : (
-            <img src={preview.url} alt="" className="max-w-full max-h-full object-contain rounded-lg" onClick={(e) => e.stopPropagation()} />
-          )}
-        </div>
-      )}
+      <MediaPreviewModal media={preview} onClose={() => setPreview(null)} />
 
-      {/* Image rejection alert */}
-      {rejectionAlert && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-6">
-          <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm p-5 space-y-4">
-            <div className="flex items-start gap-3">
-              <div className="w-10 h-10 bg-red-100 rounded-full flex items-center justify-center shrink-0">
-                <AlertTriangle size={20} className="text-red-500" />
-              </div>
-              <div>
-                <h3 className="text-sm font-semibold text-gray-900">Image Not Accepted</h3>
-                <p className="text-xs text-gray-400 mt-0.5">Please retake your photo</p>
-              </div>
-            </div>
-            <p className="text-sm text-gray-700 leading-snug">{rejectionAlert.message}</p>
-            <button
-              type="button"
-              onClick={() => setRejectionAlert(null)}
-              className="w-full text-sm font-semibold text-white bg-gray-900 rounded-xl py-3 hover:bg-gray-800 active:scale-[0.98] transition-all"
-            >
-              OK, Retake Photo
-            </button>
-          </div>
+      <Modal open={rejectionAlert !== null} onClose={() => setRejectionAlert(null)} size="sm" bare>
+        <div className="flex flex-col items-center gap-3 py-2 text-center">
+          <span className="flex h-11 w-11 items-center justify-center rounded-full bg-status-delayed/12 text-status-delayed">
+            <AlertTriangle size={20} />
+          </span>
+          <h2 className="text-base font-semibold text-heading">Image Not Accepted</h2>
+          <p className="text-sm text-body">{rejectionAlert?.message ?? "Please retake your photo."}</p>
         </div>
-      )}
+        <div className="mt-4">
+          <Button fullWidth onClick={() => setRejectionAlert(null)}>
+            OK, Retake Photo
+          </Button>
+        </div>
+      </Modal>
 
       <BottomNav active="jobs" />
     </>
@@ -869,84 +835,72 @@ function ReworkModal({
   onClose:      () => void;
 }) {
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-      <div className="bg-white rounded-2xl shadow-xl w-full max-w-md p-5 space-y-4">
-        <div className="flex items-center gap-2">
-          <AlertTriangle size={18} className="text-orange-500" />
-          <h3 className="text-sm font-semibold text-gray-900">{title}</h3>
-        </div>
-        <p className="text-xs text-gray-500">
-          Select the stage that needs to be redone. It will be reverted to In Progress with your instructions.
-        </p>
-
-        <div className="flex flex-col gap-1 max-h-48 overflow-y-auto">
-          {stages.map((s) => (
-            <label key={s.id} className="flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-gray-50 cursor-pointer">
-              <input
-                type="radio"
-                name="rework-stage"
-                checked={selected === s.id}
-                onChange={() => onSelect(s.id)}
-                className="w-4 h-4 accent-orange-500"
-              />
-              <span className="text-sm text-gray-700 flex-1">{s.order}. {s.name}</span>
-            </label>
-          ))}
-          {stages.length === 0 && (
-            <p className="text-xs text-gray-400 text-center py-4">No completed stages to flag.</p>
-          )}
-        </div>
-
-        <div>
-          <label className="block text-xs font-medium text-gray-600 mb-1.5">
-            Instructions <span className="text-red-500">*</span>
-          </label>
-          <textarea
-            value={note}
-            onChange={(e) => onNoteChange(e.target.value)}
-            placeholder="Describe what needs to be redone…"
-            rows={3}
-            className="w-full text-sm border border-gray-200 rounded-xl px-3.5 py-3 resize-none focus:outline-none focus:ring-2 focus:ring-orange-300 bg-gray-50 text-gray-800 placeholder-gray-400 transition"
-          />
-        </div>
-
-        {error && <p className="text-xs text-red-500">{error}</p>}
-
-        <div className="flex gap-2">
-          <button type="button" onClick={onClose} className="flex-1 text-sm font-semibold text-gray-600 border border-gray-200 rounded-xl py-3 hover:bg-gray-50 transition-colors">
+    <Modal
+      open
+      onClose={onClose}
+      title={title}
+      description="Select the stage that needs to be redone. It will be reverted to In Progress with your instructions."
+      size="md"
+      footer={
+        <>
+          <Button variant="ghost" onClick={onClose}>
             Cancel
-          </button>
-          <button
-            type="button"
+          </Button>
+          <Button
+            variant="danger"
             onClick={onSubmit}
             disabled={submitting || !selected || !note.trim()}
-            className="flex-1 flex items-center justify-center gap-2 text-sm font-semibold text-white bg-orange-500 rounded-xl py-3 hover:bg-orange-600 active:scale-[0.98] transition-all disabled:opacity-50"
           >
             {submitting ? <Loader2 size={14} className="animate-spin" /> : <AlertTriangle size={14} />}
             {submitting ? "Flagging…" : "Flag for Rework"}
-          </button>
-        </div>
+          </Button>
+        </>
+      }
+    >
+      <div className="mb-4 flex max-h-48 flex-col gap-1 overflow-y-auto">
+        {stages.map((s) => (
+          <label
+            key={s.id}
+            className="flex cursor-pointer items-center gap-3 rounded-sm px-3 py-2.5 hover:bg-surface-muted"
+          >
+            <input
+              type="radio"
+              name="rework-stage"
+              checked={selected === s.id}
+              onChange={() => onSelect(s.id)}
+              className="h-4 w-4 accent-[var(--color-status-rework)]"
+            />
+            <span className="flex-1 text-sm text-body">
+              {s.order}. {s.name}
+            </span>
+          </label>
+        ))}
+        {stages.length === 0 && (
+          <p className="py-4 text-center text-xs text-muted">No completed stages to flag.</p>
+        )}
       </div>
-    </div>
+
+      <FieldLabel>
+        Instructions <span className="text-status-delayed">*</span>
+      </FieldLabel>
+      <Textarea
+        value={note}
+        onChange={(e) => onNoteChange(e.target.value)}
+        placeholder="Describe what needs to be redone…"
+        rows={3}
+      />
+      {error && <p className="mt-2 text-xs text-status-delayed">{error}</p>}
+    </Modal>
   );
 }
 
 // ── CategoryBadge ─────────────────────────────────────────────────────────────
 
-const COLOR_BADGE: Record<string, string> = {
-  blue:    "bg-blue-50 text-blue-700 border-blue-200",
-  purple:  "bg-purple-50 text-purple-700 border-purple-200",
-  emerald: "bg-emerald-50 text-emerald-700 border-emerald-200",
-  orange:  "bg-orange-50 text-orange-700 border-orange-200",
-  rose:    "bg-rose-50 text-rose-700 border-rose-200",
-  teal:    "bg-teal-50 text-teal-700 border-teal-200",
-  yellow:  "bg-yellow-50 text-yellow-700 border-yellow-200",
-};
-
 function CategoryBadge({ name, color }: { name: string; color: string }) {
-  const cls = COLOR_BADGE[color] ?? COLOR_BADGE.blue;
   return (
-    <span className={`inline-block text-xs font-semibold px-2 py-0.5 rounded-full uppercase tracking-wide border ${cls}`}>
+    <span
+      className={`inline-block rounded-pill px-2 py-0.5 text-xs font-semibold uppercase tracking-wide ${categorySwatch(color).badge}`}
+    >
       {name}
     </span>
   );
@@ -956,7 +910,7 @@ function CategoryBadge({ name, color }: { name: string; color: string }) {
 
 function SectionLabel({ children }: { children: React.ReactNode }) {
   return (
-    <p className="text-xs font-semibold text-gray-400 uppercase tracking-widest px-0.5">
+    <p className="text-xs font-semibold text-muted uppercase tracking-widest px-0.5">
       {children}
     </p>
   );
@@ -995,57 +949,57 @@ function StageCard({
   const videoFull  = videoCount >= 1;
 
   return (
-    <div className={`bg-white rounded-2xl border transition-colors duration-150 ${
-      done   ? "border-emerald-100" :
-      rework ? "border-orange-200 bg-orange-50/30" :
-               "border-gray-100"
+    <div className={`bg-surface rounded-card border transition-colors duration-150 ${
+      done   ? "border-status-inspection/30" :
+      rework ? "border-status-rework/30 bg-status-rework/10" :
+               "border-border-subtle"
     } shadow-[0_1px_4px_-2px_rgba(0,0,0,0.04)]`}>
 
       <div className="flex items-start gap-3 p-4">
         <div className="mt-0.5 shrink-0">
-          {done   ? <CheckCircle2 size={18} className="text-emerald-500" /> :
-           rework ? <RefreshCw    size={18} className="text-orange-500" /> :
-                    <Circle       size={18} className="text-gray-300" />}
+          {done   ? <CheckCircle2 size={18} className="text-status-inspection" /> :
+           rework ? <RefreshCw    size={18} className="text-status-rework" /> :
+                    <Circle       size={18} className="text-muted" />}
         </div>
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-1.5 flex-wrap">
             <p className={`text-sm font-semibold leading-snug ${
-              done ? "text-gray-400 line-through decoration-gray-300" :
-              rework ? "text-orange-800" :
-              "text-gray-900"
+              done ? "text-muted line-through decoration-gray-300" :
+              rework ? "text-status-rework" :
+              "text-heading"
             }`}>
               {stage.order}. {stage.name}
             </p>
             {!done && stage.is_delayed && (
-              <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-red-100 text-red-600 font-medium">Delayed</span>
+              <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-status-delayed/12 text-status-delayed font-medium">Delayed</span>
             )}
           </div>
           {!done && (stage.expected_end_at || stage.stage_duration_mins > 0) && (
-            <p className={`flex items-center gap-1 text-[11px] mt-0.5 ${stage.is_delayed ? "text-red-500" : "text-gray-400"}`}>
+            <p className={`flex items-center gap-1 text-[11px] mt-0.5 ${stage.is_delayed ? "text-status-delayed" : "text-muted"}`}>
               <Clock size={10} />
               {stage.expected_end_at && (
                 <span>Due by {fmtDateTimeShort(stage.expected_end_at)}</span>
               )}
-              {stage.expected_end_at && stage.stage_duration_mins > 0 && <span className="text-gray-300">·</span>}
+              {stage.expected_end_at && stage.stage_duration_mins > 0 && <span className="text-muted">·</span>}
               {stage.stage_duration_mins > 0 && <span>{fmtDuration(stage.stage_duration_mins)}</span>}
             </p>
           )}
           {stage.completed_at && (
-            <p className="text-[11px] text-emerald-600 font-medium mt-0.5">✓ Done {stage.completed_at}</p>
+            <p className="text-[11px] text-status-inspection font-medium mt-0.5">✓ Done {stage.completed_at}</p>
           )}
           {done && stage.completion_notes && (
-            <p className="text-[11px] text-gray-500 mt-1 leading-snug italic">{stage.completion_notes}</p>
+            <p className="text-[11px] text-body mt-1 leading-snug italic">{stage.completion_notes}</p>
           )}
           {readOnly && !done && (
-            <p className="text-[11px] text-gray-400 capitalize mt-0.5">{stage.status.replace("_", " ")}</p>
+            <p className="text-[11px] text-muted capitalize mt-0.5">{stage.status.replace("_", " ")}</p>
           )}
         </div>
       </div>
 
       {(rework || (!done && stage.rework_instructions)) && stage.rework_instructions && (
-        <div className="mx-4 mb-3 flex gap-2 bg-orange-100 rounded-xl px-3 py-2.5">
-          <AlertTriangle size={13} className="text-orange-500 mt-0.5 shrink-0" />
-          <p className="text-xs text-orange-700 leading-snug">
+        <div className="mx-4 mb-3 flex gap-2 bg-status-rework/12 rounded-card px-3 py-2.5">
+          <AlertTriangle size={13} className="text-status-rework mt-0.5 shrink-0" />
+          <p className="text-xs text-status-rework leading-snug">
             <span className="font-semibold">Rework: </span>{stage.rework_instructions}
           </p>
         </div>
@@ -1055,20 +1009,20 @@ function StageCard({
         <div className="flex flex-wrap gap-2 px-4 pb-3">
           {stage.media.map((m) => (
             <div key={m.id} className="relative w-16 h-16">
-              <button className="w-16 h-16 rounded-xl overflow-hidden block focus:outline-none" onClick={() => !m.pending && onPreview(m.url, m.type)}>
+              <button className="w-16 h-16 rounded-card overflow-hidden block focus:outline-none" onClick={() => !m.pending && onPreview(m.url, m.type)}>
                 {m.type === "video" ? (
-                  <div className="w-full h-full bg-gray-200 flex items-center justify-center text-gray-500"><Play size={20} /></div>
+                  <div className="w-full h-full bg-surface-muted flex items-center justify-center text-body"><Play size={20} /></div>
                 ) : (
-                  <img src={m.url} alt="" className="w-full h-full object-cover bg-gray-100" onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = "none"; }} />
+                  <img src={m.url} alt="" className="w-full h-full object-cover bg-surface-muted" onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = "none"; }} />
                 )}
               </button>
               {m.pending && (
-                <div className="absolute inset-0 rounded-xl bg-black/40 flex items-center justify-center pointer-events-none">
+                <div className="absolute inset-0 rounded-card bg-shell/50 flex items-center justify-center pointer-events-none">
                   <Loader2 size={16} className="text-white animate-spin" />
                 </div>
               )}
               {!m.pending && !readOnly && !done && (
-                <button onClick={() => onRemoveMedia(m.id)} disabled={removingId === m.id} className="absolute -top-1.5 -right-1.5 w-5 h-5 bg-gray-900 rounded-full flex items-center justify-center shadow">
+                <button onClick={() => onRemoveMedia(m.id)} disabled={removingId === m.id} className="absolute -top-1.5 -right-1.5 w-5 h-5 bg-primary rounded-full flex items-center justify-center shadow">
                   {removingId === m.id ? <Loader2 size={9} className="text-white animate-spin" /> : <X size={9} className="text-white" />}
                 </button>
               )}
@@ -1077,14 +1031,14 @@ function StageCard({
         </div>
       )}
 
-      {uploadError && <p className="text-[11px] text-red-500 px-4 pb-3">{uploadError}</p>}
+      {uploadError && <p className="text-[11px] text-status-delayed px-4 pb-3">{uploadError}</p>}
 
       {!readOnly && (
         <div className="px-4 pb-4 space-y-2">
           {!done && !rework && stage.media.length === 0 && (
-            <p className="text-[11px] text-gray-400">Upload a photo or video before marking done.</p>
+            <p className="text-[11px] text-muted">Upload a photo or video before marking done.</p>
           )}
-          {rework && <p className="text-[11px] text-orange-500">Stage flagged for rework — mark done again to confirm.</p>}
+          {rework && <p className="text-[11px] text-status-rework">Stage flagged for rework — mark done again to confirm.</p>}
           {!done && (
             <textarea
               value={notes}
@@ -1092,28 +1046,28 @@ function StageCard({
               readOnly={rework}
               placeholder="Add completion notes… (required)"
               rows={2}
-              className={`w-full text-xs border rounded-xl px-3 py-2 resize-none focus:outline-none focus:ring-2 focus:ring-gray-200 placeholder-gray-400 transition ${
+              className={`w-full text-xs border rounded-card px-3 py-2 resize-none focus:outline-none focus:ring-2 focus:ring-gray-200 placeholder:text-muted transition ${
                 rework
-                  ? "opacity-40 cursor-not-allowed bg-gray-100 border-gray-200 text-gray-500"
-                  : "bg-gray-50 border-gray-200 text-gray-800 focus:ring-gray-200"
+                  ? "opacity-40 cursor-not-allowed bg-surface-muted border-border text-body"
+                  : "bg-surface-subtle border-border text-heading focus:ring-gray-200"
               }`}
             />
           )}
           <div className="flex items-center gap-2">
-            <label className={`flex-1 flex items-center justify-center gap-1.5 text-xs font-semibold border rounded-xl py-2.5 transition-colors ${
+            <label className={`flex-1 flex items-center justify-center gap-1.5 text-xs font-semibold border rounded-card py-2.5 transition-colors ${
               isUploading || photoFull || done || rework
-                ? "opacity-40 pointer-events-none text-gray-400 border-gray-200 bg-gray-50"
-                : "text-gray-600 border-gray-200 hover:bg-gray-50 cursor-pointer bg-white"
+                ? "opacity-40 pointer-events-none text-muted border-border bg-surface-subtle"
+                : "text-body border-border hover:bg-surface-muted cursor-pointer bg-surface"
             }`}>
               <ImagePlus size={13} />
               Photo {photoCount > 0 && `(${photoCount}/5)`}
               <input type="file" accept="image/*" capture="environment" className="hidden" disabled={isUploading || photoFull || done || rework} onChange={(e) => onFileChange(e.target.files)} />
             </label>
 
-            <label className={`flex-1 flex items-center justify-center gap-1.5 text-xs font-semibold border rounded-xl py-2.5 transition-colors ${
+            <label className={`flex-1 flex items-center justify-center gap-1.5 text-xs font-semibold border rounded-card py-2.5 transition-colors ${
               isUploading || videoFull || done || rework
-                ? "opacity-40 pointer-events-none text-gray-400 border-gray-200 bg-gray-50"
-                : "text-gray-600 border-gray-200 hover:bg-gray-50 cursor-pointer bg-white"
+                ? "opacity-40 pointer-events-none text-muted border-border bg-surface-subtle"
+                : "text-body border-border hover:bg-surface-muted cursor-pointer bg-surface"
             }`}>
               <Video size={13} />
               Video {videoFull ? "(1/1)" : ""}
@@ -1124,7 +1078,7 @@ function StageCard({
               <button
                 onClick={() => onMarkDone(rework ? (stage.completion_notes ?? "Rework confirmed") : notes)}
                 disabled={isMarking || isUploading || (!rework && (stage.media.length === 0 || !notes.trim()))}
-                className="flex-1 flex items-center justify-center gap-1.5 text-xs font-semibold text-white bg-gray-900 rounded-xl py-2.5 hover:bg-gray-700 active:scale-[0.98] transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+                className="flex-1 flex items-center justify-center gap-1.5 text-xs font-semibold text-white bg-primary rounded-card py-2.5 hover:bg-shell-alt active:scale-[0.98] transition-all disabled:opacity-40 disabled:cursor-not-allowed"
               >
                 {isMarking ? <Loader2 size={12} className="animate-spin" /> : <CheckCircle2 size={12} />}
                 Done
@@ -1142,8 +1096,8 @@ function StageCard({
 function InfoRow({ label, value, accent }: { label: string; value: string; accent?: "orange" }) {
   return (
     <div className="flex justify-between items-start gap-4 px-4 py-3">
-      <span className="text-xs font-medium text-gray-400 shrink-0">{label}</span>
-      <span className={`text-sm font-semibold text-right ${accent === "orange" ? "text-orange-500" : "text-gray-800"}`}>{value}</span>
+      <span className="text-xs font-medium text-muted shrink-0">{label}</span>
+      <span className={`text-sm font-semibold text-right ${accent === "orange" ? "text-status-rework" : "text-heading"}`}>{value}</span>
     </div>
   );
 }
@@ -1155,19 +1109,19 @@ function CrewRow({ label, members }: { label: string; members: string[] }) {
   const collapsible = members.length >= 2;
   return (
     <div className="flex justify-between items-start gap-4 px-4 py-3">
-      <span className="text-xs font-medium text-gray-400 shrink-0">{label}</span>
+      <span className="text-xs font-medium text-muted shrink-0">{label}</span>
       <div className="text-right">
         {collapsible ? (
           <>
-            <button onClick={() => setOpen((v) => !v)} className="flex items-center gap-1 text-sm font-semibold text-gray-800 ml-auto">
-              <Users size={12} className="text-gray-400" />
+            <button onClick={() => setOpen((v) => !v)} className="flex items-center gap-1 text-sm font-semibold text-heading ml-auto">
+              <Users size={12} className="text-muted" />
               {members.length} members
-              <ChevronDown size={12} className={`text-gray-400 transition-transform duration-200 ${open ? "rotate-180" : ""}`} />
+              <ChevronDown size={12} className={`text-muted transition-transform duration-200 ${open ? "rotate-180" : ""}`} />
             </button>
-            {open && <ul className="mt-1 space-y-0.5">{members.map((name, i) => <li key={i} className="text-xs text-gray-500">{name}</li>)}</ul>}
+            {open && <ul className="mt-1 space-y-0.5">{members.map((name, i) => <li key={i} className="text-xs text-body">{name}</li>)}</ul>}
           </>
         ) : (
-          <span className="text-sm font-semibold text-gray-800">{members[0]}</span>
+          <span className="text-sm font-semibold text-heading">{members[0]}</span>
         )}
       </div>
     </div>

@@ -53,13 +53,13 @@ export interface CategorySection {
 }
 
 export const COLOR_STYLES: Record<string, { badge: string; button: string }> = {
-  blue:    { badge: "text-blue-700 bg-blue-50",       button: "text-blue-600 hover:text-blue-700" },
-  purple:  { badge: "text-purple-700 bg-purple-50",   button: "text-purple-600 hover:text-purple-700" },
-  emerald: { badge: "text-emerald-700 bg-emerald-50", button: "text-emerald-600 hover:text-emerald-700" },
-  orange:  { badge: "text-orange-700 bg-orange-50",   button: "text-orange-600 hover:text-orange-700" },
-  rose:    { badge: "text-rose-700 bg-rose-50",       button: "text-rose-600 hover:text-rose-700" },
-  teal:    { badge: "text-teal-700 bg-teal-50",       button: "text-teal-600 hover:text-teal-700" },
-  yellow:  { badge: "text-yellow-700 bg-yellow-50",   button: "text-yellow-600 hover:text-yellow-700" },
+  blue:    { badge: "text-primary bg-primary/10",       button: "text-primary hover:text-primary" },
+  purple:  { badge: "text-status-concern bg-status-concern/10",   button: "text-status-concern hover:text-status-concern" },
+  emerald: { badge: "text-status-inspection bg-status-inspection/10", button: "text-status-inspection hover:text-status-inspection" },
+  orange:  { badge: "text-status-rework bg-status-rework/10",   button: "text-status-rework hover:text-status-rework" },
+  rose:    { badge: "text-status-delayed bg-status-delayed/10",       button: "text-status-delayed hover:text-status-delayed" },
+  teal:    { badge: "text-status-release bg-status-release/10",       button: "text-status-release hover:text-status-release" },
+  yellow:  { badge: "text-status-warning bg-status-warning/10",   button: "text-status-warning hover:text-status-warning" },
 }
 
 export const COLOR_OPTIONS = Object.keys(COLOR_STYLES)
@@ -116,8 +116,8 @@ export function ServiceTypeCombobox({
     <>
       <div ref={containerRef} className="relative">
         <div
-          className={`flex items-center border rounded-lg transition-colors ${
-            error ? "border-red-400 bg-red-50" : open ? "border-blue-400 ring-2 ring-blue-100" : "border-gray-200"
+          className={`flex items-center border rounded-sm transition-colors ${
+            error ? "border-status-delayed bg-status-delayed/10" : open ? "border-primary ring-2 ring-primary/20" : "border-border"
           }`}
         >
           <input
@@ -135,32 +135,32 @@ export function ServiceTypeCombobox({
               setOpen((v) => !v)
               if (!open) { setQuery(""); setTimeout(() => inputRef.current?.focus(), 0) }
             }}
-            className="px-3 text-gray-400 hover:text-gray-600 transition-colors"
+            className="px-3 text-muted hover:text-body transition-colors"
           >
             <ChevronDown className={`w-4 h-4 transition-transform ${open ? "rotate-180" : ""}`} />
           </button>
         </div>
 
         {open && (
-          <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-gray-100 rounded-xl shadow-lg z-20 overflow-hidden">
+          <div className="absolute top-full left-0 right-0 mt-1 bg-surface border border-border-subtle rounded-card shadow-pop z-20 overflow-hidden">
             {filtered.map((type) => (
               <button
                 key={type}
                 type="button"
                 onClick={() => selectType(type)}
-                className="w-full flex items-center justify-between px-3 py-2 text-sm text-left hover:bg-gray-50 transition-colors"
+                className="w-full flex items-center justify-between px-3 py-2 text-sm text-left hover:bg-surface-muted transition-colors"
               >
-                <span className={value === type ? "text-gray-900 font-medium" : "text-gray-700"}>{type}</span>
-                {value === type && <Check className="w-4 h-4 text-blue-500 shrink-0" />}
+                <span className={value === type ? "text-heading font-medium" : "text-body"}>{type}</span>
+                {value === type && <Check className="w-4 h-4 text-primary shrink-0" />}
               </button>
             ))}
             {filtered.length === 0 && (
-              <p className="px-3 py-2.5 text-sm text-gray-400">No service types yet.</p>
+              <p className="px-3 py-2.5 text-sm text-muted">No service types yet.</p>
             )}
           </div>
         )}
 
-        {error && <p className="text-xs text-red-500 mt-0.5">{error}</p>}
+        {error && <p className="text-xs text-status-delayed mt-0.5">{error}</p>}
       </div>
     </>
   )
@@ -216,10 +216,10 @@ export function StageList({
             className="flex flex-col gap-1 group"
           >
             <div className="flex items-center gap-2">
-              <div className="cursor-grab active:cursor-grabbing text-gray-300 hover:text-gray-400 shrink-0">
+              <div className="cursor-grab active:cursor-grabbing text-muted hover:text-muted shrink-0">
                 <GripVertical className="w-4 h-4" />
               </div>
-              <span className="text-sm text-gray-400 w-5 shrink-0 text-right">{index + 1}.</span>
+              <span className="text-sm text-muted w-5 shrink-0 text-right">{index + 1}.</span>
 
               <div className="flex-1 min-w-0">
                 {isEditing ? (
@@ -231,31 +231,31 @@ export function StageList({
                     onBlur={() => setEditingId(null)}
                     onKeyDown={(e) => { if (e.key === "Enter") setEditingId(null) }}
                     placeholder={placeholder}
-                    className={`w-full px-3 py-2 text-sm border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-100 focus:border-blue-400 transition-colors ${
-                      errors[`stage_${stage.id}`] ? "border-red-400 bg-red-50" : "border-gray-200"
+                    className={`w-full px-3 py-2 text-sm border rounded-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-colors ${
+                      errors[`stage_${stage.id}`] ? "border-status-delayed bg-status-delayed/10" : "border-border"
                     }`}
                   />
                 ) : (
                   <div
-                    className={`flex items-center justify-between px-3 py-2 text-sm border rounded-lg bg-gray-50 cursor-text ${
-                      errors[`stage_${stage.id}`] ? "border-red-400" : "border-gray-200"
+                    className={`flex items-center justify-between px-3 py-2 text-sm border rounded-sm bg-surface-subtle cursor-text ${
+                      errors[`stage_${stage.id}`] ? "border-status-delayed" : "border-border"
                     }`}
                     onClick={() => setEditingId(stage.id)}
                   >
-                    <span className={stage.name ? "text-gray-700" : "text-gray-400"}>
+                    <span className={stage.name ? "text-body" : "text-muted"}>
                       {stage.name || placeholder}
                     </span>
-                    <Pencil className="w-3.5 h-3.5 text-gray-400 shrink-0 ml-2" />
+                    <Pencil className="w-3.5 h-3.5 text-muted shrink-0 ml-2" />
                   </div>
                 )}
                 {errors[`stage_${stage.id}`] && (
-                  <p className="text-xs text-red-500 mt-0.5">{errors[`stage_${stage.id}`]}</p>
+                  <p className="text-xs text-status-delayed mt-0.5">{errors[`stage_${stage.id}`]}</p>
                 )}
               </div>
 
               {/* HH:MM duration input */}
-              <div className={`flex items-center border rounded-lg overflow-hidden shrink-0 transition-colors ${
-                durError ? "border-red-400 bg-red-50" : "border-gray-200"
+              <div className={`flex items-center border rounded-sm overflow-hidden shrink-0 transition-colors ${
+                durError ? "border-status-delayed bg-status-delayed/10" : "border-border"
               }`}>
                 <input
                   type="number"
@@ -266,7 +266,7 @@ export function StageList({
                   className="w-10 px-1.5 py-2 text-xs text-center bg-transparent focus:outline-none"
                   placeholder="00"
                 />
-                <span className="text-gray-400 text-xs font-medium">:</span>
+                <span className="text-muted text-xs font-medium">:</span>
                 <input
                   type="number"
                   min={0}
@@ -282,13 +282,13 @@ export function StageList({
               <button
                 type="button"
                 onClick={() => onRemove(stage.id)}
-                className="shrink-0 p-1 text-gray-300 hover:text-red-400 transition-colors"
+                className="shrink-0 p-1 text-muted hover:text-status-delayed transition-colors"
               >
                 <Trash2 className="w-4 h-4" />
               </button>
             </div>
             {durError && (
-              <p className="text-xs text-red-500 pl-11">{durError}</p>
+              <p className="text-xs text-status-delayed pl-11">{durError}</p>
             )}
           </div>
         )
@@ -332,7 +332,7 @@ export function AddCategoryDropdown({
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
-        className="w-full flex items-center justify-center gap-1.5 text-sm font-medium text-gray-600 border border-dashed border-gray-300 rounded-lg px-3 py-2 hover:border-gray-400 hover:bg-gray-50 transition-colors"
+        className="w-full flex items-center justify-center gap-1.5 text-sm font-medium text-body border border-dashed border-border rounded-sm px-3 py-2 hover:border-primary/40 hover:bg-surface-muted transition-colors"
       >
         <Plus className="w-4 h-4" />
         Select Category Section
@@ -340,17 +340,17 @@ export function AddCategoryDropdown({
       </button>
 
       {open && (
-        <div ref={dropdownRef} className="absolute top-full left-0 right-0 mt-1 bg-white border border-gray-100 rounded-xl shadow-lg z-20 overflow-hidden">
+        <div ref={dropdownRef} className="absolute top-full left-0 right-0 mt-1 bg-surface border border-border-subtle rounded-card shadow-pop z-20 overflow-hidden">
           {presets.length > 0 ? (
             <>
-              <p className="px-3 pt-2.5 pb-1 text-xs font-medium text-gray-400 uppercase tracking-wide">
+              <p className="px-3 pt-2.5 pb-1 text-xs font-medium text-muted uppercase tracking-wide">
                 Existing categories
               </p>
               {presets.map((preset) => {
                 const styles = colorStyles(preset.display_color)
                 const isUsed = usedCategoryNames.has(preset.name.toLowerCase())
                 return (
-                  <div key={preset.id} className="flex items-center gap-1 px-3 py-2 hover:bg-gray-50 transition-colors">
+                  <div key={preset.id} className="flex items-center gap-1 px-3 py-2 hover:bg-surface-muted transition-colors">
                     <button
                       type="button"
                       onClick={() => { if (!isUsed) { onSelectPreset(preset); setOpen(false) } }}
@@ -360,14 +360,14 @@ export function AddCategoryDropdown({
                       <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${styles.badge}`}>
                         {preset.name}
                       </span>
-                      <span className="text-xs text-gray-400 capitalize">{preset.technician_role}s</span>
+                      <span className="text-xs text-muted capitalize">{preset.technician_role}s</span>
                     </button>
                   </div>
                 )
               })}
             </>
           ) : (
-            <p className="px-3 py-3 text-xs text-gray-400">No presets yet. Create one via Category Presets.</p>
+            <p className="px-3 py-3 text-xs text-muted">No presets yet. Create one via Category Presets.</p>
           )}
         </div>
       )}
@@ -399,8 +399,8 @@ export function CreateCategoryForm({
   }
 
   return (
-    <div className="border border-blue-100 rounded-xl p-4 bg-blue-50/40 space-y-3">
-      <p className="text-xs font-semibold text-gray-700">New category</p>
+    <div className="border border-primary/20 rounded-card p-4 bg-primary/5 space-y-3">
+      <p className="text-xs font-semibold text-body">New category</p>
 
       <div className="space-y-1">
         <input
@@ -409,13 +409,13 @@ export function CreateCategoryForm({
           value={name}
           onChange={(e) => { setName(e.target.value); setNameErr("") }}
           placeholder="Category name (e.g. Quality Check)"
-          className={`w-full px-3 py-2 text-sm border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-100 focus:border-blue-400 bg-white ${nameErr ? "border-red-400" : "border-gray-200"}`}
+          className={`w-full px-3 py-2 text-sm border rounded-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary bg-surface ${nameErr ? "border-status-delayed" : "border-border"}`}
         />
-        {nameErr && <p className="text-xs text-red-500">{nameErr}</p>}
+        {nameErr && <p className="text-xs text-status-delayed">{nameErr}</p>}
       </div>
 
       <div className="flex items-center gap-2">
-        <p className="text-xs text-gray-500 shrink-0">Assigned to:</p>
+        <p className="text-xs text-body shrink-0">Assigned to:</p>
         <div className="flex gap-1.5">
           {(["detailer", "installer"] as const).map((r) => (
             <button
@@ -423,7 +423,7 @@ export function CreateCategoryForm({
               type="button"
               onClick={() => setRole(r)}
               className={`px-2.5 py-1 text-xs rounded-full font-medium transition-colors ${
-                role === r ? "bg-gray-900 text-white" : "bg-white border border-gray-200 text-gray-600 hover:border-gray-400"
+                role === r ? "bg-primary text-white" : "bg-surface border border-border text-body hover:border-primary/40"
               }`}
             >
               {r === "detailer" ? "Detailers" : "Installers"}
@@ -433,7 +433,7 @@ export function CreateCategoryForm({
       </div>
 
       <div className="flex items-center gap-2">
-        <p className="text-xs text-gray-500 shrink-0">Badge color:</p>
+        <p className="text-xs text-body shrink-0">Badge color:</p>
         <div className="flex gap-1.5 flex-wrap">
           {COLOR_OPTIONS.map((c) => {
             const styles = colorStyles(c)
@@ -451,21 +451,21 @@ export function CreateCategoryForm({
         </div>
       </div>
 
-      {error && <p className="text-xs text-red-500">{error}</p>}
+      {error && <p className="text-xs text-status-delayed">{error}</p>}
 
       <div className="flex gap-2">
         <button
           type="button"
           onClick={handleSubmit}
           disabled={submitting}
-          className="px-3 py-1.5 text-xs font-medium bg-gray-900 text-white rounded-lg hover:bg-gray-700 disabled:opacity-50 transition-colors"
+          className="px-3 py-1.5 text-xs font-medium bg-primary text-white rounded-sm hover:bg-shell-alt disabled:opacity-50 transition-colors"
         >
           {submitting ? "Creating..." : "Create & Add"}
         </button>
         <button
           type="button"
           onClick={onCancel}
-          className="px-3 py-1.5 text-xs font-medium text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
+          className="px-3 py-1.5 text-xs font-medium text-body hover:bg-surface-muted rounded-sm transition-colors"
         >
           <X className="w-3.5 h-3.5 inline mr-1" />
           Cancel

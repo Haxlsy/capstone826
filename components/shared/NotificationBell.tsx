@@ -9,14 +9,15 @@ import {
   relativeTime,
 } from "@/hooks/useNotifications"
 import type { Notification } from "@/hooks/useNotifications"
+import { cn } from "@/lib/utils"
 
-const typeStyles: Record<string, string> = {
-  info: "bg-blue-500",
-  warning: "bg-yellow-500",
-  success: "bg-green-500",
+const dotStyles: Record<string, string> = {
+  info: "bg-status-info",
+  warning: "bg-status-warning",
+  success: "bg-status-success",
 }
 
-export default function NotificationBell() {
+export default function NotificationBell({ variant = "dark" }: { variant?: "dark" | "light" }) {
   const { notifications, unreadCount, markOne, markAll } = useNotifications()
   const [open, setOpen] = useState(false)
   const ref = useRef<HTMLDivElement>(null)
@@ -35,43 +36,49 @@ export default function NotificationBell() {
     <div className="relative" ref={ref}>
       <button
         onClick={() => setOpen((v) => !v)}
-        className="relative p-1 rounded-md hover:bg-gray-100 transition-colors"
+        className={cn(
+          "relative rounded-md p-1.5 transition-colors",
+          variant === "dark"
+            ? "text-white/70 hover:bg-white/10 hover:text-white"
+            : "text-body hover:bg-surface-muted hover:text-heading",
+        )}
         aria-label="Notifications"
       >
-        <Bell className="w-5 h-5 text-gray-500" />
+        <Bell className="h-5 w-5" />
         {unreadCount > 0 && (
-          <span className="absolute -top-1 -right-1 min-w-[16px] h-4 bg-red-500 text-white text-[9px] font-bold rounded-full flex items-center justify-center px-0.5">
+          <span className="absolute -right-1 -top-1 flex h-4 min-w-[16px] items-center justify-center rounded-full bg-status-delayed px-0.5 text-[9px] font-bold text-white">
             {unreadCount > 9 ? "9+" : unreadCount}
           </span>
         )}
       </button>
 
       {open && (
-        <div className="absolute right-0 top-9 w-80 bg-white border border-gray-200 rounded-xl shadow-xl z-50 overflow-hidden">
-          <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100">
-            <span className="text-sm font-semibold text-gray-800">Notifications</span>
+        <div className="absolute right-0 top-10 z-50 w-80 overflow-hidden rounded-card border border-border-subtle bg-surface shadow-pop">
+          <div className="flex items-center justify-between border-b border-border-subtle px-4 py-3">
+            <span className="text-sm font-semibold text-heading">Notifications</span>
             <div className="flex items-center gap-2">
               {unreadCount > 0 && (
                 <button
                   onClick={markAll}
-                  className="flex items-center gap-1 text-xs text-blue-600 hover:text-blue-800 transition-colors"
+                  className="flex items-center gap-1 text-xs text-primary hover:text-primary-hover"
                 >
-                  <CheckCheck className="w-3.5 h-3.5" />
+                  <CheckCheck className="h-3.5 w-3.5" />
                   Mark all read
                 </button>
               )}
               <button
                 onClick={() => setOpen(false)}
-                className="text-gray-400 hover:text-gray-600 transition-colors"
+                className="text-muted hover:text-body"
+                aria-label="Close notifications"
               >
-                <X className="w-4 h-4" />
+                <X className="h-4 w-4" />
               </button>
             </div>
           </div>
 
-          <ul className="max-h-80 overflow-y-auto divide-y divide-gray-50">
+          <ul className="max-h-80 divide-y divide-border-subtle overflow-y-auto">
             {notifications.length === 0 && (
-              <li className="py-8 text-center text-sm text-gray-400">No notifications</li>
+              <li className="py-8 text-center text-sm text-muted">No notifications</li>
             )}
             {notifications.map((n: Notification) => {
               const color = TYPE_COLORS[n.type] ?? "info"
@@ -79,22 +86,29 @@ export default function NotificationBell() {
                 <li
                   key={n.id}
                   onClick={() => markOne(n.id)}
-                  className={`flex items-start gap-3 px-4 py-3 cursor-pointer hover:bg-gray-50 transition-colors ${
-                    !n.is_read ? "bg-blue-50/50" : ""
-                  }`}
+                  className={cn(
+                    "flex cursor-pointer items-start gap-3 px-4 py-3 transition-colors hover:bg-surface-muted",
+                    !n.is_read && "bg-primary-soft/40",
+                  )}
                 >
                   <span
-                    className={`mt-1.5 w-2 h-2 rounded-full shrink-0 ${
-                      n.is_read ? "bg-gray-300" : typeStyles[color]
-                    }`}
+                    className={cn(
+                      "mt-1.5 h-2 w-2 shrink-0 rounded-full",
+                      n.is_read ? "bg-border" : dotStyles[color],
+                    )}
                   />
-                  <div className="flex-1 min-w-0">
-                    <p className={`text-sm leading-tight ${n.is_read ? "text-gray-500 font-normal" : "text-gray-800 font-medium"}`}>
+                  <div className="min-w-0 flex-1">
+                    <p
+                      className={cn(
+                        "text-sm leading-tight",
+                        n.is_read ? "font-normal text-body" : "font-medium text-heading",
+                      )}
+                    >
                       {TYPE_LABELS[n.type] ?? n.type}
                     </p>
-                    <p className="text-xs text-gray-400 mt-0.5 line-clamp-2">{n.message}</p>
+                    <p className="mt-0.5 line-clamp-2 text-xs text-muted">{n.message}</p>
                   </div>
-                  <span className="text-[10px] text-gray-400 shrink-0 mt-0.5">
+                  <span className="mt-0.5 shrink-0 text-[10px] text-muted">
                     {relativeTime(n.created_at)}
                   </span>
                 </li>

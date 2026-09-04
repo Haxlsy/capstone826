@@ -31,18 +31,18 @@ export default function UserActivity({ initialLogs }: { initialLogs: any[] }){
     const actStart      = (actSafePage - 1) * actPageSize
     const actEntries    = filteredAct.slice(actStart, actStart + actPageSize)
 
-    const SELECT_CLS = "text-xs border border-gray-200 rounded-lg px-2.5 py-1.5 bg-white text-gray-700 focus:outline-none focus:ring-2 focus:ring-gray-200"    
+    const SELECT_CLS = "text-xs border border-border rounded-sm px-2.5 py-1.5 bg-surface text-body focus:outline-none focus:ring-2 focus:ring-gray-200"    
     return (
-        <div className="bg-white rounded-xl border border-gray-100 p-6">
+        <div className="bg-surface rounded-card border border-border-subtle p-6">
         <div className="flex items-start justify-between mb-4 gap-4 flex-wrap">
           <div>
-            <h2 className="text-base font-semibold text-gray-800">Audit Trail</h2>
-            <p className="text-xs text-gray-400 mt-0.5">
+            <h2 className="text-base font-semibold text-heading">Audit Trail</h2>
+            <p className="text-xs text-muted mt-0.5">
               User activity · {loading ? "…" : `${filteredAct.length} entries`}
             </p>
           </div>
           <div className="flex items-center gap-2 flex-wrap">
-            <Filter className="w-3.5 h-3.5 text-gray-400 shrink-0" />
+            <Filter className="w-3.5 h-3.5 text-muted shrink-0" />
             <select aria-label="Role filter" value={actRoleFilter}
               onChange={(e) => { setActRoleFilter(e.target.value as AuditRole | "all"); setActPage(1) }}
               className={SELECT_CLS}
@@ -77,19 +77,19 @@ export default function UserActivity({ initialLogs }: { initialLogs: any[] }){
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
-              <tr className="border-b border-gray-100">
+              <tr className="border-b border-border-subtle">
                 {["Time", "User", "Role", "Action", "Target"].map((h) => (
-                  <th key={h} className="text-left pb-2.5 text-xs font-semibold text-gray-400 uppercase tracking-wide pr-4 last:pr-0">{h}</th>
+                  <th key={h} className="text-left pb-2.5 text-xs font-semibold text-muted uppercase tracking-wide pr-4 last:pr-0">{h}</th>
                 ))}
               </tr>
             </thead>
-            <tbody className="divide-y divide-gray-50">
+            <tbody className="divide-y divide-border-subtle">
               {loading ? (
-                <tr><td colSpan={5} className="py-12 text-center"><Loader2 className="w-5 h-5 text-gray-300 animate-spin mx-auto" /></td></tr>
+                <tr><td colSpan={5} className="py-12 text-center"><Loader2 className="w-5 h-5 text-muted animate-spin mx-auto" /></td></tr>
               ) : fetchErr ? (
-                <tr><td colSpan={5} className="py-10 text-center text-sm text-red-500">{fetchErr}</td></tr>
+                <tr><td colSpan={5} className="py-10 text-center text-sm text-status-delayed">{fetchErr}</td></tr>
               ) : actEntries.length === 0 ? (
-                <tr><td colSpan={5} className="py-10 text-center text-sm text-gray-400">No activity entries.</td></tr>
+                <tr><td colSpan={5} className="py-10 text-center text-sm text-muted">No activity entries.</td></tr>
               ) : actEntries.map((e) => renderRow(e, true))}
             </tbody>
           </table>

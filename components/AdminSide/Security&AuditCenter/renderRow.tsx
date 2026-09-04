@@ -8,22 +8,22 @@ export default function renderRow(entry: ApiLog, showTarget: boolean) {
     const role     = entry.role     as AuditRole
     const category = entry.category as AuditCategory
     return (
-      <tr key={entry.id} className="hover:bg-gray-50/60 transition-colors">
-        <td className="py-3 pr-4 text-xs text-gray-400 whitespace-nowrap">{fmtTime(entry.created_at)}</td>
-        <td className="py-3 pr-4 font-medium text-gray-800 whitespace-nowrap">{entry.user_name}</td>
+      <tr key={entry.id} className="hover:bg-surface-muted/60 transition-colors">
+        <td className="py-3 pr-4 text-xs text-muted whitespace-nowrap">{fmtTime(entry.created_at)}</td>
+        <td className="py-3 pr-4 font-medium text-heading whitespace-nowrap">{entry.user_name}</td>
         <td className="py-3 pr-4">
-          <span className={`inline-block text-[11px] font-semibold px-2 py-0.5 rounded-full whitespace-nowrap ${ROLE_BADGE[role] ?? "bg-gray-100 text-gray-600"}`}>
+          <span className={`inline-block text-[11px] font-semibold px-2 py-0.5 rounded-full whitespace-nowrap ${ROLE_BADGE[role] ?? "bg-surface-muted text-body"}`}>
             {ROLE_LABEL[role] ?? entry.role}
           </span>
         </td>
         <td className="py-3 pr-4">
-          <span className={`inline-flex items-center gap-1.5 text-xs font-medium px-2 py-1 rounded-lg whitespace-nowrap ${CATEGORY_COLOR[category] ?? "text-gray-600 bg-gray-100"}`}>
+          <span className={`inline-flex items-center gap-1.5 text-xs font-medium px-2 py-1 rounded-sm whitespace-nowrap ${CATEGORY_COLOR[category] ?? "text-body bg-surface-muted"}`}>
             {CATEGORY_ICON[category] ?? null}
             {entry.action}
           </span>
         </td>
         {showTarget && (
-          <td className="py-3 text-xs text-gray-500">{entry.target || "—"}</td>
+          <td className="py-3 text-xs text-body">{entry.target || "—"}</td>
         )}
       </tr>
     )
