@@ -18,6 +18,8 @@ import { Badge, StatusBadge } from "@/components/ui/Badge"
 import { useToast } from "@/components/ui/Toast"
 import { cn } from "@/lib/utils"
 import { inquiryTypeStyle } from "@/lib/ui/status"
+import { newInquiryIds, resolveSelectedId, newInquiryToast } from "@/lib/sales/inquiry-list"
+import { LinkAccountModal } from "./LinkAccountModal"
 
 type InquiryStatus = "open" | "resolved" | "recorded"
 type InquiryType   = "Booking" | "Human Response" | "Report"
@@ -74,6 +76,7 @@ export default function InquiryManagement() {
 
   // Record modal
   const [recordOpen, setRecordOpen] = useState(false)
+  const [linkOpen, setLinkOpen]     = useState(false)
   const [recordForm, setRecordForm] = useState({ full_name: "", contact_number: "", email: "", plate_number: "", vehicle_unit: "" })
   const [recording, setRecording]   = useState(false)
   const [recordErrors, setRecordErrors] = useState<Record<string, string>>({})
@@ -123,8 +126,25 @@ export default function InquiryManagement() {
   const [resolveTarget, setResolveTarget] = useState<string | null>(null)
   const [resolvingId, setResolvingId]     = useState<string | null>(null)
 
-  const load = useCallback(async () => {
-    setLoading(true)
+  // Mirrors `inquiries` so a realtime refresh can diff against the current list
+  // without taking a dependency on it (which would resubscribe the channel).
+  const inquiriesRef = useRef<Inquiry[]>([])
+  useEffect(() => { inquiriesRef.current = inquiries }, [inquiries])
+
+  // Also held in a ref: `load` must have an empty dependency list, because it
+  // drives `useEffect(() => { load() }, [load])` — any dependency that changes
+  // identity per render would turn that into a refetch loop.
+  const toastRef = useRef(toast)
+  toastRef.current = toast
+
+  /**
+   * `silent` is used by the realtime handler: it refreshes the data without
+   * flipping the panel into its loading state, so the list can update under
+   * someone who is mid-read.
+   */
+  const load = useCallback(async (opts?: { silent?: boolean }) => {
+    const silent = opts?.silent === true
+    if (!silent) setLoading(true)
     try {
       const res  = await fetch("/api/sales/inquiries")
       const json = await res.json()
@@ -146,32 +166,56 @@ export default function InquiryManagement() {
         lastMessage:      i.last_message      ?? null,
         conflictNote:     i.conflict_note     ?? null,
       }))
+      // Announce only escalations that weren't already on screen. Diffing the
+      // list (rather than toasting per realtime event) avoids a double-toast
+      // when an INSERT is immediately followed by an UPDATE, and avoids toasting
+      // when a colleague merely resolves something.
+      if (silent) {
+        const addedIds = newInquiryIds(inquiriesRef.current.map((i) => i.id), shaped.map((i) => i.id))
+        if (addedIds.length > 0) {
+          const added = shaped.filter((i) => addedIds.includes(i.id))
+          toastRef.current.info(newInquiryToast(added.map((i) => ({ messengerName: i.messengerName, type: i.type }))))
+        }
+      }
+
       setInquiries(shaped)
-      if (!selectedId && shaped.length > 0) setSelectedId(shaped[0].id)
+      // Never move someone off the inquiry they are reading — only pick a row
+      // when nothing is selected or the selection has disappeared.
+      setSelectedId((current) => resolveSelectedId(current, shaped))
     } catch {}
-    finally { setLoading(false) }
-  }, [selectedId])
+    finally { if (!silent) setLoading(false) }
+  }, [])
 
   useEffect(() => { load() }, [load])
 
-  useEffect(()=>{
-    const supabase = createClient();
+  // Realtime: new escalations and status changes made by other staff.
+  //
+  // Listens to every event, not just INSERT — a colleague claiming, recording,
+  // or resolving an inquiry has to reach the other open screens too.
+  //
+  // The refetch is held in a ref so this effect depends on nothing that changes
+  // per render: it previously depended on `load`, which was rebuilt whenever
+  // `selectedId` changed, so the channel was torn down and reopened every time
+  // someone clicked an inquiry.
+  const loadRef = useRef(load)
+  loadRef.current = load
+
+  useEffect(() => {
+    const supabase = createClient()
 
     const channel = supabase
-    .channel('inquiries-realtime')
-    .on(
-      "postgres_changes",
-      {event: "INSERT", schema: "public", table: "inquiry"},
-      ()=>{
-        load()
-      }
-    )
-    .subscribe()
+      .channel("inquiries-realtime")
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "inquiry" },
+        () => { loadRef.current({ silent: true }) },
+      )
+      .subscribe()
 
-    return () =>{
-      supabase.removeChannel(channel);
+    return () => {
+      supabase.removeChannel(channel)
     }
-  }, [load])
+  }, [])
 
   useEffect(() => {
     const el = tabBarRef.current
@@ -401,10 +445,16 @@ export default function InquiryManagement() {
                 <p className="text-xs font-semibold text-body uppercase tracking-wider">Messenger Identity</p>
                 <div className="bg-surface-subtle border border-border-subtle rounded-card px-4 py-3 flex items-center gap-3 h-[58px]">
                   <Hash className="w-4 h-4 text-muted shrink-0" />
-                  <div>
+                  <div className="min-w-0 flex-1">
                     <p className="text-[10px] text-muted">Page-Scoped ID</p>
                     <p className="text-sm font-mono font-semibold text-body truncate">{selected.psid}</p>
                   </div>
+                  <button
+                    onClick={() => setLinkOpen(true)}
+                    className="shrink-0 text-xs font-semibold text-primary hover:underline"
+                  >
+                    Link Account
+                  </button>
                 </div>
               </div>
             </div>
@@ -539,6 +589,14 @@ export default function InquiryManagement() {
         </div>
         {recordErrors._submit && <p className="mt-3 text-xs text-status-delayed">{recordErrors._submit}</p>}
       </Modal>
+
+      {selected && (
+        <LinkAccountModal
+          open={linkOpen}
+          onClose={() => setLinkOpen(false)}
+          psid={selected.psid}
+        />
+      )}
     </div>
   )
 }

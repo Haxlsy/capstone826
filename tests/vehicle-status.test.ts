@@ -17,10 +17,7 @@ vi.mock("@/lib/supabase/admin", () => {
     for (const m of ["select", "eq", "in", "ilike", "order", "limit", "or", "is", "not"]) b[m] = chain
     b.maybeSingle = async () => nextFor(table)
     b.single = async () => nextFor(table)
-    b.update = () => {
-      const res = nextFor(table)
-      return { eq: () => Promise.resolve(res) }
-    }
+    b.update = chain
     b.then = (resolve: any, reject: any) =>
       Promise.resolve(nextFor(table)).then(resolve, reject)
     return b
@@ -40,6 +37,7 @@ import {
   buildLinkVerificationPrompt,
   resolveOwnVehicleStatus,
   assessLinkClaim,
+  assessJobOrderLinkClaim,
   type OwnVehicleOutcome,
   type JobStatus,
 } from "@/lib/messenger/vehicle"
@@ -141,9 +139,7 @@ describe("formatVehicleStatusForCustomer (deterministic reply, no Gemini)", () =
     const out = formatVehicleStatusForCustomer({ kind: "not_linked" })!
     expect(out).toBe(buildLinkVerificationPrompt())
     expect(out).toMatch(/isn't linked|not linked/i)
-    expect(out).toMatch(/plate number/i)
-    expect(out).toMatch(/phone number/i)
-    expect(out).toMatch(/sales/i)
+    expect(out).toMatch(/job order code/i)
   })
 
   it("never claims a lookup happened on not_linked", () => {
@@ -327,5 +323,63 @@ describe("assessLinkClaim (read-only — never links)", () => {
     }
     const res = await assessLinkClaim({ psid: "psid-1", plate: "ZZZ 000", phone: "09171234567" })
     expect(res.kind).toBe("no_record")
+  })
+})
+
+describe("assessJobOrderLinkClaim (auto-links on an unlinked match)", () => {
+  it("no_record when the code doesn't resolve to a linkable job order", async () => {
+    store.responses = {
+      job_order: [{ data: null, error: null }],
+    }
+    const res = await assessJobOrderLinkClaim({ psid: "psid-1", code: "JO-000000" })
+    expect(res.kind).toBe("no_record")
+  })
+
+  it("no_record when the job order has no linked customer_record", async () => {
+    store.responses = {
+      job_order: [{ data: { customer_record_id: null }, error: null }],
+    }
+    const res = await assessJobOrderLinkClaim({ psid: "psid-1", code: "JO-8X2K9F" })
+    expect(res.kind).toBe("no_record")
+  })
+
+  it("owned_by_other when the code's record already has a different psid", async () => {
+    store.responses = {
+      job_order: [{ data: { customer_record_id: "r1" }, error: null }],
+      customer_record: [{ data: { id: "r1", psid: "someone-else" }, error: null }],
+    }
+    const res = await assessJobOrderLinkClaim({ psid: "psid-1", code: "JO-8X2K9F" })
+    expect(res).toEqual({ kind: "owned_by_other" })
+  })
+
+  it("links the psid and returns status when the record is unlinked", async () => {
+    store.responses = {
+      job_order: [
+        { data: { customer_record_id: "r1" }, error: null }, // code lookup
+        { data: [], error: null },                            // resolveOwnVehicleStatus active jobs
+      ],
+      customer_record: [
+        { data: { id: "r1", psid: null }, error: null },                                        // record read
+        { data: { id: "r1" }, error: null },                                                     // conditional update — success
+        { data: { id: "r1", full_name: "Jane", contact_number: "09171234567", plate_number: "ABC 123", psid: "psid-1" }, error: null }, // resolveOwnVehicleStatus's own lookup
+      ],
+      inquiry: [{ data: [], error: null }],
+    }
+    const res = await assessJobOrderLinkClaim({ psid: "psid-1", code: "jo-8x2k9f" })
+    expect(res.kind).toBe("linked")
+    if (res.kind === "linked") expect(res.outcome).toEqual({ kind: "ok", jobs: [] })
+  })
+
+  it("treats a lost race on the conditional update as owned_by_other", async () => {
+    store.responses = {
+      job_order: [{ data: { customer_record_id: "r1" }, error: null }],
+      customer_record: [
+        { data: { id: "r1", psid: null }, error: null },       // record read — looked unlinked
+        { data: null, error: null },                            // conditional update — 0 rows, lost the race
+        { data: { psid: "someone-else" }, error: null },        // recheck — someone else grabbed it
+      ],
+    }
+    const res = await assessJobOrderLinkClaim({ psid: "psid-1", code: "JO-8X2K9F" })
+    expect(res).toEqual({ kind: "owned_by_other" })
   })
 })

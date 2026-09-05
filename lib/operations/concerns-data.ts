@@ -8,7 +8,7 @@ export async function getConcernsData() {
     .select(
       `id, title, description, status, response_note,
        submitted_at, resolved_at,
-       job:job_order_id(id, status),
+       job:job_order_id(id, status, job_order_code),
        stage:stage_id(id, custom_name, custom_sequence_order,
          service_stage:service_stage_id(name, sequence_order)),
        submitter:submitted_by_id(id, full_name, role),

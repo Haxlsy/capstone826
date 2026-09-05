@@ -28,9 +28,7 @@ export function toConcernRecords(raw: unknown[]): ConcernRecord[] {
     status:        (c.status as "Pending" | "Resolved"),
     response_note: c.response_note ?? null,
     submitted_at:  fmtDate(c.submitted_at),
-    jobId:         c.job?.id
-      ? `JO-${new Date(c.submitted_at ?? "").getFullYear()}-${c.job.id.slice(-4).toUpperCase()}`
-      : "—",
+    jobId:         c.job?.job_order_code ?? "—",
     submitterName: c.submitter?.full_name ?? "—",
     submitterRole: c.submitter?.role ?? "—",
     stage_name:    c.stage_name ?? null,

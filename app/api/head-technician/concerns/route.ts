@@ -24,7 +24,7 @@ export async function GET() {
       .select(`
         id, title, description, status, response_note,
         submitted_at, resolved_at,
-        job:job_order_id(id, created_at),
+        job:job_order_id(id, job_order_code),
         stage:stage_id(id, custom_name, custom_sequence_order,
           service_stage:service_stage_id(name, sequence_order)),
         media:concern_media(id, file_url, media_type)
@@ -42,7 +42,7 @@ export async function GET() {
         .select(`
           id, title, description, status, response_note,
           submitted_at, resolved_at,
-          job:job_order_id(id, created_at),
+          job:job_order_id(id, job_order_code),
           media:concern_media(id, file_url, media_type)
         `)
         .eq("submitted_by_id", user.id)
@@ -71,9 +71,7 @@ export async function GET() {
         status:          c.status,
         response_note:   c.response_note ?? null,
         submitted_at:    fmtDateTime(c.submitted_at),
-        job_display_id:  c.job?.id
-          ? `JO-${new Date(c.job.created_at).getFullYear()}-${(c.job.id as string).slice(-4).toUpperCase()}`
-          : null,
+        job_display_id:  c.job?.job_order_code ?? null,
         stage_name:      stageOrder != null && stageName ? `${stageOrder}. ${stageName}` : stageName,
         media:           (c.media ?? []).map((m: any) => ({ id: m.id, url: m.file_url, type: m.media_type })),
       }
@@ -110,13 +108,11 @@ export async function POST(request: Request) {
     let autoTitle = "Job Concern"
     const { data: jobRow } = await admin
       .from("job_order")
-      .select("id, created_at")
+      .select("id, job_order_code")
       .eq("id", job_order_id.trim())
       .single()
     if (jobRow) {
-      const yr     = new Date((jobRow as any).created_at).getFullYear()
-      const suffix = ((jobRow as any).id as string).slice(-4).toUpperCase()
-      autoTitle    = `JO-${yr}-${suffix} Concern`
+      autoTitle = `${(jobRow as any).job_order_code} Concern`
     }
     if (stage_id?.trim()) {
       const { data: stageRow } = await admin

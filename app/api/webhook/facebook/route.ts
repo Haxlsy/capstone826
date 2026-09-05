@@ -64,11 +64,11 @@ import {
   formatOwnVehicleStatus,
   formatVehicleStatusForCustomer,
   buildLinkVerificationPrompt,
-  assessLinkClaim,
+  assessJobOrderLinkClaim,
   normalizePlate,
   type OwnVehicleOutcome,
 } from "@/lib/messenger/vehicle"
-import { PLATE_PATTERN, PHONE_PATTERN, EMAIL_PATTERN, parseLinkClaim } from "@/lib/messenger/patterns"
+import { PLATE_PATTERN, PHONE_PATTERN, EMAIL_PATTERN, extractJobOrderCode } from "@/lib/messenger/patterns"
 import { DEFAULT_AI_DISABLED_MESSAGE } from "@/types/chatbot"
 import {
   escalationAck,
@@ -348,18 +348,20 @@ async function handleInboundMessage(
       REPORT_PATTERNS.some((re) => re.test(messageBody)))
 
   // ── Account-linking verification ─────────────────────────────────────────
-  // When the bot has asked an unlinked customer for their plate + booking phone,
-  // the next message is a link CLAIM. Handled BEFORE any booking-signal logic so
-  // a plate/phone reply is not swallowed by the booking flow.
+  // When the bot has asked an unlinked customer for their Job Order Code, the
+  // next message is a link CLAIM. Handled BEFORE any booking-signal logic so a
+  // code reply is not swallowed by the booking flow.
   //
-  // The bot never links the account itself — linking is a persistent access
-  // grant. Every claim is routed to Sales, who verify identity out-of-band and
-  // set `psid` on the customer record. No status is shown until then.
+  // Unlike the old plate+phone flow, a code that resolves to an UNLINKED
+  // record is linked immediately by the bot — see assessJobOrderLinkClaim for
+  // why that's safe here. Only a genuine conflict (the code's record already
+  // belongs to a different Messenger account) or a code that never resolves
+  // goes to Sales, and only after the customer insists past a short retry cap.
+  const JOB_ORDER_LINK_ATTEMPT_CAP = 2
   let linkedVehicleContext: string | null = null
   let linkEscalation: { reason: string; note: string | null; impersonation?: boolean } | null = null
   if (awaiting_link_verification) {
-    const { plate: lp, phone: lph } = parseLinkClaim(messageBody)
-    const plateNorm = normalizePlate(lp)
+    const code = extractJobOrderCode(messageBody)
 
     const clearLink = async () => {
       await safe(() => setAwaitingLinkVerification(conversation_id, false))
@@ -369,34 +371,31 @@ async function handleInboundMessage(
 
     // Sales-facing note for a claim on a record owned by another Messenger
     // account. Nothing here is ever shown to the customer.
-    const impersonationEscalation = (attempt: "repeat" | "capped", phoneMatched: boolean) => ({
+    const impersonationEscalation = (attempt: "repeat" | "capped") => ({
       impersonation: true,
       reason: "possible impersonation — link attempt on a record owned by another Messenger account",
       note:
-        `POSSIBLE IMPERSONATION. Messenger PSID ${senderId} (FB name "${profile.name}") tried to claim plate ${plateNorm}, ` +
-        `which is already linked to a different Messenger account (phoneMatched=${phoneMatched}). ` +
+        `POSSIBLE IMPERSONATION. Messenger PSID ${senderId} (FB name "${profile.name}") tried to claim Job Order Code ${code}, ` +
+        `which is already linked to a different Messenger account. ` +
         (attempt === "repeat"
           ? "They were given a neutral re-ask and claimed it again. "
           : "They hit the attempt cap while claiming it. ") +
         "Do NOT re-link without confirming with the current owner.",
     })
 
-    // One more failed link attempt. Under the 5-attempt cap the customer is asked
-    // again (deterministically — the model must never own this turn, or it invents
-    // a lookup it never ran); at the cap the claim goes to Sales.
-    const countFailedAttempt = async (
-      retry: "unreadable" | "unverified",
-      note: string
-    ): Promise<boolean> => {
+    // One more failed link attempt. Under the attempt cap the customer is asked
+    // again (deterministically — the model must never own this turn, or it
+    // invents a lookup it never ran); at the cap the claim goes to Sales.
+    const countFailedAttempt = async (note: string): Promise<boolean> => {
       const attempts = link_attempts + 1
-      if (attempts >= 5) {
+      if (attempts >= JOB_ORDER_LINK_ATTEMPT_CAP) {
         await clearLink()
-        logAudit({ ...auditActor, category: "flag", action: "messenger: link verification failed 5x", target: `psid=${senderId} last_plate=${plateNorm || "none"}` })
-        linkEscalation = { reason: "account link — 5 unverified attempts", note }
+        logAudit({ ...auditActor, category: "flag", action: `messenger: link verification failed ${JOB_ORDER_LINK_ATTEMPT_CAP}x`, target: `psid=${senderId} last_code=${code || "none"}` })
+        linkEscalation = { reason: `account link — ${JOB_ORDER_LINK_ATTEMPT_CAP} unverified attempts`, note }
         return false
       }
       await safe(() => setLinkAttempts(conversation_id, attempts))
-      const askAgain = buildLinkVerificationPrompt({ retry })
+      const askAgain = buildLinkVerificationPrompt({ retry: "unrecognized" })
       const mid = await sendMessengerText(senderId, askAgain)
       await insertMessage({ conversation_id, sender_type: "agent", message_body: askAgain, sent_at: new Date().toISOString(), fb_message_id: mid })
       return true
@@ -411,69 +410,62 @@ async function handleInboundMessage(
       hasBookingIntent(messageBody) ||
       hasExistingBookingIntent(messageBody)
 
-    if (!lp || !lph) {
+    if (!code) {
       if (changedSubject) {
         // The customer wandered off the linking step on purpose.
         await safe(() => setAwaitingLinkVerification(conversation_id, false))
       } else {
-        // Still trying to link, but the message carries no readable plate + phone
-        // pair. Re-ask with a format example instead of dropping them into the AI,
-        // which would answer as though a lookup had happened.
+        // Still trying to link, but the message carries no readable Job Order
+        // Code. Re-ask with a format example instead of dropping them into the
+        // AI, which would answer as though a lookup had happened.
         const handled = await countFailedAttempt(
-          "unreadable",
-          `Account link attempt failed 5 times. The customer never sent a readable plate + phone pair. ` +
+          `Account link attempt failed ${JOB_ORDER_LINK_ATTEMPT_CAP} times. The customer never sent a recognizable Job Order Code. ` +
           `Last message: "${messageBody}".`
         )
         if (handled) return
       }
     } else {
-      const claim = await assessLinkClaim({ psid: senderId, plate: lp, phone: lph })
+      const claim = await assessJobOrderLinkClaim({ psid: senderId, code })
 
       if (claim.kind === "owned_by_requester") {
         // Defensive — resolveOwnVehicleStatus should already have found this.
         await clearLink()
         linkedVehicleContext = formatOwnVehicleStatus(claim.outcome)
-      } else if (claim.kind === "match_unlinked") {
+      } else if (claim.kind === "linked") {
+        // Auto-linked just now — no Sales step. Show status this same turn.
         await clearLink()
-        logAudit({ ...auditActor, category: "flag", action: "messenger: account link request", target: `psid=${senderId} plate=${plateNorm}` })
-        linkEscalation = {
-          reason: "account link request — pending Sales verification",
-          note:
-            `Account link request. Messenger PSID ${senderId} (FB name "${profile.name}") claims plate ${plateNorm}; ` +
-            `the phone they gave matches the record for "${claim.recordName ?? "unknown"}". ` +
-            `Verify identity (call the number on file / confirm at drop-off) before setting the PSID on that customer record.`,
-        }
+        logAudit({ ...auditActor, category: "flag", action: "messenger: auto-linked account via Job Order Code", target: `psid=${senderId} code=${code}` })
+        linkedVehicleContext = formatOwnVehicleStatus(claim.outcome)
       } else if (claim.kind === "owned_by_other") {
-        // The plate belongs to a DIFFERENT Messenger account. The customer is
-        // never told that — a reply that differed from the "no such record" case
-        // would let anyone enumerate which plates are registered. They get the
-        // identical neutral re-ask once; a second claim is escalated to Sales.
+        // The code belongs to a DIFFERENT Messenger account. The customer is
+        // never told that — a reply that differed from the "no such record"
+        // case would let anyone enumerate which codes are registered. They get
+        // the identical neutral re-ask once; a second claim is escalated.
         //
-        // The first attempt is audit-logged even though nothing is escalated, so
-        // a probe that stops after one try still leaves a security trail.
-        logAudit({ ...auditActor, category: "flag", action: `messenger: link attempt on a record owned by another account (${link_conflict_pending ? "repeat — escalated" : "first — warned"})`, target: `psid=${senderId} plate=${plateNorm} phoneMatched=${claim.phoneMatched}` })
+        // The first attempt is audit-logged even though nothing is escalated,
+        // so a probe that stops after one try still leaves a security trail.
+        logAudit({ ...auditActor, category: "flag", action: `messenger: link attempt on a record owned by another account (${link_conflict_pending ? "repeat — escalated" : "first — warned"})`, target: `psid=${senderId} code=${code}` })
 
         if (link_conflict_pending) {
           await clearLink()
-          linkEscalation = impersonationEscalation("repeat", claim.phoneMatched)
-        } else if (link_attempts + 1 >= 5) {
+          linkEscalation = impersonationEscalation("repeat")
+        } else if (link_attempts + 1 >= JOB_ORDER_LINK_ATTEMPT_CAP) {
           // Already at the attempt cap — no room for a warning turn.
           await clearLink()
-          linkEscalation = impersonationEscalation("capped", claim.phoneMatched)
+          linkEscalation = impersonationEscalation("capped")
         } else {
           await safe(() => setLinkConflictPending(conversation_id, true))
           await safe(() => setLinkAttempts(conversation_id, link_attempts + 1))
-          const askAgain = buildLinkVerificationPrompt({ retry: "unverified" })
+          const askAgain = buildLinkVerificationPrompt({ retry: "conflict" })
           const mid = await sendMessengerText(senderId, askAgain)
           await insertMessage({ conversation_id, sender_type: "agent", message_body: askAgain, sent_at: new Date().toISOString(), fb_message_id: mid })
           return
         }
       } else {
-        // no_record / phone_mismatch — let the customer self-correct, then escalate.
-        // Same message as the owned-by-another case above, deliberately.
+        // no_record — let the customer self-correct, then escalate. Same
+        // message as the owned-by-another case above, deliberately.
         const handled = await countFailedAttempt(
-          "unverified",
-          `Account link attempt failed verification 5 times. Last claim: plate ${plateNorm}, phone provided but no matching record.`
+          `Account link attempt failed verification ${JOB_ORDER_LINK_ATTEMPT_CAP} times. Last claim: Job Order Code ${code}, no matching linkable record.`
         )
         if (handled) return
       }
@@ -652,7 +644,7 @@ async function handleInboundMessage(
       }
       if (outcome.kind === "not_linked") {
         logAudit({ ...auditActor, category: "flag", action: "messenger status: no linked customer record", target: `psid=${senderId}${plateInMsg ? ` requested_plate=${plateInMsg}` : ""}` })
-        // Ask for plate + booking phone so the next message can link the account.
+        // Ask for the Job Order Code so the next message can link the account.
         await safe(() => setAwaitingLinkVerification(conversation_id, true))
       }
     }

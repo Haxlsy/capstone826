@@ -275,53 +275,44 @@ const MISMATCH_TEXT =
 const NOT_LINKED_TEXT =
   "This Messenger account is not linked to any customer record, so NOTHING was looked up. " +
   "Do NOT share any status. Do NOT claim to have checked, searched, or reviewed our system. " +
-  "Do NOT state whether any plate number or phone number has a job order — no such lookup was " +
-  "performed. Explain only that their Messenger account is not yet linked to a customer record, " +
-  "ask for their plate number and the phone number on their booking so our Sales team can verify " +
-  "and link it, or offer to connect them with our team."
+  "Do NOT state whether any Job Order Code has a job order — no such lookup was performed. " +
+  "Explain only that their Messenger account is not yet linked to a customer record, ask for " +
+  "the Job Order Code on their receipt/booking confirmation so their account can be linked, " +
+  "or offer to connect them with our team."
 
 /**
  * The customer-facing account-linking ask. Sent verbatim (no Gemini) whenever an
  * unlinked psid requests vehicle status, and again on a failed attempt:
  *
- *   `unreadable`  — the reply carried no readable plate + phone pair.
- *   `unverified`  — a plate + phone were read, but we could not confirm the
- *                   customer owns them.
+ *   `unrecognized` — no readable Job Order Code, or the code doesn't match any
+ *                    job order on file.
+ *   `conflict`     — the code matched a record already linked to a DIFFERENT
+ *                    Messenger account.
  *
- * `unverified` deliberately covers THREE different outcomes with ONE message: no
- * such record, a record whose phone does not match, and a record already linked
- * to a DIFFERENT Messenger account. Wording that distinguished them would be an
- * enumeration oracle — anyone could probe plate numbers and learn which ones are
- * registered purely from which reply came back. The message must therefore stay
- * silent about why verification failed, and must never confirm or deny that a
- * plate exists or belongs to somebody.
+ * `conflict` deliberately uses the SAME wording as `unrecognized`: a reply that
+ * distinguished them would be an enumeration oracle — anyone could probe codes
+ * and learn which ones are registered purely from which reply came back. The
+ * message must stay silent about why verification failed, and must never
+ * confirm or deny that a code exists or belongs to somebody.
  *
  * `custom` is the admin's configured wording for the FIRST ask; blank or missing
  * falls back to the built-in default, so a cleared settings box can never send an
  * empty message. The retry variants are mechanical and stay built-in.
  *
- * It must never say a plate "has no job order": identity comes from the psid, and
- * for an unlinked account no plate or phone lookup is ever performed.
+ * It must never say a code "has no job order": identity comes from the psid, and
+ * for an unlinked account no code lookup happens until the customer sends one.
  */
 export function buildLinkVerificationPrompt(opts?: {
-  retry?: "unreadable" | "unverified"
+  retry?: "unrecognized" | "conflict"
   custom?: string | null
 }): string {
-  if (opts?.retry === "unreadable") {
+  if (opts?.retry === "unrecognized" || opts?.retry === "conflict") {
     return (
-      "I couldn't read a plate number and phone number in that message. " +
-      "Please send them together in this format:\n\n" +
-      "ABC-1234, 0917 555 0101\n\n" +
-      "Use the phone number on your booking — our Sales team will verify it and link your account."
-    )
-  }
-
-  if (opts?.retry === "unverified") {
-    return (
-      "I couldn't verify those details against your account. Please double-check your plate " +
-      "number and the phone number you used when booking, then send them again like this:\n\n" +
-      "ABC-1234, 0917 555 0101\n\n" +
-      "If you're sure they're correct, I'll pass this to our Sales team to verify for you."
+      "I couldn't verify a Job Order Code from that message. Please double-check it and send it " +
+      "again — it looks like this:\n\n" +
+      "JO-8X2K9F\n\n" +
+      "You'll find it on your receipt or booking confirmation. If you're sure it's correct, " +
+      "I'll pass this to our Sales team to verify for you."
     )
   }
 
@@ -515,4 +506,80 @@ export async function assessLinkClaim(input: {
   if (!phoneMatched) return { kind: "phone_mismatch" }
 
   return { kind: "match_unlinked", recordName: record.full_name ?? null }
+}
+
+export type JobOrderLinkClaim =
+  | { kind: "no_record" }                                       // code doesn't resolve to a linkable record
+  | { kind: "linked"; outcome: OwnVehicleOutcome }               // just auto-linked this turn
+  | { kind: "owned_by_other" }                                   // record.psid is a different PSID
+  | { kind: "owned_by_requester"; outcome: OwnVehicleOutcome }   // defensive: psid already this user
+
+/**
+ * Assesses (and, unlike `assessLinkClaim`, COMPLETES) a Messenger customer's
+ * claim to a customer record via their Job Order Code.
+ *
+ * This intentionally breaks from `assessLinkClaim`'s "never link, always route
+ * to Sales" rule: a Job Order Code is a one-time credential handed only to the
+ * legitimate customer at drop-off (printed on a receipt), not a semi-public
+ * value like a plate or phone number that a stranger might plausibly guess or
+ * already know. Knowing the code IS the proof of ownership, so the link is
+ * granted immediately with no human verification step.
+ *
+ * The write is a conditional `UPDATE ... WHERE psid IS NULL` so two concurrent
+ * claims on the same unlinked record can't both "succeed" — the loser is
+ * re-checked and reported as `owned_by_other`.
+ */
+export async function assessJobOrderLinkClaim(input: {
+  psid: string
+  code: string
+}): Promise<JobOrderLinkClaim> {
+  const supabase = createAdminClient()
+  const code = input.code.trim().toUpperCase()
+  if (!code) return { kind: "no_record" }
+
+  const { data: job } = await supabase
+    .from("job_order")
+    .select("customer_record_id")
+    .eq("job_order_code", code)
+    .maybeSingle()
+
+  if (!job?.customer_record_id) return { kind: "no_record" }
+
+  const { data: record } = await supabase
+    .from("customer_record")
+    .select("id, psid")
+    .eq("id", job.customer_record_id)
+    .maybeSingle()
+
+  if (!record) return { kind: "no_record" }
+
+  if (record.psid && record.psid === input.psid) {
+    return { kind: "owned_by_requester", outcome: await resolveOwnVehicleStatus(input.psid) }
+  }
+  if (record.psid && record.psid !== input.psid) {
+    return { kind: "owned_by_other" }
+  }
+
+  const { data: updated } = await supabase
+    .from("customer_record")
+    .update({ psid: input.psid })
+    .eq("id", record.id)
+    .is("psid", null)
+    .select("id")
+    .maybeSingle()
+
+  if (!updated) {
+    // Lost a race to another claim between the read above and this write.
+    const { data: recheck } = await supabase
+      .from("customer_record")
+      .select("psid")
+      .eq("id", record.id)
+      .maybeSingle()
+    if (recheck?.psid === input.psid) {
+      return { kind: "owned_by_requester", outcome: await resolveOwnVehicleStatus(input.psid) }
+    }
+    return { kind: "owned_by_other" }
+  }
+
+  return { kind: "linked", outcome: await resolveOwnVehicleStatus(input.psid) }
 }

@@ -34,7 +34,7 @@ export async function GET(
     const { data: job, error } = await admin
       .from("job_order")
       .select(
-        `id, status, scheduled_at, actual_start_at, created_at, finishing_approved_at, category_handoffs,
+        `id, status, scheduled_at, actual_start_at, created_at, finishing_approved_at, category_handoffs, job_order_code,
          customer:customer_record_id(full_name, plate_number, vehicle_unit),
          service:service_id(name),
          customer_name, plate_number, vehicle_unit`
@@ -219,7 +219,7 @@ export async function GET(
 
     return NextResponse.json({
       job: {
-        job_id:                `JO-${new Date(j.created_at).getFullYear()}-${id.slice(-4).toUpperCase()}`,
+        job_id:                j.job_order_code,
         raw_id:                j.id,
         customer_name:         (j.customer as any)?.full_name    ?? j.customer_name    ?? "—",
         plate_number:          (j.customer as any)?.plate_number ?? j.plate_number     ?? "—",
