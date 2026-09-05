@@ -1,15 +1,16 @@
 "use client"
 
-import { useState, useEffect, useRef, useCallback } from "react"
+import { useState, useEffect, useRef, useCallback, useMemo } from "react"
 import { useRealtimeRefetch } from "@/hooks/useRealtimeRefetch"
-import { Car, Phone, Mail, Pencil, X, Check } from "lucide-react"
+import { Car, Phone, Mail, Pencil, X, Check, ChevronDown, ChevronUp } from "lucide-react"
 import { getInitials } from "@/hooks/useCurrentUser"
 import { fmtDate } from "@/lib/time-display"
+import { normalizePhone } from "@/lib/phone"
 import { PageHeader } from "@/components/ui/PageHeader"
 import { SearchBar } from "@/components/ui/SearchBar"
-import { DataTable, type Column } from "@/components/ui/DataTable"
 import { Button } from "@/components/ui/Button"
 import { Input } from "@/components/ui/Field"
+import { EmptyState } from "@/components/ui/EmptyState"
 import { useToast } from "@/components/ui/Toast"
 import { cn } from "@/lib/utils"
 import { LinkAccountModal } from "./LinkAccountModal"
@@ -25,12 +26,37 @@ interface CustomerRecord {
   createdAt: string
 }
 
+interface CustomerGroup {
+  key: string
+  vehicles: CustomerRecord[]
+  /** The record shown in the group header — whichever holds the psid, else the newest. */
+  primary: CustomerRecord
+}
+
+/** Groups vehicle rows into one entry per customer, by normalized phone number
+ *  — the same correlation the Messenger status flow already uses to find a
+ *  customer's other vehicles, since only one row can ever hold a given psid. */
+function groupByCustomer(records: CustomerRecord[]): CustomerGroup[] {
+  const map = new Map<string, CustomerRecord[]>()
+  for (const r of records) {
+    const key = normalizePhone(r.contactNumber) || `unknown:${r.id}`
+    if (!map.has(key)) map.set(key, [])
+    map.get(key)!.push(r)
+  }
+  return [...map.entries()].map(([key, vehicles]) => ({
+    key,
+    vehicles,
+    primary: vehicles.find((v) => v.psid) ?? vehicles[0],
+  }))
+}
+
 export default function CustomerRecords() {
   const toast = useToast()
   const [records, setRecords] = useState<CustomerRecord[]>([])
   const [loading, setLoading] = useState(true)
   const [fetchErr, setFetchErr] = useState<string | null>(null)
   const [search, setSearch] = useState("")
+  const [expanded, setExpanded] = useState<Record<string, boolean>>({})
 
   const isFirstRender = useRef(true)
 
@@ -81,6 +107,8 @@ export default function CustomerRecords() {
   // Live updates when a record is created from an inquiry or edited elsewhere.
   // Re-runs with the active search term so the visible filter is preserved.
   useRealtimeRefetch("customer_record", () => load(search))
+
+  const groups = useMemo(() => groupByCustomer(records), [records])
 
   function startEdit(record: CustomerRecord) {
     setEditingId(record.id)
@@ -133,145 +161,6 @@ export default function CustomerRecords() {
 
   const editCell = "h-8 text-sm"
 
-  const columns: Column<CustomerRecord>[] = [
-    {
-      key: "customer",
-      header: "Customer",
-      cell: (record) => {
-        const isEditing = editingId === record.id
-        return (
-          <div className="flex items-center gap-3">
-            <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-surface-muted text-xs font-bold text-body">
-              {getInitials(record.fullName)}
-            </span>
-            {isEditing ? (
-              <Input
-                aria-label="Full name"
-                className={cn(editCell, "w-40")}
-                value={editDraft.fullName ?? ""}
-                onChange={(e) => setEditDraft((d) => ({ ...d, fullName: e.target.value }))}
-              />
-            ) : (
-              <div>
-                <p className="font-medium text-heading">{record.fullName}</p>
-                {record.psid ? (
-                  <button
-                    onClick={() => setLinkTargetId(record.id)}
-                    className="font-mono text-[11px] text-muted hover:text-primary hover:underline"
-                    title="Click to relink"
-                  >
-                    {record.psid}
-                  </button>
-                ) : (
-                  <button
-                    onClick={() => setLinkTargetId(record.id)}
-                    className="text-[11px] font-semibold text-primary hover:underline"
-                  >
-                    Link Messenger Account
-                  </button>
-                )}
-              </div>
-            )}
-          </div>
-        )
-      },
-    },
-    {
-      key: "vehicle",
-      header: "Vehicle",
-      cell: (record) =>
-        editingId === record.id ? (
-          <Input
-            aria-label="Vehicle unit"
-            className={cn(editCell, "w-36")}
-            value={editDraft.vehicleUnit ?? ""}
-            onChange={(e) => setEditDraft((d) => ({ ...d, vehicleUnit: e.target.value }))}
-          />
-        ) : (
-          <span className="text-body">{record.vehicleUnit}</span>
-        ),
-    },
-    {
-      key: "plate",
-      header: "Plate Number",
-      cell: (record) =>
-        editingId === record.id ? (
-          <Input
-            aria-label="Plate number"
-            className={cn(editCell, "w-28")}
-            value={editDraft.plateNumber ?? ""}
-            onChange={(e) => setEditDraft((d) => ({ ...d, plateNumber: e.target.value }))}
-          />
-        ) : (
-          <span className="flex items-center gap-2">
-            <Car className="h-3.5 w-3.5 shrink-0 text-muted" />
-            <span className="font-mono font-medium text-body">{record.plateNumber}</span>
-          </span>
-        ),
-    },
-    {
-      key: "contact",
-      header: "Contact",
-      cell: (record) =>
-        editingId === record.id ? (
-          <Input
-            aria-label="Contact number"
-            className={cn(editCell, "w-36")}
-            value={editDraft.contactNumber ?? ""}
-            onChange={(e) => setEditDraft((d) => ({ ...d, contactNumber: e.target.value }))}
-          />
-        ) : (
-          <span className="flex items-center gap-2">
-            <Phone className="h-3.5 w-3.5 shrink-0 text-muted" />
-            <span className="text-body">{record.contactNumber}</span>
-          </span>
-        ),
-    },
-    {
-      key: "email",
-      header: "Email",
-      cell: (record) =>
-        editingId === record.id ? (
-          <Input
-            aria-label="Email"
-            type="email"
-            className={cn(editCell, "w-44")}
-            value={editDraft.email ?? ""}
-            onChange={(e) => setEditDraft((d) => ({ ...d, email: e.target.value }))}
-          />
-        ) : (
-          <span className="flex items-center gap-2">
-            <Mail className="h-3.5 w-3.5 shrink-0 text-muted" />
-            <span className="text-sm text-body">{record.email ?? <span className="text-muted">—</span>}</span>
-          </span>
-        ),
-    },
-    { key: "recorded", header: "Recorded", cell: (record) => <span className="text-xs text-muted">{record.createdAt}</span> },
-    {
-      key: "actions",
-      header: "",
-      cell: (record) =>
-        editingId === record.id ? (
-          <div className="flex flex-col gap-1">
-            <div className="flex items-center gap-2">
-              <Button size="sm" onClick={() => saveEdit(record.id)} disabled={saving}>
-                <Check className="h-3.5 w-3.5" />
-                {saving ? "Saving…" : "Save"}
-              </Button>
-              <Button size="sm" variant="subtle" onClick={cancelEdit}>
-                <X className="h-3.5 w-3.5" /> Cancel
-              </Button>
-            </div>
-            {saveErr && <p className="text-[11px] text-status-delayed">{saveErr}</p>}
-          </div>
-        ) : (
-          <Button size="sm" variant="subtle" onClick={() => startEdit(record)}>
-            <Pencil className="h-3.5 w-3.5" /> Edit
-          </Button>
-        ),
-    },
-  ]
-
   return (
     <div className="flex flex-col gap-5">
       <PageHeader title="Customer Records" subtitle="Confirmed customer details from booking inquiries." />
@@ -283,14 +172,146 @@ export default function CustomerRecords() {
         containerClassName="max-w-sm"
       />
 
-      <DataTable
-        columns={columns}
-        rows={records}
-        rowKey={(r) => r.id}
-        loading={loading}
-        error={fetchErr}
-        emptyLabel="No records found."
-      />
+      {loading && <p className="text-sm text-muted">Loading…</p>}
+      {fetchErr && <p className="text-sm text-status-delayed">{fetchErr}</p>}
+      {!loading && !fetchErr && groups.length === 0 && (
+        <EmptyState title="No records found." />
+      )}
+
+      <div className="flex flex-col gap-3">
+        {groups.map((group) => {
+          const isMulti = group.vehicles.length > 1
+          const isExpanded = !isMulti || Boolean(expanded[group.key])
+
+          return (
+            <div key={group.key} className="bg-surface border border-border rounded-card overflow-hidden">
+              {/* Customer header */}
+              <div
+                className={cn(
+                  "flex items-center gap-3 px-5 py-3.5",
+                  isMulti && "cursor-pointer hover:bg-surface-muted/50 transition-colors",
+                )}
+                onClick={isMulti ? () => setExpanded((p) => ({ ...p, [group.key]: !p[group.key] })) : undefined}
+              >
+                <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-surface-muted text-xs font-bold text-body">
+                  {getInitials(group.primary.fullName)}
+                </span>
+                <div className="flex-1 min-w-0">
+                  <p className="font-medium text-heading">{group.primary.fullName}</p>
+                  {group.primary.psid ? (
+                    <button
+                      onClick={(e) => { e.stopPropagation(); setLinkTargetId(group.primary.id) }}
+                      className="font-mono text-[11px] text-muted hover:text-primary hover:underline"
+                      title="Click to relink"
+                    >
+                      {group.primary.psid}
+                    </button>
+                  ) : (
+                    <button
+                      onClick={(e) => { e.stopPropagation(); setLinkTargetId(group.primary.id) }}
+                      className="text-[11px] font-semibold text-primary hover:underline"
+                    >
+                      Link Messenger Account
+                    </button>
+                  )}
+                </div>
+                <span className="text-xs text-muted shrink-0">
+                  {group.vehicles.length} {group.vehicles.length === 1 ? "vehicle" : "vehicles"}
+                </span>
+                {isMulti && (isExpanded ? <ChevronUp className="h-4 w-4 text-muted shrink-0" /> : <ChevronDown className="h-4 w-4 text-muted shrink-0" />)}
+              </div>
+
+              {/* Vehicle lines — each plate + vehicle unit pair, independently editable */}
+              {isExpanded && (
+                <div className="divide-y divide-border-subtle border-t border-border-subtle">
+                  {group.vehicles.map((record) => {
+                    const isEditing = editingId === record.id
+                    return (
+                      <div key={record.id} className="flex flex-wrap items-center gap-x-6 gap-y-2 px-5 py-3">
+                        <div className="flex items-center gap-2 min-w-[160px]">
+                          <Car className="h-3.5 w-3.5 shrink-0 text-muted" />
+                          {isEditing ? (
+                            <Input
+                              aria-label="Plate number"
+                              className={cn(editCell, "w-28")}
+                              value={editDraft.plateNumber ?? ""}
+                              onChange={(e) => setEditDraft((d) => ({ ...d, plateNumber: e.target.value }))}
+                            />
+                          ) : (
+                            <span className="font-mono font-medium text-body">{record.plateNumber}</span>
+                          )}
+                          {isEditing ? (
+                            <Input
+                              aria-label="Vehicle unit"
+                              className={cn(editCell, "w-36")}
+                              value={editDraft.vehicleUnit ?? ""}
+                              onChange={(e) => setEditDraft((d) => ({ ...d, vehicleUnit: e.target.value }))}
+                            />
+                          ) : (
+                            <span className="text-body">{record.vehicleUnit}</span>
+                          )}
+                        </div>
+
+                        <div className="flex items-center gap-2 min-w-[160px]">
+                          <Phone className="h-3.5 w-3.5 shrink-0 text-muted" />
+                          {isEditing ? (
+                            <Input
+                              aria-label="Contact number"
+                              className={cn(editCell, "w-36")}
+                              value={editDraft.contactNumber ?? ""}
+                              onChange={(e) => setEditDraft((d) => ({ ...d, contactNumber: e.target.value }))}
+                            />
+                          ) : (
+                            <span className="text-body">{record.contactNumber}</span>
+                          )}
+                        </div>
+
+                        <div className="flex items-center gap-2 min-w-[180px]">
+                          <Mail className="h-3.5 w-3.5 shrink-0 text-muted" />
+                          {isEditing ? (
+                            <Input
+                              aria-label="Email"
+                              type="email"
+                              className={cn(editCell, "w-44")}
+                              value={editDraft.email ?? ""}
+                              onChange={(e) => setEditDraft((d) => ({ ...d, email: e.target.value }))}
+                            />
+                          ) : (
+                            <span className="text-sm text-body">{record.email ?? <span className="text-muted">—</span>}</span>
+                          )}
+                        </div>
+
+                        <span className="text-xs text-muted">{record.createdAt}</span>
+
+                        <div className="ml-auto flex flex-col gap-1">
+                          {isEditing ? (
+                            <>
+                              <div className="flex items-center gap-2">
+                                <Button size="sm" onClick={() => saveEdit(record.id)} disabled={saving}>
+                                  <Check className="h-3.5 w-3.5" />
+                                  {saving ? "Saving…" : "Save"}
+                                </Button>
+                                <Button size="sm" variant="subtle" onClick={cancelEdit}>
+                                  <X className="h-3.5 w-3.5" /> Cancel
+                                </Button>
+                              </div>
+                              {saveErr && <p className="text-[11px] text-status-delayed">{saveErr}</p>}
+                            </>
+                          ) : (
+                            <Button size="sm" variant="subtle" onClick={() => startEdit(record)}>
+                              <Pencil className="h-3.5 w-3.5" /> Edit
+                            </Button>
+                          )}
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+              )}
+            </div>
+          )
+        })}
+      </div>
 
       <LinkAccountModal
         open={linkTargetId !== null}

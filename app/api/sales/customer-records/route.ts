@@ -66,29 +66,62 @@ export async function POST(request: Request) {
     // customer's other vehicles by contact number.
     const normalizedContact = normalizePhone(contact_number) || contact_number
 
-    // Upsert: if a customer_record with this psid already exists (e.g. the
-    // customer booked twice), update it instead of hitting the UNIQUE constraint.
-    const { data, error } = await supabase
+    // plate_number is the true per-vehicle key (globally UNIQUE) — a customer
+    // with two vehicles is two rows sharing a phone number, never one row
+    // upserted on psid. Upserting on psid instead (the old behaviour) always
+    // overwrote vehicle #1 with vehicle #2's details, since a returning
+    // customer's second booking carries the SAME psid as their first.
+    const { data: existingByPlate } = await supabase
       .from("customer_record")
-      .upsert(
-        { full_name, contact_number: normalizedContact, email, plate_number, vehicle_unit, psid },
-        { onConflict: "psid" }
-      )
-      .select()
-      .single()
+      .select("id")
+      .eq("plate_number", plate_number)
+      .maybeSingle()
+
+    let data, error, isNewRecord: boolean
+
+    if (existingByPlate) {
+      // Same vehicle on file already (e.g. a correction) — update it in place.
+      ;({ data, error } = await supabase
+        .from("customer_record")
+        .update({ full_name, contact_number: normalizedContact, email, vehicle_unit, psid })
+        .eq("id", existingByPlate.id)
+        .select()
+        .single())
+      isNewRecord = false
+    } else {
+      // A genuinely new vehicle. If this psid already belongs to a different
+      // row (the customer's earlier vehicle), it can't be set here too — psid
+      // is also UNIQUE. Leave it null; resolveOwnVehicleStatus already finds
+      // this row via the shared (normalized) phone number instead.
+      let psidForInsert = psid ?? null
+      if (psidForInsert) {
+        const { data: existingByPsid } = await supabase
+          .from("customer_record")
+          .select("id")
+          .eq("psid", psidForInsert)
+          .maybeSingle()
+        if (existingByPsid) psidForInsert = null
+      }
+      ;({ data, error } = await supabase
+        .from("customer_record")
+        .insert({ full_name, contact_number: normalizedContact, email, plate_number, vehicle_unit, psid: psidForInsert })
+        .select()
+        .single())
+      isNewRecord = true
+    }
 
     if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
     const caller = await getAuditCaller()
     if (caller) {
       logAuditCall(caller, {
-        category: "create",
-        action:   "Created customer record",
+        category: isNewRecord ? "create" : "update",
+        action:   isNewRecord ? "Created customer record" : "Updated customer record",
         target:   full_name,
       })
     }
 
-    return NextResponse.json({ record: data }, { status: 201 })
+    return NextResponse.json({ record: data }, { status: isNewRecord ? 201 : 200 })
   } catch (err: any) {
     return NextResponse.json({ error: err?.message ?? String(err) }, { status: 500 })
   }

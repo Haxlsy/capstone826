@@ -26,7 +26,7 @@ const CATEGORIES: Category[] = [
     enField: "vehicle_status_message_en",
     filField: "vehicle_status_message_fil",
     description:
-      "Sent when a customer asks for their vehicle's status but their Messenger account isn't linked to a customer record yet. It asks them for their Job Order Code so the system can link their account automatically.",
+      "Sent when a customer asks for their vehicle's status but their Messenger account isn't linked to a customer record yet. It asks them for their Job Order ID so the system can link their account automatically.",
   },
   {
     key: "link_verification",
