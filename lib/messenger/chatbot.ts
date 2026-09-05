@@ -573,7 +573,7 @@ const BOOKING_FIELDS: { key: keyof CustomerDetails; label: string }[] = [
   { key: "full_name",      label: "Full Name" },
   { key: "contact_number", label: "Contact Number" },
   { key: "plate_number",   label: "Plate Number" },
-  { key: "vehicle_unit",   label: "Vehicle Type" },
+  { key: "vehicle_unit",   label: "Vehicle Unit" },
   { key: "email",          label: "Email Address" },
 ]
 
