@@ -170,6 +170,9 @@ describe("isPureConfirmation — final booking 'yes' vs. still giving details", 
 describe("buildSystemPrompt — booking guardrails (Testing Notes #8, #10)", () => {
   const settings: ChatbotSettings = {
     personality: "friendly",
+    enable_ai_chatbot: true,
+    enable_media_validation: true,
+    ai_disabled_message: "Our team will get back to you shortly.",
     enable_services: true,
     enable_booking: true,
     enable_status: true,

@@ -22,14 +22,29 @@ export const DEFAULT_NOT_LINKED_MESSAGE =
   "give you your vehicle status here anytime."
 
 /**
- * Persisted chatbot settings. The admin page also stores a couple of
- * platform-level toggles (enable_ai_chatbot / enable_media_validation)
- * alongside this object in `chatbot_config.settings`; `.passthrough()`
- * keeps those extra keys safe on save/load. Because every zod schema
- * strips unknown keys by default, passthrough is required here.
+ * Sent verbatim (no AI) when `enable_ai_chatbot` is off, right before the
+ * conversation is handed to staff. Lives here so the admin client component can
+ * use it without importing server-only Messenger code.
+ */
+export const DEFAULT_AI_DISABLED_MESSAGE =
+  "Thanks for reaching out to 826 Auto Aesthetic and Protection! Our team will get back to " +
+  "you shortly."
+
+/**
+ * Persisted chatbot settings. `.passthrough()` is kept so any legacy keys
+ * already stored in `chatbot_config.settings` survive a save/load round trip
+ * — every zod schema strips unknown keys by default.
+ *
+ * `enable_ai_chatbot` / `enable_media_validation` are the platform-level master
+ * switches; they are typed here (rather than riding along on passthrough) so
+ * the runtime can actually read them. Both default to true so an existing row
+ * saved before they were typed keeps working.
  */
 export const chatbotSettingsSchema = z.object({
   personality:             botPersonalitySchema,
+  enable_ai_chatbot:       z.boolean().default(true),
+  enable_media_validation: z.boolean().default(true),
+  ai_disabled_message:     z.string().max(2000).default(DEFAULT_AI_DISABLED_MESSAGE),
   enable_services:         z.boolean(),
   enable_booking:          z.boolean(),
   enable_status:           z.boolean(),
