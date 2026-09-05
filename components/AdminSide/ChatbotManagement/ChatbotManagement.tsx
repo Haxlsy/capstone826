@@ -3,10 +3,10 @@
 import { useState, useEffect } from "react"
 import {
   Bot, BookOpen, Save, Plus, Pencil, Trash2, X, Check,
-  ChevronDown, ChevronUp, Car, Settings, AlertTriangle,
-  Users, ClipboardList, Globe, SlidersHorizontal,
+  ChevronDown, ChevronUp, MessageSquare, Settings, AlertTriangle,
+  Globe, SlidersHorizontal, Users,
 } from "lucide-react"
-import VehicleStatusTemplate from "./VehicleStatusTemplate"
+import MessageTemplates from "./MessageTemplates"
 import ChatbotPreview from "./ChatbotPreview"
 import { useToast } from "@/components/ui/Toast"
 import {
@@ -15,11 +15,20 @@ import {
   type KBEntry,
   KB_CATEGORIES,
   KB_CATEGORY_COLORS,
-  DEFAULT_NOT_LINKED_MESSAGE,
   DEFAULT_AI_DISABLED_MESSAGE,
+  DEFAULT_VEHICLE_STATUS_MESSAGE_EN,
+  DEFAULT_VEHICLE_STATUS_MESSAGE_FIL,
+  DEFAULT_LINK_VERIFICATION_MESSAGE_EN,
+  DEFAULT_LINK_VERIFICATION_MESSAGE_FIL,
+  DEFAULT_ESCALATION_MESSAGE_EN,
+  DEFAULT_ESCALATION_MESSAGE_FIL,
+  DEFAULT_RESOLVED_MESSAGE_EN,
+  DEFAULT_RESOLVED_MESSAGE_FIL,
+  DEFAULT_BOOKING_MESSAGE_EN,
+  DEFAULT_BOOKING_MESSAGE_FIL,
 } from "@/types/chatbot"
 
-type Tab = "settings" | "knowledge_base" | "vehicle_template"
+type Tab = "settings" | "knowledge_base" | "message_templates"
 type Personality = "friendly" | "formal" | "casual"
 
 // The master toggles are part of chatbotSettingsSchema now, so ChatbotSettings
@@ -31,24 +40,21 @@ const DEFAULT_SETTINGS: AdminChatbotSettings = {
   enable_media_validation: true,
   ai_disabled_message:     DEFAULT_AI_DISABLED_MESSAGE,
   personality:             "friendly",
-  enable_services:         true,
-  enable_booking:          true,
-  enable_status:           true,
-  enable_faq:              true,
-  booking_message:         "Thank you! Your request has been sent to our Sales team. They will contact you shortly to confirm your appointment.",
   notify_sales:            true,
   language:                "english",
-  escalation_rules:        ["speak_to_human", "complaint", "unanswerable"],
   // Seeded from the message the system actually sends, so the editor opens
   // showing exactly what customers receive today.
-  account_not_linked_message: DEFAULT_NOT_LINKED_MESSAGE,
+  vehicle_status_message_en:     DEFAULT_VEHICLE_STATUS_MESSAGE_EN,
+  vehicle_status_message_fil:    DEFAULT_VEHICLE_STATUS_MESSAGE_FIL,
+  link_verification_message_en:  DEFAULT_LINK_VERIFICATION_MESSAGE_EN,
+  link_verification_message_fil: DEFAULT_LINK_VERIFICATION_MESSAGE_FIL,
+  escalation_message_en:         DEFAULT_ESCALATION_MESSAGE_EN,
+  escalation_message_fil:        DEFAULT_ESCALATION_MESSAGE_FIL,
+  resolved_message_en:           DEFAULT_RESOLVED_MESSAGE_EN,
+  resolved_message_fil:          DEFAULT_RESOLVED_MESSAGE_FIL,
+  booking_message_en:            DEFAULT_BOOKING_MESSAGE_EN,
+  booking_message_fil:           DEFAULT_BOOKING_MESSAGE_FIL,
 }
-
-const ESCALATION_OPTIONS = [
-  { key: "speak_to_human", label: "Customer asks to speak with a human" },
-  { key: "complaint",      label: "Complaint or negative feedback" },
-  { key: "unanswerable",   label: "Question the AI cannot answer" },
-]
 
 interface KBForm {
   category: KBCategory
@@ -115,15 +121,6 @@ export default function ChatbotManagement() {
     setDirty(true)
     setSaved(false)
     setError(null)
-  }
-
-  function toggleEscalation(key: string) {
-    setSettings((prev) => {
-      const has = prev.escalation_rules.includes(key)
-      return { ...prev, escalation_rules: has ? prev.escalation_rules.filter((k) => k !== key) : [...prev.escalation_rules, key] }
-    })
-    setDirty(true)
-    setSaved(false)
   }
 
   async function handleSave() {
@@ -209,7 +206,7 @@ export default function ChatbotManagement() {
       <div className="flex border-b border-border gap-1">
         <TabButton active={activeTab === "settings"} onClick={() => setActiveTab("settings")} icon={<Settings className="w-4 h-4" />} label="Chatbot Settings" />
         <TabButton active={activeTab === "knowledge_base"} onClick={() => setActiveTab("knowledge_base")} icon={<BookOpen className="w-4 h-4" />} label="Knowledge Base" />
-        <TabButton active={activeTab === "vehicle_template"} onClick={() => setActiveTab("vehicle_template")} icon={<Car className="w-4 h-4" />} label="Vehicle Status" />
+        <TabButton active={activeTab === "message_templates"} onClick={() => setActiveTab("message_templates")} icon={<MessageSquare className="w-4 h-4" />} label="Message Templates" />
       </div>
 
       {/* Settings Tab */}
@@ -273,61 +270,17 @@ export default function ChatbotManagement() {
             </div>
           </Section>
 
-          {/* B — Capabilities */}
-          <Section icon={<ClipboardList className="w-4 h-4" />} title="What the Bot Can Handle" subtitle="Turn on the topics your chatbot should be able to help with.">
-            <div className="flex flex-col gap-3">
-              <Toggle checked={settings.enable_services} onChange={(v) => patch("enable_services", v)} label="Answer questions about services and pricing" />
-              <Toggle checked={settings.enable_booking}  onChange={(v) => patch("enable_booking",  v)} label="Collect booking information from customers" />
-              <Toggle checked={settings.enable_status}   onChange={(v) => patch("enable_status",   v)} label="Help customers check their vehicle status" />
-              <Toggle checked={settings.enable_faq}      onChange={(v) => patch("enable_faq",      v)} label="Answer general FAQs" />
+          {/* Notify Sales — booking wording itself now lives in Message Templates */}
+          <Section icon={<Users className="w-4 h-4" />} title="Booking Notifications" subtitle="How the team is alerted when a booking request comes in.">
+            <div className="flex flex-col gap-1">
+              <Toggle
+                checked={settings.notify_sales}
+                onChange={(v) => patch("notify_sales", v)}
+                label="Notify Sales team when a booking request comes in"
+              />
+              <p className="text-xs text-muted ml-12">Booking requests will appear in the Inquiries section for your Sales team to action.</p>
             </div>
           </Section>
-
-          {/* C — Booking Setup */}
-          {settings.enable_booking && (
-            <Section icon={<Users className="w-4 h-4" />} title="Booking Setup" subtitle="How the chatbot handles customers who want to book a service.">
-              <div className="flex flex-col gap-4">
-                <div className="flex items-start gap-2.5 bg-status-warning/10 border border-status-warning/30 rounded-card px-4 py-3">
-                  <AlertTriangle className="w-4 h-4 text-status-warning mt-0.5 shrink-0" />
-                  <p className="text-sm text-status-warning">
-                    The AI does <strong>not</strong> confirm bookings. It collects the customer&apos;s details and notifies your Sales team — the customer is told Sales will reach out.
-                  </p>
-                </div>
-
-                <div className="flex flex-col gap-1.5">
-                  <p className="text-sm font-medium text-body">Information collected from customer</p>
-                  <div className="grid grid-cols-2 gap-2">
-                    {["Full Name", "Contact Number", "Plate Number", "Vehicle Type"].map((f) => (
-                      <div key={f} className="flex items-center gap-2 px-3 py-2 bg-surface-subtle rounded-sm border border-border">
-                        <Check className="w-3.5 h-3.5 text-status-inspection shrink-0" />
-                        <span className="text-sm text-body">{f}</span>
-                      </div>
-                    ))}
-                  </div>
-                  <p className="text-xs text-muted">These fields are always collected and cannot be changed.</p>
-                </div>
-
-                <div className="flex flex-col gap-1.5">
-                  <label className="text-sm font-medium text-body">Message sent to customer after collecting info</label>
-                  <textarea
-                    value={settings.booking_message}
-                    onChange={(e) => patch("booking_message", e.target.value)}
-                    rows={3}
-                    className="w-full border border-border rounded-card px-4 py-3 text-sm text-body leading-relaxed focus:outline-none focus:ring-2 focus:ring-primary/30 resize-none"
-                  />
-                </div>
-
-                <div className="flex flex-col gap-1">
-                  <Toggle
-                    checked={settings.notify_sales}
-                    onChange={(v) => patch("notify_sales", v)}
-                    label="Notify Sales team when a booking request comes in"
-                  />
-                  <p className="text-xs text-muted ml-12">Booking requests will appear in the Inquiries section for your Sales team to action.</p>
-                </div>
-              </div>
-            </Section>
-          )}
 
           {/* E — Language */}
           <Section icon={<Globe className="w-4 h-4" />} title="Response Language" subtitle="Choose the language the chatbot uses when talking to customers.">
@@ -348,23 +301,6 @@ export default function ChatbotManagement() {
                   </button>
                 )
               })}
-            </div>
-          </Section>
-
-          {/* F — Escalation */}
-          <Section icon={<Users className="w-4 h-4" />} title="When AI Passes to Staff" subtitle="The chatbot will hand the conversation to your team in these situations.">
-            <div className="flex flex-col gap-3">
-              {ESCALATION_OPTIONS.map((o) => (
-                <label key={o.key} className="flex items-center gap-3 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={settings.escalation_rules.includes(o.key)}
-                    onChange={() => toggleEscalation(o.key)}
-                    className="w-4 h-4 rounded border-border accent-gray-900 cursor-pointer"
-                  />
-                  <span className="text-sm text-body">{o.label}</span>
-                </label>
-              ))}
             </div>
           </Section>
 
@@ -399,11 +335,11 @@ export default function ChatbotManagement() {
         </div>
       )}
 
-      {/* Vehicle Status Template Tab */}
-      {activeTab === "vehicle_template" && (
-        <VehicleStatusTemplate
-          value={settings.account_not_linked_message}
-          onChange={(v) => patch("account_not_linked_message", v)}
+      {/* Message Templates Tab */}
+      {activeTab === "message_templates" && (
+        <MessageTemplates
+          settings={settings}
+          patch={patch}
           onSave={handleSave}
           saved={settingsSaved}
           saving={settingsDirty}

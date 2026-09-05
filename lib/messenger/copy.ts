@@ -10,6 +10,13 @@
  * Pure module: no Supabase, no Gemini, safe to import anywhere and unit-test.
  */
 
+import {
+  DEFAULT_ESCALATION_MESSAGE_EN,
+  DEFAULT_ESCALATION_MESSAGE_FIL,
+  DEFAULT_RESOLVED_MESSAGE_EN,
+  DEFAULT_RESOLVED_MESSAGE_FIL,
+} from "@/types/chatbot"
+
 export type BotLanguage = "english" | "filipino" | "both"
 
 /**
@@ -21,6 +28,31 @@ export function pickCopy(lang: BotLanguage | undefined, en: string, fil: string)
   if (lang === "filipino") return fil
   if (lang === "both") return `${en}\n\n${fil}`
   return en
+}
+
+/** A resolved English + Filipino pair, ready for `pickCopy`. */
+export interface MessageTemplate {
+  en: string
+  fil: string
+}
+
+/**
+ * Resolves one of the five admin-editable "Message Templates" against its
+ * built-in default: an admin value wins only when actually filled in (both
+ * languages are required in the admin UI, but this stays defensive for a
+ * legacy/partially-seeded settings row). Centralizes the "admin override, else
+ * hardcoded default" pattern used by every template-backed message below.
+ */
+export function resolveTemplate(
+  en: string | null | undefined,
+  fil: string | null | undefined,
+  fallbackEn: string,
+  fallbackFil: string,
+): MessageTemplate {
+  return {
+    en: en?.trim() || fallbackEn,
+    fil: fil?.trim() || fallbackFil,
+  }
 }
 
 /** Language-specific lead-ins for the deterministic missing-fields re-ask. */
@@ -111,30 +143,38 @@ export type EscalationReason =
   | "hiccup"
 
 const ESCALATION_REASON_COPY: Record<EscalationReason, { english: string; filipino: string }> = {
-  human_requested:         { english: "You'd like to speak with our team directly",              filipino: "Gusto mong makausap ang aming team nang direkta" },
-  report:                  { english: "You'd like to report a concern",                          filipino: "Gusto mong mag-report ng concern" },
-  vehicle_in_service:      { english: "Your vehicle already has an active job with us",           filipino: "May kasalukuyan ka nang trabaho sa amin para sa sasakyang ito" },
-  stuck_details:           { english: "I want to make sure we get your booking details exactly right", filipino: "Gusto kong siguraduhing tama ang mga detalye ng iyong booking" },
-  booking_ready:           { english: "Your booking details are complete",                       filipino: "Kumpleto na ang mga detalye ng iyong booking" },
-  job_order_unrecognized:  { english: "I wasn't able to verify the Job Order Code you sent",      filipino: "Hindi ko na-verify ang Job Order Code na ipinadala mo" },
-  violation:               { english: "Let's continue this with a member of our team",            filipino: "Ipagpapatuloy na natin ito kasama ang isang miyembro ng aming team" },
-  hiccup:                  { english: "I ran into a small hiccup on my end",                      filipino: "Nagkaroon ako ng maliit na hiccup sa aking sistema" },
+  human_requested:         { english: "You'd like to speak with our team directly.",              filipino: "Gusto mong makausap ang aming team nang direkta." },
+  report:                  { english: "You'd like to report a concern.",                          filipino: "Gusto mong mag-report ng concern." },
+  vehicle_in_service:      { english: "Your vehicle already has an active job with us.",           filipino: "May kasalukuyan ka nang trabaho sa amin para sa sasakyang ito." },
+  stuck_details:           { english: "I want to make sure we get your booking details exactly right.", filipino: "Gusto kong siguraduhing tama ang mga detalye ng iyong booking." },
+  booking_ready:           { english: "Your booking details are complete.",                       filipino: "Kumpleto na ang mga detalye ng iyong booking." },
+  job_order_unrecognized:  { english: "I wasn't able to verify the Job Order Code you sent.",      filipino: "Hindi ko na-verify ang Job Order Code na ipinadala mo." },
+  violation:               { english: "Let's continue this with a member of our team.",            filipino: "Ipagpapatuloy na natin ito kasama ang isang miyembro ng aming team." },
+  hiccup:                  { english: "I ran into a small hiccup on my end.",                      filipino: "Nagkaroon ako ng maliit na hiccup sa aking sistema." },
 }
 
-/** Bot has handed the conversation to a human. */
-export function escalationAck(lang?: BotLanguage, reason?: EscalationReason | null): string {
+/**
+ * Bot has handed the conversation to a human. `baseTemplate` is the
+ * admin-editable "Human Escalation Message Template" (already resolved
+ * against its default via `resolveTemplate` by the caller). The per-reason
+ * clause is prepended as its own standalone leading sentence rather than
+ * spliced into the base text — those clauses are chosen specifically to
+ * never leak internal detail (see `EscalationReason`'s doc comment) and must
+ * keep working no matter how an admin rewords the base template, so this
+ * deliberately does not depend on matching any particular phrase in it.
+ */
+export function escalationAck(
+  lang?: BotLanguage,
+  reason?: EscalationReason | null,
+  baseTemplate?: MessageTemplate,
+): string {
   const r = reason ? ESCALATION_REASON_COPY[reason] : null
-  return pickCopy(
-    lang,
-    "Thanks for reaching out to 826 Auto Care! " +
-      (r ? `${r.english}, so I've passed` : "I've passed") +
-      " this conversation to our team, and a staff member will follow up with you here personally. " +
-      "I won't be able to send automated replies on this chat until your request has been resolved.",
-    "Salamat sa pag-message sa 826 Auto Care! " +
-      (r ? `${r.filipino}, kaya naipasa ko na` : "Naipasa ko na") +
-      " ang usapang ito sa aming team, at may staff na susunod sa iyo rito nang personal. " +
-      "Hindi muna ako makakapagpadala ng automated na sagot dito hanggang matugunan ang iyong request.",
-  )
+  const base = baseTemplate ?? { en: DEFAULT_ESCALATION_MESSAGE_EN, fil: DEFAULT_ESCALATION_MESSAGE_FIL }
+
+  const en = r ? `${r.english} ${base.en}` : base.en
+  const fil = r ? `${r.filipino} ${base.fil}` : base.fil
+
+  return pickCopy(lang, en, fil)
 }
 
 /** Customer wants to change/cancel a booking already on file. */
@@ -161,28 +201,14 @@ export function bookingCancelled(lang?: BotLanguage): string {
   )
 }
 
-/** A capability the admin switched off was requested. */
-export function capabilityDisabled(
-  capability: "services" | "booking" | "status",
-  lang?: BotLanguage,
-): string {
-  const en: Record<typeof capability, string> = {
-    services: "service and pricing questions",
-    booking:  "bookings",
-    status:   "vehicle status updates",
-  }
-  const fil: Record<typeof capability, string> = {
-    services: "mga tanong tungkol sa serbisyo at presyo",
-    booking:  "booking",
-    status:   "update sa status ng sasakyan",
-  }
-  return pickCopy(
-    lang,
-    `Sorry — I'm not able to help with ${en[capability]} right now. ` +
-      "I'm passing you to our team, and a staff member will follow up with you here.",
-    `Pasensya na — hindi ko po matutulungan sa ${fil[capability]} sa ngayon. ` +
-      "Ipapasa ko kayo sa aming team, at may staff na kakausap sa inyo rito.",
-  )
+/**
+ * Sent (with the quick-reply menu) when Sales concludes a handoff and the bot
+ * resumes. `template` is the admin-editable "Resolved Message Template"
+ * (already resolved against its default via `resolveTemplate` by the caller).
+ */
+export function resolvedMessage(lang?: BotLanguage, template?: MessageTemplate): string {
+  const t = template ?? { en: DEFAULT_RESOLVED_MESSAGE_EN, fil: DEFAULT_RESOLVED_MESSAGE_FIL }
+  return pickCopy(lang, t.en, t.fil)
 }
 
 /** Warnings issued before the violation ladder escalates. */

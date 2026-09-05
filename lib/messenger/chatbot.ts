@@ -5,14 +5,22 @@ import { TOKEN_PLATE, TOKEN_PHONE, TOKEN_EMAIL, PLATE_PATTERN } from "@/lib/mess
 import {
   type BotLanguage,
   bookingCancelled,
-  capabilityDisabled,
   missingFieldsPrompt,
   BOOKING_SUMMARY_COPY,
   MISSING_FIELDS_LEADS,
 } from "@/lib/messenger/copy"
 import {
-  DEFAULT_NOT_LINKED_MESSAGE,
   DEFAULT_AI_DISABLED_MESSAGE,
+  DEFAULT_VEHICLE_STATUS_MESSAGE_EN,
+  DEFAULT_VEHICLE_STATUS_MESSAGE_FIL,
+  DEFAULT_LINK_VERIFICATION_MESSAGE_EN,
+  DEFAULT_LINK_VERIFICATION_MESSAGE_FIL,
+  DEFAULT_ESCALATION_MESSAGE_EN,
+  DEFAULT_ESCALATION_MESSAGE_FIL,
+  DEFAULT_RESOLVED_MESSAGE_EN,
+  DEFAULT_RESOLVED_MESSAGE_FIL,
+  DEFAULT_BOOKING_MESSAGE_EN,
+  DEFAULT_BOOKING_MESSAGE_FIL,
   type ChatbotSettings,
   type ChatMessage,
   type ChatbotReply,
@@ -171,16 +179,14 @@ const PERSONALITY_PREAMBLE: Record<ChatbotSettings["personality"], string> = {
   casual:   "You are a casual and approachable AI assistant for 826 Auto Care OPC. Use everyday language and a relaxed tone.",
 }
 
-const ESCALATION_LABELS: Record<string, string> = {
-  speak_to_human:    "customer asks to speak with a human",
-  complaint:         "customer expresses a complaint or negative feedback",
-  unanswerable:      "you cannot answer the customer's question",
-  booking_confirmed: "the customer's booking request has been collected and forwarded to Sales",
-}
-
 /**
  * Settings-only system prompt. This is the exact prompt the admin
  * Chatbot Settings page persists into chatbot_config.system_prompt.
+ *
+ * Every core capability (services/FAQ/status/booking) and escalation trigger
+ * (speak-to-human/complaint/unanswerable) is always on — there is no admin
+ * toggle for these; turning any of them off would make the chatbot unable to
+ * do its job.
  */
 export function buildSystemPrompt(s: ChatbotSettings): string {
   const lines: string[] = []
@@ -188,53 +194,29 @@ export function buildSystemPrompt(s: ChatbotSettings): string {
   lines.push(PERSONALITY_PREAMBLE[s.personality] ?? PERSONALITY_PREAMBLE.friendly)
   lines.push("")
   lines.push("You can help customers with:")
+  lines.push("- Information about 826 Auto Care's services and pricing")
+  lines.push("- General FAQs about detailing and installation")
+  lines.push("- Checking the current status of their vehicle's service job")
+  lines.push("- Collecting their details for a booking request")
 
-  if (s.enable_services) lines.push("- Information about 826 Auto Care's services and pricing")
-  if (s.enable_faq)      lines.push("- General FAQs about detailing and installation")
-  if (s.enable_status)   lines.push("- Checking the current status of their vehicle's service job")
-  if (s.enable_booking)  lines.push("- Collecting their details for a booking request")
-
-  // Disabled capabilities need an explicit prohibition. Merely omitting the
-  // bullet above left the model free to answer anyway — the toggles read as
-  // advisory rather than binding.
-  const disabled: string[] = []
-  if (!s.enable_services) disabled.push("- Do NOT describe our services or quote any price. This is switched off.")
-  if (!s.enable_faq)      disabled.push("- Do NOT answer general FAQs about detailing or installation. This is switched off.")
-  if (!s.enable_status)   disabled.push("- Do NOT look up, discuss, or comment on vehicle or job status. This is switched off.")
-  if (!s.enable_booking)  disabled.push("- Do NOT collect booking details or take a booking. This is switched off.")
-
-  if (disabled.length > 0) {
-    lines.push("")
-    lines.push("TURNED OFF — you must not help with these, even if asked directly:")
-    lines.push(...disabled)
-    lines.push(
-      "If a customer asks about anything in that list, apologise briefly, say you can't help with that here, " +
-      "and tell them you're passing them to our team. Never attempt the task anyway.",
-    )
+  lines.push("")
+  lines.push("When a customer wants to book a service:")
+  lines.push("1. Collect their Full Name, Contact Number, Plate Number, Vehicle Type, and Email.")
+  lines.push("2. Read the details back and ask them to confirm (e.g. \"Is this correct? Reply YES to confirm.\").")
+  lines.push("3. Do NOT tell the customer their booking is confirmed, submitted, scheduled, received, or booked. Sales finalizes every booking after the details are collected.")
+  if (s.notify_sales) {
+    lines.push("Our system passes the confirmed details to the Sales team automatically — you never send a confirmation message yourself.")
   }
+  lines.push("Never ask the customer which service, package, or treatment they want — Sales handles service selection. Only ever collect the five fields listed above.")
+  lines.push("IMPORTANT: You do NOT confirm or schedule bookings. You only collect information.")
 
-  if (s.enable_booking) {
-    lines.push("")
-    lines.push("When a customer wants to book a service:")
-    lines.push("1. Collect their Full Name, Contact Number, Plate Number, Vehicle Type, and Email.")
-    lines.push("2. Read the details back and ask them to confirm (e.g. \"Is this correct? Reply YES to confirm.\").")
-    lines.push("3. Do NOT tell the customer their booking is confirmed, submitted, scheduled, received, or booked. Sales finalizes every booking after the details are collected.")
-    if (s.notify_sales) {
-      lines.push("Our system passes the confirmed details to the Sales team automatically — you never send a confirmation message yourself.")
-    }
-    lines.push("Never ask the customer which service, package, or treatment they want — Sales handles service selection. Only ever collect the five fields listed above.")
-    lines.push("IMPORTANT: You do NOT confirm or schedule bookings. You only collect information.")
-  }
-
-  if (s.enable_status) {
-    lines.push("")
-    lines.push("When a customer asks about their vehicle status:")
-    lines.push("Our system resolves vehicle status from the customer's own linked Messenger account and hands you the answer directly. You have no lookup tool and you never perform a search yourself.")
-    lines.push("- NEVER claim to have checked, searched, looked up, or reviewed our system, records, or database.")
-    lines.push("- NEVER state whether a plate number or phone number does or does not have a job order. You were given no such information.")
-    lines.push("- NEVER invent a job order, status, stage, or completion date. Only ever relay status details supplied to you.")
-    lines.push("- Do NOT ask the customer for their plate number or phone number for a status check — our system handles identity and asks for those itself when they are needed.")
-  }
+  lines.push("")
+  lines.push("When a customer asks about their vehicle status:")
+  lines.push("Our system resolves vehicle status from the customer's own linked Messenger account and hands you the answer directly. You have no lookup tool and you never perform a search yourself.")
+  lines.push("- NEVER claim to have checked, searched, looked up, or reviewed our system, records, or database.")
+  lines.push("- NEVER state whether a plate number or phone number does or does not have a job order. You were given no such information.")
+  lines.push("- NEVER invent a job order, status, stage, or completion date. Only ever relay status details supplied to you.")
+  lines.push("- Do NOT ask the customer for their plate number or phone number for a status check — our system handles identity and asks for those itself when they are needed.")
 
   lines.push("")
   if (s.language === "filipino") {
@@ -245,14 +227,11 @@ export function buildSystemPrompt(s: ChatbotSettings): string {
     lines.push("LANGUAGE: Always respond in English.")
   }
 
-  if (s.escalation_rules.length > 0) {
-    lines.push("")
-    lines.push("Immediately escalate to a human staff member if:")
-    for (const rule of s.escalation_rules) {
-      const label = ESCALATION_LABELS[rule]
-      if (label) lines.push(`- The ${label}`)
-    }
-  }
+  lines.push("")
+  lines.push("Immediately escalate to a human staff member if:")
+  lines.push("- The customer asks to speak with a human")
+  lines.push("- The customer expresses a complaint or negative feedback")
+  lines.push("- You cannot answer the customer's question")
 
   return lines.join("\n")
 }
@@ -318,15 +297,18 @@ function buildRuntimeSystemPrompt(
     enable_ai_chatbot: true,
     enable_media_validation: true,
     ai_disabled_message: DEFAULT_AI_DISABLED_MESSAGE,
-    enable_services: true,
-    enable_booking: true,
-    enable_status: true,
-    enable_faq: true,
-    booking_message: "A staff member will follow up with you to confirm your booking.",
     notify_sales: true,
     language: "english",
-    escalation_rules: ["speak_to_human", "complaint", "unanswerable"],
-    account_not_linked_message: DEFAULT_NOT_LINKED_MESSAGE,
+    vehicle_status_message_en: DEFAULT_VEHICLE_STATUS_MESSAGE_EN,
+    vehicle_status_message_fil: DEFAULT_VEHICLE_STATUS_MESSAGE_FIL,
+    link_verification_message_en: DEFAULT_LINK_VERIFICATION_MESSAGE_EN,
+    link_verification_message_fil: DEFAULT_LINK_VERIFICATION_MESSAGE_FIL,
+    escalation_message_en: DEFAULT_ESCALATION_MESSAGE_EN,
+    escalation_message_fil: DEFAULT_ESCALATION_MESSAGE_FIL,
+    resolved_message_en: DEFAULT_RESOLVED_MESSAGE_EN,
+    resolved_message_fil: DEFAULT_RESOLVED_MESSAGE_FIL,
+    booking_message_en: DEFAULT_BOOKING_MESSAGE_EN,
+    booking_message_fil: DEFAULT_BOOKING_MESSAGE_FIL,
   }, knowledge)
 }
 
@@ -702,18 +684,6 @@ export function buildBookingSummary(details: CustomerDetails, lang?: BotLanguage
 }
 
 /**
- * Deterministic reply when the customer asks for a capability the admin has
- * switched off. Rendered in code, not by the model, so a disabled feature can't
- * be talked into working.
- */
-export function buildCapabilityDisabledMessage(
-  capability: "services" | "booking" | "status",
-  lang?: BotLanguage,
-): string {
-  return capabilityDisabled(capability, lang)
-}
-
-/**
  * Deterministic reply when the customer abandons an in-progress booking.
  * Rendered in code, never via Gemini — handing this to the model with the
  * booking still in history made it re-offer the booking it was just told to drop.
@@ -726,11 +696,10 @@ export function buildBookingCancelledMessage(lang?: BotLanguage): string {
  * Whether the conversation should still be treated as an in-progress booking.
  *
  * Extracted as a pure function because this decision used to be an inline
- * expression with no test surface, and it was wrong in two ways: `is_booking_flow`
- * was sticky (nothing ever cleared it for a non-booking message, unlike the
- * vehicle-status flag), so unrelated questions were pulled into the booking
- * machinery and answered with booking context appended; and it ignored the
- * admin's `enable_booking` capability toggle entirely.
+ * expression with no test surface, and `is_booking_flow` was sticky (nothing
+ * ever cleared it for a non-booking message, unlike the vehicle-status flag),
+ * so unrelated questions were pulled into the booking machinery and answered
+ * with booking context appended.
  */
 export function shouldStayInBookingFlow(input: {
   /** Booking intent, or a plate/phone/email token in this message. */
@@ -741,15 +710,12 @@ export function shouldStayInBookingFlow(input: {
   isBookingFlow: boolean
   awaitingConfirmation: boolean
   cancelIntent: boolean
-  /** Admin capability toggle; defaults to enabled. */
-  enableBooking?: boolean
 }): boolean {
   const {
     signal, statusIntent, awaitingLinkVerification, linkEscalation,
-    isBookingFlow, awaitingConfirmation, cancelIntent, enableBooking = true,
+    isBookingFlow, awaitingConfirmation, cancelIntent,
   } = input
 
-  if (!enableBooking) return false
   if (cancelIntent) return false
   if (awaitingLinkVerification || linkEscalation) return false
 
