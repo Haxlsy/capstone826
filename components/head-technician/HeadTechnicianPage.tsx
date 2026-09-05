@@ -1,12 +1,14 @@
 "use client"
 
 import { useState } from "react"
-import { Wrench, SlidersHorizontal, X, Search, Layers, RefreshCw } from "lucide-react"
+import { Wrench, X, Search, Layers, RefreshCw } from "lucide-react"
 import { Status } from "./components/types"
 import { HeadTechJobCard } from "./components/HeadTechJobCard"
 import { BottomNav } from "./components/BottomNav"
 import { StatCard } from "@/components/ui/StatCard"
 import { Tabs } from "@/components/ui/Tabs"
+import { Popover } from "@/components/ui/Popover"
+import { FilterTrigger } from "@/components/ui/FilterTrigger"
 import type { TechnicianJob } from "@/lib/head-technician/jobs-data"
 
 const STATUS_OPTIONS: Status[] = [
@@ -27,7 +29,6 @@ export default function HeadTechnicianPage({
   const loading = false
   const [searchQuery, setSearchQuery] = useState("")
   const [statusFilter, setStatusFilter] = useState("all")
-  const [showFilters, setShowFilters] = useState(false)
 
   const filteredJobs = jobs.filter((job) => {
     if (statusFilter !== "all" && job.status !== (statusFilter as Status)) return false
@@ -70,18 +71,44 @@ export default function HeadTechnicianPage({
             )}
           </div>
 
-          <button
-            onClick={() => setShowFilters((v) => !v)}
-            className={`relative p-2.5 rounded-card border transition-all duration-200 ${showFilters || isFiltered
-                ? "bg-primary border-primary text-white"
-                : "bg-surface border-border text-body hover:border-primary/40"
-              }`}
-          >
-            <SlidersHorizontal size={16} />
-            {isFiltered && (
-              <span className="absolute -top-1 -right-1 w-2 h-2 bg-primary rounded-full" />
+          <Popover
+            align="end"
+            panelClassName="w-[calc(100vw-2rem)] max-w-sm p-4"
+            trigger={({ open, toggle }) => (
+              <FilterTrigger
+                open={open}
+                onClick={toggle}
+                active={isFiltered}
+                count={statusFilter !== "all" ? 1 : 0}
+                className="h-11 w-11 rounded-card"
+              />
             )}
-          </button>
+          >
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <p className="text-[11px] font-semibold text-muted uppercase tracking-widest">
+                  Filter by Status
+                </p>
+                {isFiltered && (
+                  <button
+                    onClick={() => { setStatusFilter("all"); setSearchQuery("") }}
+                    className="flex items-center gap-1 text-[11px] font-medium text-muted hover:text-body transition-colors"
+                  >
+                    <X size={12} /> Clear all
+                  </button>
+                )}
+              </div>
+              <Tabs
+                variant="pill"
+                items={[
+                  { key: "all", label: "All" },
+                  ...STATUS_OPTIONS.map((s) => ({ key: s, label: s })),
+                ]}
+                value={statusFilter}
+                onChange={setStatusFilter}
+              />
+            </div>
+          </Popover>
         </div>
 
         {/* ── Stat cards ──────────────────────────────────────────── */}
@@ -114,57 +141,13 @@ export default function HeadTechnicianPage({
           )}
         </div>
 
-        {/* ── Filter panel (collapsible) ──────────────────────────── */}
-        {showFilters && (
-          <div className="bg-surface rounded-card border border-border-subtle shadow-sm p-4 space-y-3">
-            <div className="flex items-center justify-between">
-              <p className="text-[11px] font-semibold text-muted uppercase tracking-widest">
-                Filter by Status
-              </p>
-              {isFiltered && (
-                <button
-                  onClick={() => { setStatusFilter("all"); setSearchQuery("") }}
-                  className="flex items-center gap-1 text-[11px] font-medium text-muted hover:text-body transition-colors"
-                >
-                  <X size={12} /> Clear all
-                </button>
-              )}
-            </div>
-            <Tabs
-              variant="pill"
-              items={[
-                { key: "all", label: "All" },
-                ...STATUS_OPTIONS.map((s) => ({ key: s, label: s })),
-              ]}
-              value={statusFilter}
-              onChange={setStatusFilter}
-            />
-          </div>
-        )}
-
         {/* ── Job list ────────────────────────────────────────────── */}
         <div className="space-y-3">
-          {loading && (
-            <div className="space-y-3">
-              {[1, 2, 3].map((i) => (
-                <div key={i} className="bg-surface rounded-card border border-border-subtle p-4 animate-pulse space-y-3">
-                  <div className="flex justify-between items-center">
-                    <div className="h-3 w-20 bg-surface-muted rounded-full" />
-                    <div className="h-5 w-16 bg-surface-muted rounded-full" />
-                  </div>
-                  <div className="h-4 w-36 bg-surface-muted rounded-full" />
-                  <div className="h-3 w-28 bg-surface-muted rounded-full" />
-                  <div className="h-2 w-full bg-surface-muted rounded-full" />
-                </div>
-              ))}
-            </div>
-          )}
-
-          {!loading && filteredJobs.map((job) => (
+          {filteredJobs.map((job) => (
             <HeadTechJobCard key={job.job_id} job={job as any} />
           ))}
 
-          {!loading && filteredJobs.length === 0 && (
+          {filteredJobs.length === 0 && (
             <div className="bg-surface rounded-card border border-border-subtle px-4 py-12 text-center space-y-1.5">
               <p className="text-sm font-medium text-body">No jobs found</p>
               {isFiltered && (

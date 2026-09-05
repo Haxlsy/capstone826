@@ -4,7 +4,7 @@ import { useCallback, useEffect, useState } from "react"
 import { ArrowLeft, Pencil, Trash2, Plus } from "lucide-react"
 import { COLOR_OPTIONS, colorStyles, minsToHHMM, hhmmToMins } from "./service-form-helpers"
 import { Drawer } from "@/components/ui/Drawer"
-import { Button } from "@/components/ui/Button"
+import { Button, IconButton } from "@/components/ui/Button"
 import { useToast } from "@/components/ui/Toast"
 
 interface PresetStage {
@@ -238,6 +238,13 @@ export default function CategoryPresetsPanel({
         </span>
       }
       description={mode === "list" ? "Reusable templates for workflow categories" : undefined}
+      headerActions={
+        mode === "list" ? (
+          <IconButton aria-label="New preset" size="sm" onClick={openCreate}>
+            <Plus className="h-4 w-4" />
+          </IconButton>
+        ) : undefined
+      }
       footer={
         mode === "create" || mode === "edit" ? (
           <>
@@ -255,18 +262,19 @@ export default function CategoryPresetsPanel({
           {/* ─── LIST VIEW ─── */}
           {mode === "list" && (
             <div className="p-5 space-y-3">
-              <button
-                onClick={openCreate}
-                className="w-full flex items-center justify-center gap-2 py-2.5 rounded-card border-2 border-dashed border-border text-sm text-body hover:border-primary/40 hover:text-body transition-colors"
-              >
-                <Plus className="w-4 h-4" />
-                New Preset
-              </button>
-
               {loading ? (
                 <p className="text-center text-sm text-muted py-8">Loading...</p>
               ) : presets.length === 0 ? (
-                <p className="text-center text-sm text-muted py-8">No presets yet. Create your first one above.</p>
+                <div className="space-y-3">
+                  <p className="text-center text-sm text-muted py-4">No presets yet. Create your first one.</p>
+                  <button
+                    onClick={openCreate}
+                    className="w-full flex items-center justify-center gap-2 py-2.5 rounded-card border-2 border-dashed border-border text-sm text-body hover:border-primary/40 hover:text-body transition-colors"
+                  >
+                    <Plus className="w-4 h-4" />
+                    New Preset
+                  </button>
+                </div>
               ) : (
                 presets.map((preset) => {
                   const cs = colorStyles(preset.display_color)

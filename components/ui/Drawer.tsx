@@ -30,6 +30,7 @@ export function Drawer({
   description,
   width = "md",
   footer,
+  headerActions,
   children,
   className,
 }: {
@@ -39,6 +40,8 @@ export function Drawer({
   description?: React.ReactNode
   width?: Width
   footer?: React.ReactNode
+  /** extra controls rendered in the header row, before the close button */
+  headerActions?: React.ReactNode
   children: React.ReactNode
   className?: string
 }) {
@@ -80,16 +83,19 @@ export function Drawer({
                 {title && <h2 className="text-base font-semibold text-heading">{title}</h2>}
                 {description && <p className="mt-0.5 text-sm text-body">{description}</p>}
               </div>
-              {onClose && (
-                <button
-                  type="button"
-                  aria-label="Close"
-                  onClick={onClose}
-                  className="-mr-1 -mt-1 rounded-full p-1.5 text-muted hover:bg-surface-muted hover:text-body"
-                >
-                  <X className="h-4 w-4" />
-                </button>
-              )}
+              <div className="flex items-center gap-1 shrink-0">
+                {headerActions}
+                {onClose && (
+                  <button
+                    type="button"
+                    aria-label="Close"
+                    onClick={onClose}
+                    className="-mr-1 -mt-1 rounded-full p-1.5 text-muted hover:bg-surface-muted hover:text-body"
+                  >
+                    <X className="h-4 w-4" />
+                  </button>
+                )}
+              </div>
             </div>
           )}
           <div className="flex-1 overflow-y-auto px-5 py-4">{children}</div>

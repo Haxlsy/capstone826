@@ -1,38 +1,32 @@
 "use client"
 
-import { useState, useEffect } from "react"
-import { Eye, EyeOff, KeyRound, Check, ShieldCheck } from "lucide-react"
-import { Modal } from "@/components/ui/Modal"
-import { Button } from "@/components/ui/Button"
-import { useLogout } from "@/hooks/useLogout"
+import { useState } from "react"
+import { useRouter } from "next/navigation"
+import { Eye, EyeOff, Check, ShieldAlert } from "lucide-react"
 
-const LOGOUT_DELAY_MS = 2500
+const ROLE_ROUTES: Record<string, string> = {
+  super_admin: "/dashboard/admin",
+  admin: "/dashboard/admin",
+  operations: "/dashboard/operations",
+  sales: "/dashboard/sales",
+  head_detailer: "/head-technician",
+  head_installer: "/head-technician",
+}
 
-export default function ChangePasswordSettings() {
-  const logout = useLogout()
-  const [form, setForm] = useState({
-    currentPassword: "",
-    newPassword: "",
-    confirmPassword: "",
-  })
-  const [show, setShow] = useState({
-    current: false,
-    new: false,
-    confirm: false,
-  })
+/**
+ * Mandatory password-change screen shown on first login (or after an admin
+ * password reset) — trimmed variant of `ChangePasswordSettings` that gates
+ * the rest of the app instead of living in Settings. On success it clears
+ * `must_change_password` server-side (via /api/auth/change-password) and
+ * sends the user straight into their role home.
+ */
+export default function ForcedChangePasswordForm({ role }: { role: string }) {
+  const router = useRouter()
+  const [form, setForm] = useState({ currentPassword: "", newPassword: "", confirmPassword: "" })
+  const [show, setShow] = useState({ current: false, new: false, confirm: false })
   const [errors, setErrors] = useState<Partial<typeof form>>({})
   const [serverError, setServerError] = useState("")
   const [submitting, setSubmitting] = useState(false)
-  const [showLogoutNotice, setShowLogoutNotice] = useState(false)
-
-  // Once the password is changed, the session is stale for security — show a
-  // brief notice, then log out automatically (or immediately if the user
-  // acknowledges it first).
-  useEffect(() => {
-    if (!showLogoutNotice) return
-    const id = setTimeout(() => logout(), LOGOUT_DELAY_MS)
-    return () => clearTimeout(id)
-  }, [showLogoutNotice, logout])
 
   function setField(key: keyof typeof form, value: string) {
     setForm((prev) => ({ ...prev, [key]: value }))
@@ -73,8 +67,7 @@ export default function ChangePasswordSettings() {
         setServerError(json.error ?? "Something went wrong.")
         return
       }
-      setForm({ currentPassword: "", newPassword: "", confirmPassword: "" })
-      setShowLogoutNotice(true)
+      router.push(ROLE_ROUTES[role] ?? "/")
     } catch {
       setServerError("Network error. Please try again.")
     } finally {
@@ -83,22 +76,15 @@ export default function ChangePasswordSettings() {
   }
 
   return (
-    <div className="p-6 max-w-lg">
-      {/* Header */}
-      <div className="mb-6">
-        <h1 className="text-xl font-bold text-heading">Settings</h1>
-        <p className="text-sm text-muted mt-0.5">Manage your account security.</p>
-      </div>
-
-      <div className="bg-surface border border-border rounded-card overflow-hidden">
-        {/* Section header */}
-        <div className="flex items-center gap-3 px-6 py-4 border-b border-border-subtle">
-          <div className="w-8 h-8 rounded-sm bg-primary/10 flex items-center justify-center">
-            <KeyRound className="w-4 h-4 text-primary" />
-          </div>
+    <div className="min-h-screen flex items-center justify-center bg-surface-subtle px-4">
+      <div className="w-full max-w-md bg-surface border border-border rounded-card overflow-hidden">
+        <div className="flex items-start gap-3 px-6 py-5 border-b border-border-subtle bg-status-warning/10">
+          <ShieldAlert className="w-5 h-5 shrink-0 text-status-warning mt-0.5" />
           <div>
-            <p className="text-sm font-semibold text-heading">Change Password</p>
-            <p className="text-xs text-muted">Update your login password.</p>
+            <p className="text-sm font-semibold text-heading">Change your password to continue</p>
+            <p className="text-xs text-muted mt-0.5">
+              For security, you must set a new password before accessing your account.
+            </p>
           </div>
         </div>
 
@@ -109,10 +95,6 @@ export default function ChangePasswordSettings() {
             </div>
           )}
 
-          {/* Required note */}
-          <p className="text-xs text-muted"><span className="text-status-delayed">*</span> Required fields</p>
-
-          {/* Current Password */}
           <div className="space-y-1.5">
             <label className="block text-sm font-medium text-body">
               Current Password <span className="text-status-delayed">*</span>
@@ -125,7 +107,6 @@ export default function ChangePasswordSettings() {
                 className={`w-full px-3 py-2.5 pr-10 text-sm border rounded-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-colors ${
                   errors.currentPassword ? "border-status-delayed bg-status-delayed/10" : "border-border"
                 }`}
-                placeholder=""
               />
               <button
                 type="button"
@@ -135,12 +116,9 @@ export default function ChangePasswordSettings() {
                 {show.current ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
               </button>
             </div>
-            {errors.currentPassword && (
-              <p className="text-xs text-status-delayed">{errors.currentPassword}</p>
-            )}
+            {errors.currentPassword && <p className="text-xs text-status-delayed">{errors.currentPassword}</p>}
           </div>
 
-          {/* New Password */}
           <div className="space-y-1.5">
             <label className="block text-sm font-medium text-body">
               New Password <span className="text-status-delayed">*</span>
@@ -163,12 +141,9 @@ export default function ChangePasswordSettings() {
                 {show.new ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
               </button>
             </div>
-            {errors.newPassword && (
-              <p className="text-xs text-status-delayed">{errors.newPassword}</p>
-            )}
+            {errors.newPassword && <p className="text-xs text-status-delayed">{errors.newPassword}</p>}
           </div>
 
-          {/* Confirm New Password */}
           <div className="space-y-1.5">
             <label className="block text-sm font-medium text-body">
               Confirm New Password <span className="text-status-delayed">*</span>
@@ -181,7 +156,6 @@ export default function ChangePasswordSettings() {
                 className={`w-full px-3 py-2.5 pr-10 text-sm border rounded-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-colors ${
                   errors.confirmPassword ? "border-status-delayed bg-status-delayed/10" : "border-border"
                 }`}
-                placeholder=""
               />
               <button
                 type="button"
@@ -191,48 +165,25 @@ export default function ChangePasswordSettings() {
                 {show.confirm ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
               </button>
             </div>
-            {errors.confirmPassword && (
-              <p className="text-xs text-status-delayed">{errors.confirmPassword}</p>
-            )}
+            {errors.confirmPassword && <p className="text-xs text-status-delayed">{errors.confirmPassword}</p>}
           </div>
 
-          <div className="flex items-center gap-3 pt-1">
-            <button
-              type="submit"
-              disabled={submitting}
-              className="flex items-center gap-2 px-5 py-2.5 bg-primary text-white text-sm font-medium rounded-sm hover:bg-shell-alt transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              {submitting ? (
-                "Saving..."
-              ) : (
-                <>
-                  <Check className="w-4 h-4" />
-                  Update Password
-                </>
-              )}
-            </button>
-          </div>
+          <button
+            type="submit"
+            disabled={submitting}
+            className="w-full flex items-center justify-center gap-2 px-5 py-2.5 bg-primary text-white text-sm font-medium rounded-sm hover:bg-shell-alt transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {submitting ? (
+              "Saving..."
+            ) : (
+              <>
+                <Check className="w-4 h-4" />
+                Update Password &amp; Continue
+              </>
+            )}
+          </button>
         </form>
       </div>
-
-      <Modal
-        open={showLogoutNotice}
-        onClose={logout}
-        title="Password Changed"
-        size="sm"
-        footer={
-          <Button onClick={logout} fullWidth>
-            Log Out Now
-          </Button>
-        }
-      >
-        <div className="flex items-start gap-3">
-          <ShieldCheck className="w-5 h-5 shrink-0 text-status-inspection mt-0.5" />
-          <p className="text-sm text-body">
-            Your password was changed successfully. For security, you&apos;ll be logged out now.
-          </p>
-        </div>
-      </Modal>
     </div>
   )
 }

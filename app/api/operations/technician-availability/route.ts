@@ -2,6 +2,7 @@ import { NextResponse } from "next/server"
 import { createAdminClient } from "@/lib/supabase/admin"
 import { getAuditCaller } from "@/lib/auth/caller"
 import { logAuditCall } from "@/hooks/audit-helpers"
+import { normalizeName, validateName } from "@/lib/name"
 
 const ALL_DAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
 
@@ -14,16 +15,22 @@ function validateWorkHours(start: string, end: string): string | null {
   return null
 }
 
-// GET — list all technicians (detailers/installers) with availability.
-export async function GET() {
+// GET — list technicians (detailers/installers) with availability.
+// `?status=active` (default) | `archived` | `all` — technicians are archived,
+// never deleted, since job_order_team rows reference them.
+export async function GET(request: Request) {
   try {
     const supabase = createAdminClient()
+    const status = new URL(request.url).searchParams.get("status") ?? "active"
+
+    let techQuery = supabase
+      .from("technician")
+      .select("id, full_name, first_name, last_name, role, is_available, is_archived, available_days, work_start_time, work_end_time")
+    if (status === "active")        techQuery = techQuery.eq("is_archived", false)
+    else if (status === "archived") techQuery = techQuery.eq("is_archived", true)
 
     const [{ data, error }, { data: assignments }] = await Promise.all([
-      supabase
-        .from("technician")
-        .select("id, full_name, role, is_available, is_archived, available_days, work_start_time, work_end_time")
-        .eq("is_archived", false)
+      techQuery
         .order("role")
         .order("full_name"),
       supabase
@@ -71,8 +78,11 @@ export async function GET() {
     const technicians = (data ?? []).map((t: any) => ({
       id:               t.id,
       full_name:        t.full_name,
+      first_name:       t.first_name ?? null,
+      last_name:        t.last_name ?? null,
       role:             t.role,
       is_available:     t.is_available,
+      is_archived:      t.is_archived ?? false,
       available_days:   (t.available_days as string[]) ?? ALL_DAYS,
       work_start_time:  t.work_start_time ?? "08:00:00",
       work_end_time:    t.work_end_time   ?? "20:00:00",
@@ -88,7 +98,7 @@ export async function GET() {
 // PATCH — update a technician's details
 export async function PATCH(request: Request) {
   try {
-    const { id, is_available, full_name, role, is_archived, available_days, work_start_time, work_end_time } = await request.json()
+    const { id, is_available, first_name, last_name, role, is_archived, available_days, work_start_time, work_end_time } = await request.json()
 
     if (!id) {
       return NextResponse.json({ error: "id is required." }, { status: 400 })
@@ -99,7 +109,15 @@ export async function PATCH(request: Request) {
 
     if (typeof is_available === "boolean") updates.is_available = is_available
     if (typeof is_archived  === "boolean") updates.is_archived  = is_archived
-    if (full_name?.trim())                updates.full_name    = full_name.trim()
+    if (first_name?.trim() || last_name?.trim()) {
+      const firstName = normalizeName(first_name)
+      const lastName  = normalizeName(last_name)
+      const nameError = validateName(firstName, "First name") ?? validateName(lastName, "Last name")
+      if (nameError) return NextResponse.json({ error: nameError }, { status: 400 })
+      updates.first_name = firstName
+      updates.last_name  = lastName
+      updates.full_name  = `${firstName} ${lastName}`
+    }
     if (role === "detailer" || role === "installer") updates.role = role
     if (Array.isArray(available_days))    updates.available_days = available_days
 
@@ -123,7 +141,7 @@ export async function PATCH(request: Request) {
 
     if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
-    let techName: string | null = full_name?.trim() || null
+    let techName: string | null = updates.full_name || null
     if (!techName) {
       const { data: techRow } = await supabase
         .from("technician")
@@ -152,10 +170,13 @@ export async function PATCH(request: Request) {
 // POST — create a new technician (detailer or installer)
 export async function POST(request: Request) {
   try {
-    const { full_name, role, available_days, work_start_time, work_end_time } = await request.json()
+    const { first_name, last_name, role, available_days, work_start_time, work_end_time } = await request.json()
 
-    if (!full_name?.trim()) {
-      return NextResponse.json({ error: "full_name is required." }, { status: 400 })
+    const firstName = normalizeName(first_name)
+    const lastName  = normalizeName(last_name)
+    const nameError = validateName(firstName, "First name") ?? validateName(lastName, "Last name")
+    if (nameError) {
+      return NextResponse.json({ error: nameError }, { status: 400 })
     }
     if (role !== "detailer" && role !== "installer") {
       return NextResponse.json({ error: "role must be 'detailer' or 'installer'." }, { status: 400 })
@@ -170,14 +191,16 @@ export async function POST(request: Request) {
     const { data, error } = await supabase
       .from("technician")
       .insert({
-        full_name:        full_name.trim(),
+        first_name:       firstName,
+        last_name:        lastName,
+        full_name:        `${firstName} ${lastName}`,
         role,
         is_available:     true,
         available_days:   Array.isArray(available_days) ? available_days : ALL_DAYS,
         work_start_time:  start,
         work_end_time:    end,
       })
-      .select("id, full_name, role, is_available, available_days, work_start_time, work_end_time")
+      .select("id, full_name, first_name, last_name, role, is_available, available_days, work_start_time, work_end_time")
       .single()
 
     if (error) return NextResponse.json({ error: error.message }, { status: 500 })

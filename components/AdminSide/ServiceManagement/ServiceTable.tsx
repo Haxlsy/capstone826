@@ -12,6 +12,7 @@ import { Button } from "@/components/ui/Button"
 import { DataTable, type Column } from "@/components/ui/DataTable"
 import { Pagination } from "@/components/ui/Pagination"
 import { Popover, MenuItem } from "@/components/ui/Popover"
+import { FilterTrigger } from "@/components/ui/FilterTrigger"
 import { Badge, StatusBadge } from "@/components/ui/Badge"
 import { useToast } from "@/components/ui/Toast"
 import { cn } from "@/lib/utils"
@@ -54,7 +55,6 @@ export default function ServiceTable({ canWrite = true }: { canWrite?: boolean }
   const [statusFilter, setStatusFilter] = useState<"all" | "active" | "archived">("active")
   const [durationMin, setDurationMin] = useState("")
   const [durationMax, setDurationMax] = useState("")
-  const [filterOpen, setFilterOpen] = useState(false)
 
   const [page, setPage] = useState(1)
   const [pageSize, setPageSize] = useState(15)
@@ -119,7 +119,7 @@ export default function ServiceTable({ canWrite = true }: { canWrite?: boolean }
   }
 
   const totalPages = Math.max(1, Math.ceil(totalCount / pageSize))
-  const hasFilter = statusFilter !== "all" || !!durationMin || !!durationMax
+  const hasFilter = statusFilter !== "active" || !!durationMin || !!durationMax
 
   const columns: Column<Service>[] = [
     {
@@ -204,7 +204,7 @@ export default function ServiceTable({ canWrite = true }: { canWrite?: boolean }
           canWrite ? (
             <>
               <Button variant="secondary" onClick={() => setPresetsOpen(true)}>
-                Category Presets
+                + Category Presets
               </Button>
               <Button variant="secondary" onClick={() => setAddTypeModalOpen(true)}>
                 + Add Service Type
@@ -221,11 +221,20 @@ export default function ServiceTable({ canWrite = true }: { canWrite?: boolean }
           onChange={setSearchInput}
           placeholder="Search services…"
           containerClassName="max-w-xs flex-1"
-          onFilterClick={() => setFilterOpen((v) => !v)}
-          filterActive={hasFilter}
         />
-        {filterOpen && (
-          <div className="w-full max-w-sm space-y-3 rounded-card border border-border-subtle bg-surface p-4 shadow-card">
+        <Popover
+          align="start"
+          trigger={({ open, toggle }) => (
+            <FilterTrigger
+              open={open}
+              onClick={toggle}
+              active={hasFilter}
+              count={(statusFilter !== "active" ? 1 : 0) + (durationMin || durationMax ? 1 : 0)}
+            />
+          )}
+          panelClassName="w-[min(90vw,22rem)] p-4"
+        >
+          <div className="space-y-3">
             <div className="space-y-1">
               <p className="text-xs font-semibold uppercase tracking-wide text-body">Status</p>
               {(["all", "active", "archived"] as const).map((s) => (
@@ -275,7 +284,7 @@ export default function ServiceTable({ canWrite = true }: { canWrite?: boolean }
               )}
             </div>
           </div>
-        )}
+        </Popover>
       </div>
 
       {canWrite && (

@@ -26,10 +26,13 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Unauthorized." }, { status: 401 })
     }
 
-    // Verify current password using the admin client (persistSession: false)
-    // so the verification does NOT touch or overwrite the user's session cookies.
-    const admin = createAdminClient()
-    const { error: verifyError } = await admin.auth.signInWithPassword({
+    // Verify current password using a throwaway admin client. signInWithPassword
+    // establishes an in-memory session on whatever client calls it, and once a
+    // client has a session, its .from() calls use that session's token instead
+    // of the service-role key — so this client must never be reused afterward
+    // for privileged writes (it would silently fail under RLS).
+    const verifyClient = createAdminClient()
+    const { error: verifyError } = await verifyClient.auth.signInWithPassword({
       email:    user.email!,
       password: currentPassword,
     })
@@ -38,6 +41,9 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Current password is incorrect." }, { status: 400 })
     }
 
+    // Fresh, untouched client — guaranteed to still use the service-role key.
+    const admin = createAdminClient()
+
     // Update password
     const { error: updateError } = await admin.auth.admin.updateUserById(user.id, {
       password: newPassword,
@@ -45,6 +51,15 @@ export async function POST(request: Request) {
 
     if (updateError) {
       return NextResponse.json({ error: updateError.message }, { status: 500 })
+    }
+
+    const { error: flagError } = await admin
+      .from("user_account")
+      .update({ must_change_password: false })
+      .eq("id", user.id)
+
+    if (flagError) {
+      console.error("[change-password] failed to clear must_change_password:", flagError)
     }
 
     const caller = await getAuditCaller()

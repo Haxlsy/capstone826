@@ -4,6 +4,7 @@ import { z } from "zod"
 import { createClient } from "@/lib/supabase/server"
 import { createAdminClient } from "@/lib/supabase/admin"
 import { logAudit } from "@/hooks/audit-helpers"
+import { validateName } from "@/lib/name"
 
 const ALLOWED_ROLES = [
   "admin",
@@ -14,9 +15,16 @@ const ALLOWED_ROLES = [
 ] as const
 
 const CreateAccountSchema = z.object({
-  fullName: z.string().trim().min(1, "Full name required").max(100),
+  fullName: z.string().trim().min(1, "Full name required").max(100)
+    .superRefine((v, ctx) => {
+      const err = validateName(v, "Full name")
+      if (err) ctx.addIssue({ code: "custom", message: err })
+    }),
   username: z.string().trim().min(3, "Username must be at least 3 characters").max(50)
-    .regex(/^[a-zA-Z0-9_]+$/, "Username may only contain letters, numbers, and underscores"),
+    .regex(
+      /^[a-zA-Z0-9_]+\.[a-zA-Z0-9_]+$/,
+      "Username must contain a dot and may only contain letters, numbers, underscores, and one dot (e.g. first.last)."
+    ),
   password: z.string().min(8, "Password must be at least 8 characters").max(128),
   role: z.enum(ALLOWED_ROLES, { message: "Invalid role" }),
 })
@@ -93,6 +101,7 @@ export async function POST(request: Request) {
     .update({
       role,
       full_name: fullName.trim(),
+      must_change_password: true,
     })
     .eq("id", authData.user.id)
 

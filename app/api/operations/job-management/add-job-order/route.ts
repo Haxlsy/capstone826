@@ -269,6 +269,34 @@ export async function POST(request: Request) {
       await admin.from("job_order_team").insert(teamInserts)
     }
 
+    // ── Notify newly assigned head technicians ────────────────────────────────
+    // Only head_detailer_id/head_installer_id map to real login accounts
+    // (user_account); plain detailer_ids/installer_ids reference `technician`
+    // rows, which have no account and can't receive notifications.
+    try {
+      const jobLabel = resolvedPlateNumber ?? resolvedCustomerName ?? job.id
+      const headNotifs: Record<string, unknown>[] = []
+      if (head_detailer_id) {
+        headNotifs.push({
+          user_id: head_detailer_id,
+          type: "job_assigned",
+          message: `You've been assigned as Head Detailer for job ${jobLabel}.`,
+          job_order_id: job.id,
+        })
+      }
+      if (head_installer_id) {
+        headNotifs.push({
+          user_id: head_installer_id,
+          type: "job_assigned",
+          message: `You've been assigned as Head Installer for job ${jobLabel}.`,
+          job_order_id: job.id,
+        })
+      }
+      if (headNotifs.length > 0) await admin.from("notification").insert(headNotifs)
+    } catch (notifErr) {
+      console.error("[add-job-order] notification fan-out failed:", notifErr)
+    }
+
     // ── Log initial status ────────────────────────────────────────────────────
     console.log("[add-job-order] step: insert history")
     const { error: histErr } = await admin.from("job_order_history").insert({

@@ -2,7 +2,7 @@
 
 import { useState, useMemo } from "react"
 import { useRouter } from "next/navigation"
-import { FileText, FileSpreadsheet, CheckCircle2 } from "lucide-react"
+import { FileText, FileSpreadsheet } from "lucide-react"
 import { PageHeader } from "@/components/ui/PageHeader"
 import { Button } from "@/components/ui/Button"
 import { SearchBar } from "@/components/ui/SearchBar"
@@ -10,7 +10,6 @@ import { Card } from "@/components/ui/Card"
 import { DataTable, type Column } from "@/components/ui/DataTable"
 import { Pagination } from "@/components/ui/Pagination"
 import { Select, FieldLabel } from "@/components/ui/Field"
-import { Badge } from "@/components/ui/Badge"
 import { fmtDateTime } from "@/lib/time-display"
 
 interface JobRecord {
@@ -189,12 +188,6 @@ export default function JobOrderRecords({ jobOrders: rawOrders }: { jobOrders: a
       <PageHeader
         title="Job Records"
         subtitle="Completed and released units."
-        actions={
-          <Badge className="bg-status-release/12 text-status-release">
-            <CheckCircle2 className="h-3.5 w-3.5" />
-            Completed Only
-          </Badge>
-        }
       />
 
       <Card className="flex flex-wrap items-end gap-4 p-5">

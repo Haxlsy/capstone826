@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useEffect, useRef, useMemo } from "react"
+import { useSearchParams } from "next/navigation"
 import {
   TriangleAlert,
   CheckCircle2,
@@ -174,6 +175,7 @@ const INPUT_CLS = (err?: string) =>
 // ── Main page ─────────────────────────────────────────────────────────────────
 export default function HeadTechConcernsPage() {
   const toast = useToast()
+  const searchParams = useSearchParams()
   const [concerns, setConcerns] = useState<Concern[]>([])
   const [loading, setLoading]   = useState(true)
 
@@ -244,6 +246,18 @@ export default function HeadTechConcernsPage() {
     }
     loadJobs()
   }, [])
+
+  // Pre-fill the job combobox when arriving via a "Report Concern" deep link
+  // (e.g. /head-technician/concerns?jobOrderId=<raw_id>).
+  useEffect(() => {
+    const jobOrderId = searchParams.get("jobOrderId")
+    if (!jobOrderId || jobs.length === 0) return
+    const match = jobs.find((j) => j.raw_id === jobOrderId)
+    if (match) {
+      setSelectedJobId(match.raw_id)
+      setSelectedJobLabel(match.label)
+    }
+  }, [searchParams, jobs])
 
   // Load stages when a job is selected
   useEffect(() => {

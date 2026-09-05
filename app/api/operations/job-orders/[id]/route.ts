@@ -49,7 +49,7 @@ export async function PATCH(
     // Fetch current job to detect status change
     const { data: current } = await admin
       .from("job_order")
-      .select("status, actual_start_at, customer_name")
+      .select("status, actual_start_at, customer_name, plate_number")
       .eq("id", id)
       .single()
 
@@ -85,7 +85,21 @@ export async function PATCH(
       if (error) return NextResponse.json({ error: error.message }, { status: 500 })
     }
 
-    // Update team assignments (upsert by role)
+    // Update team assignments (upsert by role) — capture the previous
+    // assignees first so we only notify technicians who are newly assigned,
+    // not ones re-saved unchanged.
+    let prevHeadDetailer: string | null = null
+    let prevHeadInstaller: string | null = null
+    if (head_detailer_id !== undefined || head_installer_id !== undefined) {
+      const { data: currentTeam } = await admin
+        .from("job_order_team")
+        .select("user_account_id, role_in_job")
+        .eq("job_order_id", id)
+        .in("role_in_job", ["head_detailer", "head_installer"])
+      prevHeadDetailer = currentTeam?.find((t) => t.role_in_job === "head_detailer")?.user_account_id ?? null
+      prevHeadInstaller = currentTeam?.find((t) => t.role_in_job === "head_installer")?.user_account_id ?? null
+    }
+
     if (head_detailer_id !== undefined) {
       await admin.from("job_order_team").delete().eq("job_order_id", id).eq("role_in_job", "head_detailer")
       if (head_detailer_id) {
@@ -105,6 +119,31 @@ export async function PATCH(
           role_in_job:     "head_installer",
         })
       }
+    }
+
+    // ── Notify newly assigned head technicians (skip if unchanged) ────────────
+    try {
+      const jobLabel = current?.plate_number ?? current?.customer_name ?? id
+      const reassignNotifs: Record<string, unknown>[] = []
+      if (head_detailer_id !== undefined && head_detailer_id && head_detailer_id !== prevHeadDetailer) {
+        reassignNotifs.push({
+          user_id: head_detailer_id,
+          type: "job_assigned",
+          message: `You've been assigned as Head Detailer for job ${jobLabel}.`,
+          job_order_id: id,
+        })
+      }
+      if (head_installer_id !== undefined && head_installer_id && head_installer_id !== prevHeadInstaller) {
+        reassignNotifs.push({
+          user_id: head_installer_id,
+          type: "job_assigned",
+          message: `You've been assigned as Head Installer for job ${jobLabel}.`,
+          job_order_id: id,
+        })
+      }
+      if (reassignNotifs.length > 0) await admin.from("notification").insert(reassignNotifs)
+    } catch (notifErr) {
+      console.error("[job-orders PATCH] notification fan-out failed:", notifErr)
     }
 
     // Log status change
