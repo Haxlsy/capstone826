@@ -37,6 +37,10 @@ import {
   MISSING_FIELDS_PROMPT_LEAD,
   nextViolationState,
   hasExistingBookingIntent,
+  hasCancelIntent,
+  shouldStayInBookingFlow,
+  buildBookingCancelledMessage,
+  buildCapabilityDisabledMessage,
   type ChatbotReply,
   type CustomerDetails,
 } from "@/lib/messenger/chatbot"
@@ -54,7 +58,7 @@ import {
   sendMessengerQuickReply,
   fetchMessengerProfile,
 } from "@/lib/messenger/graph"
-import { QUICK_REPLIES } from "@/lib/messenger/handoff"
+import { QUICK_REPLIES, quickRepliesFor } from "@/lib/messenger/handoff"
 import {
   resolveOwnVehicleStatus,
   formatOwnVehicleStatus,
@@ -65,6 +69,14 @@ import {
   type OwnVehicleOutcome,
 } from "@/lib/messenger/vehicle"
 import { PLATE_PATTERN, PHONE_PATTERN, EMAIL_PATTERN, parseLinkClaim } from "@/lib/messenger/patterns"
+import { DEFAULT_AI_DISABLED_MESSAGE } from "@/types/chatbot"
+import {
+  escalationAck,
+  existingBookingHandoff,
+  violationWarning as violationWarningCopy,
+  ALL_MISSING_FIELDS_LEADS,
+  type BotLanguage,
+} from "@/lib/messenger/copy"
 import { logAudit } from "@/hooks/audit-helpers"
 
 const VERIFY_TOKEN = process.env.META_VERIFY_TOKEN!
@@ -81,16 +93,81 @@ export async function GET(req: NextRequest) {
   return new Response("Forbidden", { status: 403 })
 }
 
-const ESCALATION_ACK =
-  "Thanks for reaching out to 826 Auto Care! I've passed this conversation to our team, " +
-  "and a staff member will follow up with you here personally. " +
-  "I won't be able to send automated replies on this chat until your request has been resolved."
+// Escalation ack and existing-booking handoff copy now live in
+// lib/messenger/copy.ts so they follow the admin's Response Language setting
+// (see escalationAck / existingBookingHandoff below).
 
-// Handoff message for existing-booking operations (change/cancel/modify/
-// reschedule). These always escalate to Sales — never collected as a new booking.
-const EXISTING_BOOKING_HANDOFF =
-  "I'll connect you with our team for your existing booking. They'll follow up with you here — " +
-  "I won't send automated replies in the meantime."
+/**
+ * Reply-and-hand-off used whenever an admin setting turns a capability off —
+ * the `enable_ai_chatbot` master switch, or an individual capability toggle.
+ * The customer gets a real message instead of silence, and the thread is marked
+ * `pending` so Sales owns it, which also makes every later message skip the bot
+ * via the existing `status === "pending"` guard.
+ */
+async function handOffWhileDisabled(
+  admin: ReturnType<typeof createAdminClient>,
+  opts: {
+    conversation_id: number
+    senderId: string
+    psidName: string
+    messageBody: string
+    timestamp: string
+    message: string
+    notifySales: boolean
+    note?: string
+  },
+) {
+  const { conversation_id, senderId, psidName, messageBody, timestamp, message, notifySales } = opts
+  const note = opts.note ?? "AI chatbot is disabled — routed to staff." 
+
+  try {
+    await setConversationStatus(conversation_id, "pending")
+
+    const { error: inquiryErr } = await admin.from("inquiry").insert({
+      messenger_name: psidName,
+      psid:           senderId,
+      inquiry_type:   "Human Response",
+      status:         "open",
+      escalated_at:   timestamp,
+      last_message:   messageBody,
+      conflict_note:  note,
+    })
+    if (inquiryErr) console.error("[webhook/facebook] disabled-mode inquiry insert failed:", inquiryErr.message)
+
+    if (notifySales) {
+      const { data: salesUsers } = await admin
+        .from("user_account")
+        .select("id")
+        .eq("role", "sales")
+        .eq("is_archived", false)
+
+      if (salesUsers?.length) {
+        await admin.from("notification").insert(
+          salesUsers.map((u: any) => ({
+            user_id:      u.id,
+            type:         "inquiry",
+            message:      `New Human Response inquiry from ${psidName}`,
+            job_order_id: null,
+            is_read:      false,
+          })),
+        )
+      }
+    }
+  } catch (err) {
+    console.error("[webhook/facebook] disabled-mode handoff failed:", err)
+  }
+
+  // Sent last so the customer is acknowledged even if the handoff bookkeeping
+  // above partially failed.
+  await sendMessengerText(senderId, message)
+  await insertMessage({
+    conversation_id,
+    sender_type:  "bot",
+    message_body: message,
+    sent_at:      new Date().toISOString(),
+    fb_message_id: null,
+  })
+}
 
 // Report-type concern keywords used by the escalation-type resolver.
 // Deliberately excludes "problema"/"issue" so casual phrases like
@@ -208,15 +285,67 @@ async function handleInboundMessage(
   // just record the message, do not auto-reply.
   if (status === "pending") return
 
+  // Chatbot config is loaded here — before ANY reply path — because the
+  // `enable_ai_chatbot` master switch below has to short-circuit every one of
+  // them (link prompts, deterministic status/booking replies, and the Gemini
+  // calls alike). It is also needed later by the vehicle-status block, which
+  // uses the admin's configured "account not linked" wording.
+  // Deliberately in its own try/catch: a settings-read blip must fall back to the
+  // built-in defaults, NOT escalate the conversation. A model failure still
+  // escalates — that stays in the generateChatbotReply try/catch further down.
+  let settings: Awaited<ReturnType<typeof loadChatbotConfig>>["settings"] = null
+  let system_prompt: string | null = null
+  let knowledge: string | null = null
+  try {
+    const [{ settings: loadedSettings, system_prompt: loadedPrompt }, loadedKnowledge] =
+      await Promise.all([loadChatbotConfig(), loadKnowledgeBase()])
+    settings = loadedSettings
+    system_prompt = loadedPrompt
+    knowledge = loadedKnowledge
+  } catch (err) {
+    console.error("[webhook/facebook] chatbot config load failed:", err)
+  }
+
+  // Response Language applies to the deterministic replies too, not just the
+  // model's free text — those used to be hardcoded English regardless.
+  const lang = settings?.language as BotLanguage | undefined
+
+  // ── Master switch: AI chatbot disabled ───────────────────────────────────
+  // Send the configured acknowledgement once, hand the thread to Sales, and
+  // stop. Everything downstream (link verification, status lookups, the booking
+  // state machine, both Gemini calls, quick replies) is skipped.
+  if (settings && settings.enable_ai_chatbot === false) {
+    await handOffWhileDisabled(admin, {
+      conversation_id,
+      senderId,
+      psidName: profile.name,
+      messageBody,
+      timestamp,
+      message: settings.ai_disabled_message?.trim() || DEFAULT_AI_DISABLED_MESSAGE,
+      notifySales: settings.notify_sales !== false,
+    })
+    return
+  }
+
   const quickReplyPayload = msg.quick_reply?.payload ?? null
+
+  // Which escalation triggers the admin has enabled. Previously these rules
+  // only shaped the prompt text while the hardcoded regex triggers below fired
+  // regardless — unticking a box changed nothing. Absent config means all rules
+  // are on, matching the previous behaviour.
+  const escalationRules: string[] = Array.isArray(settings?.escalation_rules)
+    ? settings.escalation_rules
+    : ["speak_to_human", "complaint", "unanswerable"]
+  const ruleEnabled = (rule: string) => !settings || escalationRules.includes(rule)
 
   // Resolved before the link-verification block below, which needs them to tell a
   // deliberate subject change ("I want to book", "let me talk to someone") from a
   // failed attempt at sending a plate + phone.
-  const humanRequested = requestedHuman(messageBody)
+  const humanRequested = ruleEnabled("speak_to_human") && requestedHuman(messageBody)
   const reportIntent =
-    quickReplyPayload === "report" ||
-    REPORT_PATTERNS.some((re) => re.test(messageBody))
+    ruleEnabled("complaint") &&
+    (quickReplyPayload === "report" ||
+      REPORT_PATTERNS.some((re) => re.test(messageBody)))
 
   // ── Account-linking verification ─────────────────────────────────────────
   // When the bot has asked an unlinked customer for their plate + booking phone,
@@ -373,9 +502,40 @@ async function handleInboundMessage(
       !is_booking_flow &&
       !awaiting_confirmation)
 
+  // ── Cancel / abort of the booking being collected right now ──────────────
+  // Distinct from an existing-booking operation. "cancel my booking" is
+  // ambiguous, so it only counts as an abort when a draft is actually in
+  // progress AND the customer has no live job order; otherwise it stays a
+  // Sales escalation. Plain abandonment ("nevermind", "wag na") never refers to
+  // a job on file, so it aborts without the lookup.
+  const rawExistingBookingIntent = hasExistingBookingIntent(messageBody)
+  const draftInProgress =
+    is_booking_flow ||
+    awaiting_confirmation ||
+    Boolean(
+      booking_draft &&
+        (booking_draft.full_name || booking_draft.contact_number ||
+         booking_draft.plate_number || booking_draft.vehicle_unit || booking_draft.email)
+    )
+
+  let cancelIntent = false
+  if (draftInProgress) {
+    if (hasCancelIntent(messageBody)) {
+      cancelIntent = true
+    } else if (rawExistingBookingIntent) {
+      try {
+        const active = await lookupActiveBooking(senderId)
+        cancelIntent = !active.hasActiveBooking
+      } catch (err) {
+        console.error("[webhook/facebook] active booking lookup failed:", err)
+      }
+    }
+  }
+
   // An existing-booking operation (change/cancel/modify/reschedule) is never a
-  // new booking — it is escalated to Sales for handling.
-  const existingBookingIntent = hasExistingBookingIntent(messageBody)
+  // new booking — it is escalated to Sales for handling. Suppressed when the
+  // customer is really aborting the draft in progress, which must NOT escalate.
+  const existingBookingIntent = rawExistingBookingIntent && !cancelIntent
 
   // A message carries a booking signal when it states booking intent or
   // contains a booking detail token (plate / phone / email).
@@ -387,7 +547,10 @@ async function handleInboundMessage(
   // keyword repeated.
   if (!awaiting_link_verification && !linkEscalation) {
     try {
-      if (statusIntent) {
+      if (cancelIntent) {
+        await setVehicleInquiry(conversation_id, false)
+        await setBookingFlow(conversation_id, false)
+      } else if (statusIntent) {
         await setVehicleInquiry(conversation_id, true)
         await setBookingFlow(conversation_id, false)
       } else if (existingBookingIntent) {
@@ -396,6 +559,13 @@ async function handleInboundMessage(
       } else if (bookingIntent || signal) {
         await setVehicleInquiry(conversation_id, false)
         await setBookingFlow(conversation_id, true)
+      } else if (is_booking_flow && !awaiting_confirmation) {
+        // The customer moved on to something else mid-booking and there is no
+        // confirmation pending. Clear the flag now — it used to be sticky with
+        // nothing to clear it, so unrelated questions ("October promo") were
+        // pulled into the booking block and answered with booking context
+        // appended. Mirrors the is_vehicle_inquiry self-clear below.
+        await setBookingFlow(conversation_id, false)
       } else if (is_vehicle_inquiry) {
         // The status topic was answered and this message carries no
         // continuation signal (see `continuesStatusInquiry` above) — the
@@ -408,22 +578,34 @@ async function handleInboundMessage(
     }
   }
 
-  // Chatbot config is loaded BEFORE the vehicle-status block, which needs the
-  // admin's configured "account not linked" wording to compose its reply.
-  // Deliberately in its own try/catch: a settings-read blip must fall back to the
-  // built-in defaults, NOT escalate the conversation. A model failure still
-  // escalates — that stays in the generateChatbotReply try/catch further down.
-  let settings: Awaited<ReturnType<typeof loadChatbotConfig>>["settings"] = null
-  let system_prompt: string | null = null
-  let knowledge: string | null = null
-  try {
-    const [{ settings: loadedSettings, system_prompt: loadedPrompt }, loadedKnowledge] =
-      await Promise.all([loadChatbotConfig(), loadKnowledgeBase()])
-    settings = loadedSettings
-    system_prompt = loadedPrompt
-    knowledge = loadedKnowledge
-  } catch (err) {
-    console.error("[webhook/facebook] chatbot config load failed:", err)
+  // ── Capability toggles: decline + hand to staff ──────────────────────────
+  // A capability the admin switched off is refused deterministically here,
+  // before the status lookup and the booking machinery — those pipelines used
+  // to run regardless of the settings, so a "disabled" feature kept working.
+  // Reporting a concern is never gated: it routes to staff by definition.
+  const disabledCapability: "services" | "booking" | "status" | null =
+    settings && statusIntent && settings.enable_status === false
+      ? "status"
+      : settings && (bookingIntent || (bookingSignal(messageBody) && !statusIntent)) &&
+        settings.enable_booking === false
+        ? "booking"
+        : settings && quickReplyPayload === "services" && settings.enable_services === false
+          ? "services"
+          : null
+
+  if (disabledCapability && !linkEscalation && !awaiting_link_verification) {
+    const declineReply = buildCapabilityDisabledMessage(disabledCapability, lang)
+    await handOffWhileDisabled(admin, {
+      conversation_id,
+      senderId,
+      psidName: profile.name,
+      messageBody,
+      timestamp,
+      message: declineReply,
+      notifySales: settings?.notify_sales !== false,
+      note: `The "${disabledCapability}" capability is switched off in AI Chatbot Management — routed to staff.`,
+    })
+    return
   }
 
   // Vehicle-status context. Identity is resolved STRICTLY from the sender's psid:
@@ -460,6 +642,7 @@ async function handleInboundMessage(
       statusReply = formatVehicleStatusForCustomer(outcome, {
         focusPlate,
         notLinkedMessage: settings?.account_not_linked_message,
+        lang,
       })
       if (outcome.kind === "ok" && outcome.soft) {
         logAudit({ ...auditActor, category: "flag", action: "messenger status: soft-matched via own inquiry", target: `psid=${senderId} jobs=${jobPlates.join("/") || "none"}` })
@@ -502,7 +685,10 @@ async function handleInboundMessage(
         })
 
     reply = result.reply?.trim() || null
-    escalate = result.escalate || humanRequested || reportIntent || existingBookingIntent
+    // The model's own escalate flag is the "question the AI cannot answer"
+    // trigger, so it honours the `unanswerable` rule.
+    const modelEscalate = ruleEnabled("unanswerable") && result.escalate
+    escalate = modelEscalate || humanRequested || reportIntent || existingBookingIntent
     escalateReason = humanRequested
       ? "customer asked to speak with a human"
       : existingBookingIntent
@@ -556,7 +742,11 @@ async function handleInboundMessage(
       aiViolation
     )
     await safe(() => setViolationStreaks(conversation_id, vs.offtopic, vs.policy))
-    if (vs.action === "escalate") {
+    // Repeated off-topic/policy messages are the other "AI cannot help here"
+    // case, so the ladder's escalation honours the `unanswerable` rule too. The
+    // warnings still fire either way — they keep the conversation on track
+    // without involving staff.
+    if (vs.action === "escalate" && ruleEnabled("unanswerable")) {
       escalate = true
       const isPolicy = vs.policy >= 2
       escalateReason = isPolicy ? "repeated policy violations" : "repeated off-topic messages"
@@ -564,10 +754,7 @@ async function handleInboundMessage(
         `Auto-escalated after repeated ${isPolicy ? "policy-violating" : "off-topic"} messages. ` +
         `Last message: "${messageBody}".`
     } else if (vs.action === "warn") {
-      violationWarning =
-        vs.policy >= 1
-          ? " I can only help with 826 Auto Care topics, and I need our chat to stay respectful — if this continues I'll pass you to our team."
-          : " Note: if you keep sending messages unrelated to our services, I'll hand this conversation to our Sales team."
+      violationWarning = violationWarningCopy(vs.policy >= 1 ? "policy" : "offtopic", lang)
     }
   }
 
@@ -586,10 +773,47 @@ async function handleInboundMessage(
   // Option A fix: A bare plate in a status follow-up must NOT trigger bookingFlow.
   // When statusIntent is true (vehicle status request), the plate is part of the
   // status lookup, not a booking detail token.
-  const bookingFlow =
-    !awaiting_link_verification && !linkEscalation &&
-    ((signal && !statusIntent) || is_booking_flow || awaiting_confirmation)
+  //
+  // See shouldStayInBookingFlow for the two behaviours this decision gained:
+  // a cancelled/aborted booking exits immediately, and a sticky is_booking_flow
+  // no longer drags unrelated messages in on its own.
+  const bookingFlow = shouldStayInBookingFlow({
+    signal,
+    statusIntent,
+    awaitingLinkVerification: Boolean(awaiting_link_verification),
+    linkEscalation: Boolean(linkEscalation),
+    isBookingFlow: Boolean(is_booking_flow),
+    awaitingConfirmation: Boolean(awaiting_confirmation),
+    cancelIntent,
+    enableBooking: settings?.enable_booking !== false,
+  })
   let escalateBooking = false
+
+  // ── Booking aborted by the customer ──────────────────────────────────────
+  // Answered deterministically and terminally: the draft and every flow flag
+  // are cleared, and nothing is escalated. Deliberately NOT handed to Gemini —
+  // with the booking still in conversation history the model re-offered the
+  // booking it had just been told to drop.
+  if (cancelIntent) {
+    await safe(() => setBookingFlow(conversation_id, false))
+    await safe(() => setAwaitingConfirmation(conversation_id, false))
+    await safe(() => setConflictPending(conversation_id, false))
+    await safe(() => setActiveBookingOffered(conversation_id, false))
+    await safe(() => setBookingDuplicateNotified(conversation_id, false))
+    await safe(() => setBookingDraft(conversation_id, null))
+
+    const cancelReply = buildBookingCancelledMessage(lang)
+    const mid = await sendMessengerText(senderId, cancelReply)
+    await insertMessage({
+      conversation_id,
+      sender_type: "bot",
+      message_body: cancelReply,
+      sent_at: new Date().toISOString(),
+      fb_message_id: mid,
+    })
+    await sendMessengerQuickReply(senderId, "Anything else?", quickRepliesFor(settings, lang))
+    return
+  }
 
   // Every account-link claim is routed to Sales for out-of-band verification.
   if (linkEscalation) {
@@ -802,7 +1026,7 @@ async function handleInboundMessage(
       const modelMsgs = history.filter((h) => h.role === "model")
       let trailingReasks = 0
       for (let i = modelMsgs.length - 1; i >= 0; i--) {
-        if (modelMsgs[i].text.startsWith(MISSING_FIELDS_PROMPT_LEAD)) trailingReasks++
+        if (ALL_MISSING_FIELDS_LEADS.some((lead) => modelMsgs[i].text.startsWith(lead))) trailingReasks++
         else break
       }
       if (trailingReasks >= 2) {
@@ -818,7 +1042,7 @@ async function handleInboundMessage(
       } else {
         escalate = false
         await persistConfirmFlag(false)
-        reply = activeBookingLine + buildMissingFieldsPrompt(missing)
+        reply = activeBookingLine + buildMissingFieldsPrompt(missing, lang)
       }
     } else {
       // Phase 4 (identity conflict): a COMPLETE booking whose details contradict
@@ -903,8 +1127,9 @@ async function handleInboundMessage(
         await persistBookingDuplicateNotified(false)
         await safe(() => setBookingDraft(conversation_id, null))
         branchContext =
-          "The customer was asked to confirm their booking details but the last message is not a confirmation and carries no booking details. " +
-          "Answer the customer normally; you may briefly re-offer to continue their booking if it is natural to do so, but do not send the final booking confirmation and do not escalate."
+          "The customer was asked to confirm their booking details but the last message is not a confirmation and carries no booking details — they have changed the subject. " +
+          "Answer ONLY the question they actually asked. Do NOT mention, summarise, or re-offer the booking, and do not repeat their vehicle or plate number unless they ask about it. " +
+          "Do not send a booking confirmation and do not escalate. If they want to resume booking, they will say so."
       } else {
         // All required details are collected but not yet confirmed. Show the
         // deterministic summary + confirm prompt (rendered below). Runs even
@@ -948,7 +1173,7 @@ async function handleInboundMessage(
     // Render the confirmation summary deterministically from the freshest
     // extraction so the customer always sees every detail before confirming.
     if (confirmSummary && !escalate && extracted && isCompleteBooking(extracted)) {
-      reply = activeBookingLine + buildBookingSummary(extracted)
+      reply = activeBookingLine + buildBookingSummary(extracted, lang)
     }
 
     // Bug 8/10 backstop: a booking-flow reply must never ask which service the
@@ -960,8 +1185,8 @@ async function handleInboundMessage(
       if (asksService || claimsDone) {
         reply =
           extracted && isCompleteBooking(extracted)
-            ? activeBookingLine + buildBookingSummary(extracted)
-            : activeBookingLine + buildMissingFieldsPrompt(missingBookingFields(extracted))
+            ? activeBookingLine + buildBookingSummary(extracted, lang)
+            : activeBookingLine + buildMissingFieldsPrompt(missingBookingFields(extracted), lang)
       }
     }
   }
@@ -1121,11 +1346,12 @@ async function handleInboundMessage(
     // Existing-booking operations first receive the handoff message so the
     // customer knows a human will assist with their existing booking.
     if (existingBookingIntent) {
-      const handoffId = await sendMessengerText(senderId, EXISTING_BOOKING_HANDOFF)
+      const existingBookingMsg = existingBookingHandoff(lang)
+      const handoffId = await sendMessengerText(senderId, existingBookingMsg)
       await insertMessage({
         conversation_id,
         sender_type: "agent",
-        message_body: EXISTING_BOOKING_HANDOFF,
+        message_body: existingBookingMsg,
         sent_at: new Date().toISOString(),
         fb_message_id: handoffId,
       })
@@ -1133,11 +1359,12 @@ async function handleInboundMessage(
 
     // Acknowledge to the customer that a human will follow up (no quick replies —
     // a human now owns the thread).
-    const fbId = await sendMessengerText(senderId, ESCALATION_ACK)
+    const escalationMsg = escalationAck(lang)
+    const fbId = await sendMessengerText(senderId, escalationMsg)
     await insertMessage({
       conversation_id,
       sender_type: "agent",
-      message_body: ESCALATION_ACK,
+      message_body: escalationMsg,
       sent_at: new Date().toISOString(),
       fb_message_id: fbId,
     })
@@ -1171,7 +1398,7 @@ async function handleInboundMessage(
     // Append the graduated-violation warning (set when the customer is one turn
     // away from an off-topic / policy escalation).
     if (violationWarning) reply = `${reply}${violationWarning}`
-    const fbId = await sendMessengerQuickReply(senderId, reply, QUICK_REPLIES)
+    const fbId = await sendMessengerQuickReply(senderId, reply, quickRepliesFor(settings, lang))
     await insertMessage({
       conversation_id,
       sender_type: "agent",
