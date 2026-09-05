@@ -133,12 +133,13 @@ export default function LoginPage() {
 
   const form = (
     <form onSubmit={handleSubmit} noValidate className="w-full space-y-5">
+      {/* Username Field */}
       <div>
-        <label htmlFor="login-username" className="mb-1.5 block text-sm font-medium text-heading">
+        <label htmlFor="login-username" className="mb-1.5 block text-xs font-semibold uppercase tracking-wider text-heading">
           Username
         </label>
-        <div className="relative">
-          <User className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-muted" />
+        <div className="group relative">
+          <User className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-muted transition-colors group-focus-within:text-accent" />
           <input
             id="login-username"
             type="text"
@@ -147,25 +148,26 @@ export default function LoginPage() {
               setUsername(e.target.value)
               if (errors.username) setErrors((p) => ({ ...p, username: undefined }))
             }}
-            placeholder="Username"
+            placeholder="Enter your username"
             disabled={locked}
             suppressHydrationWarning
             className={cn(
-              "h-12 w-full rounded-pill border bg-surface pl-11 pr-4 text-sm text-heading shadow-card",
-              "placeholder:text-muted focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary",
-              errors.username ? "border-status-delayed" : "border-border",
+              "h-12 w-full rounded-full border bg-surface pl-11 pr-4 text-sm text-heading transition-all duration-200",
+              "placeholder:text-muted/60 focus:outline-none focus:ring-2 focus:ring-accent/30 focus:border-accent hover:border-slate-300",
+              errors.username ? "border-status-delayed text-status-delayed" : "border-slate-200",
             )}
           />
         </div>
-        {errors.username && <p className="mt-1 text-xs text-status-delayed">{errors.username}</p>}
+        {errors.username && <p className="mt-1.5 text-xs font-medium text-status-delayed">{errors.username}</p>}
       </div>
 
+      {/* Password Field */}
       <div>
-        <label htmlFor="login-password" className="mb-1.5 block text-sm font-medium text-heading">
+        <label htmlFor="login-password" className="mb-1.5 block text-xs font-semibold uppercase tracking-wider text-heading">
           Password
         </label>
-        <div className="relative">
-          <Lock className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-muted" />
+        <div className="group relative">
+          <Lock className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-muted transition-colors group-focus-within:text-accent" />
           <input
             id="login-password"
             type={showPassword ? "text" : "password"}
@@ -174,35 +176,43 @@ export default function LoginPage() {
               setPassword(e.target.value)
               if (errors.password) setErrors((p) => ({ ...p, password: undefined }))
             }}
-            placeholder="Password"
+            placeholder="Enter your password"
             disabled={locked}
             suppressHydrationWarning
             className={cn(
-              "h-12 w-full rounded-pill border bg-surface pl-11 pr-11 text-sm text-heading shadow-card",
-              "placeholder:text-muted focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary",
-              errors.password ? "border-status-delayed" : "border-border",
+              "h-12 w-full rounded-full border bg-surface pl-11 pr-11 text-sm text-heading transition-all duration-200",
+              "placeholder:text-muted/60 focus:outline-none focus:ring-2 focus:ring-accent/30 focus:border-accent hover:border-slate-300",
+              errors.password ? "border-status-delayed text-status-delayed" : "border-slate-200",
             )}
           />
           <button
             type="button"
             onClick={() => setShowPassword((v) => !v)}
             aria-label={showPassword ? "Hide password" : "Show password"}
-            className="absolute right-4 top-1/2 -translate-y-1/2 text-muted hover:text-body"
+            className="absolute right-4 top-1/2 -translate-y-1/2 text-muted hover:text-heading focus:outline-none"
           >
             {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
           </button>
         </div>
+
+        {/* Error / Forgot Password Row */}
         {errors.password ? (
-          <p className="mt-1 text-xs text-status-delayed">{errors.password}</p>
+          <p className="mt-1.5 text-xs font-medium text-status-delayed">{errors.password}</p>
         ) : (
-          <div className="mt-1.5 flex justify-end">
-            <span className="text-xs font-medium text-primary/60">Forgot password?</span>
+          <div className="mt-2 flex justify-end">
+            <button
+              type="button"
+              className="text-xs font-medium text-slate-500 hover:text-accent transition-colors"
+            >
+              Forgot password?
+            </button>
           </div>
         )}
       </div>
 
+      {/* Lockout Alert */}
       {locked && (
-        <div className="flex items-center gap-2 rounded-sm bg-status-delayed/10 px-3 py-2 text-xs text-status-delayed">
+        <div className="flex items-center gap-2.5 rounded-xl bg-status-delayed/10 border border-status-delayed/20 px-3.5 py-2.5 text-xs font-medium text-status-delayed">
           <ShieldAlert className="h-4 w-4 shrink-0" />
           <span>
             Too many failed attempts. Try again in <strong>{remaining}s</strong>.
@@ -210,12 +220,14 @@ export default function LoginPage() {
         </div>
       )}
 
+      {/* Submit Button */}
       <button
         type="submit"
         disabled={isLoading || locked}
         className={cn(
-          "h-12 w-full rounded-pill bg-gradient-to-b from-accent to-primary text-sm font-semibold text-white shadow-glow transition-opacity",
-          "disabled:cursor-not-allowed disabled:opacity-60",
+          "h-12 w-full rounded-full bg-linear-to-b from-accent to-primary text-sm font-semibold text-white shadow-md cursor-pointer transition-all duration-200",
+          "hover:-translate-y-0.5 hover:shadow-lg hover:shadow-teal-500/25 active:translate-y-0 active:shadow-xs",
+          "disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:translate-y-0",
         )}
       >
         {isLoading ? "Signing in…" : locked ? `Locked · ${remaining}s` : "Login"}
@@ -225,50 +237,63 @@ export default function LoginPage() {
 
   return (
     <div className="relative flex min-h-screen flex-col bg-surface-subtle md:overflow-hidden md:bg-surface">
-      {/* Desktop background art — the 826 car illustration, bleeding off the left edge */}
-      <picture>
-        <source srcSet="/assets/login-car.webp" type="image/webp" />
+    {/* Desktop background art — 826 car illustration */}
+      <picture className="pointer-events-none absolute inset-0 hidden md:block">
+        <source srcSet="/assets/car.png" type="image/png" />
         <img
-          src="/assets/login-car.png"
+          src="/assets/car.png"
           alt=""
-          aria-hidden
-          fetchPriority="high"
+          aria-hidden="true"
+          fetchPriority="high" 
           decoding="async"
-          className="animate-fade-in pointer-events-none absolute bottom-0 left-[-6%] hidden h-full w-auto max-w-none object-contain object-left-bottom md:block"
+          className="animate-fade-in pointer-events-none absolute bottom-0 left-[-15%] h-full w-auto max-w-none object-contain object-bottom-left select-none xl:left-[-10%] 2xl:left-0 transition-all duration-700 ease-out -translate-x-20"
           style={{ animationDuration: "0.9s" }}
         />
       </picture>
 
       {/* Mobile header band */}
-      <div className="animate-fade-in relative flex flex-col items-center justify-center gap-2 bg-gradient-to-b from-primary to-shell px-6 pb-16 pt-16 text-center md:hidden">
-        <img src="/assets/main-logo.png" alt="826" className="h-24 w-auto object-contain" />
-        <p className="text-sm font-semibold text-white/90">Auto Aesthetic &amp; Protection</p>
+      <div className="animate-fade-in relative flex flex-col items-center justify-center gap-2.5 bg-gradient-to-b from-primary via-teal-900 to-teal-950 px-6 pt-12 pb-14 text-center md:hidden">
+        <img 
+          src="/assets/main-logo.png" 
+          alt="826" 
+          className="h-14 w-auto object-contain drop-shadow-md" 
+        />
+        <p className="text-xs font-semibold uppercase tracking-widest text-teal-100/80">
+          Auto Aesthetic &amp; Protection
+        </p>
       </div>
 
       {/* Desktop brand */}
-      <header className="animate-fade-in relative z-10 hidden items-center gap-3 px-10 py-8 md:flex">
-        <img src="/assets/main-logo.png" alt="826" className="h-12 w-auto object-contain" />
-        <span className="text-lg font-semibold text-display text-heading">
+      <header className="animate-fade-in relative z-10 hidden items-center gap-3 rounded-full bg-white px-6 py-2.5 shadow-sm border border-slate-100 md:flex w-fit ml-10 mt-6">
+        <img src="/assets/main-logo.png" alt="826" className="h-5 w-auto object-contain" />
+        <span className="text-sm font-semibold text-heading">
           Auto Aesthetic &amp; Protection
         </span>
       </header>
 
       {/* Form area */}
-      <div className="relative z-10 -mt-8 flex flex-1 items-start justify-center rounded-t-[2rem] bg-surface px-6 pb-12 pt-9 md:mt-0 md:items-center md:justify-end md:rounded-none md:bg-transparent md:px-[8%] md:pb-0">
-        <div className="animate-fade-in-up w-full max-w-[420px]">
-          <div className="mb-6">
-            <h1 className="text-3xl font-bold uppercase text-display text-heading md:text-4xl">
+      <div className="relative z-10 flex flex-1 items-start justify-center rounded-t-4xl bg-surface px-6 md:mt-0 md:items-center md:justify-end md:rounded-none md:bg-transparent md:px-[8%] md:pb-0">
+        <div className="animate-fade-in-up w-full max-w-[420px] rounded-2xl bg-white p-8 border border-slate-200/80 shadow-lg shadow-slate-200/50">
+          
+          <div className="mb-6 border-b border-slate-100 pb-5">
+            <h1 className="text-2xl font-bold uppercase tracking-wide text-slate-900">
               Welcome Back!
             </h1>
-            <p className="mt-1 text-sm text-body">Please enter your credentials.</p>
-            <div className="mt-4 h-px w-full bg-primary/40" />
+            <p className="mt-1 text-xs font-medium text-slate-400 uppercase tracking-wider">
+              Enter your credentials
+            </p>
           </div>
+
+          {/* Form */}
           {form}
+
         </div>
       </div>
 
-      <div className="animate-fade-in relative z-10 pb-4 text-center text-[11px] text-muted">
-        826 Auto Aesthetic &amp; Protection · Ortigas Extension
+      <div className="animate-fade-in relative z-10 pb-4 text-center">
+        <span className="inline-block rounded-full bg-white/80 px-4 py-1 text-[11px] font-medium text-slate-700 backdrop-blur-sm border border-white/50 shadow-xs">
+          826 Auto Aesthetic &amp; Protection · Ortigas Extension
+        </span>
       </div>
     </div>
   )
