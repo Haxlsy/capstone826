@@ -2,6 +2,8 @@ import { NextResponse } from "next/server"
 import { cookies } from "next/headers"
 import { createClient } from "@/lib/supabase/server"
 import { createAdminClient } from "@/lib/supabase/admin"
+import { extractVideoFrame, stripAudio } from "@/lib/media/video"
+import { validateAutomotiveImage, isMediaValidationEnabled } from "@/lib/ai/media-validation"
 
 // POST /api/head-technician/jobs/[id]/stages/[stageId]/media
 // Accepts a multipart form with file field "file".
@@ -28,9 +30,9 @@ export async function POST(
       return NextResponse.json({ error: "Only image or video files are supported." }, { status: 400 })
     }
 
-    const maxBytes = isPhoto ? 5 * 1024 * 1024 : 50 * 1024 * 1024
+    const maxBytes = isPhoto ? 5 * 1024 * 1024 : 20 * 1024 * 1024
     if (file.size > maxBytes) {
-      const limit = isPhoto ? "5 MB" : "50 MB"
+      const limit = isPhoto ? "5 MB" : "20 MB"
       return NextResponse.json({ error: `File too large. Maximum is ${limit}.` }, { status: 400 })
     }
 
@@ -38,11 +40,39 @@ export async function POST(
     const storagePath = `${jobId}/${stageId}/${Date.now()}.${ext}`
 
     const admin = createAdminClient()
-    const arrayBuffer = await file.arrayBuffer()
+    let uploadBuffer: Buffer | ArrayBuffer = await file.arrayBuffer()
+
+    if (isVideo) {
+      // Videos are validated (one extracted frame, run through the same
+      // Gemini check as a photo) and always muted before being stored — see
+      // lib/media/video.ts and lib/ai/media-validation.ts.
+      const original = Buffer.from(uploadBuffer)
+      if (await isMediaValidationEnabled()) {
+        try {
+          const frame = await extractVideoFrame(original)
+          const result = await validateAutomotiveImage(frame)
+          if (!result.approved) {
+            return NextResponse.json({ ...result, error: result.message }, { status: 400 })
+          }
+        } catch (err) {
+          // Frame extraction/validation hiccup — never block the upload on
+          // tooling failure, same philosophy as the AI validator itself.
+          console.error("[stage-media] video validation failed, approving by default:", err)
+        }
+      }
+      try {
+        uploadBuffer = await stripAudio(original)
+      } catch (err) {
+        // Muting failed — fall back to storing the original (with audio)
+        // rather than lose the technician's upload entirely.
+        console.error("[stage-media] audio stripping failed, storing original:", err)
+        uploadBuffer = original
+      }
+    }
 
     const { error: uploadErr } = await admin.storage
       .from("stage-media")
-      .upload(storagePath, arrayBuffer, { contentType: file.type, upsert: false })
+      .upload(storagePath, uploadBuffer, { contentType: file.type, upsert: false })
 
     if (uploadErr) return NextResponse.json({ error: uploadErr.message }, { status: 500 })
 
@@ -57,7 +87,7 @@ export async function POST(
         media_type:            isPhoto ? "photo" : "video",
         file_url:              publicUrl,
         shareable_link:        publicUrl,
-        file_size_bytes:       file.size,
+        file_size_bytes:       uploadBuffer instanceof Buffer ? uploadBuffer.length : file.size,
         uploaded_by_id:        user.id,
       })
       .select("id, file_url, media_type")
