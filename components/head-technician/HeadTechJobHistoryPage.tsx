@@ -14,6 +14,7 @@ import { Button } from "@/components/ui/Button";
 import { Textarea, FieldLabel } from "@/components/ui/Field";
 import { categorySwatch } from "@/lib/ui/category-colors";
 import { fmtDateTime, fmtDateTimeShort } from "@/lib/time-display";
+import { HeadTechJobDetailSkeleton } from "@/app/head-technician/[jobId]/loading";
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -431,11 +432,7 @@ export default function HeadTechJobHistoryPage({ jobId }: { jobId: string }) {
 
   // ── Render states ─────────────────────────────────────────────────────────
 
-  if (loading) return (
-    <main className="flex items-center justify-center min-h-screen">
-      <Loader2 size={22} className="text-muted animate-spin" />
-    </main>
-  );
+  if (loading) return <HeadTechJobDetailSkeleton />;
 
   if (!job) return (
     <main className="px-4 py-6 max-w-md mx-auto text-center space-y-3 mt-20">
@@ -494,6 +491,15 @@ export default function HeadTechJobHistoryPage({ jobId }: { jobId: string }) {
         {/* Status row */}
         <div className="flex items-center gap-2 flex-wrap">
           <StatusBadge status={job.status} className="px-3 py-1" />
+          <Button
+            variant="subtle"
+            size="sm"
+            className="ml-auto"
+            onClick={() => router.push(`/head-technician/concerns?jobOrderId=${jobId}`)}
+          >
+            <AlertTriangle className="h-3.5 w-3.5" />
+            Report Concern
+          </Button>
           {finishingAlreadyApproved && (
             <span className="text-xs font-semibold px-3 py-1 rounded-full bg-status-inspection/10 text-status-inspection border border-status-inspection/30">
               Passed to Operations

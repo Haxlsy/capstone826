@@ -3,6 +3,7 @@ import { cookies } from "next/headers"
 import { createClient } from "@/lib/supabase/server"
 import { createAdminClient } from "@/lib/supabase/admin"
 import { logAudit } from "@/hooks/audit-helpers"
+import { normalizeName, validateName } from "@/lib/name"
 
 export async function POST(request: Request) {
   const body = await request.json()
@@ -10,6 +11,12 @@ export async function POST(request: Request) {
 
   if (!userId || !fullName || !role) {
     return NextResponse.json({ error: "userId, fullName, and role are required." }, { status: 400 })
+  }
+
+  const cleanName = normalizeName(fullName)
+  const nameError = validateName(cleanName, "Full name")
+  if (nameError) {
+    return NextResponse.json({ error: nameError }, { status: 400 })
   }
 
   const cookieStore = await cookies()
@@ -38,7 +45,7 @@ export async function POST(request: Request) {
 
   const { error: profileError } = await supabase
     .from("user_account")
-    .update({ full_name: fullName.trim(), role })
+    .update({ full_name: cleanName, role })
     .eq("id", userId)
 
   if (profileError) {
@@ -65,7 +72,7 @@ export async function POST(request: Request) {
         role:      callerProf.role,
         category:  "update",
         action:    "Updated account",
-        target:    fullName.trim(),
+        target:    cleanName,
       })
     }
   }

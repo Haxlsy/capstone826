@@ -29,13 +29,17 @@ export async function requireRole(allowedRoles: string[]) {
   const admin = createAdminClient()
   const { data: profile } = await admin
     .from("user_account")
-    .select("role")
+    .select("role, must_change_password")
     .eq("id", user.id)
     .single()
 
   const role = profile?.role as string | undefined
   if (!role || !allowedRoles.includes(role)) {
     redirect(ROLE_HOMES[role ?? ""] ?? "/login")
+  }
+
+  if (profile?.must_change_password) {
+    redirect("/change-password-required")
   }
 
   return { user, role }

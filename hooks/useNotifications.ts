@@ -14,13 +14,14 @@ export interface Notification {
   created_at: string
 }
 
-type NotificationType = "rework" | "concern" | "concern_resolved" | "inquiry"
+type NotificationType = "rework" | "concern" | "concern_resolved" | "inquiry" | "job_assigned"
 
 const TYPE_LABELS: Record<string, string> = {
   rework: "Rework Flagged",
   concern: "New Concern",
   concern_resolved: "Concern Resolved",
   inquiry: "New Inquiry",
+  job_assigned: "New Assignment",
 }
 
 const TYPE_COLORS: Record<string, "info" | "warning" | "success"> = {
@@ -28,6 +29,7 @@ const TYPE_COLORS: Record<string, "info" | "warning" | "success"> = {
   concern: "warning",
   concern_resolved: "success",
   inquiry: "info",
+  job_assigned: "info",
 }
 
 function relativeTime(iso: string): string {

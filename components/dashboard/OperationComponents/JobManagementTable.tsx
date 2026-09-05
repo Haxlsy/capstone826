@@ -8,6 +8,8 @@ import { JobManagementSkeleton } from "@/app/dashboard/job-management/loading"
 import { PageHeader } from "@/components/ui/PageHeader"
 import { Button } from "@/components/ui/Button"
 import { SearchBar } from "@/components/ui/SearchBar"
+import { Popover } from "@/components/ui/Popover"
+import { FilterTrigger } from "@/components/ui/FilterTrigger"
 import { Tabs } from "@/components/ui/Tabs"
 import { DataTable, type Column } from "@/components/ui/DataTable"
 import { Pagination } from "@/components/ui/Pagination"
@@ -52,7 +54,6 @@ export default function JobManagementTable() {
   const [updating, setUpdating] = useState(false)
   const [updateError, setUpdateError] = useState<string | null>(null)
 
-  const [filterOpen, setFilterOpen] = useState(false)
   const [filterService, setFilterService] = useState("")
   const [filterTechnician, setFilterTechnician] = useState("")
   const [filterDateFrom, setFilterDateFrom] = useState("")
@@ -272,69 +273,79 @@ export default function JobManagementTable() {
         />
 
         <div className="space-y-3">
-          <SearchBar
-            value={searchQuery}
-            onChange={setSearchQuery}
-            placeholder="Search by customer, plate, vehicle, service, technician, or Job ID…"
-            containerClassName="max-w-xl"
-            onFilterClick={() => setFilterOpen((v) => !v)}
-            filterActive={hasActiveFilter}
-            filterCount={activeFilters.length}
-          />
-          {filterOpen && (
-            <div className="grid max-w-xl gap-4 rounded-card border border-border-subtle bg-surface p-4 shadow-card sm:grid-cols-2">
-              <div>
-                <FieldLabel>Service</FieldLabel>
-                <Select value={filterService} onChange={(e) => setFilterService(e.target.value)}>
-                  <option value="">All Services</option>
-                  {uniqueServices.map((s) => (
-                    <option key={s} value={s}>
-                      {s}
-                    </option>
-                  ))}
-                </Select>
-              </div>
-              <div>
-                <FieldLabel>Head Technician</FieldLabel>
-                <Select value={filterTechnician} onChange={(e) => setFilterTechnician(e.target.value)}>
-                  <option value="">All Technicians</option>
-                  {uniqueTechnicians.map((t) => (
-                    <option key={t} value={t}>
-                      {t}
-                    </option>
-                  ))}
-                </Select>
-              </div>
-              <div>
-                <FieldLabel>Scheduled From</FieldLabel>
-                <input
-                  type="date"
-                  aria-label="Scheduled from"
-                  value={filterDateFrom}
-                  onChange={(e) => setFilterDateFrom(e.target.value)}
-                  className="h-10 w-full rounded-sm border border-border bg-surface px-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
+          <div className="flex flex-wrap items-start gap-3">
+            <SearchBar
+              value={searchQuery}
+              onChange={setSearchQuery}
+              placeholder="Search by customer, plate, vehicle, service, technician, or Job ID…"
+              containerClassName="max-w-xl flex-1"
+            />
+            <Popover
+              align="end"
+              trigger={({ open, toggle }) => (
+                <FilterTrigger
+                  open={open}
+                  onClick={toggle}
+                  active={hasActiveFilter}
+                  count={activeFilters.length}
                 />
-              </div>
-              <div>
-                <FieldLabel>Scheduled To</FieldLabel>
-                <input
-                  type="date"
-                  aria-label="Scheduled to"
-                  value={filterDateTo}
-                  onChange={(e) => setFilterDateTo(e.target.value)}
-                  className="h-10 w-full rounded-sm border border-border bg-surface px-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
-                />
-              </div>
-              {hasActiveFilter && (
-                <button
-                  onClick={clearFilters}
-                  className="text-left text-xs text-muted transition-colors hover:text-status-delayed sm:col-span-2"
-                >
-                  Clear all filters
-                </button>
               )}
-            </div>
-          )}
+              panelClassName="w-[min(90vw,28rem)] p-4"
+            >
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div>
+                  <FieldLabel>Service</FieldLabel>
+                  <Select value={filterService} onChange={(e) => setFilterService(e.target.value)}>
+                    <option value="">All Services</option>
+                    {uniqueServices.map((s) => (
+                      <option key={s} value={s}>
+                        {s}
+                      </option>
+                    ))}
+                  </Select>
+                </div>
+                <div>
+                  <FieldLabel>Head Technician</FieldLabel>
+                  <Select value={filterTechnician} onChange={(e) => setFilterTechnician(e.target.value)}>
+                    <option value="">All Technicians</option>
+                    {uniqueTechnicians.map((t) => (
+                      <option key={t} value={t}>
+                        {t}
+                      </option>
+                    ))}
+                  </Select>
+                </div>
+                <div>
+                  <FieldLabel>Scheduled From</FieldLabel>
+                  <input
+                    type="date"
+                    aria-label="Scheduled from"
+                    value={filterDateFrom}
+                    onChange={(e) => setFilterDateFrom(e.target.value)}
+                    className="h-10 w-full rounded-sm border border-border bg-surface px-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
+                  />
+                </div>
+                <div>
+                  <FieldLabel>Scheduled To</FieldLabel>
+                  <input
+                    type="date"
+                    aria-label="Scheduled to"
+                    value={filterDateTo}
+                    onChange={(e) => setFilterDateTo(e.target.value)}
+                    className="h-10 w-full rounded-sm border border-border bg-surface px-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
+                  />
+                </div>
+                {hasActiveFilter && (
+                  <button
+                    onClick={clearFilters}
+                    className="text-left text-xs text-muted transition-colors hover:text-status-delayed sm:col-span-2"
+                  >
+                    Clear all filters
+                  </button>
+                )}
+              </div>
+            </Popover>
+          </div>
         </div>
 
         <Tabs

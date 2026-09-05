@@ -6,6 +6,8 @@ import { ArrowRight } from "lucide-react"
 import { fmtDate } from "@/lib/time-display"
 import { PageHeader } from "@/components/ui/PageHeader"
 import { SearchBar } from "@/components/ui/SearchBar"
+import { Popover } from "@/components/ui/Popover"
+import { FilterTrigger } from "@/components/ui/FilterTrigger"
 import { Tabs } from "@/components/ui/Tabs"
 import { DataTable, type Column } from "@/components/ui/DataTable"
 import { Pagination } from "@/components/ui/Pagination"
@@ -55,7 +57,6 @@ export default function SalesJobList({ jobOrders: rawOrders }: { jobOrders: any[
   const [searchQuery, setSearchQuery] = useState("")
   const [currentPage, setCurrentPage] = useState(1)
 
-  const [filterOpen, setFilterOpen] = useState(false)
   const [filterService, setFilterService] = useState("")
   const [filterTechnician, setFilterTechnician] = useState("")
   const [filterDateFrom, setFilterDateFrom] = useState("")
@@ -123,7 +124,7 @@ export default function SalesJobList({ jobOrders: rawOrders }: { jobOrders: any[
         }}
       />
 
-      <div className="space-y-3">
+      <div className="flex flex-wrap items-start gap-3">
         <SearchBar
           value={searchQuery}
           onChange={(v) => {
@@ -131,13 +132,21 @@ export default function SalesJobList({ jobOrders: rawOrders }: { jobOrders: any[
             setCurrentPage(1)
           }}
           placeholder="Search customer, job ID, plate, service…"
-          containerClassName="max-w-sm"
-          onFilterClick={() => setFilterOpen((v) => !v)}
-          filterActive={hasActiveFilter}
-          filterCount={activeFilters.length}
+          containerClassName="max-w-sm flex-1"
         />
-        {filterOpen && (
-          <div className="grid max-w-xl gap-4 rounded-card border border-border-subtle bg-surface p-4 shadow-card sm:grid-cols-2">
+        <Popover
+          align="end"
+          trigger={({ open, toggle }) => (
+            <FilterTrigger
+              open={open}
+              onClick={toggle}
+              active={hasActiveFilter}
+              count={activeFilters.length}
+            />
+          )}
+          panelClassName="w-[min(90vw,28rem)] p-4"
+        >
+          <div className="grid gap-4 sm:grid-cols-2">
             <div>
               <FieldLabel>Service</FieldLabel>
               <input
@@ -190,7 +199,7 @@ export default function SalesJobList({ jobOrders: rawOrders }: { jobOrders: any[
               </button>
             )}
           </div>
-        )}
+        </Popover>
       </div>
 
       <DataTable

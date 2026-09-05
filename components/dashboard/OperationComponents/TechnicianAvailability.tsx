@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect, useCallback } from "react"
-import { UserCheck, UserX, Users, Wrench, Pencil, Trash2, Clock, AlertTriangle } from "lucide-react"
+import { UserCheck, UserX, Users, Wrench, Pencil, Archive, ArchiveRestore, Clock, AlertTriangle } from "lucide-react"
 import { TechnicianAvailabilitySkeleton } from "@/app/dashboard/technician-availability/loading"
 import { PageHeader } from "@/components/ui/PageHeader"
 import { Button, IconButton } from "@/components/ui/Button"
@@ -12,6 +12,7 @@ import { Toggle } from "@/components/ui/Toggle"
 import { Badge } from "@/components/ui/Badge"
 import { EmptyState } from "@/components/ui/EmptyState"
 import { Popover, MenuItem } from "@/components/ui/Popover"
+import { FilterTrigger } from "@/components/ui/FilterTrigger"
 import { Input, Select, FieldLabel } from "@/components/ui/Field"
 import { DayPillSelector } from "@/components/ui/DayPillSelector"
 import { TimeRangeInputs } from "@/components/ui/TimeRange"
@@ -19,6 +20,7 @@ import { useToast } from "@/components/ui/Toast"
 import { cn } from "@/lib/utils"
 import { avatarColor, initials } from "@/lib/ui/avatar"
 import { roleStyle } from "@/lib/ui/roles"
+import { normalizeName, validateName } from "@/lib/name"
 
 interface ActiveJob {
   job_id: string
@@ -29,8 +31,11 @@ interface ActiveJob {
 interface Technician {
   id: string
   full_name: string
+  first_name: string | null
+  last_name: string | null
   role: "detailer" | "installer"
   is_available: boolean
+  is_archived: boolean
   available_days: string[]
   work_start_time: string
   work_end_time: string
@@ -56,13 +61,14 @@ function formatTime(t: string): string {
 }
 
 interface TechForm {
-  name: string
+  firstName: string
+  lastName: string
   role: Technician["role"]
   days: string[]
   start: string
   end: string
 }
-const EMPTY_FORM: TechForm = { name: "", role: "detailer", days: ALL_DAYS, start: "08:00", end: "20:00" }
+const EMPTY_FORM: TechForm = { firstName: "", lastName: "", role: "detailer", days: ALL_DAYS, start: "08:00", end: "20:00" }
 
 export default function TechnicianAvailability() {
   const toast = useToast()
@@ -71,6 +77,7 @@ export default function TechnicianAvailability() {
   const [fetchError, setFetchError] = useState<string | null>(null)
   const [search, setSearch] = useState("")
   const [filterRole, setFilterRole] = useState<Technician["role"] | "all">("all")
+  const [filterStatus, setFilterStatus] = useState<"active" | "archived" | "all">("active")
 
   const [addOpen, setAddOpen] = useState(false)
   const [editOpen, setEditOpen] = useState(false)
@@ -80,15 +87,17 @@ export default function TechnicianAvailability() {
   const [formError, setFormError] = useState<string | null>(null)
   const [duplicate, setDuplicate] = useState<Technician | null>(null)
 
-  const [deleteTarget, setDeleteTarget] = useState<Technician | null>(null)
-  const [deleting, setDeleting] = useState(false)
-  const [deleteError, setDeleteError] = useState<string | null>(null)
+  const [archiveTarget, setArchiveTarget] = useState<Technician | null>(null)
+  const [archiving, setArchiving] = useState(false)
+  const [archiveError, setArchiveError] = useState<string | null>(null)
 
   const load = useCallback(async () => {
     setLoading(true)
     setFetchError(null)
     try {
-      const res = await fetch("/api/operations/technician-availability")
+      // Archived technicians are fetched too, so the Archived filter can show
+      // them and restore them without another round trip.
+      const res = await fetch("/api/operations/technician-availability?status=all")
       const json = await res.json()
       if (!res.ok) throw new Error(json?.error ?? "Failed to load technicians")
       setTechnicians(json.technicians ?? [])
@@ -132,7 +141,8 @@ export default function TechnicianAvailability() {
   function openEdit(tech: Technician) {
     setEditingId(tech.id)
     setForm({
-      name: tech.full_name,
+      firstName: tech.first_name ?? "",
+      lastName: tech.last_name ?? "",
       role: tech.role,
       days: tech.available_days ?? ALL_DAYS,
       start: tech.work_start_time?.slice(0, 5) ?? "08:00",
@@ -144,15 +154,22 @@ export default function TechnicianAvailability() {
   }
 
   async function submitForm(isEdit: boolean) {
-    if (!form.name.trim()) return
+    const firstName = normalizeName(form.firstName)
+    const lastName = normalizeName(form.lastName)
+    const nameError = validateName(firstName, "First name") ?? validateName(lastName, "Last name")
+    if (nameError) {
+      setFormError(nameError)
+      return
+    }
     if (form.end <= form.start) {
       setFormError("End time must be after start time.")
       return
     }
+    const fullName = `${firstName} ${lastName}`
     const dup = technicians.find(
       (t) =>
         t.id !== editingId &&
-        t.full_name.trim().toLowerCase() === form.name.trim().toLowerCase(),
+        t.full_name.trim().toLowerCase() === fullName.toLowerCase(),
     )
     if (dup) {
       setDuplicate(dup)
@@ -165,14 +182,16 @@ export default function TechnicianAvailability() {
       const body = isEdit
         ? {
             id: editingId,
-            full_name: form.name.trim(),
+            first_name: firstName,
+            last_name: lastName,
             role: form.role,
             available_days: form.days,
             work_start_time: form.start,
             work_end_time: form.end,
           }
         : {
-            full_name: form.name.trim(),
+            first_name: firstName,
+            last_name: lastName,
             role: form.role,
             available_days: form.days,
             work_start_time: form.start,
@@ -191,7 +210,9 @@ export default function TechnicianAvailability() {
             t.id === editingId
               ? {
                   ...t,
-                  full_name: form.name.trim(),
+                  full_name: fullName,
+                  first_name: firstName,
+                  last_name: lastName,
                   role: form.role,
                   available_days: form.days,
                   work_start_time: form.start,
@@ -215,36 +236,53 @@ export default function TechnicianAvailability() {
     }
   }
 
-  async function confirmDelete() {
-    if (!deleteTarget) return
-    setDeleting(true)
-    setDeleteError(null)
+  async function setArchived(tech: Technician, archived: boolean) {
+    const res = await fetch("/api/operations/technician-availability", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id: tech.id, is_archived: archived }),
+    })
+    const json = await res.json()
+    if (!res.ok) throw new Error(json?.error ?? `Failed to ${archived ? "archive" : "restore"} technician`)
+    setTechnicians((prev) => prev.map((t) => (t.id === tech.id ? { ...t, is_archived: archived } : t)))
+  }
+
+  async function confirmArchive() {
+    if (!archiveTarget) return
+    setArchiving(true)
+    setArchiveError(null)
     try {
-      const res = await fetch("/api/operations/technician-availability", {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id: deleteTarget.id, is_archived: true }),
-      })
-      const json = await res.json()
-      if (!res.ok) throw new Error(json?.error ?? "Failed to delete technician")
-      setTechnicians((prev) => prev.filter((t) => t.id !== deleteTarget.id))
-      setDeleteTarget(null)
-      toast.success("Technician removed.")
+      await setArchived(archiveTarget, true)
+      setArchiveTarget(null)
+      toast.success("Technician archived.")
     } catch (err: unknown) {
-      setDeleteError(err instanceof Error ? err.message : String(err))
+      setArchiveError(err instanceof Error ? err.message : String(err))
     } finally {
-      setDeleting(false)
+      setArchiving(false)
     }
   }
 
-  const onJobCount = technicians.filter((t) => !!t.active_job).length
-  const availableCount = technicians.filter((t) => t.is_available && !t.active_job).length
-  const unavailableCount = technicians.length - availableCount - onJobCount
+  async function restore(tech: Technician) {
+    try {
+      await setArchived(tech, false)
+      toast.success("Technician restored.")
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : String(err))
+    }
+  }
+
+  // Stats always describe the active roster, never the archived view.
+  const activeTechs = technicians.filter((t) => !t.is_archived)
+  const onJobCount = activeTechs.filter((t) => !!t.active_job).length
+  const availableCount = activeTechs.filter((t) => t.is_available && !t.active_job).length
+  const unavailableCount = activeTechs.length - availableCount - onJobCount
 
   const filtered = technicians.filter((t) => {
     const matchSearch = t.full_name.toLowerCase().includes(search.toLowerCase())
     const matchRole = filterRole === "all" || t.role === filterRole
-    return matchSearch && matchRole
+    const matchStatus =
+      filterStatus === "all" || (filterStatus === "archived" ? t.is_archived : !t.is_archived)
+    return matchSearch && matchRole && matchStatus
   })
 
   const grouped = GROUP_ORDER.reduce<Record<string, Technician[]>>((acc, role) => {
@@ -268,7 +306,7 @@ export default function TechnicianAvailability() {
       />
 
       <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
-        <StatCard label="Total" value={technicians.length} icon={Users} tone="total" variant="solid" />
+        <StatCard label="Total" value={activeTechs.length} icon={Users} tone="total" variant="solid" />
         <StatCard label="Available" value={availableCount} icon={UserCheck} tone="inspection" variant="solid" />
         <StatCard label="On Job" value={onJobCount} icon={Wrench} tone="onjob" variant="solid" />
         <StatCard label="Not Available" value={unavailableCount} icon={UserX} tone="delayed" variant="solid" />
@@ -284,9 +322,13 @@ export default function TechnicianAvailability() {
         <Popover
           align="start"
           trigger={({ toggle: t, open }) => (
-            <Button variant={filterRole !== "all" ? "secondary" : "subtle"} onClick={t} aria-expanded={open}>
-              {filterRole === "all" ? "Filter" : ROLE_LABEL[filterRole]}
-            </Button>
+            <FilterTrigger
+              open={open}
+              onClick={t}
+              active={filterRole !== "all" || filterStatus !== "active"}
+              count={(filterRole !== "all" ? 1 : 0) + (filterStatus !== "active" ? 1 : 0)}
+              label={filterRole === "all" ? "Filter technicians" : `Filter: ${ROLE_LABEL[filterRole]}`}
+            />
           )}
         >
           {(close) => (
@@ -304,6 +346,21 @@ export default function TechnicianAvailability() {
                   {r === "all" ? "All Roles" : ROLE_LABEL[r]}
                 </MenuItem>
               ))}
+              <p className="mt-1 border-t border-border-subtle px-2.5 pb-1 pt-2 text-xs font-semibold uppercase tracking-wide text-muted">
+                Status
+              </p>
+              {(["active", "archived", "all"] as const).map((s) => (
+                <MenuItem
+                  key={s}
+                  onClick={() => {
+                    setFilterStatus(s)
+                    close()
+                  }}
+                  className={filterStatus === s ? "bg-primary-soft text-primary" : undefined}
+                >
+                  {s === "all" ? "All Status" : s === "active" ? "Active" : "Archived"}
+                </MenuItem>
+              ))}
             </>
           )}
         </Popover>
@@ -312,10 +369,11 @@ export default function TechnicianAvailability() {
       {fetchError ? (
         <EmptyState title="Could not load technicians" message={fetchError} />
       ) : (
-        <div className="grid gap-6 xl:grid-cols-2">
+        <div className={cn("grid gap-6", Object.keys(grouped).length === 1 ? "grid-cols-1" : "xl:grid-cols-2")}>
           {Object.entries(grouped).map(([role, members]) => {
-            const onJobN = members.filter((m) => m.active_job).length
-            const availN = members.filter((m) => m.is_available && !m.active_job).length
+            const activeMembers = members.filter((m) => !m.is_archived)
+            const onJobN = activeMembers.filter((m) => m.active_job).length
+            const availN = activeMembers.filter((m) => m.is_available && !m.active_job).length
             return (
               <div key={role} className="overflow-hidden rounded-card border border-border-subtle bg-surface">
                 <div className="flex items-center justify-between border-b border-border-subtle bg-surface-subtle px-5 py-3">
@@ -324,7 +382,7 @@ export default function TechnicianAvailability() {
                   </Badge>
                   <span className="text-xs text-muted">
                     {onJobN > 0 && <span className="font-medium text-status-onjob">{onJobN} on job · </span>}
-                    {availN}/{members.length} available
+                    {availN}/{activeMembers.length} available
                   </span>
                 </div>
                 <div className="max-h-[26rem] divide-y divide-border-subtle overflow-y-auto scroll-track">
@@ -333,7 +391,11 @@ export default function TechnicianAvailability() {
                     return (
                       <div
                         key={tech.id}
-                        className={cn("flex items-center gap-4 px-5 py-3.5", onJob && "bg-status-onjob/5")}
+                        className={cn(
+                          "flex items-center gap-4 px-5 py-3.5",
+                          onJob && "bg-status-onjob/5",
+                          tech.is_archived && "bg-surface-subtle/60",
+                        )}
                       >
                         <span
                           className={cn(
@@ -345,7 +407,11 @@ export default function TechnicianAvailability() {
                         </span>
                         <div className="min-w-0 flex-1">
                           <p className="truncate text-sm font-medium text-heading">{tech.full_name}</p>
-                          {onJob ? (
+                          {tech.is_archived ? (
+                            <div className="mt-0.5">
+                              <Badge className="bg-surface-muted text-muted">Archived</Badge>
+                            </div>
+                          ) : onJob ? (
                             <div className="mt-0.5 flex items-center gap-1.5">
                               <Wrench className="h-3 w-3 shrink-0 text-status-onjob" />
                               <span className="truncate text-xs font-medium text-status-onjob">
@@ -382,31 +448,49 @@ export default function TechnicianAvailability() {
                             aria-label="Edit technician"
                             size="sm"
                             onClick={() => openEdit(tech)}
-                            disabled={onJob}
-                            title={onJob ? "Cannot edit while on an active job" : "Edit details"}
+                            disabled={onJob || tech.is_archived}
+                            title={
+                              tech.is_archived
+                                ? "Restore this technician to edit their details"
+                                : onJob
+                                  ? "Cannot edit while on an active job"
+                                  : "Edit details"
+                            }
                           >
                             <Pencil className="h-4 w-4" />
                           </IconButton>
-                          <IconButton
-                            aria-label="Delete technician"
-                            size="sm"
-                            variant="ghost"
-                            onClick={() => {
-                              setDeleteTarget(tech)
-                              setDeleteError(null)
-                            }}
-                            disabled={onJob}
-                            title={onJob ? "Cannot delete while on an active job" : "Delete technician"}
-                            className="hover:bg-status-delayed/10 hover:text-status-delayed"
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </IconButton>
+                          {tech.is_archived ? (
+                            <IconButton
+                              aria-label="Restore technician"
+                              size="sm"
+                              variant="ghost"
+                              onClick={() => restore(tech)}
+                              title="Restore to the active roster"
+                            >
+                              <ArchiveRestore className="h-4 w-4" />
+                            </IconButton>
+                          ) : (
+                            <IconButton
+                              aria-label="Archive technician"
+                              size="sm"
+                              variant="ghost"
+                              onClick={() => {
+                                setArchiveTarget(tech)
+                                setArchiveError(null)
+                              }}
+                              disabled={onJob}
+                              title={onJob ? "Cannot archive while on an active job" : "Archive technician"}
+                              className="hover:bg-status-delayed/10 hover:text-status-delayed"
+                            >
+                              <Archive className="h-4 w-4" />
+                            </IconButton>
+                          )}
                         </div>
 
                         <Toggle
                           checked={onJob ? true : tech.is_available}
                           onChange={() => toggle(tech)}
-                          disabled={onJob}
+                          disabled={onJob || tech.is_archived}
                           label={`Toggle availability for ${tech.full_name}`}
                         />
                       </div>
@@ -423,7 +507,9 @@ export default function TechnicianAvailability() {
               title={
                 technicians.length === 0
                   ? 'No technicians yet. Click "Add Technician" to get started.'
-                  : "No technicians match your search."
+                  : filterStatus === "archived"
+                    ? "No archived technicians."
+                    : "No technicians match your search."
               }
             />
           )}
@@ -463,21 +549,21 @@ export default function TechnicianAvailability() {
       />
 
       <ConfirmModal
-        open={deleteTarget !== null}
+        open={archiveTarget !== null}
         onClose={() => {
-          setDeleteTarget(null)
-          setDeleteError(null)
+          setArchiveTarget(null)
+          setArchiveError(null)
         }}
-        onConfirm={confirmDelete}
-        title="Delete Technician"
+        onConfirm={confirmArchive}
+        title="Archive Technician"
         message={
-          deleteError ??
-          `Remove ${deleteTarget?.full_name ?? "this technician"} from active assignment?`
+          archiveError ??
+          `Archive ${archiveTarget?.full_name ?? "this technician"}? They'll be removed from assignment and the roster, but their past job records stay intact. You can restore them from the Archived filter.`
         }
-        confirmLabel="Delete"
+        confirmLabel="Archive"
         tone="danger"
-        loading={deleting}
-        icon={Trash2}
+        loading={archiving}
+        icon={Archive}
       />
     </div>
   )
@@ -521,20 +607,30 @@ function TechFormModal({
           <Button variant="ghost" onClick={onClose}>
             Cancel
           </Button>
-          <Button onClick={onSubmit} disabled={submitting || !form.name.trim()}>
+          <Button onClick={onSubmit} disabled={submitting || !form.firstName.trim() || !form.lastName.trim()}>
             {submitting ? "Saving…" : submitLabel}
           </Button>
         </>
       }
     >
       <div className="space-y-4">
-        <div>
-          <FieldLabel>Full Name</FieldLabel>
-          <Input
-            value={form.name}
-            onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
-            placeholder="e.g. Juan Dela Cruz"
-          />
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <FieldLabel>First Name</FieldLabel>
+            <Input
+              value={form.firstName}
+              onChange={(e) => setForm((f) => ({ ...f, firstName: e.target.value }))}
+              placeholder="e.g. Juan"
+            />
+          </div>
+          <div>
+            <FieldLabel>Last Name</FieldLabel>
+            <Input
+              value={form.lastName}
+              onChange={(e) => setForm((f) => ({ ...f, lastName: e.target.value }))}
+              placeholder="e.g. Dela Cruz"
+            />
+          </div>
         </div>
         <div>
           <FieldLabel>Role</FieldLabel>
@@ -569,6 +665,9 @@ function TechFormModal({
             <span className={cn("inline-flex rounded-pill px-1.5 py-0.5 text-[10px] font-semibold", roleBadge[duplicate.role])}>
               {roleLabel[duplicate.role]}
             </span>
+            {duplicate.is_archived && (
+              <> — archived. Restore them from the Archived filter instead of adding a duplicate.</>
+            )}
           </p>
         </div>
       )}
