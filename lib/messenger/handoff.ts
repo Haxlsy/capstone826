@@ -1,11 +1,15 @@
 import { createAdminClient } from "@/lib/supabase/admin"
 import { insertMessage } from "@/lib/messenger/messenger-data"
 import { sendMessengerQuickReply, type MessengerQuickReply } from "@/lib/messenger/graph"
+import { quickReplyLabel, type BotLanguage } from "@/lib/messenger/copy"
 
 /**
  * The standard quick-reply menu. Attached to every non-escalated bot reply
  * (see app/api/webhook/facebook/route.ts) and re-sent once when a human
  * handoff concludes.
+ *
+ * "Report a Concern" has no capability toggle — reporting a problem is always
+ * available, since it routes to staff rather than being answered by the AI.
  */
 export const QUICK_REPLIES: MessengerQuickReply[] = [
   { content_type: "text", title: "Services & Prices", payload: "services" },
@@ -13,6 +17,38 @@ export const QUICK_REPLIES: MessengerQuickReply[] = [
   { content_type: "text", title: "Report a Concern",  payload: "report"   },
   { content_type: "text", title: "Vehicle Status",    payload: "status"   },
 ]
+
+/**
+ * The menu filtered to the capabilities the admin has enabled, so a disabled
+ * feature stops advertising itself. Previously the full menu was re-sent every
+ * turn regardless of the settings, offering buttons that no longer worked.
+ */
+export function quickRepliesFor(
+  settings?: {
+    enable_services?: boolean
+    enable_booking?: boolean
+    enable_status?: boolean
+  } | null,
+  lang?: BotLanguage,
+): MessengerQuickReply[] {
+  const localize = (qr: MessengerQuickReply): MessengerQuickReply => ({
+    ...qr,
+    title: quickReplyLabel(qr.payload ?? "", lang) ?? qr.title,
+  })
+
+  if (!settings) return QUICK_REPLIES.map(localize)
+
+  const enabled: Record<string, boolean> = {
+    services: settings.enable_services !== false,
+    booking:  settings.enable_booking  !== false,
+    status:   settings.enable_status   !== false,
+    report:   true,
+  }
+
+  const filtered = QUICK_REPLIES.filter((qr) => enabled[qr.payload ?? ""] !== false).map(localize)
+  // Never send an empty menu — Meta rejects it.
+  return filtered.length > 0 ? filtered : [localize(QUICK_REPLIES[2])]
+}
 
 /** Sent with the menu when Sales concludes a handoff and the bot resumes. */
 export const RESUME_MENU_MESSAGE =
