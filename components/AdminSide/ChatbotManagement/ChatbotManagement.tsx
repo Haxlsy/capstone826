@@ -16,21 +16,20 @@ import {
   KB_CATEGORIES,
   KB_CATEGORY_COLORS,
   DEFAULT_NOT_LINKED_MESSAGE,
+  DEFAULT_AI_DISABLED_MESSAGE,
 } from "@/types/chatbot"
 
 type Tab = "settings" | "knowledge_base" | "vehicle_template"
 type Personality = "friendly" | "formal" | "casual"
 
-// The admin page also owns two platform-level master toggles that live in the
-// persisted settings JSON (kept by chatbotSettingsSchema's passthrough).
-type AdminChatbotSettings = ChatbotSettings & {
-  enable_ai_chatbot:        boolean
-  enable_media_validation:  boolean
-}
+// The master toggles are part of chatbotSettingsSchema now, so ChatbotSettings
+// already carries them; the alias is kept for readability at the call sites.
+type AdminChatbotSettings = ChatbotSettings
 
 const DEFAULT_SETTINGS: AdminChatbotSettings = {
   enable_ai_chatbot:       true,
   enable_media_validation: true,
+  ai_disabled_message:     DEFAULT_AI_DISABLED_MESSAGE,
   personality:             "friendly",
   enable_services:         true,
   enable_booking:          true,
@@ -233,6 +232,22 @@ export default function ChatbotManagement() {
                 onChange={(v) => patch("enable_media_validation", v)}
                 label="Enable AI Media Validation — use Gemini to automatically verify that photos or videos uploaded by technicians are relevant to the stage being completed"
               />
+              {!settings.enable_ai_chatbot && (
+                <div className="ml-12 flex flex-col gap-1.5">
+                  <label className="text-sm font-medium text-body">
+                    Auto-reply sent while the AI chatbot is off
+                  </label>
+                  <textarea
+                    value={settings.ai_disabled_message}
+                    onChange={(e) => patch("ai_disabled_message", e.target.value)}
+                    rows={3}
+                    className="w-full border border-border rounded-card px-4 py-3 text-sm text-body leading-relaxed focus:outline-none focus:ring-2 focus:ring-primary/30 resize-none"
+                  />
+                  <p className="text-xs text-muted">
+                    Sent once per customer message, then the conversation is handed to your Sales team.
+                  </p>
+                </div>
+              )}
             </div>
           </Section>
 
