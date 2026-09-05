@@ -1,6 +1,8 @@
 "use client"
 
 import { useState, useMemo } from "react"
+import { useRouter } from "next/navigation"
+import { useRealtimeRefetch } from "@/hooks/useRealtimeRefetch"
 import { Paperclip, CheckCircle } from "lucide-react"
 import type { ConcernRecord } from "@/lib/operations/concern-record"
 import { toConcernRecords } from "@/lib/operations/concern-record"
@@ -110,7 +112,12 @@ function Field({ label, icon, children }: { label: string; icon?: React.ReactNod
 }
 
 export default function SalesConcerns({ concerns }: { concerns: any[] }) {
+  const router = useRouter()
   const records = useMemo(() => toConcernRecords(concerns), [concerns])
+
+  // Concerns are server-fetched into props, so a realtime change re-runs the
+  // server component rather than refetching here — no client API route needed.
+  useRealtimeRefetch(["concern", "concern_media"], () => router.refresh())
   const [activeFilter, setActiveFilter] = useState<FilterType>("All")
   const [searchQuery, setSearchQuery] = useState("")
   const [currentPage, setCurrentPage] = useState(1)

@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useEffect, useRef, useCallback } from "react"
+import { useRealtimeRefetch } from "@/hooks/useRealtimeRefetch"
 import { Car, Phone, Mail, Pencil, X, Check } from "lucide-react"
 import { getInitials } from "@/hooks/useCurrentUser"
 import { fmtDate } from "@/lib/time-display"
@@ -73,6 +74,10 @@ export default function CustomerRecords() {
     }, 300)
     return () => clearTimeout(t)
   }, [search, load])
+
+  // Live updates when a record is created from an inquiry or edited elsewhere.
+  // Re-runs with the active search term so the visible filter is preserved.
+  useRealtimeRefetch("customer_record", () => load(search))
 
   function startEdit(record: CustomerRecord) {
     setEditingId(record.id)

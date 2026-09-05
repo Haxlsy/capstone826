@@ -90,16 +90,16 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
   )
 }
 
+// Safe no-op fallback so a stray call never crashes a page. Module-level, not
+// built per call: callers put `toast` in dependency arrays, and a fresh object
+// each render would make every such dependency unstable.
+const NOOP_TOAST: ToastContextValue = {
+  toast: () => {},
+  success: () => {},
+  error: () => {},
+  info: () => {},
+}
+
 export function useToast(): ToastContextValue {
-  const ctx = React.useContext(ToastContext)
-  if (!ctx) {
-    // Safe no-op fallback so a stray call never crashes a page.
-    return {
-      toast: () => {},
-      success: () => {},
-      error: () => {},
-      info: () => {},
-    }
-  }
-  return ctx
+  return React.useContext(ToastContext) ?? NOOP_TOAST
 }

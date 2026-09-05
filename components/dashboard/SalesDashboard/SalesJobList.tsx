@@ -2,6 +2,7 @@
 
 import { useState, useMemo } from "react"
 import { useRouter } from "next/navigation"
+import { useRealtimeRefetch } from "@/hooks/useRealtimeRefetch"
 import { ArrowRight } from "lucide-react"
 import { fmtDate } from "@/lib/time-display"
 import { PageHeader } from "@/components/ui/PageHeader"
@@ -35,6 +36,11 @@ const PAGE_SIZE = 15
 
 export default function SalesJobList({ jobOrders: rawOrders }: { jobOrders: any[] }) {
   const router = useRouter()
+
+  // Job orders are server-fetched into props, so a status change from
+  // Operations or a technician re-runs the server component instead of being
+  // refetched here.
+  useRealtimeRefetch(["job_order", "job_stage_progress"], () => router.refresh())
   const jobOrders = useMemo(
     () =>
       rawOrders.map((r: any): JobOrder => ({
