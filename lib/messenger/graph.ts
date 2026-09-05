@@ -102,10 +102,14 @@ export async function sendMessengerImage(
       }
     )
 
-    if (!res.ok) return null
+    if (!res.ok) {
+      console.error("[messenger/graph] sendMessengerImage failed:", res.status, await res.text().catch(() => ""))
+      return null
+    }
     const json = await res.json().catch(() => null)
     return json?.message_id ?? null
-  } catch {
+  } catch (err) {
+    console.error("[messenger/graph] sendMessengerImage threw:", err)
     return null
   }
 }
@@ -145,10 +149,14 @@ export async function sendMessengerVideo(
       }
     )
 
-    if (!res.ok) return null
+    if (!res.ok) {
+      console.error("[messenger/graph] sendMessengerVideo failed:", res.status, await res.text().catch(() => ""))
+      return null
+    }
     const json = await res.json().catch(() => null)
     return json?.message_id ?? null
-  } catch {
+  } catch (err) {
+    console.error("[messenger/graph] sendMessengerVideo threw:", err)
     return null
   }
 }
