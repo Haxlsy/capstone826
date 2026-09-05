@@ -2,7 +2,7 @@ import { NextResponse } from "next/server"
 import { cookies } from "next/headers"
 import { createClient } from "@/lib/supabase/server"
 import { createAdminClient } from "@/lib/supabase/admin"
-import { sendMessengerText, sendMessengerImage } from "@/lib/messenger/graph"
+import { sendMessengerText, sendMessengerImage, sendMessengerVideo } from "@/lib/messenger/graph"
 import { buildStageUpdateMessage } from "@/lib/messenger/stage-update"
 
 // POST /api/operations/job-orders/[id]/resend-stage
@@ -75,6 +75,9 @@ export async function POST(
     const photos       = (s.media ?? [])
       .filter((m: any) => m.media_type === "photo" && m.shareable_link)
       .map((m: any) => m.shareable_link as string)
+    const videos       = (s.media ?? [])
+      .filter((m: any) => m.media_type === "video" && m.shareable_link)
+      .map((m: any) => m.shareable_link as string)
 
     // Progress across the whole job.
     const { data: allStages } = await admin
@@ -101,9 +104,12 @@ export async function POST(
       try {
         const textMid = await sendMessengerText(psid, message)
         if (textMid) {
-          // Optionally attach first photo if available
+          // Optionally attach first photo/video if available
           if (photos.length > 0) {
             await sendMessengerImage(psid, photos[0])
+          }
+          if (videos.length > 0) {
+            await sendMessengerVideo(psid, videos[0])
           }
           sendSuccess = true
         }

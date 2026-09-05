@@ -111,6 +111,49 @@ export async function sendMessengerImage(
 }
 
 /**
+ * Sends a video attachment to a Messenger user via the Facebook Graph API.
+ * Returns the Facebook message id (mid) on success, or null on failure.
+ * Never throws.
+ *
+ * Facebook only reliably fetches a URL-attached video under ~25MB — this is
+ * why the technician stage-video upload cap is 20MB (see the stage-media
+ * upload route), rather than building the chunked/resumable upload API a
+ * larger file would require.
+ */
+export async function sendMessengerVideo(
+  psid: string,
+  videoUrl: string
+): Promise<string | null> {
+  const token = process.env.META_PAGE_ACCESS_TOKEN
+  if (!token || !psid || !videoUrl) return null
+
+  try {
+    const res = await fetch(
+      `${GRAPH_API_URL}?access_token=${token}`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          recipient: { id: psid },
+          message: {
+            attachment: {
+              type:    "video",
+              payload: { url: videoUrl, is_reusable: true },
+            },
+          },
+        }),
+      }
+    )
+
+    if (!res.ok) return null
+    const json = await res.json().catch(() => null)
+    return json?.message_id ?? null
+  } catch {
+    return null
+  }
+}
+
+/**
  * Fetches the public profile (name + profile_pic) for a Messenger PSID.
  */
 export async function fetchMessengerProfile(psid: string): Promise<{
