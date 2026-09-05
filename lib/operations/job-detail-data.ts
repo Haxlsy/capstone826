@@ -9,7 +9,7 @@ export async function getJobDetailData(id: string) {
     .from("job_order")
     .select(
       `id, status, scheduled_at, actual_start_at, expected_completion_at, created_at, finishing_approved_at, job_order_code,
-       customer:customer_record_id(full_name, plate_number, vehicle_unit, contact_number),
+       customer:customer_record_id(full_name, plate_number, vehicle_unit, contact_number, email),
        service:service_id(name),
        customer_name, contact_number, plate_number, vehicle_unit`
     )
@@ -141,6 +141,7 @@ export async function getJobDetailData(id: string) {
       plate_number: j.customer?.plate_number ?? j.plate_number ?? "—",
       vehicle_unit: j.customer?.vehicle_unit ?? j.vehicle_unit ?? "—",
       contact_number: j.customer?.contact_number ?? j.contact_number ?? "—",
+      email: j.customer?.email ?? null,
       service: j.service?.name ?? "—",
       head_detailer: (headDetailer?.user_account as any) ?? null,
       head_installer: (headInstaller?.user_account as any) ?? null,
