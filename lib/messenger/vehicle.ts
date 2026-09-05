@@ -4,6 +4,7 @@ import { fmtDateTime } from "@/lib/time-display"
 import { ACTIVE_JOB_STATUSES } from "@/lib/messenger/booking"
 import { normalizePhone, isPlausibleMobile } from "@/lib/phone"
 import { DEFAULT_NOT_LINKED_MESSAGE } from "@/types/chatbot"
+import { STATUS_COPY, type BotLanguage } from "@/lib/messenger/copy"
 
 export { normalizePhone } from "@/lib/phone"
 export { DEFAULT_NOT_LINKED_MESSAGE } from "@/types/chatbot"
@@ -400,7 +401,7 @@ export function formatOwnVehicleStatus(
  */
 export function formatVehicleStatusForCustomer(
   outcome: OwnVehicleOutcome,
-  opts?: { focusPlate?: string; notLinkedMessage?: string | null }
+  opts?: { focusPlate?: string; notLinkedMessage?: string | null; lang?: BotLanguage }
 ): string | null {
   // The admin's configured wording applies ONLY here — a linked customer's job
   // status is assembled from live data and is never affected by the setting.
@@ -409,11 +410,7 @@ export function formatVehicleStatusForCustomer(
   }
 
   if (outcome.kind === "booked_no_active_job") {
-    const p = outcome.plate ? ` for plate ${outcome.plate}` : ""
-    return (
-      `Good news — we have your booking${p} on file. It hasn't been scheduled into ` +
-      "service yet; our team will update you here as soon as work begins."
-    )
+    return STATUS_COPY.bookedNoActiveJob(outcome.plate, opts?.lang)
   }
 
   let jobs = outcome.jobs
@@ -424,29 +421,26 @@ export function formatVehicleStatusForCustomer(
   }
 
   if (jobs.length === 0) {
-    return (
-      "You don't have a vehicle in service with us right now. If you've just booked, " +
-      "we'll get started once your vehicle is checked in — and I'll have an update for you here."
-    )
+    return STATUS_COPY.noVehicleInService(opts?.lang)
   }
 
+  const L = opts?.lang === "filipino" ? STATUS_COPY.jobLabels.filipino : STATUS_COPY.jobLabels.english
+
   const one = (j: JobStatus): string => {
-    const lines = [`Plate: ${j.plate}`, `Status: ${j.status}`]
-    if (j.serviceName) lines.push(`Service: ${j.serviceName}`)
+    const lines = [`${L.plate}: ${j.plate}`, `${L.status}: ${j.status}`]
+    if (j.serviceName) lines.push(`${L.service}: ${j.serviceName}`)
     if (j.totalStages > 0) {
       lines.push(
-        `Progress: ${j.completedStages} of ${j.totalStages} stages done` +
-          (j.currentStage ? ` (currently: ${j.currentStage})` : "")
+        `${L.progress}: ${j.completedStages} of ${j.totalStages} ${L.stagesDone}` +
+          (j.currentStage ? ` (${L.currently}: ${j.currentStage})` : "")
       )
     }
-    if (j.expectedCompletionAt) lines.push(`Estimated Completion: ${fmtDateTime(j.expectedCompletionAt)}`)
+    if (j.expectedCompletionAt) lines.push(`${L.eta}: ${fmtDateTime(j.expectedCompletionAt)}`)
     return lines.join("\n")
   }
 
   const body = jobs.map(one).join("\n\n")
-  return jobs.length === 1
-    ? `Here's the latest on your vehicle:\n\n${body}`
-    : `Here's the latest on your vehicles:\n\n${body}`
+  return `${STATUS_COPY.latestHeader(jobs.length > 1, opts?.lang)}\n\n${body}`
 }
 
 export type LinkClaim =

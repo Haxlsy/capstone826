@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { GoogleGenAI } from "@google/genai"
 import sharp from "sharp"
+import { createAdminClient } from "@/lib/supabase/admin"
 
 
 const PROMPT = `You are an image validator for a professional automotive detailing and installation workshop. Technicians upload photos to document their work on customer vehicles. Bad photos hurt the company's reputation with customers.
@@ -119,6 +120,19 @@ export async function POST(request: NextRequest) {
       })
     }
 
+    // Admin master switch. Checked before the body is parsed and the image is
+    // resized, so an "off" toggle costs nothing. Auto-approves in the same shape
+    // as serviceError(), so the caller's `!approved` branch simply falls through
+    // and the upload proceeds unvalidated.
+    if (!(await isMediaValidationEnabled())) {
+      return NextResponse.json({
+        approved: true,
+        category: "vehicle",
+        reason: "AI media validation is disabled by the administrator",
+        message: "Image uploaded successfully.",
+      })
+    }
+
     if (isRateLimited()) {
       return serviceError() // auto-approve and skip validation
     }
@@ -166,6 +180,28 @@ export async function POST(request: NextRequest) {
   } catch (err: unknown) {
     console.error("Image validation error:", err)
     return serviceError()
+  }
+}
+
+/**
+ * Reads the `enable_media_validation` master switch from chatbot_config.
+ * Fails OPEN (returns true) on any error: a settings-read blip should leave
+ * validation running, not silently disable a safety check.
+ */
+async function isMediaValidationEnabled(): Promise<boolean> {
+  try {
+    const supabase = createAdminClient()
+    const { data } = await supabase
+      .from("chatbot_config")
+      .select("settings")
+      .limit(1)
+      .single()
+
+    const settings = data?.settings as { enable_media_validation?: boolean } | null
+    return settings?.enable_media_validation !== false
+  } catch (err) {
+    console.error("[image-handler] media validation flag read failed:", err)
+    return true
   }
 }
 

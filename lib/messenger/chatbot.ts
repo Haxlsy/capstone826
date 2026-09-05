@@ -3,7 +3,16 @@ import { createAdminClient } from "@/lib/supabase/admin"
 import { normalizePhone } from "@/lib/phone"
 import { TOKEN_PLATE, TOKEN_PHONE, TOKEN_EMAIL, PLATE_PATTERN } from "@/lib/messenger/patterns"
 import {
+  type BotLanguage,
+  bookingCancelled,
+  capabilityDisabled,
+  missingFieldsPrompt,
+  BOOKING_SUMMARY_COPY,
+  MISSING_FIELDS_LEADS,
+} from "@/lib/messenger/copy"
+import {
   DEFAULT_NOT_LINKED_MESSAGE,
+  DEFAULT_AI_DISABLED_MESSAGE,
   type ChatbotSettings,
   type ChatMessage,
   type ChatbotReply,
@@ -12,6 +21,27 @@ import {
 
 export type { ChatbotSettings, ChatMessage, ChatbotReply, CustomerDetails }
 
+/** Longest plausible value for any single booking detail. */
+const MAX_DETAIL_LENGTH = 60
+
+/**
+ * Phrases that only ever appear when the model narrates its own reasoning into
+ * a structured field instead of answering it. Real customer details never
+ * contain these.
+ */
+const DELIBERATION_MARKERS = [
+  /\bwait,/i,
+  /\blet'?s use\b/i,
+  /\bas provided by (the )?user\b/i,
+  /\bif allowed\b/i,
+  /\bkeeping as provided\b/i,
+  /\bis a bit redundant\b/i,
+  /\bsimilar structure\b/i,
+  /\bor similar\b/i,
+  /\bI'?ll use\b/i,
+  /\bactually,/i,
+]
+
 /**
  * Normalizes a model-provided detail field: trims it, and treats an empty or
  * whitespace-only string (which the structured-output model emits for values it
@@ -19,6 +49,43 @@ export type { ChatbotSettings, ChatMessage, ChatbotReply, CustomerDetails }
  */
 const str = (v: unknown): string | null =>
   typeof v === "string" && v.trim() ? v.trim() : null
+
+/**
+ * Guards a booking detail against model deliberation leaking into it.
+ *
+ * The structured-output call once returned
+ * `"SUV Toyota Fortuner (Toyota Fortuner SUV is a bit redundant, keeping as
+ * provided... Wait, let's use: SUV Toyota Fortuner"` for `vehicle_unit`, and it
+ * was rendered verbatim into the customer's confirmation message AND persisted
+ * to the booking draft and the Sales inquiry record — because the only
+ * processing was a trim.
+ *
+ * Applied at the parse boundary so a poisoned value never reaches state.
+ * Strategy: strip a trailing parenthetical aside, then reject outright (return
+ * null, i.e. "not provided") anything still showing deliberation, spanning
+ * multiple lines/sentences, or absurdly long. Returning null is safe — the
+ * missing-field prompt simply asks the customer for it again.
+ */
+export function sanitizeDetail(v: unknown): string | null {
+  const value = str(v)
+  if (!value) return null
+
+  // Multi-line values are never a name/plate/vehicle/email/phone.
+  if (/[\r\n]/.test(value)) return null
+
+  // Drop a parenthetical aside: "SUV Toyota Fortuner (…redundant…)" → "SUV Toyota Fortuner"
+  const withoutAside = value.replace(/\s*\([^)]*\)\s*/g, " ").replace(/\s+/g, " ").trim()
+  if (!withoutAside) return null
+
+  if (DELIBERATION_MARKERS.some((re) => re.test(withoutAside))) return null
+
+  // Prose, not a field value: a sentence break followed by more words.
+  if (/[.!?]\s+\S/.test(withoutAside)) return null
+
+  if (withoutAside.length > MAX_DETAIL_LENGTH) return null
+
+  return withoutAside
+}
 
 /**
  * Maps messenger_message rows (ordered NEWEST first, as the DB query returns
@@ -38,35 +105,23 @@ export function toHistoryMessages(
 
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY_CHATBOT! })
 
-// Business facts — always injected so the AI answers accurately.
-const BUSINESS_FACTS = `
-BUSINESS INFORMATION:
-- Business name: 826 Auto Aesthetic and Protection (also known as 826 Auto Care OPC)
-- Location: H4JG+HV8, Ortigas Ave Ext, Cainta, 1900 Rizal, Philippines
-- Business hours: Tuesday to Sunday, 8:00 AM – 8:00 PM. Closed on Mondays and public holidays.
-- Always state these hours exactly when a customer asks about business hours or operating hours.
-
-ABOUT THE COMPANY:
-826 Auto Aesthetic and Protection is a proudly Filipino-owned automotive care company committed to delivering premium detailing, protection, and enhancement services for all types of vehicles. Known for quality, innovation, and a customer-first approach, 826 specializes in PPF installation, graphene coatings, interior leather care, windshield protection, and full auto detailing. With skilled professionals and cutting-edge tools, 826 goes beyond standard car care — protecting every vehicle as if it were our own.
-
-LIST OF SERVICES:
-
-Auto Detailing:
-- Exterior Detailing – Deep cleaning, polishing, and waxing to restore and protect the car's exterior.
-- Interior Detailing – Full cleaning of seats, carpets, and hard surfaces; includes vacuuming, shampooing, and leather care.
-
-Coating Services:
-- Ceramic/Graphene Coating – Long-lasting, high-gloss finish with strong protection against water spots, UV, and chemical damage.
-- Borophene Coating – Advanced coating technology for enhanced gloss and chemical resistance.
-- Interior Leather Coating – Protects leather from stains, cracks, and fading while preserving its natural feel.
-
-Paint Protection Film (PPF):
-- Full Body PPF – Transparent or colored film that protects paint from scratches, chips, and swirl marks.
-- Per Panel PPF – Specific panel protection for high-impact areas (hood, bumper, side mirrors, etc.).
-- Windshield PPF – Adds an invisible shield to the windshield to resist chips and cracks.
-
-Nano Ceramic Tint:
-- Provides advanced heat rejection, UV protection, and glare reduction while maintaining clear visibility. Blocks harmful rays and enhances interior comfort without affecting signal reception.
+/**
+ * Sourcing rules for business facts. Deliberately contains NO service names,
+ * prices, hours or company details — every one of those now lives in the
+ * admin-managed knowledge base (`chatbot_knowledge`), which is injected last
+ * and declared authoritative below.
+ *
+ * This block previously hardcoded the full service catalogue, which meant
+ * admins could not change what the bot said and deleting a knowledge entry
+ * appeared to do nothing (the hardcoded copy kept answering, and it sat later
+ * in the prompt so it won). See docs/knowledge-base-chatbot.md.
+ */
+const KNOWLEDGE_SOURCING_RULES = `
+ANSWERING FROM THE KNOWLEDGE BASE:
+- The BUSINESS KNOWLEDGE BASE below is your ONLY source of truth for services, prices, business hours, location, promos, and company policies.
+- If the knowledge base does not contain the answer, say you'll check with our team and offer to connect them with staff. NEVER guess, and NEVER invent a service, price, promo, schedule, or policy.
+- The knowledge base always overrides anything said earlier in this conversation. If an earlier message in the history conflicts with it, the knowledge base is correct and the earlier message is outdated.
+- Do not state a price unless that exact price appears in the knowledge base.
 `.trim()
 
 // Hard guardrail — always prepended regardless of user config.
@@ -107,6 +162,25 @@ export function buildSystemPrompt(s: ChatbotSettings): string {
   if (s.enable_faq)      lines.push("- General FAQs about detailing and installation")
   if (s.enable_status)   lines.push("- Checking the current status of their vehicle's service job")
   if (s.enable_booking)  lines.push("- Collecting their details for a booking request")
+
+  // Disabled capabilities need an explicit prohibition. Merely omitting the
+  // bullet above left the model free to answer anyway — the toggles read as
+  // advisory rather than binding.
+  const disabled: string[] = []
+  if (!s.enable_services) disabled.push("- Do NOT describe our services or quote any price. This is switched off.")
+  if (!s.enable_faq)      disabled.push("- Do NOT answer general FAQs about detailing or installation. This is switched off.")
+  if (!s.enable_status)   disabled.push("- Do NOT look up, discuss, or comment on vehicle or job status. This is switched off.")
+  if (!s.enable_booking)  disabled.push("- Do NOT collect booking details or take a booking. This is switched off.")
+
+  if (disabled.length > 0) {
+    lines.push("")
+    lines.push("TURNED OFF — you must not help with these, even if asked directly:")
+    lines.push(...disabled)
+    lines.push(
+      "If a customer asks about anything in that list, apologise briefly, say you can't help with that here, " +
+      "and tell them you're passing them to our team. Never attempt the task anyway.",
+    )
+  }
 
   if (s.enable_booking) {
     lines.push("")
@@ -152,23 +226,34 @@ export function buildSystemPrompt(s: ChatbotSettings): string {
   return lines.join("\n")
 }
 
+/** Header for the knowledge-base block; shared so both prompt paths match. */
+const KB_HEADER =
+  "BUSINESS KNOWLEDGE BASE (authoritative — this is the only source for services, prices, hours, and policies):"
+
+/** Wording used when the admin has not added any knowledge entries yet. */
+const KB_EMPTY =
+  "BUSINESS KNOWLEDGE BASE: (empty — no entries have been added yet)\n" +
+  "Because the knowledge base is empty, you do not know our services, prices, or hours. " +
+  "Do NOT guess any of them. Tell the customer you'll check with our team and offer to connect them with staff."
+
 /**
  * Full runtime prompt used by the webhook and the admin preview:
- * settings + knowledge base + business facts + hard guardrail.
+ * settings + sourcing rules + hard guardrail + knowledge base.
+ *
+ * The knowledge base is placed LAST, immediately after the rules that declare
+ * it authoritative — nearest the model's attention and with no hardcoded
+ * catalogue after it to compete with.
  */
 export function buildFullSystemPrompt(
   settings: ChatbotSettings,
   knowledge?: string | null
 ): string {
-  const parts = [buildSystemPrompt(settings)]
-
-  if (knowledge && knowledge.trim()) {
-    parts.push(`ADDITIONAL BUSINESS KNOWLEDGE (use this to answer accurately):\n${knowledge.trim()}`)
-  }
-
-  parts.push(BUSINESS_FACTS)
-  parts.push(HARD_GUARDRAIL)
-  return parts.join("\n\n")
+  return [
+    buildSystemPrompt(settings),
+    KNOWLEDGE_SOURCING_RULES,
+    HARD_GUARDRAIL,
+    knowledge && knowledge.trim() ? `${KB_HEADER}\n${knowledge.trim()}` : KB_EMPTY,
+  ].join("\n\n")
 }
 
 /**
@@ -186,14 +271,22 @@ function buildRuntimeSystemPrompt(
   }
 
   if (system_prompt) {
-    const base = [system_prompt.trim(), BUSINESS_FACTS, HARD_GUARDRAIL].join("\n\n")
-    return knowledge
-      ? `${base}\n\nADDITIONAL BUSINESS KNOWLEDGE (use this to answer accurately):\n${knowledge.trim()}`
-      : base
+    // Same ordering as buildFullSystemPrompt — knowledge base last and
+    // authoritative. These two branches used to disagree about where the KB
+    // went, so behaviour changed depending on whether `settings` was populated.
+    return [
+      system_prompt.trim(),
+      KNOWLEDGE_SOURCING_RULES,
+      HARD_GUARDRAIL,
+      knowledge && knowledge.trim() ? `${KB_HEADER}\n${knowledge.trim()}` : KB_EMPTY,
+    ].join("\n\n")
   }
 
   return buildFullSystemPrompt({
     personality: "friendly",
+    enable_ai_chatbot: true,
+    enable_media_validation: true,
+    ai_disabled_message: DEFAULT_AI_DISABLED_MESSAGE,
     enable_services: true,
     enable_booking: true,
     enable_status: true,
@@ -226,6 +319,42 @@ export async function loadChatbotConfig() {
   }
 }
 
+/** Order categories are rendered in — most-asked first. */
+const KB_CATEGORY_ORDER = ["Service", "Pricing", "Hours", "FAQ", "Other"] as const
+
+/**
+ * Loads all knowledge base entries as plain text for prompt injection, grouped
+ * under labelled category headings. Grouping matters: the entries used to be a
+ * flat list tagged `[Service]` / `[Pricing]`, and nothing ever told the model
+ * what those tags meant, so a "what are your prices" question had no section to
+ * anchor on.
+ */
+export function formatKnowledgeBase(
+  rows: { category: string | null; topic: string; content: string }[]
+): string | null {
+  if (rows.length === 0) return null
+
+  const seen = new Set<string>()
+  const categories = [
+    ...KB_CATEGORY_ORDER.filter((c) => rows.some((r) => (r.category ?? "FAQ") === c)),
+    // Any category not in the known list (e.g. added later) still renders.
+    ...rows
+      .map((r) => r.category ?? "FAQ")
+      .filter((c) => !KB_CATEGORY_ORDER.includes(c as (typeof KB_CATEGORY_ORDER)[number]))
+      .filter((c) => !seen.has(c) && seen.add(c)),
+  ]
+
+  return categories
+    .map((category) => {
+      const entries = rows
+        .filter((r) => (r.category ?? "FAQ") === category)
+        .map((r) => `- ${r.topic}: ${r.content}`)
+        .join("\n")
+      return `${category.toUpperCase()}:\n${entries}`
+    })
+    .join("\n\n")
+}
+
 /** Loads all knowledge base entries as plain text for prompt injection. */
 export async function loadKnowledgeBase(): Promise<string | null> {
   const supabase = createAdminClient()
@@ -236,11 +365,9 @@ export async function loadKnowledgeBase(): Promise<string | null> {
     .order("topic")
     .order("created_at")
 
-  if (error || !data || data.length === 0) return null
+  if (error || !data) return null
 
-  return data
-    .map((k) => `- [${k.category ?? "FAQ"}] ${k.topic}: ${k.content}`)
-    .join("\n")
+  return formatKnowledgeBase(data)
 }
 
 const HUMAN_REQUEST_PATTERNS = [
@@ -323,6 +450,44 @@ const EXISTING_BOOKING_PATTERNS = [
 export function hasExistingBookingIntent(message: string): boolean {
   const normalized = message.toLowerCase()
   return EXISTING_BOOKING_PATTERNS.some((re) => re.test(normalized))
+}
+
+const CANCEL_INTENT_PATTERNS = [
+  // Plain abandonment — no object needed.
+  /\bnever\s?mind\b/i,
+  /\bnvm\b/i,
+  /\bforget\s+(it|this|that|the\s+booking)\b/i,
+  /\b(no|not)\s+(longer|anymore)\s+(interested|booking)\b/i,
+  /\bchanged\s+my\s+mind\b/i,
+  /\bmaybe\s+(next\s+time|later)\b/i,
+  /\b(don'?t|do\s+not|dont)\s+(want\s+to\s+)?(book|proceed|continue)\b/i,
+  /\b(stop|cancel)\s+(this|the)?\s*(booking|request|process)?\s*(na|please|pls)?\b/i,
+  /\bcancel\s+na\s+lang\b/i,
+  // Filipino
+  /\b(wag|huwag)\s+na\b/i,
+  /\bayoko\s+na\b/i,
+  /\bayaw\s+ko\s+na\b/i,
+  /\bhindi\s+na\s+(lang|ako|po)?\b/i,
+  /\bskip\s+na\s+lang\b/i,
+  /\bnext\s+time\s+na\s+lang\b/i,
+]
+
+/**
+ * True when the customer is abandoning the booking they are CURRENTLY giving
+ * details for ("nevermind", "wag na", "cancel na lang").
+ *
+ * Distinct from `hasExistingBookingIntent`, which is about a booking already on
+ * file and must still escalate to Sales. The caller disambiguates: a cancel
+ * during an in-progress draft, from a customer with no live job, aborts the
+ * draft; anything else stays an existing-booking escalation.
+ *
+ * Without this, "nevermind" matched nothing, the sticky booking flow replayed
+ * the details summary, and the customer was eventually escalated for being
+ * "stuck providing booking details".
+ */
+export function hasCancelIntent(message: string): boolean {
+  const normalized = message.toLowerCase()
+  return CANCEL_INTENT_PATTERNS.some((re) => re.test(normalized))
 }
 
 /** True when the message asks for a vehicle-status update. */
@@ -477,32 +642,113 @@ export function extractDetailTokens(text: string): CustomerDetails {
  * customer ALWAYS sees their details and an explicit confirm prompt before a
  * "yes" can escalate the booking.
  */
-export function buildBookingSummary(details: CustomerDetails): string {
+export function buildBookingSummary(details: CustomerDetails, lang?: BotLanguage): string {
+  // Sanitized again here (not only at the parse boundary) because the webhook's
+  // "asks a service / claims done" backstop re-renders this summary from state
+  // that may predate the sanitizer.
+  const fil = lang === "filipino"
+  const L = fil ? BOOKING_SUMMARY_COPY.labels.filipino : BOOKING_SUMMARY_COPY.labels.english
+
+  // For "both", the header and confirm line are bilingual but the detail bullets
+  // (which are just the customer's own values) are rendered once.
+  const header = lang === "both"
+    ? `${BOOKING_SUMMARY_COPY.header.english}\n${BOOKING_SUMMARY_COPY.header.filipino}`
+    : fil ? BOOKING_SUMMARY_COPY.header.filipino : BOOKING_SUMMARY_COPY.header.english
+  const confirm = lang === "both"
+    ? `${BOOKING_SUMMARY_COPY.confirm.english}\n${BOOKING_SUMMARY_COPY.confirm.filipino}`
+    : fil ? BOOKING_SUMMARY_COPY.confirm.filipino : BOOKING_SUMMARY_COPY.confirm.english
+
   return [
-    "Please review your booking details:",
-    `• Name: ${details.full_name ?? "—"}`,
-    `• Contact: ${details.contact_number ?? "—"}`,
-    `• Plate: ${details.plate_number ?? "—"}`,
-    `• Vehicle: ${details.vehicle_unit ?? "—"}`,
-    `• Email: ${details.email ?? "—"}`,
+    header,
+    `• ${L.name}: ${sanitizeDetail(details.full_name) ?? "—"}`,
+    `• ${L.contact}: ${sanitizeDetail(details.contact_number) ?? "—"}`,
+    `• ${L.plate}: ${sanitizeDetail(details.plate_number) ?? "—"}`,
+    `• ${L.vehicle}: ${sanitizeDetail(details.vehicle_unit) ?? "—"}`,
+    `• ${L.email}: ${sanitizeDetail(details.email) ?? "—"}`,
     "",
-    "Reply YES to confirm, or send the correct value for anything that's wrong.",
+    confirm,
   ].join("\n")
+}
+
+/**
+ * Deterministic reply when the customer asks for a capability the admin has
+ * switched off. Rendered in code, not by the model, so a disabled feature can't
+ * be talked into working.
+ */
+export function buildCapabilityDisabledMessage(
+  capability: "services" | "booking" | "status",
+  lang?: BotLanguage,
+): string {
+  return capabilityDisabled(capability, lang)
+}
+
+/**
+ * Deterministic reply when the customer abandons an in-progress booking.
+ * Rendered in code, never via Gemini — handing this to the model with the
+ * booking still in history made it re-offer the booking it was just told to drop.
+ */
+export function buildBookingCancelledMessage(lang?: BotLanguage): string {
+  return bookingCancelled(lang)
+}
+
+/**
+ * Whether the conversation should still be treated as an in-progress booking.
+ *
+ * Extracted as a pure function because this decision used to be an inline
+ * expression with no test surface, and it was wrong in two ways: `is_booking_flow`
+ * was sticky (nothing ever cleared it for a non-booking message, unlike the
+ * vehicle-status flag), so unrelated questions were pulled into the booking
+ * machinery and answered with booking context appended; and it ignored the
+ * admin's `enable_booking` capability toggle entirely.
+ */
+export function shouldStayInBookingFlow(input: {
+  /** Booking intent, or a plate/phone/email token in this message. */
+  signal: boolean
+  statusIntent: boolean
+  awaitingLinkVerification: boolean
+  linkEscalation: boolean
+  isBookingFlow: boolean
+  awaitingConfirmation: boolean
+  cancelIntent: boolean
+  /** Admin capability toggle; defaults to enabled. */
+  enableBooking?: boolean
+}): boolean {
+  const {
+    signal, statusIntent, awaitingLinkVerification, linkEscalation,
+    isBookingFlow, awaitingConfirmation, cancelIntent, enableBooking = true,
+  } = input
+
+  if (!enableBooking) return false
+  if (cancelIntent) return false
+  if (awaitingLinkVerification || linkEscalation) return false
+
+  // A fresh signal always enters/continues the flow.
+  if (signal && !statusIntent) return true
+
+  // Otherwise only stay in while a confirmation is actually pending. A sticky
+  // `is_booking_flow` alone is NOT enough — that is what dragged unrelated
+  // messages ("October promo") into the booking block.
+  if (awaitingConfirmation) return true
+
+  // Sticky flag with no pending confirmation and no signal → the customer has
+  // moved on; let the message be answered normally.
+  if (isBookingFlow) return false
+
+  return false
 }
 
 // Fixed lead-in for the deterministic missing-fields re-ask. The webhook scans
 // conversation history for this exact prefix to detect a stuck re-ask loop, so
 // it must stay in sync with buildMissingFieldsPrompt below.
-export const MISSING_FIELDS_PROMPT_LEAD = "To continue your booking, please include"
+export const MISSING_FIELDS_PROMPT_LEAD = MISSING_FIELDS_LEADS.english
 
 /**
  * Deterministic re-ask for the still-missing booking fields. Rendered in code
  * (not via Gemini) so the bot can never rephrase-loop and never asks for a
  * service type. `missingLabels` come from `missingBookingFields`.
  */
-export function buildMissingFieldsPrompt(missingLabels: string[]): string {
-  const list = missingLabels.length ? missingLabels.join(", ") : "a few more details"
-  return `${MISSING_FIELDS_PROMPT_LEAD}: ${list}. Please send ${missingLabels.length > 1 ? "them" : "it"} and I'll get you set up.`
+export function buildMissingFieldsPrompt(missingLabels: string[], lang?: BotLanguage): string {
+  return missingFieldsPrompt(missingLabels.length ? missingLabels : ["a few more details"], lang)
 }
 
 // Consecutive-violation thresholds. Off-topic: warn on turn 4, escalate on turn 5.
@@ -591,7 +837,9 @@ export async function generateChatbotReply(input: {
   // Accumulate booking details across turns without ever dropping one: the most
   // recent value the customer gave FOR A FIELD wins, but a field they are silent
   // about this turn keeps its earlier value.
-  systemPrompt += `\n\nFor each customer detail (full name, contact number, plate number, vehicle, email): use the most recent value the customer has given for that specific field. If their latest message does not mention a field they already provided earlier in this booking, keep the earlier value — never return null for a detail the customer has already given. Only start over if the customer explicitly says they want to book a different vehicle.`
+  systemPrompt += `\n\nFor each customer detail (full name, contact number, plate number, vehicle, email): use the most recent value the customer has given for that specific field. If their latest message does not mention a field they already provided earlier in this booking, keep the earlier value — never return null for a detail the customer has already given. Start over with empty details if the customer says they want to book a different vehicle, or if they cancel or abandon the booking (e.g. "nevermind", "cancel it", "wag na") — in that case return null for every field and do not bring the booking up again unless they ask.
+
+Never write your own reasoning, notes, or alternatives into a customer detail field. Each field must contain only the plain value (e.g. "Toyota Fortuner"), with no parentheses, commentary, or corrections. If you are unsure of a value, return null for it.`
 
   // Instruct the model to also surface any customer booking details it sees so
   // the webhook can store them in the inquiry's extracted_* columns. Even when
@@ -655,11 +903,11 @@ export async function generateChatbotReply(input: {
           : "none",
       customer: c && typeof c === "object"
         ? {
-            full_name:      str(c.full_name),
-            contact_number: str(c.contact_number),
-            plate_number:   str(c.plate_number),
-            vehicle_unit:   str(c.vehicle_unit),
-            email:          str(c.email),
+            full_name:      sanitizeDetail(c.full_name),
+            contact_number: sanitizeDetail(c.contact_number),
+            plate_number:   sanitizeDetail(c.plate_number),
+            vehicle_unit:   sanitizeDetail(c.vehicle_unit),
+            email:          sanitizeDetail(c.email),
           }
         : null,
     }
@@ -729,11 +977,11 @@ export async function extractCustomerDetails(input: {
     if (!c || typeof c !== "object") return null
 
     return {
-      full_name:      str(c.full_name),
-      contact_number: str(c.contact_number),
-      plate_number:   str(c.plate_number),
-      vehicle_unit:   str(c.vehicle_unit),
-      email:          str(c.email),
+      full_name:      sanitizeDetail(c.full_name),
+      contact_number: sanitizeDetail(c.contact_number),
+      plate_number:   sanitizeDetail(c.plate_number),
+      vehicle_unit:   sanitizeDetail(c.vehicle_unit),
+      email:          sanitizeDetail(c.email),
     }
   } catch {
     return null
