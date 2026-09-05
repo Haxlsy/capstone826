@@ -17,15 +17,18 @@ const settings: ChatbotSettings = {
   enable_ai_chatbot: true,
   enable_media_validation: true,
   ai_disabled_message: "Our team will get back to you shortly.",
-  enable_services: true,
-  enable_booking: true,
-  enable_status: true,
-  enable_faq: true,
-  booking_message: "A staff member will follow up to confirm your booking.",
   notify_sales: true,
   language: "english",
-  escalation_rules: ["speak_to_human"],
-  account_not_linked_message: "Not linked.",
+  vehicle_status_message_en: "Not linked.",
+  vehicle_status_message_fil: "Hindi naka-link.",
+  link_verification_message_en: "Couldn't verify.",
+  link_verification_message_fil: "Hindi na-verify.",
+  escalation_message_en: "Handed to our team.",
+  escalation_message_fil: "Ipinasa sa aming team.",
+  resolved_message_en: "We're back.",
+  resolved_message_fil: "Nandito na kami ulit.",
+  booking_message_en: "A staff member will follow up to confirm your booking.",
+  booking_message_fil: "Susundan ka ng staff namin para kumpirmahin ang booking.",
 }
 
 // ── Defect: model deliberation leaked into the customer's Vehicle line ──────
@@ -146,10 +149,6 @@ describe("shouldStayInBookingFlow", () => {
     ).toBe(false)
   })
 
-  it("never runs when the admin disabled booking", () => {
-    expect(shouldStayInBookingFlow({ ...base, signal: true, enableBooking: false })).toBe(false)
-  })
-
   it("yields to status intent and link verification", () => {
     expect(shouldStayInBookingFlow({ ...base, signal: true, statusIntent: true })).toBe(false)
     expect(shouldStayInBookingFlow({ ...base, signal: true, awaitingLinkVerification: true })).toBe(false)
@@ -157,46 +156,27 @@ describe("shouldStayInBookingFlow", () => {
   })
 })
 
-// ── Defect: capability toggles were advisory only ───────────────────────────
-describe("capability toggles", () => {
-  it("states an explicit prohibition for each disabled capability", () => {
-    const prompt = buildSystemPrompt({
-      ...settings,
-      enable_services: false,
-      enable_booking: false,
-      enable_status: false,
-      enable_faq: false,
-    })
-    expect(prompt).toContain("TURNED OFF")
-    expect(prompt).toMatch(/Do NOT describe our services or quote any price/i)
-    expect(prompt).toMatch(/Do NOT collect booking details/i)
-    expect(prompt).toMatch(/Do NOT look up, discuss, or comment on vehicle or job status/i)
+// ── Capabilities and escalation triggers are always on — no admin toggle ────
+describe("always-on capabilities", () => {
+  it("always lists every capability, with no way to turn one off", () => {
+    const prompt = buildSystemPrompt(settings)
+    expect(prompt).not.toContain("TURNED OFF")
+    expect(prompt).toContain("Information about 826 Auto Care's services and pricing")
+    expect(prompt).toContain("Collecting their details for a booking request")
+    expect(prompt).toContain("Checking the current status of their vehicle's service job")
+    expect(prompt).toContain("General FAQs about detailing and installation")
   })
 
-  it("says nothing about disabled capabilities when everything is on", () => {
-    expect(buildSystemPrompt(settings)).not.toContain("TURNED OFF")
+  it("always lists all three escalation triggers", () => {
+    const prompt = buildSystemPrompt(settings)
+    expect(prompt).toMatch(/customer asks to speak with a human/i)
+    expect(prompt).toMatch(/complaint or negative feedback/i)
+    expect(prompt).toMatch(/cannot answer the customer's question/i)
   })
 
-  it("hides quick replies for disabled capabilities but always keeps reporting", () => {
-    const payloads = quickRepliesFor({
-      enable_services: false,
-      enable_booking: false,
-      enable_status: true,
-    }).map((q) => q.payload)
-
-    expect(payloads).not.toContain("services")
-    expect(payloads).not.toContain("booking")
-    expect(payloads).toContain("status")
-    expect(payloads).toContain("report")
-  })
-
-  it("never returns an empty menu (Meta rejects it)", () => {
-    const menu = quickRepliesFor({
-      enable_services: false,
-      enable_booking: false,
-      enable_status: false,
-    })
-    expect(menu.length).toBeGreaterThan(0)
+  it("always includes every quick-reply option", () => {
+    const payloads = quickRepliesFor().map((q) => q.payload)
+    expect(payloads).toEqual(expect.arrayContaining(["services", "booking", "status", "report"]))
   })
 })
 

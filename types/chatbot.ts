@@ -8,20 +8,6 @@ export const botPersonalitySchema = z.enum(["friendly", "formal", "casual"])
 export const botLanguageSchema = z.enum(["english", "filipino", "both"])
 
 /**
- * Built-in wording for the "your account isn't linked" vehicle-status reply, used
- * whenever `account_not_linked_message` is blank. Lives here — not in
- * lib/messenger/vehicle.ts — because the admin UI is a client component and
- * vehicle.ts pulls in the service-role Supabase client, which must never reach
- * the browser bundle. vehicle.ts re-exports it for server-side callers.
- */
-export const DEFAULT_NOT_LINKED_MESSAGE =
-  "Your Messenger account isn't linked to a customer record with us yet, so I can't pull up " +
-  "any active job for you.\n\n" +
-  "If you'd like to link it, please send your Job Order Code — you'll find it on your receipt " +
-  "or booking confirmation (it looks like JO-8X2K9F). Once I recognize it, I can give you your " +
-  "vehicle status here anytime."
-
-/**
  * Sent verbatim (no AI) when `enable_ai_chatbot` is off, right before the
  * conversation is handed to staff. Lives here so the admin client component can
  * use it without importing server-only Messenger code.
@@ -31,34 +17,102 @@ export const DEFAULT_AI_DISABLED_MESSAGE =
   "you shortly."
 
 /**
+ * Built-in wording for each of the five admin-editable "Message Templates"
+ * (Chatbot Management > Message Templates), used whenever the matching
+ * `*_message_en`/`*_message_fil` setting is blank. Live here — not in
+ * lib/messenger/* — because the admin UI is a client component and the
+ * messenger libs pull in the service-role Supabase client, which must never
+ * reach the browser bundle. Seeded verbatim into `chatbot_config.settings` by
+ * supabase/migrations/*_seed_chatbot_message_templates.sql so existing shops
+ * see no behavior change until they actually edit a template.
+ */
+export const DEFAULT_VEHICLE_STATUS_MESSAGE_EN =
+  "Your Messenger account isn't linked to a customer record with us yet, so I can't pull up " +
+  "any active job for you.\n\n" +
+  "If you'd like to link it, please send your Job Order Code — you'll find it on your receipt " +
+  "or booking confirmation (it looks like JO-8X2K9F). Once I recognize it, I can give you your " +
+  "vehicle status here anytime."
+export const DEFAULT_VEHICLE_STATUS_MESSAGE_FIL =
+  "Hindi pa naka-link ang iyong Messenger account sa isang customer record namin, kaya hindi ko " +
+  "makuha ang aktibong trabaho para sa iyo.\n\n" +
+  "Kung gusto mong i-link ito, pakipadala ang iyong Job Order Code — makikita mo ito sa iyong " +
+  "resibo o booking confirmation (mukhang ganito: JO-8X2K9F). Kapag nakilala ko na ito, " +
+  "mabibigyan na kita ng update sa status ng iyong sasakyan dito anumang oras."
+
+export const DEFAULT_LINK_VERIFICATION_MESSAGE_EN =
+  "I couldn't verify a Job Order Code from that message. Please double-check it and send it " +
+  "again — it looks like this:\n\n" +
+  "JO-8X2K9F\n\n" +
+  "You'll find it on your receipt or booking confirmation. If you're sure it's correct, " +
+  "I'll pass this to our Sales team to verify for you."
+export const DEFAULT_LINK_VERIFICATION_MESSAGE_FIL =
+  "Hindi ko na-verify ang Job Order Code mula sa mensaheng iyon. Paki-check ulit at ipadala " +
+  "muli — mukhang ganito ito:\n\n" +
+  "JO-8X2K9F\n\n" +
+  "Makikita mo ito sa iyong resibo o booking confirmation. Kung sigurado kang tama ito, " +
+  "ipapasa ko na ito sa aming Sales team para i-verify para sa iyo."
+
+export const DEFAULT_ESCALATION_MESSAGE_EN =
+  "Thanks for reaching out to 826 Auto Care! I've passed this conversation to our team, " +
+  "and a staff member will follow up with you here personally. " +
+  "I won't be able to send automated replies on this chat until your request has been resolved."
+export const DEFAULT_ESCALATION_MESSAGE_FIL =
+  "Salamat sa pag-message sa 826 Auto Care! Naipasa ko na ang usapang ito sa aming team, " +
+  "at may staff na susunod sa iyo rito nang personal. " +
+  "Hindi muna ako makakapagpadala ng automated na sagot dito hanggang matugunan ang iyong request."
+
+export const DEFAULT_RESOLVED_MESSAGE_EN =
+  "Our team has finished helping with your request. I'm back and ready to assist — " +
+  "here's what I can help you with:"
+export const DEFAULT_RESOLVED_MESSAGE_FIL =
+  "Natapos na ng aming team ang pagtulong sa iyong request. Nandito na ako ulit at handang " +
+  "tumulong — narito ang aking maitutulong sa iyo:"
+
+export const DEFAULT_BOOKING_MESSAGE_EN =
+  "Thank you! Your request has been sent to our Sales team. They will contact you shortly to " +
+  "confirm your appointment."
+export const DEFAULT_BOOKING_MESSAGE_FIL =
+  "Salamat! Naipadala na ang iyong request sa aming Sales team. Makikipag-ugnayan sila sa iyo " +
+  "sa lalong madaling panahon para kumpirmahin ang iyong appointment."
+
+/**
  * Persisted chatbot settings. `.passthrough()` is kept so any legacy keys
  * already stored in `chatbot_config.settings` survive a save/load round trip
- * — every zod schema strips unknown keys by default.
+ * — every zod schema strips unknown keys by default. This is also what makes
+ * removing a field from this schema (e.g. the old capability toggles and
+ * `account_not_linked_message`/`booking_message` below) safe: a legacy row
+ * still carrying those keys just has them silently ignored, same as the
+ * already-deprecated `vehicle_status_template` key.
  *
  * `enable_ai_chatbot` / `enable_media_validation` are the platform-level master
  * switches; they are typed here (rather than riding along on passthrough) so
  * the runtime can actually read them. Both default to true so an existing row
  * saved before they were typed keeps working.
+ *
+ * The five `*_message_en`/`*_message_fil` pairs back the "Message Templates"
+ * admin tab. Deliberately NOT given zod `.default()`s — both languages are
+ * required there, so a missing value should surface as a real gap to fill in,
+ * not silently fall back. Callers resolve a blank value against the matching
+ * `DEFAULT_*_MESSAGE_EN`/`_FIL` constant above via `resolveTemplate()` in
+ * lib/messenger/copy.ts.
  */
 export const chatbotSettingsSchema = z.object({
   personality:             botPersonalitySchema,
   enable_ai_chatbot:       z.boolean().default(true),
   enable_media_validation: z.boolean().default(true),
   ai_disabled_message:     z.string().max(2000).default(DEFAULT_AI_DISABLED_MESSAGE),
-  enable_services:         z.boolean(),
-  enable_booking:          z.boolean(),
-  enable_status:           z.boolean(),
-  enable_faq:              z.boolean(),
-  booking_message:         z.string().max(2000),
   notify_sales:            z.boolean(),
   language:                botLanguageSchema,
-  escalation_rules:        z.array(z.string()).default([]),
-  // Sent verbatim (no AI) when an unlinked Messenger account asks for vehicle
-  // status. Blank falls back to DEFAULT_NOT_LINKED_MESSAGE in lib/messenger/vehicle.ts.
-  // Replaces the old `vehicle_status_template`, which was injected into the system
-  // prompt for the model to "send" — it reworded it and invented lookup results.
-  // Any stored value for the old key is retained harmlessly by .passthrough().
-  account_not_linked_message: z.string().max(2000),
+  vehicle_status_message_en:       z.string().max(2000),
+  vehicle_status_message_fil:      z.string().max(2000),
+  link_verification_message_en:    z.string().max(2000),
+  link_verification_message_fil:   z.string().max(2000),
+  escalation_message_en:           z.string().max(2000),
+  escalation_message_fil:          z.string().max(2000),
+  resolved_message_en:             z.string().max(2000),
+  resolved_message_fil:            z.string().max(2000),
+  booking_message_en:              z.string().max(2000),
+  booking_message_fil:             z.string().max(2000),
 }).passthrough()
 
 export type ChatbotSettings = z.infer<typeof chatbotSettingsSchema>

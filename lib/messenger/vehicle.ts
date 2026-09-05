@@ -3,11 +3,15 @@ import { computeExpectedCompletion } from "@/lib/job-estimates"
 import { fmtDateTime } from "@/lib/time-display"
 import { ACTIVE_JOB_STATUSES } from "@/lib/messenger/booking"
 import { normalizePhone, isPlausibleMobile } from "@/lib/phone"
-import { DEFAULT_NOT_LINKED_MESSAGE } from "@/types/chatbot"
-import { STATUS_COPY, type BotLanguage } from "@/lib/messenger/copy"
+import {
+  DEFAULT_VEHICLE_STATUS_MESSAGE_EN,
+  DEFAULT_VEHICLE_STATUS_MESSAGE_FIL,
+  DEFAULT_LINK_VERIFICATION_MESSAGE_EN,
+  DEFAULT_LINK_VERIFICATION_MESSAGE_FIL,
+} from "@/types/chatbot"
+import { STATUS_COPY, pickCopy, type BotLanguage, type MessageTemplate } from "@/lib/messenger/copy"
 
 export { normalizePhone } from "@/lib/phone"
-export { DEFAULT_NOT_LINKED_MESSAGE } from "@/types/chatbot"
 
 export interface JobStatus {
   plate:               string
@@ -284,39 +288,43 @@ const NOT_LINKED_TEXT =
  * The customer-facing account-linking ask. Sent verbatim (no Gemini) whenever an
  * unlinked psid requests vehicle status, and again on a failed attempt:
  *
+ *   (no `retry`)   — the FIRST ask, using the admin's "Vehicle Status Message
+ *                    Template" (`vehicleStatusTemplate`).
  *   `unrecognized` — no readable Job Order Code, or the code doesn't match any
  *                    job order on file.
  *   `conflict`     — the code matched a record already linked to a DIFFERENT
  *                    Messenger account.
  *
- * `conflict` deliberately uses the SAME wording as `unrecognized`: a reply that
- * distinguished them would be an enumeration oracle — anyone could probe codes
- * and learn which ones are registered purely from which reply came back. The
- * message must stay silent about why verification failed, and must never
- * confirm or deny that a code exists or belongs to somebody.
+ * `unrecognized` and `conflict` both use the admin's "Link Verification
+ * Message Template" (`linkVerificationTemplate`) and deliberately share the
+ * exact same wording: a reply that distinguished them would be an
+ * enumeration oracle — anyone could probe codes and learn which ones are
+ * registered purely from which reply came back. The message must stay silent
+ * about why verification failed, and must never confirm or deny that a code
+ * exists or belongs to somebody.
  *
- * `custom` is the admin's configured wording for the FIRST ask; blank or missing
- * falls back to the built-in default, so a cleared settings box can never send an
- * empty message. The retry variants are mechanical and stay built-in.
+ * Both templates are pre-resolved against their built-in default by the
+ * caller (via `resolveTemplate` in lib/messenger/copy.ts) — a cleared admin
+ * setting can never send an empty message.
  *
  * It must never say a code "has no job order": identity comes from the psid, and
  * for an unlinked account no code lookup happens until the customer sends one.
  */
-export function buildLinkVerificationPrompt(opts?: {
+export function buildLinkVerificationPrompt(opts: {
   retry?: "unrecognized" | "conflict"
-  custom?: string | null
+  lang?: BotLanguage
+  vehicleStatusTemplate?: MessageTemplate | null
+  linkVerificationTemplate?: MessageTemplate | null
 }): string {
-  if (opts?.retry === "unrecognized" || opts?.retry === "conflict") {
-    return (
-      "I couldn't verify a Job Order Code from that message. Please double-check it and send it " +
-      "again — it looks like this:\n\n" +
-      "JO-8X2K9F\n\n" +
-      "You'll find it on your receipt or booking confirmation. If you're sure it's correct, " +
-      "I'll pass this to our Sales team to verify for you."
-    )
+  if (opts.retry === "unrecognized" || opts.retry === "conflict") {
+    const t = opts.linkVerificationTemplate ??
+      { en: DEFAULT_LINK_VERIFICATION_MESSAGE_EN, fil: DEFAULT_LINK_VERIFICATION_MESSAGE_FIL }
+    return pickCopy(opts.lang, t.en, t.fil)
   }
 
-  return opts?.custom?.trim() || DEFAULT_NOT_LINKED_MESSAGE
+  const t = opts.vehicleStatusTemplate ??
+    { en: DEFAULT_VEHICLE_STATUS_MESSAGE_EN, fil: DEFAULT_VEHICLE_STATUS_MESSAGE_FIL }
+  return pickCopy(opts.lang, t.en, t.fil)
 }
 
 const NO_ACTIVE_JOB_TEXT =
@@ -392,12 +400,12 @@ export function formatOwnVehicleStatus(
  */
 export function formatVehicleStatusForCustomer(
   outcome: OwnVehicleOutcome,
-  opts?: { focusPlate?: string; notLinkedMessage?: string | null; lang?: BotLanguage }
+  opts?: { focusPlate?: string; vehicleStatusTemplate?: MessageTemplate | null; lang?: BotLanguage }
 ): string | null {
   // The admin's configured wording applies ONLY here — a linked customer's job
   // status is assembled from live data and is never affected by the setting.
   if (outcome.kind === "not_linked") {
-    return buildLinkVerificationPrompt({ custom: opts?.notLinkedMessage })
+    return buildLinkVerificationPrompt({ lang: opts?.lang, vehicleStatusTemplate: opts?.vehicleStatusTemplate })
   }
 
   if (outcome.kind === "booked_no_active_job") {

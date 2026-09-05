@@ -1,15 +1,17 @@
 import { createAdminClient } from "@/lib/supabase/admin"
 import { insertMessage } from "@/lib/messenger/messenger-data"
 import { sendMessengerQuickReply, type MessengerQuickReply } from "@/lib/messenger/graph"
-import { quickReplyLabel, type BotLanguage } from "@/lib/messenger/copy"
+import { quickReplyLabel, resolvedMessage, resolveTemplate, type BotLanguage } from "@/lib/messenger/copy"
+import { loadChatbotConfig } from "@/lib/messenger/chatbot"
+import { DEFAULT_RESOLVED_MESSAGE_EN, DEFAULT_RESOLVED_MESSAGE_FIL } from "@/types/chatbot"
 
 /**
  * The standard quick-reply menu. Attached to every non-escalated bot reply
  * (see app/api/webhook/facebook/route.ts) and re-sent once when a human
  * handoff concludes.
  *
- * "Report a Concern" has no capability toggle — reporting a problem is always
- * available, since it routes to staff rather than being answered by the AI.
+ * Every button is always available — there is no admin capability toggle
+ * that can disable one, so the menu never needs to be filtered.
  */
 export const QUICK_REPLIES: MessengerQuickReply[] = [
   { content_type: "text", title: "Services & Prices", payload: "services" },
@@ -18,42 +20,13 @@ export const QUICK_REPLIES: MessengerQuickReply[] = [
   { content_type: "text", title: "Vehicle Status",    payload: "status"   },
 ]
 
-/**
- * The menu filtered to the capabilities the admin has enabled, so a disabled
- * feature stops advertising itself. Previously the full menu was re-sent every
- * turn regardless of the settings, offering buttons that no longer worked.
- */
-export function quickRepliesFor(
-  settings?: {
-    enable_services?: boolean
-    enable_booking?: boolean
-    enable_status?: boolean
-  } | null,
-  lang?: BotLanguage,
-): MessengerQuickReply[] {
-  const localize = (qr: MessengerQuickReply): MessengerQuickReply => ({
+/** The menu, localized to the shop's configured language. */
+export function quickRepliesFor(lang?: BotLanguage): MessengerQuickReply[] {
+  return QUICK_REPLIES.map((qr) => ({
     ...qr,
     title: quickReplyLabel(qr.payload ?? "", lang) ?? qr.title,
-  })
-
-  if (!settings) return QUICK_REPLIES.map(localize)
-
-  const enabled: Record<string, boolean> = {
-    services: settings.enable_services !== false,
-    booking:  settings.enable_booking  !== false,
-    status:   settings.enable_status   !== false,
-    report:   true,
-  }
-
-  const filtered = QUICK_REPLIES.filter((qr) => enabled[qr.payload ?? ""] !== false).map(localize)
-  // Never send an empty menu — Meta rejects it.
-  return filtered.length > 0 ? filtered : [localize(QUICK_REPLIES[2])]
+  }))
 }
-
-/** Sent with the menu when Sales concludes a handoff and the bot resumes. */
-export const RESUME_MENU_MESSAGE =
-  "Our team has finished helping with your request. I'm back and ready to assist — " +
-  "here's what I can help you with:"
 
 /**
  * Meta's standard messaging window: a Page may only send within 24 hours of
@@ -184,7 +157,15 @@ export async function resumeBotAfterHandoff(psid: string): Promise<void> {
       return
     }
 
-    const mid = await sendMessengerQuickReply(psid, RESUME_MENU_MESSAGE, QUICK_REPLIES)
+    const { settings } = await loadChatbotConfig()
+    const lang = settings?.language
+    const template = resolveTemplate(
+      settings?.resolved_message_en, settings?.resolved_message_fil,
+      DEFAULT_RESOLVED_MESSAGE_EN, DEFAULT_RESOLVED_MESSAGE_FIL,
+    )
+    const resumeMessage = resolvedMessage(lang, template)
+
+    const mid = await sendMessengerQuickReply(psid, resumeMessage, quickRepliesFor(lang))
 
     // Only record a message that actually reached the customer — a failed send
     // written to history would poison the AI context and the staff transcript.
@@ -196,7 +177,7 @@ export async function resumeBotAfterHandoff(psid: string): Promise<void> {
     await insertMessage({
       conversation_id: conv.conversation_id,
       sender_type:     "agent",
-      message_body:    RESUME_MENU_MESSAGE,
+      message_body:    resumeMessage,
       sent_at:         new Date().toISOString(),
       fb_message_id:   mid,
     })
