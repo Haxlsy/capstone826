@@ -2,7 +2,7 @@ import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
   allowedDevOrigins: ["192.168.8.34"],
-  serverExternalPackages: ["@google/genai"],
+  serverExternalPackages: ["@google/genai", "fluent-ffmpeg", "ffmpeg-static"],
 };
 
 export default nextConfig;

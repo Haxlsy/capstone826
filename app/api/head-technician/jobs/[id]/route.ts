@@ -6,7 +6,7 @@ import { addWorkingMins } from "@/hooks/time-utils"
 import { fmtDateTime } from "@/lib/time-display"
 import { getAuditCaller } from "@/lib/auth/caller"
 import { logAuditCall } from "@/hooks/audit-helpers"
-import { sendMessengerText, sendMessengerImage } from "@/lib/messenger/graph"
+import { sendMessengerText, sendMessengerImage, sendMessengerVideo } from "@/lib/messenger/graph"
 import { buildStageUpdateMessage } from "@/lib/messenger/stage-update"
 
 export async function GET(
@@ -493,6 +493,9 @@ export async function PATCH(
             const photos = ((media ?? []) as any[])
               .filter((m) => m.media_type === "photo" && m.shareable_link)
               .map((m) => m.shareable_link as string)
+            const videos = ((media ?? []) as any[])
+              .filter((m) => m.media_type === "video" && m.shareable_link)
+              .map((m) => m.shareable_link as string)
 
             const message = buildStageUpdateMessage({
               customerName,
@@ -508,6 +511,9 @@ export async function PATCH(
             const textMid = await sendMessengerText(psid, message)
             if (textMid && photos.length > 0) {
               await sendMessengerImage(psid, photos[0])
+            }
+            if (textMid && videos.length > 0) {
+              await sendMessengerVideo(psid, videos[0])
             }
 
             await admin

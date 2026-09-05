@@ -40,7 +40,6 @@ import {
   hasCancelIntent,
   shouldStayInBookingFlow,
   buildBookingCancelledMessage,
-  buildCapabilityDisabledMessage,
   type ChatbotReply,
   type CustomerDetails,
 } from "@/lib/messenger/chatbot"
@@ -69,13 +68,26 @@ import {
   type OwnVehicleOutcome,
 } from "@/lib/messenger/vehicle"
 import { PLATE_PATTERN, PHONE_PATTERN, EMAIL_PATTERN, extractJobOrderCode } from "@/lib/messenger/patterns"
-import { DEFAULT_AI_DISABLED_MESSAGE } from "@/types/chatbot"
+import {
+  DEFAULT_AI_DISABLED_MESSAGE,
+  DEFAULT_VEHICLE_STATUS_MESSAGE_EN,
+  DEFAULT_VEHICLE_STATUS_MESSAGE_FIL,
+  DEFAULT_LINK_VERIFICATION_MESSAGE_EN,
+  DEFAULT_LINK_VERIFICATION_MESSAGE_FIL,
+  DEFAULT_ESCALATION_MESSAGE_EN,
+  DEFAULT_ESCALATION_MESSAGE_FIL,
+  DEFAULT_BOOKING_MESSAGE_EN,
+  DEFAULT_BOOKING_MESSAGE_FIL,
+} from "@/types/chatbot"
 import {
   escalationAck,
   existingBookingHandoff,
   violationWarning as violationWarningCopy,
+  resolveTemplate,
+  pickCopy,
   ALL_MISSING_FIELDS_LEADS,
   type BotLanguage,
+  type EscalationReason,
 } from "@/lib/messenger/copy"
 import { logAudit } from "@/hooks/audit-helpers"
 
@@ -310,6 +322,25 @@ async function handleInboundMessage(
   // model's free text — those used to be hardcoded English regardless.
   const lang = settings?.language as BotLanguage | undefined
 
+  // Admin-editable Message Templates, each resolved against its built-in
+  // default once per turn and reused at every send site below.
+  const vehicleStatusTemplate = resolveTemplate(
+    settings?.vehicle_status_message_en, settings?.vehicle_status_message_fil,
+    DEFAULT_VEHICLE_STATUS_MESSAGE_EN, DEFAULT_VEHICLE_STATUS_MESSAGE_FIL,
+  )
+  const linkVerificationTemplate = resolveTemplate(
+    settings?.link_verification_message_en, settings?.link_verification_message_fil,
+    DEFAULT_LINK_VERIFICATION_MESSAGE_EN, DEFAULT_LINK_VERIFICATION_MESSAGE_FIL,
+  )
+  const escalationTemplate = resolveTemplate(
+    settings?.escalation_message_en, settings?.escalation_message_fil,
+    DEFAULT_ESCALATION_MESSAGE_EN, DEFAULT_ESCALATION_MESSAGE_FIL,
+  )
+  const bookingTemplate = resolveTemplate(
+    settings?.booking_message_en, settings?.booking_message_fil,
+    DEFAULT_BOOKING_MESSAGE_EN, DEFAULT_BOOKING_MESSAGE_FIL,
+  )
+
   // ── Master switch: AI chatbot disabled ───────────────────────────────────
   // Send the configured acknowledgement once, hand the thread to Sales, and
   // stop. Everything downstream (link verification, status lookups, the booking
@@ -329,23 +360,13 @@ async function handleInboundMessage(
 
   const quickReplyPayload = msg.quick_reply?.payload ?? null
 
-  // Which escalation triggers the admin has enabled. Previously these rules
-  // only shaped the prompt text while the hardcoded regex triggers below fired
-  // regardless — unticking a box changed nothing. Absent config means all rules
-  // are on, matching the previous behaviour.
-  const escalationRules: string[] = Array.isArray(settings?.escalation_rules)
-    ? settings.escalation_rules
-    : ["speak_to_human", "complaint", "unanswerable"]
-  const ruleEnabled = (rule: string) => !settings || escalationRules.includes(rule)
-
   // Resolved before the link-verification block below, which needs them to tell a
   // deliberate subject change ("I want to book", "let me talk to someone") from a
   // failed attempt at sending a plate + phone.
-  const humanRequested = ruleEnabled("speak_to_human") && requestedHuman(messageBody)
+  const humanRequested = requestedHuman(messageBody)
   const reportIntent =
-    ruleEnabled("complaint") &&
-    (quickReplyPayload === "report" ||
-      REPORT_PATTERNS.some((re) => re.test(messageBody)))
+    quickReplyPayload === "report" ||
+    REPORT_PATTERNS.some((re) => re.test(messageBody))
 
   // ── Account-linking verification ─────────────────────────────────────────
   // When the bot has asked an unlinked customer for their Job Order Code, the
@@ -395,7 +416,7 @@ async function handleInboundMessage(
         return false
       }
       await safe(() => setLinkAttempts(conversation_id, attempts))
-      const askAgain = buildLinkVerificationPrompt({ retry: "unrecognized" })
+      const askAgain = buildLinkVerificationPrompt({ retry: "unrecognized", lang, linkVerificationTemplate })
       const mid = await sendMessengerText(senderId, askAgain)
       await insertMessage({ conversation_id, sender_type: "agent", message_body: askAgain, sent_at: new Date().toISOString(), fb_message_id: mid })
       return true
@@ -456,7 +477,7 @@ async function handleInboundMessage(
         } else {
           await safe(() => setLinkConflictPending(conversation_id, true))
           await safe(() => setLinkAttempts(conversation_id, link_attempts + 1))
-          const askAgain = buildLinkVerificationPrompt({ retry: "conflict" })
+          const askAgain = buildLinkVerificationPrompt({ retry: "conflict", lang, linkVerificationTemplate })
           const mid = await sendMessengerText(senderId, askAgain)
           await insertMessage({ conversation_id, sender_type: "agent", message_body: askAgain, sent_at: new Date().toISOString(), fb_message_id: mid })
           return
@@ -570,36 +591,6 @@ async function handleInboundMessage(
     }
   }
 
-  // ── Capability toggles: decline + hand to staff ──────────────────────────
-  // A capability the admin switched off is refused deterministically here,
-  // before the status lookup and the booking machinery — those pipelines used
-  // to run regardless of the settings, so a "disabled" feature kept working.
-  // Reporting a concern is never gated: it routes to staff by definition.
-  const disabledCapability: "services" | "booking" | "status" | null =
-    settings && statusIntent && settings.enable_status === false
-      ? "status"
-      : settings && (bookingIntent || (bookingSignal(messageBody) && !statusIntent)) &&
-        settings.enable_booking === false
-        ? "booking"
-        : settings && quickReplyPayload === "services" && settings.enable_services === false
-          ? "services"
-          : null
-
-  if (disabledCapability && !linkEscalation && !awaiting_link_verification) {
-    const declineReply = buildCapabilityDisabledMessage(disabledCapability, lang)
-    await handOffWhileDisabled(admin, {
-      conversation_id,
-      senderId,
-      psidName: profile.name,
-      messageBody,
-      timestamp,
-      message: declineReply,
-      notifySales: settings?.notify_sales !== false,
-      note: `The "${disabledCapability}" capability is switched off in AI Chatbot Management — routed to staff.`,
-    })
-    return
-  }
-
   // Vehicle-status context. Identity is resolved STRICTLY from the sender's psid:
   //   psid → customer_record → verified phone → all active job_orders
   // A plate in the message only narrows to one of the customer's OWN vehicles,
@@ -633,7 +624,7 @@ async function handleInboundMessage(
       vehicleContext = formatOwnVehicleStatus(outcome, { focusPlate })
       statusReply = formatVehicleStatusForCustomer(outcome, {
         focusPlate,
-        notLinkedMessage: settings?.account_not_linked_message,
+        vehicleStatusTemplate,
         lang,
       })
       if (outcome.kind === "ok" && outcome.soft) {
@@ -654,10 +645,16 @@ async function handleInboundMessage(
   // resolved earlier — the link-verification block needs them.
   let reply: string | null = statusReply
   let escalate = humanRequested || reportIntent || existingBookingIntent
-  let escalateReason: string | null = humanRequested
-    ? "customer asked to speak with a human"
-    : existingBookingIntent
-      ? "customer wants to modify/cancel an existing booking"
+  // Customer-safe reason surfaced in the escalation ack (escalationAck below).
+  // existingBookingIntent deliberately maps to null — it already gets its own
+  // dedicated pre-message via existingBookingHandoff, so a reason clause here
+  // would be redundant. Some internal reasons (impersonation, identity
+  // conflict, the model's own unvetted text) must NEVER be set here — see
+  // EscalationReason's doc comment in lib/messenger/copy.ts.
+  let escalateReason: EscalationReason | null = humanRequested
+    ? "human_requested"
+    : reportIntent
+      ? "report"
       : null
   let aiReason: string | null = null
   let aiViolation: "none" | "off_topic" | "policy" = "none"
@@ -677,15 +674,16 @@ async function handleInboundMessage(
         })
 
     reply = result.reply?.trim() || null
-    // The model's own escalate flag is the "question the AI cannot answer"
-    // trigger, so it honours the `unanswerable` rule.
-    const modelEscalate = ruleEnabled("unanswerable") && result.escalate
+    // The model's own escalate flag is the "question the AI cannot answer" trigger.
+    const modelEscalate = result.escalate
     escalate = modelEscalate || humanRequested || reportIntent || existingBookingIntent
+    // The model's own `result.reason` is unvetted free-text — never surfaced
+    // to the customer (see the doc comment above).
     escalateReason = humanRequested
-      ? "customer asked to speak with a human"
-      : existingBookingIntent
-        ? "customer wants to modify/cancel an existing booking"
-        : (result.reason ?? null)
+      ? "human_requested"
+      : reportIntent
+        ? "report"
+        : null
     aiReason = result.reason ?? null
     aiViolation = result.violation ?? "none"
     extracted = result.customer ?? null
@@ -708,7 +706,7 @@ async function handleInboundMessage(
     // If the AI fails, err on the side of escalating to a human.
     console.error("[webhook/facebook] chatbot error:", err)
     escalate = true
-    escalateReason = "chatbot error"
+    escalateReason = "hiccup"
   }
 
   // Recorded on the inquiry when a booking / violation escalation needs a Sales
@@ -735,13 +733,12 @@ async function handleInboundMessage(
     )
     await safe(() => setViolationStreaks(conversation_id, vs.offtopic, vs.policy))
     // Repeated off-topic/policy messages are the other "AI cannot help here"
-    // case, so the ladder's escalation honours the `unanswerable` rule too. The
-    // warnings still fire either way — they keep the conversation on track
-    // without involving staff.
-    if (vs.action === "escalate" && ruleEnabled("unanswerable")) {
+    // case. The warnings still fire either way — they keep the conversation on
+    // track without involving staff.
+    if (vs.action === "escalate") {
       escalate = true
       const isPolicy = vs.policy >= 2
-      escalateReason = isPolicy ? "repeated policy violations" : "repeated off-topic messages"
+      escalateReason = "violation"
       conflictNote =
         `Auto-escalated after repeated ${isPolicy ? "policy-violating" : "off-topic"} messages. ` +
         `Last message: "${messageBody}".`
@@ -777,7 +774,6 @@ async function handleInboundMessage(
     isBookingFlow: Boolean(is_booking_flow),
     awaitingConfirmation: Boolean(awaiting_confirmation),
     cancelIntent,
-    enableBooking: settings?.enable_booking !== false,
   })
   let escalateBooking = false
 
@@ -803,14 +799,16 @@ async function handleInboundMessage(
       sent_at: new Date().toISOString(),
       fb_message_id: mid,
     })
-    await sendMessengerQuickReply(senderId, "Anything else?", quickRepliesFor(settings, lang))
+    await sendMessengerQuickReply(senderId, "Anything else?", quickRepliesFor(lang))
     return
   }
 
   // Every account-link claim is routed to Sales for out-of-band verification.
   if (linkEscalation) {
     escalate = true
-    escalateReason = linkEscalation.reason
+    // A conflict flagged as possible impersonation must never be surfaced to
+    // the customer — only a genuinely unrecognized code is safe to mention.
+    escalateReason = linkEscalation.impersonation ? null : "job_order_unrecognized"
     if (linkEscalation.note) conflictNote = linkEscalation.note
   }
 
@@ -884,7 +882,7 @@ async function handleInboundMessage(
           escalate = true
           escalateBooking = false
           forceHumanEscalation = true
-          escalateReason = "customer insists on re-booking a vehicle already in service"
+          escalateReason = "vehicle_in_service"
           conflictNote =
             `Re-booking plate ${normPlate}, currently in service (job status ${inSvc.status ?? "?"}). ` +
             "Customer was already informed once and is still pushing to book it."
@@ -1025,7 +1023,7 @@ async function handleInboundMessage(
         escalate = true
         escalateBooking = false
         forceHumanEscalation = true
-        escalateReason = "customer stuck providing booking details"
+        escalateReason = "stuck_details"
         conflictNote =
           `Bot asked ${trailingReasks + 1}× in a row for the same booking detail(s) (${missing.join(", ")}) ` +
           "with no progress. Handing to a human."
@@ -1102,6 +1100,7 @@ async function handleInboundMessage(
         // Sales without first seeing their details summarized.
         escalate = true
         escalateBooking = true
+        escalateReason = "booking_ready"
         await persistConfirmFlag(false)
         await persistConflictPending(false)
         await persistBookingFlowFlag(false)
@@ -1324,12 +1323,13 @@ async function handleInboundMessage(
     // Booking requests first receive the configured confirmation message, then
     // the escalation ack — the customer knows their booking was received before
     // being told a human will follow up.
-    if (inquiry_type === "Booking" && settings?.booking_message) {
-      const confirmId = await sendMessengerText(senderId, settings.booking_message)
+    if (inquiry_type === "Booking") {
+      const bookingMsg = pickCopy(lang, bookingTemplate.en, bookingTemplate.fil)
+      const confirmId = await sendMessengerText(senderId, bookingMsg)
       await insertMessage({
         conversation_id,
         sender_type: "agent",
-        message_body: settings.booking_message,
+        message_body: bookingMsg,
         sent_at: new Date().toISOString(),
         fb_message_id: confirmId,
       })
@@ -1351,7 +1351,7 @@ async function handleInboundMessage(
 
     // Acknowledge to the customer that a human will follow up (no quick replies —
     // a human now owns the thread).
-    const escalationMsg = escalationAck(lang)
+    const escalationMsg = escalationAck(lang, escalateReason, escalationTemplate)
     const fbId = await sendMessengerText(senderId, escalationMsg)
     await insertMessage({
       conversation_id,
@@ -1390,7 +1390,7 @@ async function handleInboundMessage(
     // Append the graduated-violation warning (set when the customer is one turn
     // away from an off-topic / policy escalation).
     if (violationWarning) reply = `${reply}${violationWarning}`
-    const fbId = await sendMessengerQuickReply(senderId, reply, quickRepliesFor(settings, lang))
+    const fbId = await sendMessengerQuickReply(senderId, reply, quickRepliesFor(lang))
     await insertMessage({
       conversation_id,
       sender_type: "agent",

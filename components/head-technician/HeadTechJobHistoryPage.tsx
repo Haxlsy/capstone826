@@ -339,7 +339,13 @@ export default function HeadTechJobHistoryPage({ jobId }: { jobId: string }) {
               s.id === stage.id ? { ...s, media: s.media.filter((m) => m.id !== tmpId) } : s
             ),
           } : prev);
-          setUploadError((prev) => ({ ...prev, [stage.id]: json?.error ?? "Upload failed." }));
+          if (json?.approved === false) {
+            // AI-rejected video (e.g. non-automotive content) — same modal a
+            // rejected photo gets, instead of the generic upload-error banner.
+            setRejectionAlert({ message: json.message ?? json.error ?? "This video is not acceptable. Please retake it." });
+          } else {
+            setUploadError((prev) => ({ ...prev, [stage.id]: json?.error ?? "Upload failed." }));
+          }
         }
       } catch (err: unknown) {
         URL.revokeObjectURL(localUrl);

@@ -5,14 +5,22 @@ import { TOKEN_PLATE, TOKEN_PHONE, TOKEN_EMAIL, PLATE_PATTERN } from "@/lib/mess
 import {
   type BotLanguage,
   bookingCancelled,
-  capabilityDisabled,
   missingFieldsPrompt,
   BOOKING_SUMMARY_COPY,
   MISSING_FIELDS_LEADS,
 } from "@/lib/messenger/copy"
 import {
-  DEFAULT_NOT_LINKED_MESSAGE,
   DEFAULT_AI_DISABLED_MESSAGE,
+  DEFAULT_VEHICLE_STATUS_MESSAGE_EN,
+  DEFAULT_VEHICLE_STATUS_MESSAGE_FIL,
+  DEFAULT_LINK_VERIFICATION_MESSAGE_EN,
+  DEFAULT_LINK_VERIFICATION_MESSAGE_FIL,
+  DEFAULT_ESCALATION_MESSAGE_EN,
+  DEFAULT_ESCALATION_MESSAGE_FIL,
+  DEFAULT_RESOLVED_MESSAGE_EN,
+  DEFAULT_RESOLVED_MESSAGE_FIL,
+  DEFAULT_BOOKING_MESSAGE_EN,
+  DEFAULT_BOOKING_MESSAGE_FIL,
   type ChatbotSettings,
   type ChatMessage,
   type ChatbotReply,
@@ -88,6 +96,37 @@ export function sanitizeDetail(v: unknown): string | null {
 }
 
 /**
+ * `sanitizeDetail()`, plus a defensive strip of any phone number or email
+ * address embedded in the vehicle description. Gemini has been observed
+ * appending the customer's contact number/email onto vehicle_unit when all
+ * the booking details are sent in one comma-separated message — the prompts
+ * in generateChatbotReply/extractCustomerDetails now explicitly forbid this,
+ * but this backstops that instruction rather than replacing it.
+ *
+ * Deliberately does NOT strip a plate-pattern match — PLATE_PATTERN is loose
+ * enough to false-positive on real vehicle names ("RAV4", "CR-V").
+ */
+export function sanitizeVehicleUnit(v: unknown): string | null {
+  const cleaned = sanitizeDetail(v)
+  if (!cleaned) return null
+
+  // Split on comma/semicolon and drop empty pieces rather than a single
+  // trailing-separator regex — a phone AND an email both leaking in (the
+  // reported bug) leaves TWO dangling separators, not just one at the end.
+  const stripped = cleaned
+    .replace(TOKEN_PHONE, "")
+    .replace(TOKEN_EMAIL, "")
+    .split(/[,;]/)
+    .map((part) => part.trim())
+    .filter(Boolean)
+    .join(", ")
+    .replace(/[.\s]+$/, "") // a dangling separator period, if that's what was used instead
+    .trim()
+
+  return stripped || null
+}
+
+/**
  * Maps messenger_message rows (ordered NEWEST first, as the DB query returns
  * them) into chatbot history ordered oldest → newest. Pure — kept here so it can
  * be unit-tested without a Supabase mock.
@@ -140,16 +179,14 @@ const PERSONALITY_PREAMBLE: Record<ChatbotSettings["personality"], string> = {
   casual:   "You are a casual and approachable AI assistant for 826 Auto Care OPC. Use everyday language and a relaxed tone.",
 }
 
-const ESCALATION_LABELS: Record<string, string> = {
-  speak_to_human:    "customer asks to speak with a human",
-  complaint:         "customer expresses a complaint or negative feedback",
-  unanswerable:      "you cannot answer the customer's question",
-  booking_confirmed: "the customer's booking request has been collected and forwarded to Sales",
-}
-
 /**
  * Settings-only system prompt. This is the exact prompt the admin
  * Chatbot Settings page persists into chatbot_config.system_prompt.
+ *
+ * Every core capability (services/FAQ/status/booking) and escalation trigger
+ * (speak-to-human/complaint/unanswerable) is always on — there is no admin
+ * toggle for these; turning any of them off would make the chatbot unable to
+ * do its job.
  */
 export function buildSystemPrompt(s: ChatbotSettings): string {
   const lines: string[] = []
@@ -157,53 +194,29 @@ export function buildSystemPrompt(s: ChatbotSettings): string {
   lines.push(PERSONALITY_PREAMBLE[s.personality] ?? PERSONALITY_PREAMBLE.friendly)
   lines.push("")
   lines.push("You can help customers with:")
+  lines.push("- Information about 826 Auto Care's services and pricing")
+  lines.push("- General FAQs about detailing and installation")
+  lines.push("- Checking the current status of their vehicle's service job")
+  lines.push("- Collecting their details for a booking request")
 
-  if (s.enable_services) lines.push("- Information about 826 Auto Care's services and pricing")
-  if (s.enable_faq)      lines.push("- General FAQs about detailing and installation")
-  if (s.enable_status)   lines.push("- Checking the current status of their vehicle's service job")
-  if (s.enable_booking)  lines.push("- Collecting their details for a booking request")
-
-  // Disabled capabilities need an explicit prohibition. Merely omitting the
-  // bullet above left the model free to answer anyway — the toggles read as
-  // advisory rather than binding.
-  const disabled: string[] = []
-  if (!s.enable_services) disabled.push("- Do NOT describe our services or quote any price. This is switched off.")
-  if (!s.enable_faq)      disabled.push("- Do NOT answer general FAQs about detailing or installation. This is switched off.")
-  if (!s.enable_status)   disabled.push("- Do NOT look up, discuss, or comment on vehicle or job status. This is switched off.")
-  if (!s.enable_booking)  disabled.push("- Do NOT collect booking details or take a booking. This is switched off.")
-
-  if (disabled.length > 0) {
-    lines.push("")
-    lines.push("TURNED OFF — you must not help with these, even if asked directly:")
-    lines.push(...disabled)
-    lines.push(
-      "If a customer asks about anything in that list, apologise briefly, say you can't help with that here, " +
-      "and tell them you're passing them to our team. Never attempt the task anyway.",
-    )
+  lines.push("")
+  lines.push("When a customer wants to book a service:")
+  lines.push("1. Collect their Full Name, Contact Number, Plate Number, Vehicle Type, and Email.")
+  lines.push("2. Read the details back and ask them to confirm (e.g. \"Is this correct? Reply YES to confirm.\").")
+  lines.push("3. Do NOT tell the customer their booking is confirmed, submitted, scheduled, received, or booked. Sales finalizes every booking after the details are collected.")
+  if (s.notify_sales) {
+    lines.push("Our system passes the confirmed details to the Sales team automatically — you never send a confirmation message yourself.")
   }
+  lines.push("Never ask the customer which service, package, or treatment they want — Sales handles service selection. Only ever collect the five fields listed above.")
+  lines.push("IMPORTANT: You do NOT confirm or schedule bookings. You only collect information.")
 
-  if (s.enable_booking) {
-    lines.push("")
-    lines.push("When a customer wants to book a service:")
-    lines.push("1. Collect their Full Name, Contact Number, Plate Number, Vehicle Type, and Email.")
-    lines.push("2. Read the details back and ask them to confirm (e.g. \"Is this correct? Reply YES to confirm.\").")
-    lines.push("3. Do NOT tell the customer their booking is confirmed, submitted, scheduled, received, or booked. Sales finalizes every booking after the details are collected.")
-    if (s.notify_sales) {
-      lines.push("Our system passes the confirmed details to the Sales team automatically — you never send a confirmation message yourself.")
-    }
-    lines.push("Never ask the customer which service, package, or treatment they want — Sales handles service selection. Only ever collect the five fields listed above.")
-    lines.push("IMPORTANT: You do NOT confirm or schedule bookings. You only collect information.")
-  }
-
-  if (s.enable_status) {
-    lines.push("")
-    lines.push("When a customer asks about their vehicle status:")
-    lines.push("Our system resolves vehicle status from the customer's own linked Messenger account and hands you the answer directly. You have no lookup tool and you never perform a search yourself.")
-    lines.push("- NEVER claim to have checked, searched, looked up, or reviewed our system, records, or database.")
-    lines.push("- NEVER state whether a plate number or phone number does or does not have a job order. You were given no such information.")
-    lines.push("- NEVER invent a job order, status, stage, or completion date. Only ever relay status details supplied to you.")
-    lines.push("- Do NOT ask the customer for their plate number or phone number for a status check — our system handles identity and asks for those itself when they are needed.")
-  }
+  lines.push("")
+  lines.push("When a customer asks about their vehicle status:")
+  lines.push("Our system resolves vehicle status from the customer's own linked Messenger account and hands you the answer directly. You have no lookup tool and you never perform a search yourself.")
+  lines.push("- NEVER claim to have checked, searched, looked up, or reviewed our system, records, or database.")
+  lines.push("- NEVER state whether a plate number or phone number does or does not have a job order. You were given no such information.")
+  lines.push("- NEVER invent a job order, status, stage, or completion date. Only ever relay status details supplied to you.")
+  lines.push("- Do NOT ask the customer for their plate number or phone number for a status check — our system handles identity and asks for those itself when they are needed.")
 
   lines.push("")
   if (s.language === "filipino") {
@@ -214,14 +227,11 @@ export function buildSystemPrompt(s: ChatbotSettings): string {
     lines.push("LANGUAGE: Always respond in English.")
   }
 
-  if (s.escalation_rules.length > 0) {
-    lines.push("")
-    lines.push("Immediately escalate to a human staff member if:")
-    for (const rule of s.escalation_rules) {
-      const label = ESCALATION_LABELS[rule]
-      if (label) lines.push(`- The ${label}`)
-    }
-  }
+  lines.push("")
+  lines.push("Immediately escalate to a human staff member if:")
+  lines.push("- The customer asks to speak with a human")
+  lines.push("- The customer expresses a complaint or negative feedback")
+  lines.push("- You cannot answer the customer's question")
 
   return lines.join("\n")
 }
@@ -287,15 +297,18 @@ function buildRuntimeSystemPrompt(
     enable_ai_chatbot: true,
     enable_media_validation: true,
     ai_disabled_message: DEFAULT_AI_DISABLED_MESSAGE,
-    enable_services: true,
-    enable_booking: true,
-    enable_status: true,
-    enable_faq: true,
-    booking_message: "A staff member will follow up with you to confirm your booking.",
     notify_sales: true,
     language: "english",
-    escalation_rules: ["speak_to_human", "complaint", "unanswerable"],
-    account_not_linked_message: DEFAULT_NOT_LINKED_MESSAGE,
+    vehicle_status_message_en: DEFAULT_VEHICLE_STATUS_MESSAGE_EN,
+    vehicle_status_message_fil: DEFAULT_VEHICLE_STATUS_MESSAGE_FIL,
+    link_verification_message_en: DEFAULT_LINK_VERIFICATION_MESSAGE_EN,
+    link_verification_message_fil: DEFAULT_LINK_VERIFICATION_MESSAGE_FIL,
+    escalation_message_en: DEFAULT_ESCALATION_MESSAGE_EN,
+    escalation_message_fil: DEFAULT_ESCALATION_MESSAGE_FIL,
+    resolved_message_en: DEFAULT_RESOLVED_MESSAGE_EN,
+    resolved_message_fil: DEFAULT_RESOLVED_MESSAGE_FIL,
+    booking_message_en: DEFAULT_BOOKING_MESSAGE_EN,
+    booking_message_fil: DEFAULT_BOOKING_MESSAGE_FIL,
   }, knowledge)
 }
 
@@ -663,23 +676,11 @@ export function buildBookingSummary(details: CustomerDetails, lang?: BotLanguage
     `• ${L.name}: ${sanitizeDetail(details.full_name) ?? "—"}`,
     `• ${L.contact}: ${sanitizeDetail(details.contact_number) ?? "—"}`,
     `• ${L.plate}: ${sanitizeDetail(details.plate_number) ?? "—"}`,
-    `• ${L.vehicle}: ${sanitizeDetail(details.vehicle_unit) ?? "—"}`,
+    `• ${L.vehicle}: ${sanitizeVehicleUnit(details.vehicle_unit) ?? "—"}`,
     `• ${L.email}: ${sanitizeDetail(details.email) ?? "—"}`,
     "",
     confirm,
   ].join("\n")
-}
-
-/**
- * Deterministic reply when the customer asks for a capability the admin has
- * switched off. Rendered in code, not by the model, so a disabled feature can't
- * be talked into working.
- */
-export function buildCapabilityDisabledMessage(
-  capability: "services" | "booking" | "status",
-  lang?: BotLanguage,
-): string {
-  return capabilityDisabled(capability, lang)
 }
 
 /**
@@ -695,11 +696,10 @@ export function buildBookingCancelledMessage(lang?: BotLanguage): string {
  * Whether the conversation should still be treated as an in-progress booking.
  *
  * Extracted as a pure function because this decision used to be an inline
- * expression with no test surface, and it was wrong in two ways: `is_booking_flow`
- * was sticky (nothing ever cleared it for a non-booking message, unlike the
- * vehicle-status flag), so unrelated questions were pulled into the booking
- * machinery and answered with booking context appended; and it ignored the
- * admin's `enable_booking` capability toggle entirely.
+ * expression with no test surface, and `is_booking_flow` was sticky (nothing
+ * ever cleared it for a non-booking message, unlike the vehicle-status flag),
+ * so unrelated questions were pulled into the booking machinery and answered
+ * with booking context appended.
  */
 export function shouldStayInBookingFlow(input: {
   /** Booking intent, or a plate/phone/email token in this message. */
@@ -710,15 +710,12 @@ export function shouldStayInBookingFlow(input: {
   isBookingFlow: boolean
   awaitingConfirmation: boolean
   cancelIntent: boolean
-  /** Admin capability toggle; defaults to enabled. */
-  enableBooking?: boolean
 }): boolean {
   const {
     signal, statusIntent, awaitingLinkVerification, linkEscalation,
-    isBookingFlow, awaitingConfirmation, cancelIntent, enableBooking = true,
+    isBookingFlow, awaitingConfirmation, cancelIntent,
   } = input
 
-  if (!enableBooking) return false
   if (cancelIntent) return false
   if (awaitingLinkVerification || linkEscalation) return false
 
@@ -839,7 +836,9 @@ export async function generateChatbotReply(input: {
   // about this turn keeps its earlier value.
   systemPrompt += `\n\nFor each customer detail (full name, contact number, plate number, vehicle, email): use the most recent value the customer has given for that specific field. If their latest message does not mention a field they already provided earlier in this booking, keep the earlier value — never return null for a detail the customer has already given. Start over with empty details if the customer says they want to book a different vehicle, or if they cancel or abandon the booking (e.g. "nevermind", "cancel it", "wag na") — in that case return null for every field and do not bring the booking up again unless they ask.
 
-Never write your own reasoning, notes, or alternatives into a customer detail field. Each field must contain only the plain value (e.g. "Toyota Fortuner"), with no parentheses, commentary, or corrections. If you are unsure of a value, return null for it.`
+Never write your own reasoning, notes, or alternatives into a customer detail field. Each field must contain only the plain value (e.g. "Toyota Fortuner"), with no parentheses, commentary, or corrections. If you are unsure of a value, return null for it.
+
+Each field must contain ONLY its own kind of information — never combine or append another field's value into a different field. If the customer sends everything in one message, e.g. "Juan Dela Cruz, 09171234567, ABC 1234, Toyota Vios, juan@email.com", extract vehicle_unit as exactly "Toyota Vios" — NOT "Toyota Vios, 09171234567, juan@email.com" or any other field's value tacked on. A phone number, email address, or plate number must never appear inside vehicle_unit (or any other field besides its own).`
 
   // Instruct the model to also surface any customer booking details it sees so
   // the webhook can store them in the inquiry's extracted_* columns. Even when
@@ -906,7 +905,7 @@ Never write your own reasoning, notes, or alternatives into a customer detail fi
             full_name:      sanitizeDetail(c.full_name),
             contact_number: sanitizeDetail(c.contact_number),
             plate_number:   sanitizeDetail(c.plate_number),
-            vehicle_unit:   sanitizeDetail(c.vehicle_unit),
+            vehicle_unit:   sanitizeVehicleUnit(c.vehicle_unit),
             email:          sanitizeDetail(c.email),
           }
         : null,
@@ -933,7 +932,9 @@ export async function extractCustomerDetails(input: {
   const { message, history = [], settings, system_prompt, knowledge } = input
 
   let systemPrompt = buildRuntimeSystemPrompt(settings, system_prompt, knowledge)
-  systemPrompt += `\n\nExtract the customer's booking details from the conversation. Return them in the JSON "customer" object: full_name, contact_number, plate_number, vehicle_unit, and email. For each field, use the most recent value the customer has given for that specific field; if their latest message does not mention a field they already provided earlier, keep the earlier value — never return null for a detail that appears anywhere in the conversation. Leave a field null only when the customer has never provided it. These are only noted for follow-up by our Sales team.`
+  systemPrompt += `\n\nExtract the customer's booking details from the conversation. Return them in the JSON "customer" object: full_name, contact_number, plate_number, vehicle_unit, and email. For each field, use the most recent value the customer has given for that specific field; if their latest message does not mention a field they already provided earlier, keep the earlier value — never return null for a detail that appears anywhere in the conversation. Leave a field null only when the customer has never provided it. These are only noted for follow-up by our Sales team.
+
+Each field must contain ONLY its own kind of information — never combine or append another field's value into a different field. If the customer sends everything in one message, e.g. "Juan Dela Cruz, 09171234567, ABC 1234, Toyota Vios, juan@email.com", extract vehicle_unit as exactly "Toyota Vios" — NOT "Toyota Vios, 09171234567, juan@email.com" or any other field's value tacked on. A phone number, email address, or plate number must never appear inside vehicle_unit (or any other field besides its own).`
 
   const contents: { role: "user" | "model"; parts: { text: string }[] }[] = [
     ...(history as ChatMessage[]).map((h) => ({
@@ -980,7 +981,7 @@ export async function extractCustomerDetails(input: {
       full_name:      sanitizeDetail(c.full_name),
       contact_number: sanitizeDetail(c.contact_number),
       plate_number:   sanitizeDetail(c.plate_number),
-      vehicle_unit:   sanitizeDetail(c.vehicle_unit),
+      vehicle_unit:   sanitizeVehicleUnit(c.vehicle_unit),
       email:          sanitizeDetail(c.email),
     }
   } catch {

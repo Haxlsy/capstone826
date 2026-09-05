@@ -137,7 +137,7 @@ describe("formatVehicleStatusForCustomer (deterministic reply, no Gemini)", () =
     // Returning null used to hand the turn to Gemini, which then invented a
     // lookup ("no active job order for plate XYZ-1234") that never ran.
     const out = formatVehicleStatusForCustomer({ kind: "not_linked" })!
-    expect(out).toBe(buildLinkVerificationPrompt())
+    expect(out).toBe(buildLinkVerificationPrompt({}))
     expect(out).toMatch(/isn't linked|not linked/i)
     expect(out).toMatch(/job order code/i)
   })
@@ -148,24 +148,22 @@ describe("formatVehicleStatusForCustomer (deterministic reply, no Gemini)", () =
   })
 
   it("uses the admin's configured wording for not_linked", () => {
-    const notLinkedMessage = "Custom admin wording — send your plate and phone."
-    expect(formatVehicleStatusForCustomer({ kind: "not_linked" }, { notLinkedMessage }))
-      .toBe(notLinkedMessage)
+    const vehicleStatusTemplate = { en: "Custom admin wording — send your plate and phone.", fil: "FIL" }
+    expect(formatVehicleStatusForCustomer({ kind: "not_linked" }, { vehicleStatusTemplate }))
+      .toBe(vehicleStatusTemplate.en)
   })
 
-  it("falls back to the default when the configured wording is blank", () => {
-    for (const notLinkedMessage of ["", "  ", null, undefined]) {
-      expect(formatVehicleStatusForCustomer({ kind: "not_linked" }, { notLinkedMessage }))
-        .toBe(buildLinkVerificationPrompt())
-    }
+  it("falls back to the default when no template is configured", () => {
+    expect(formatVehicleStatusForCustomer({ kind: "not_linked" }))
+      .toBe(buildLinkVerificationPrompt({}))
   })
 
   it("ignores the configured wording for a linked customer's status", () => {
-    const notLinkedMessage = "SHOULD-NOT-APPEAR"
-    const withJob = formatVehicleStatusForCustomer({ kind: "ok", jobs: [j()] }, { notLinkedMessage })!
-    const noJob = formatVehicleStatusForCustomer({ kind: "ok", jobs: [] }, { notLinkedMessage })!
-    const booked = formatVehicleStatusForCustomer({ kind: "booked_no_active_job", plate: "ABC-826" }, { notLinkedMessage })!
-    for (const out of [withJob, noJob, booked]) expect(out).not.toContain(notLinkedMessage)
+    const vehicleStatusTemplate = { en: "SHOULD-NOT-APPEAR", fil: "SHOULD-NOT-APPEAR-FIL" }
+    const withJob = formatVehicleStatusForCustomer({ kind: "ok", jobs: [j()] }, { vehicleStatusTemplate })!
+    const noJob = formatVehicleStatusForCustomer({ kind: "ok", jobs: [] }, { vehicleStatusTemplate })!
+    const booked = formatVehicleStatusForCustomer({ kind: "booked_no_active_job", plate: "ABC-826" }, { vehicleStatusTemplate })!
+    for (const out of [withJob, noJob, booked]) expect(out).not.toContain(vehicleStatusTemplate.en)
     expect(withJob).toContain("ABC-826")
   })
 

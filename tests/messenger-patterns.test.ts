@@ -7,7 +7,13 @@ import {
   extractJobOrderCode,
 } from "@/lib/messenger/patterns"
 import { buildLinkVerificationPrompt } from "@/lib/messenger/vehicle"
-import { DEFAULT_NOT_LINKED_MESSAGE } from "@/types/chatbot"
+import { resolveTemplate } from "@/lib/messenger/copy"
+import {
+  DEFAULT_VEHICLE_STATUS_MESSAGE_EN,
+  DEFAULT_VEHICLE_STATUS_MESSAGE_FIL,
+  DEFAULT_LINK_VERIFICATION_MESSAGE_EN,
+  DEFAULT_LINK_VERIFICATION_MESSAGE_FIL,
+} from "@/types/chatbot"
 
 const plate = (t: string) => t.match(PLATE_PATTERN)?.[0] ?? null
 const phone = (t: string) => t.match(PHONE_PATTERN)?.[0] ?? null
@@ -118,11 +124,37 @@ describe("JOB_ORDER_CODE_PATTERN / extractJobOrderCode", () => {
   })
 })
 
+describe("resolveTemplate", () => {
+  it("falls back to the default rather than sending nothing", () => {
+    // A cleared admin field must never leave the customer with an empty message.
+    for (const blank of ["", "   ", "\n\t ", null, undefined]) {
+      expect(resolveTemplate(blank, blank, "fallback en", "fallback fil")).toEqual({
+        en: "fallback en",
+        fil: "fallback fil",
+      })
+    }
+  })
+
+  it("uses the admin value when actually filled in", () => {
+    expect(resolveTemplate("custom en", "custom fil", "fallback en", "fallback fil")).toEqual({
+      en: "custom en",
+      fil: "custom fil",
+    })
+  })
+})
+
 describe("buildLinkVerificationPrompt", () => {
   it("explains the account is not linked and asks for the Job Order Code", () => {
-    const out = buildLinkVerificationPrompt()
+    const out = buildLinkVerificationPrompt({})
     expect(out).toMatch(/isn't linked/i)
     expect(out).toMatch(/job order code/i)
+  })
+
+  it("falls back to the built-in default when no template is given", () => {
+    expect(buildLinkVerificationPrompt({})).toBe(DEFAULT_VEHICLE_STATUS_MESSAGE_EN)
+    expect(buildLinkVerificationPrompt({ lang: "filipino" })).toBe(DEFAULT_VEHICLE_STATUS_MESSAGE_FIL)
+    expect(buildLinkVerificationPrompt({ retry: "unrecognized" })).toBe(DEFAULT_LINK_VERIFICATION_MESSAGE_EN)
+    expect(buildLinkVerificationPrompt({ retry: "unrecognized", lang: "filipino" })).toBe(DEFAULT_LINK_VERIFICATION_MESSAGE_FIL)
   })
 
   it("shows a format example when the code was unrecognized", () => {
@@ -146,26 +178,19 @@ describe("buildLinkVerificationPrompt", () => {
   })
 
   it("sends the admin's wording verbatim when one is configured", () => {
-    const custom = "Hindi pa naka-link ang account mo. Pakisend ang Job Order Code mo."
-    expect(buildLinkVerificationPrompt({ custom })).toBe(custom)
+    const vehicleStatusTemplate = { en: "Hindi pa naka-link ang account mo.", fil: "FIL VERSION" }
+    expect(buildLinkVerificationPrompt({ vehicleStatusTemplate })).toBe(vehicleStatusTemplate.en)
+    expect(buildLinkVerificationPrompt({ vehicleStatusTemplate, lang: "filipino" })).toBe(vehicleStatusTemplate.fil)
   })
 
-  it("falls back to the default rather than sending nothing", () => {
-    // A cleared settings box must never leave the customer with an empty message.
-    for (const custom of ["", "   ", "\n\t ", null, undefined]) {
-      expect(buildLinkVerificationPrompt({ custom })).toBe(DEFAULT_NOT_LINKED_MESSAGE)
-    }
-    expect(buildLinkVerificationPrompt()).toBe(DEFAULT_NOT_LINKED_MESSAGE)
-  })
-
-  it("keeps the custom wording out of the retry messages", () => {
-    const custom = "CUSTOM-ONLY-TEXT"
-    expect(buildLinkVerificationPrompt({ retry: "unrecognized", custom })).not.toContain(custom)
-    expect(buildLinkVerificationPrompt({ retry: "conflict", custom })).not.toContain(custom)
+  it("keeps the vehicle-status template out of the retry messages", () => {
+    const vehicleStatusTemplate = { en: "CUSTOM-ONLY-TEXT", fil: "CUSTOM-ONLY-TEXT-FIL" }
+    expect(buildLinkVerificationPrompt({ retry: "unrecognized", vehicleStatusTemplate })).not.toContain("CUSTOM-ONLY-TEXT")
+    expect(buildLinkVerificationPrompt({ retry: "conflict", vehicleStatusTemplate })).not.toContain("CUSTOM-ONLY-TEXT")
   })
 
   it("never claims a lookup was performed, in any variant", () => {
-    for (const opts of [undefined, { retry: "unrecognized" as const }, { retry: "conflict" as const }]) {
+    for (const opts of [{}, { retry: "unrecognized" as const }, { retry: "conflict" as const }]) {
       expect(buildLinkVerificationPrompt(opts)).not.toMatch(
         /checked our system|searched|no active job order/i
       )
