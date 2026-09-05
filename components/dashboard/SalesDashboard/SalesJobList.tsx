@@ -45,7 +45,7 @@ export default function SalesJobList({ jobOrders: rawOrders }: { jobOrders: any[
     () =>
       rawOrders.map((r: any): JobOrder => ({
         id: r.id,
-        displayId: `JO-${new Date(r.created_at).getFullYear()}-${r.id.slice(-4).toUpperCase()}`,
+        displayId: r.job_order_code,
         customer: r.customer_name ?? "—",
         plate: r.plate_number ?? "—",
         vehicle: r.vehicle_unit ?? "—",

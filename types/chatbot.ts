@@ -17,9 +17,9 @@ export const botLanguageSchema = z.enum(["english", "filipino", "both"])
 export const DEFAULT_NOT_LINKED_MESSAGE =
   "Your Messenger account isn't linked to a customer record with us yet, so I can't pull up " +
   "any active job for you.\n\n" +
-  "If you'd like to link it, please send your plate number and the phone number on your " +
-  "booking. Our Sales team will verify your details and link your account — after that I can " +
-  "give you your vehicle status here anytime."
+  "If you'd like to link it, please send your Job Order Code — you'll find it on your receipt " +
+  "or booking confirmation (it looks like JO-8X2K9F). Once I recognize it, I can give you your " +
+  "vehicle status here anytime."
 
 /**
  * Sent verbatim (no AI) when `enable_ai_chatbot` is off, right before the

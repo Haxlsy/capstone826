@@ -23,14 +23,14 @@ export default function VehicleStatusTemplate({ value, onChange, onSave, saved, 
         <div className="flex items-start gap-2.5 bg-primary/10 border border-primary/20 rounded-card px-4 py-3">
           <Info className="w-4 h-4 text-primary mt-0.5 shrink-0" />
           <p className="text-sm text-primary">
-            Vehicle status is resolved automatically from the customer&apos;s linked Messenger account — the system finds their active job order and sends the status itself, without asking the AI to look anything up. If their account isn&apos;t linked yet, the system asks for their plate number and booking phone, then passes the request to Sales to verify.
+            Vehicle status is resolved automatically from the customer&apos;s linked Messenger account — the system finds their active job order and sends the status itself, without asking the AI to look anything up. If their account isn&apos;t linked yet, the system asks for their Job Order Code and links the account automatically once it recognizes it — no Sales verification step needed.
           </p>
         </div>
 
         <div className="flex flex-col gap-1.5">
           <p className="text-sm font-medium text-body">Information read from the customer&apos;s reply</p>
-          <div className="grid grid-cols-2 gap-2 max-w-sm">
-            {["Plate Number", "Contact Number"].map((f) => (
+          <div className="grid grid-cols-1 gap-2 max-w-[180px]">
+            {["Job Order Code"].map((f) => (
               <div key={f} className="flex items-center gap-2 px-3 py-2 bg-surface-subtle rounded-sm border border-border">
                 <Check className="w-3.5 h-3.5 text-status-inspection shrink-0" />
                 <span className="text-sm text-body">{f}</span>
@@ -44,17 +44,6 @@ export default function VehicleStatusTemplate({ value, onChange, onSave, saved, 
       <div className="flex gap-6">
         {/* Editor — left */}
         <div className="flex-1 flex flex-col gap-4">
-          <div className="bg-primary/10 border border-primary/20 rounded-card px-4 py-3 text-sm text-primary">
-            Sent word for word when someone asks for their vehicle status and their Messenger account
-            isn&apos;t linked to a customer record yet. The AI never rewrites it.
-            <ul className="list-disc pl-5 mt-2 space-y-1">
-              <li>Keep asking for their <strong>plate number</strong> and <strong>phone number</strong> — the next message they send is read as those two.</li>
-              <li>Don&apos;t say we&apos;ve already checked or looked anything up. At this point we haven&apos;t, because we can&apos;t tell who they are yet.</li>
-              <li>Write it in whichever language you want customers to see — it is sent exactly as typed, with no translation.</li>
-              <li>Leave it empty and the built-in default message is used instead.</li>
-            </ul>
-          </div>
-
           <div className="flex flex-col gap-2">
             <label className="text-sm font-medium text-body">Message</label>
             <textarea

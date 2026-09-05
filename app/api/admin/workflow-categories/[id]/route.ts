@@ -62,15 +62,11 @@ export async function DELETE(
         if (jobOrderIds.length > 0) {
           const { data: liveJobRows } = await admin
             .from("job_order")
-            .select("id, status, customer_name, created_at")
+            .select("id, status, customer_name, job_order_code")
             .in("id", jobOrderIds)
             .in("status", LIVE)
             .limit(5)
-          liveJobs = (liveJobRows ?? []).map((j) => {
-            const year    = new Date(j.created_at).getFullYear()
-            const shortId = (j.id as string).slice(-4).toUpperCase()
-            return `JO-${year}-${shortId} (${j.customer_name}) — ${j.status}`
-          })
+          liveJobs = (liveJobRows ?? []).map((j) => `${j.job_order_code} (${j.customer_name}) — ${j.status}`)
         }
       }
 

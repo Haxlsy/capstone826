@@ -19,6 +19,7 @@ import { useToast } from "@/components/ui/Toast"
 import { cn } from "@/lib/utils"
 import { inquiryTypeStyle } from "@/lib/ui/status"
 import { newInquiryIds, resolveSelectedId, newInquiryToast } from "@/lib/sales/inquiry-list"
+import { LinkAccountModal } from "./LinkAccountModal"
 
 type InquiryStatus = "open" | "resolved" | "recorded"
 type InquiryType   = "Booking" | "Human Response" | "Report"
@@ -75,6 +76,7 @@ export default function InquiryManagement() {
 
   // Record modal
   const [recordOpen, setRecordOpen] = useState(false)
+  const [linkOpen, setLinkOpen]     = useState(false)
   const [recordForm, setRecordForm] = useState({ full_name: "", contact_number: "", email: "", plate_number: "", vehicle_unit: "" })
   const [recording, setRecording]   = useState(false)
   const [recordErrors, setRecordErrors] = useState<Record<string, string>>({})
@@ -443,10 +445,16 @@ export default function InquiryManagement() {
                 <p className="text-xs font-semibold text-body uppercase tracking-wider">Messenger Identity</p>
                 <div className="bg-surface-subtle border border-border-subtle rounded-card px-4 py-3 flex items-center gap-3 h-[58px]">
                   <Hash className="w-4 h-4 text-muted shrink-0" />
-                  <div>
+                  <div className="min-w-0 flex-1">
                     <p className="text-[10px] text-muted">Page-Scoped ID</p>
                     <p className="text-sm font-mono font-semibold text-body truncate">{selected.psid}</p>
                   </div>
+                  <button
+                    onClick={() => setLinkOpen(true)}
+                    className="shrink-0 text-xs font-semibold text-primary hover:underline"
+                  >
+                    Link Account
+                  </button>
                 </div>
               </div>
             </div>
@@ -581,6 +589,14 @@ export default function InquiryManagement() {
         </div>
         {recordErrors._submit && <p className="mt-3 text-xs text-status-delayed">{recordErrors._submit}</p>}
       </Modal>
+
+      {selected && (
+        <LinkAccountModal
+          open={linkOpen}
+          onClose={() => setLinkOpen(false)}
+          psid={selected.psid}
+        />
+      )}
     </div>
   )
 }

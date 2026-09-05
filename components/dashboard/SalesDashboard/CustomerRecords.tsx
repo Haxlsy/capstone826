@@ -12,6 +12,7 @@ import { Button } from "@/components/ui/Button"
 import { Input } from "@/components/ui/Field"
 import { useToast } from "@/components/ui/Toast"
 import { cn } from "@/lib/utils"
+import { LinkAccountModal } from "./LinkAccountModal"
 
 interface CustomerRecord {
   id: string
@@ -37,6 +38,8 @@ export default function CustomerRecords() {
   const [editDraft, setEditDraft] = useState<Partial<CustomerRecord>>({})
   const [saving, setSaving] = useState(false)
   const [saveErr, setSaveErr] = useState<string | null>(null)
+
+  const [linkTargetId, setLinkTargetId] = useState<string | null>(null)
 
   const load = useCallback(async (q = "") => {
     setLoading(true)
@@ -87,7 +90,6 @@ export default function CustomerRecords() {
       email: record.email ?? "",
       plateNumber: record.plateNumber,
       vehicleUnit: record.vehicleUnit,
-      psid: record.psid ?? "",
     })
     setSaveErr(null)
   }
@@ -102,8 +104,6 @@ export default function CustomerRecords() {
     setSaving(true)
     setSaveErr(null)
     try {
-      const original = records.find((r) => r.id === id)
-      const psidChanged = (editDraft.psid ?? "") !== (original?.psid ?? "")
       const res = await fetch(`/api/sales/customer-records/${id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
@@ -113,18 +113,13 @@ export default function CustomerRecords() {
           email: editDraft.email || null,
           plate_number: editDraft.plateNumber,
           vehicle_unit: editDraft.vehicleUnit,
-          ...(psidChanged ? { psid: (editDraft.psid ?? "").trim() } : {}),
         }),
       })
       const json = await res.json()
       if (!res.ok) throw new Error(json?.error ?? "Failed to save")
 
       setRecords((prev) =>
-        prev.map((r) =>
-          r.id === id
-            ? ({ ...r, ...editDraft, psid: (editDraft.psid ?? "").trim() || null } as CustomerRecord)
-            : r,
-        ),
+        prev.map((r) => (r.id === id ? ({ ...r, ...editDraft } as CustomerRecord) : r)),
       )
       setEditingId(null)
       setEditDraft({})
@@ -150,25 +145,31 @@ export default function CustomerRecords() {
               {getInitials(record.fullName)}
             </span>
             {isEditing ? (
-              <div className="flex flex-col gap-1">
-                <Input
-                  aria-label="Full name"
-                  className={cn(editCell, "w-40")}
-                  value={editDraft.fullName ?? ""}
-                  onChange={(e) => setEditDraft((d) => ({ ...d, fullName: e.target.value }))}
-                />
-                <Input
-                  aria-label="Messenger PSID"
-                  placeholder="Messenger PSID"
-                  className={cn(editCell, "w-40 font-mono text-[11px]")}
-                  value={editDraft.psid ?? ""}
-                  onChange={(e) => setEditDraft((d) => ({ ...d, psid: e.target.value }))}
-                />
-              </div>
+              <Input
+                aria-label="Full name"
+                className={cn(editCell, "w-40")}
+                value={editDraft.fullName ?? ""}
+                onChange={(e) => setEditDraft((d) => ({ ...d, fullName: e.target.value }))}
+              />
             ) : (
               <div>
                 <p className="font-medium text-heading">{record.fullName}</p>
-                {record.psid && <p className="font-mono text-[11px] text-muted">{record.psid}</p>}
+                {record.psid ? (
+                  <button
+                    onClick={() => setLinkTargetId(record.id)}
+                    className="font-mono text-[11px] text-muted hover:text-primary hover:underline"
+                    title="Click to relink"
+                  >
+                    {record.psid}
+                  </button>
+                ) : (
+                  <button
+                    onClick={() => setLinkTargetId(record.id)}
+                    className="text-[11px] font-semibold text-primary hover:underline"
+                  >
+                    Link Messenger Account
+                  </button>
+                )}
               </div>
             )}
           </div>
@@ -289,6 +290,15 @@ export default function CustomerRecords() {
         loading={loading}
         error={fetchErr}
         emptyLabel="No records found."
+      />
+
+      <LinkAccountModal
+        open={linkTargetId !== null}
+        onClose={() => setLinkTargetId(null)}
+        initialRecordId={linkTargetId ?? undefined}
+        onLinked={(id, psid) =>
+          setRecords((prev) => prev.map((r) => (r.id === id ? { ...r, psid } : r)))
+        }
       />
     </div>
   )

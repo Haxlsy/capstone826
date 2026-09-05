@@ -66,6 +66,7 @@ interface CrewMember {
 
 interface JobDetail {
   id: string
+  job_order_code: string
   customer_name: string
   plate_number: string
   vehicle_unit: string
@@ -341,7 +342,7 @@ export default function JobOrderDetail({ jobId }: { jobId: string }) {
     !hasReworkStages &&
     (job.status === "For Inspection" ||
       (Boolean(job.finishing_approved_at) && !["For Release", "Released"].includes(job.status)))
-  const displayId = `JO-${new Date(job.created_at).getFullYear()}-${job.id.slice(-4).toUpperCase()}`
+  const displayId = job.job_order_code
 
   return (
     <div className="mx-auto flex max-w-5xl flex-col gap-6">

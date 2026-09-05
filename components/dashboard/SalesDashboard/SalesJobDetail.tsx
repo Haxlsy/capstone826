@@ -37,6 +37,7 @@ interface CrewMember  { id: string; name: string }
 
 interface JobDetail {
   id:                     string
+  job_order_code:         string
   customer_name:          string
   plate_number:           string
   vehicle_unit:           string
@@ -88,7 +89,7 @@ function SectionCollapse({ title, count, children, accent }: {
 
 export default function SalesJobDetail({ job }: { job: JobDetail }) {
 
-  const displayId   = `JO-${new Date(job.created_at).getFullYear()}-${job.id.slice(-4).toUpperCase()}`
+  const displayId   = job.job_order_code
   const prepStages  = job.stages.filter((s) => s.category_name?.toLowerCase() === "preparation")
   const instStages  = job.stages.filter((s) => s.category_name?.toLowerCase() === "installation")
   const finStages   = job.stages.filter((s) => s.category_name?.toLowerCase() === "finishing")

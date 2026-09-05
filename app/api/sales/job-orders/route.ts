@@ -8,7 +8,7 @@ export async function GET() {
     const { data, error } = await supabase
       .from("job_order")
       .select(
-        `id, status, scheduled_at, actual_start_at, expected_completion_at, created_at,
+        `id, status, scheduled_at, actual_start_at, expected_completion_at, created_at, job_order_code,
          customer:customer_record_id(full_name, plate_number, vehicle_unit, contact_number),
          service:service_id(name),
          customer_name, plate_number, vehicle_unit, contact_number`
@@ -21,6 +21,7 @@ export async function GET() {
 
     const result = (data ?? []).map((j: any) => ({
       id:               j.id,
+      job_order_code:   j.job_order_code,
       customer_name:    j.customer?.full_name ?? j.customer_name ?? "—",
       plate_number:     j.customer?.plate_number ?? j.plate_number ?? "—",
       vehicle_unit:     j.customer?.vehicle_unit ?? j.vehicle_unit ?? "—",
