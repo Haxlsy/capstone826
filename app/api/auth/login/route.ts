@@ -44,7 +44,7 @@ export async function POST(request: Request) {
     // 3. Fetch Profile & Check Permissions
     const { data: profile, error: profileError } = await admin
       .from("user_account")
-      .select("username, full_name, role")
+      .select("username, full_name, role, must_change_password")
       .eq("id", authData.user.id)
       .eq("is_archived", false)
       .single()

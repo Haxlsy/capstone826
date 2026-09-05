@@ -40,6 +40,8 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: error.message }, { status: 500 })
     }
 
+    await admin.from("user_account").update({ must_change_password: true }).eq("id", userId)
+
     if (profile) {
       logAudit({
         user_id:   userId,

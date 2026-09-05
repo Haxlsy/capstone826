@@ -4,6 +4,7 @@ import { useEffect, useState } from "react"
 import { Eye, EyeOff, Lock } from "lucide-react"
 import { Drawer } from "@/components/ui/Drawer"
 import { Button } from "@/components/ui/Button"
+import { validateName } from "@/lib/name"
 
 function generateUsername(fullName: string): string {
   const parts = fullName.trim().split(/\s+/).filter(Boolean)
@@ -113,9 +114,12 @@ export default function AddAccountModal({
 
   function validate() {
     const e: Partial<typeof EMPTY_FORM> = {}
-    if (!form.fullName.trim()) e.fullName = "Full name is required."
+    const nameError = validateName(form.fullName, "Full name")
+    if (nameError) e.fullName = nameError
     if (!isEdit) {
       if (!form.username.trim()) e.username = "Username is required."
+      else if (!/^[a-zA-Z0-9_]+\.[a-zA-Z0-9_]+$/.test(form.username.trim()))
+        e.username = "Username must contain a dot (e.g. first.last)."
       if (!form.password) e.password = "Password is required."
       else if (form.password.length < 8) e.password = "Password must be at least 8 characters."
     }

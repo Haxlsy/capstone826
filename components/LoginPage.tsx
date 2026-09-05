@@ -119,7 +119,11 @@ export default function LoginPage() {
         /* ignore */
       }
 
-      router.push(ROLE_ROUTES[data.user?.role ?? ""] ?? "/")
+      if (data.user?.must_change_password) {
+        router.push("/change-password-required")
+      } else {
+        router.push(ROLE_ROUTES[data.user?.role ?? ""] ?? "/")
+      }
     } catch {
       toastRef.current.error("Network error. Please try again.")
     } finally {

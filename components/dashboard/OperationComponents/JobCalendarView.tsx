@@ -36,9 +36,14 @@ interface CalendarJob {
   head_installer: string | null
 }
 
-function CompactTooltip({ jobs }: { jobs: CalendarJob[] }) {
+function CompactTooltip({ jobs, align = "left" }: { jobs: CalendarJob[]; align?: "left" | "right" }) {
   return (
-    <div className="pointer-events-none absolute left-0 top-full z-30 mt-1 w-52 rounded-card border border-border-subtle bg-surface py-2 shadow-pop">
+    <div
+      className={cn(
+        "pointer-events-none absolute top-full z-30 mt-1 w-52 rounded-card border border-border-subtle bg-surface py-2 shadow-pop",
+        align === "right" ? "right-0" : "left-0",
+      )}
+    >
       <p className="mb-1 border-b border-border-subtle px-3 pb-1.5 text-xs font-semibold text-body">
         {jobs.length} job{jobs.length !== 1 ? "s" : ""}
       </p>
@@ -189,7 +194,7 @@ export default function JobCalendarView({ loading, calendarJobs }: Props) {
                 <div
                   className={cn(
                     "flex h-20 flex-col items-center gap-1 rounded-sm pt-1.5 transition-colors",
-                    isToday ? "bg-shell text-white" : "hover:bg-surface-subtle",
+                    isToday ? "bg-primary text-white" : "hover:bg-surface-subtle",
                     hasJobs && "cursor-pointer border-2 border-primary/30",
                   )}
                 >
@@ -205,12 +210,12 @@ export default function JobCalendarView({ loading, calendarJobs }: Props) {
                     )}
                   </div>
                   {hasJobs && (
-                    <span className="text-xs font-semibold text-primary">
+                    <span className={cn("text-xs font-semibold", isToday ? "text-white" : "text-primary")}>
                       {dayJobs.length} job{dayJobs.length !== 1 ? "s" : ""}
                     </span>
                   )}
                 </div>
-                {showTip && <CompactTooltip jobs={dayJobs} />}
+                {showTip && <CompactTooltip jobs={dayJobs} align={idx % 7 >= 5 ? "right" : "left"} />}
               </div>
             )
           })}

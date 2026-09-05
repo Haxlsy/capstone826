@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/Button"
 import { DataTable, type Column } from "@/components/ui/DataTable"
 import { Pagination } from "@/components/ui/Pagination"
 import { Popover, MenuItem } from "@/components/ui/Popover"
+import { FilterTrigger } from "@/components/ui/FilterTrigger"
 import { Modal, ConfirmModal } from "@/components/ui/Modal"
 import { Badge, StatusBadge } from "@/components/ui/Badge"
 import { useToast } from "@/components/ui/Toast"
@@ -39,7 +40,6 @@ export default function AccountTable() {
   const [search, setSearch] = useState("")
   const [roleFilter, setRoleFilter] = useState<UserRole | "all">("all")
   const [statusFilter, setStatusFilter] = useState<"all" | "active" | "archived">("all")
-  const [filterOpen, setFilterOpen] = useState(false)
 
   const [page, setPage] = useState(1)
   const [pageSize, setPageSize] = useState(15)
@@ -228,11 +228,20 @@ export default function AccountTable() {
           onChange={setSearch}
           placeholder="Search accounts…"
           containerClassName="max-w-xs flex-1"
-          onFilterClick={() => setFilterOpen((v) => !v)}
-          filterActive={hasFilter}
         />
-        {filterOpen && (
-          <div className="grid w-full max-w-sm gap-4 rounded-card border border-border-subtle bg-surface p-4 shadow-card sm:grid-cols-2">
+        <Popover
+          align="start"
+          trigger={({ open, toggle }) => (
+            <FilterTrigger
+              open={open}
+              onClick={toggle}
+              active={hasFilter}
+              count={(roleFilter !== "all" ? 1 : 0) + (statusFilter !== "all" ? 1 : 0)}
+            />
+          )}
+          panelClassName="w-[min(90vw,26rem)] p-4"
+        >
+          <div className="grid gap-4 sm:grid-cols-2">
             <div>
               <p className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-body">Role</p>
               <div className="space-y-0.5">
@@ -279,7 +288,7 @@ export default function AccountTable() {
               </button>
             )}
           </div>
-        )}
+        </Popover>
       </div>
 
       <AddAccountModal open={addModalOpen} onClose={() => setAddModalOpen(false)} onSuccess={forceRefetch} />
