@@ -7,6 +7,7 @@ import { CheckCircle2 } from "lucide-react"
 import ServiceOverridePanel, { type Stage } from "./ServiceOverridePanel"
 import JobOrderConfirmDialog, { type JobOrderSummary } from "./JobOrderConfirmDialog"
 import { fmtDateTime } from "@/lib/time-display"
+import { normalizePhone } from "@/lib/phone"
 
 interface CustomerRecord {
   id:             string
@@ -575,6 +576,27 @@ export default function AddJobOrderForm() {
     )
   },[searchQuery, customers]);
 
+  // Groups search results by customer (normalized phone number) so a customer
+  // with more than one vehicle on file shows once, with each plate selectable
+  // underneath — the same correlation the Messenger status flow already uses,
+  // since a customer_record row models one vehicle, not one customer.
+  const filteredCustomerGroups = useMemo(() => {
+    const map = new Map<string, CustomerRecord[]>();
+    for (const c of filteredCustomers) {
+      const key = normalizePhone(c.contact_number) || `unknown:${c.id}`;
+      if (!map.has(key)) map.set(key, []);
+      map.get(key)!.push(c);
+    }
+    return [...map.values()];
+  }, [filteredCustomers]);
+
+  function selectCustomerVehicle(c: CustomerRecord) {
+    if (c.has_active_job) return;
+    setSelectedCustomerId(c.id);
+    setSearchQuery(c.full_name);
+    setIsOpen(false);
+  }
+
   return (
     <>
     <div className="flex flex-col gap-5 max-w-5xl">
@@ -643,35 +665,60 @@ export default function AddJobOrderForm() {
                 {isOpen && (
                   <div className="absolute z-50 w-full mt-1 bg-surface border border-border rounded-card shadow-pop overflow-hidden">
                     <div className="max-h-[220px] overflow-y-auto scrollbar-thin scrollbar-thumb-gray-200">
-                      {filteredCustomers.length > 0 ? (
-                        filteredCustomers.map((c) => (
-                          <button
-                            key={c.id}
-                            type="button"
-                            disabled={c.has_active_job}
-                            className={`w-full text-left px-4 py-3 text-sm transition-colors border-b last:border-none border-border-subtle flex flex-col ${
-                              c.has_active_job
-                                ? "opacity-50 cursor-not-allowed bg-surface-subtle"
-                                : "hover:bg-status-inspection/10 cursor-pointer"
-                            }`}
-                            onClick={() => {
-                              if (c.has_active_job) return;
-                              setSelectedCustomerId(c.id);
-                              setSearchQuery(c.full_name);
-                              setIsOpen(false);
-                            }}
-                          >
-                            <span className="font-semibold text-heading flex items-center gap-2">
-                              {c.full_name}
-                              {c.has_active_job && (
-                                <span className="text-[10px] font-medium bg-amber-100 text-status-warning px-1.5 py-0.5 rounded-full">
-                                  Being Serviced
-                                </span>
-                              )}
-                            </span>
-                            <span className="text-[10px] text-body uppercase tracking-wider">{c.plate_number}</span>
-                          </button>
-                        ))
+                      {filteredCustomerGroups.length > 0 ? (
+                        filteredCustomerGroups.map((vehicles) =>
+                          vehicles.length === 1 ? (
+                            <button
+                              key={vehicles[0].id}
+                              type="button"
+                              disabled={vehicles[0].has_active_job}
+                              className={`w-full text-left px-4 py-3 text-sm transition-colors border-b last:border-none border-border-subtle flex flex-col ${
+                                vehicles[0].has_active_job
+                                  ? "opacity-50 cursor-not-allowed bg-surface-subtle"
+                                  : "hover:bg-status-inspection/10 cursor-pointer"
+                              }`}
+                              onClick={() => selectCustomerVehicle(vehicles[0])}
+                            >
+                              <span className="font-semibold text-heading flex items-center gap-2">
+                                {vehicles[0].full_name}
+                                {vehicles[0].has_active_job && (
+                                  <span className="text-[10px] font-medium bg-amber-100 text-status-warning px-1.5 py-0.5 rounded-full">
+                                    Being Serviced
+                                  </span>
+                                )}
+                              </span>
+                              <span className="text-[10px] text-body uppercase tracking-wider">{vehicles[0].plate_number}</span>
+                            </button>
+                          ) : (
+                            // Same customer, multiple vehicles on file — shown once,
+                            // with each plate selectable underneath (there should
+                            // always be a plate + vehicle-unit pair per vehicle).
+                            <div key={vehicles[0].id} className="border-b last:border-none border-border-subtle">
+                              <p className="px-4 pt-2.5 pb-1 text-sm font-semibold text-heading">{vehicles[0].full_name}</p>
+                              {vehicles.map((c) => (
+                                <button
+                                  key={c.id}
+                                  type="button"
+                                  disabled={c.has_active_job}
+                                  className={`w-full text-left pl-6 pr-4 py-2 text-sm transition-colors flex items-center gap-2 ${
+                                    c.has_active_job
+                                      ? "opacity-50 cursor-not-allowed bg-surface-subtle"
+                                      : "hover:bg-status-inspection/10 cursor-pointer"
+                                  }`}
+                                  onClick={() => selectCustomerVehicle(c)}
+                                >
+                                  <span className="text-[10px] text-body uppercase tracking-wider">{c.plate_number}</span>
+                                  <span className="text-xs text-muted">{c.vehicle_unit}</span>
+                                  {c.has_active_job && (
+                                    <span className="ml-auto text-[10px] font-medium bg-amber-100 text-status-warning px-1.5 py-0.5 rounded-full">
+                                      Being Serviced
+                                    </span>
+                                  )}
+                                </button>
+                              ))}
+                            </div>
+                          )
+                        )
                       ) : (
                         <div className="px-4 py-8 text-center text-sm text-muted">
                           No matching customers
