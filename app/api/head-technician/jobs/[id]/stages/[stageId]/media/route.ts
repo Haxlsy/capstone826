@@ -36,11 +36,15 @@ export async function POST(
       return NextResponse.json({ error: `File too large. Maximum is ${limit}.` }, { status: 400 })
     }
 
-    const ext        = file.name.split(".").pop() ?? (isPhoto ? "jpg" : "mp4")
-    const storagePath = `${jobId}/${stageId}/${Date.now()}.${ext}`
-
     const admin = createAdminClient()
     let uploadBuffer: Buffer | ArrayBuffer = await file.arrayBuffer()
+    // Tracks whether `uploadBuffer` was replaced by stripAudio()'s MP4-container
+    // output. That output is ALWAYS an MP4 regardless of the source format (a
+    // phone-recorded video is very commonly .mov/video-quicktime) — storing it
+    // under the original extension/content-type would label MP4 bytes as
+    // QuickTime, which is exactly the kind of mismatch a strict external
+    // consumer like Facebook's video-attachment fetcher can silently reject.
+    let mutedToMp4 = false
 
     if (isVideo) {
       // Videos are validated (one extracted frame, run through the same
@@ -62,17 +66,24 @@ export async function POST(
       }
       try {
         uploadBuffer = await stripAudio(original)
+        mutedToMp4 = true
       } catch (err) {
         // Muting failed — fall back to storing the original (with audio)
-        // rather than lose the technician's upload entirely.
+        // rather than lose the technician's upload entirely. The original
+        // bytes are in their original format, so the original extension/
+        // content-type below is still correct in this one fallback case.
         console.error("[stage-media] audio stripping failed, storing original:", err)
         uploadBuffer = original
       }
     }
 
+    const ext = mutedToMp4 ? "mp4" : (file.name.split(".").pop() ?? (isPhoto ? "jpg" : "mp4"))
+    const storagePath = `${jobId}/${stageId}/${Date.now()}.${ext}`
+    const contentType = mutedToMp4 ? "video/mp4" : file.type
+
     const { error: uploadErr } = await admin.storage
       .from("stage-media")
-      .upload(storagePath, uploadBuffer, { contentType: file.type, upsert: false })
+      .upload(storagePath, uploadBuffer, { contentType, upsert: false })
 
     if (uploadErr) return NextResponse.json({ error: uploadErr.message }, { status: 500 })
 

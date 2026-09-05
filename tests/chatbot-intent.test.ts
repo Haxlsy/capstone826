@@ -121,7 +121,7 @@ describe("Required booking information", () => {
       "Full Name",
       "Contact Number",
       "Plate Number",
-      "Vehicle Type",
+      "Vehicle Unit",
       "Email Address",
     ])
   })
