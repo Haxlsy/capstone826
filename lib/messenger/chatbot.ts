@@ -88,6 +88,37 @@ export function sanitizeDetail(v: unknown): string | null {
 }
 
 /**
+ * `sanitizeDetail()`, plus a defensive strip of any phone number or email
+ * address embedded in the vehicle description. Gemini has been observed
+ * appending the customer's contact number/email onto vehicle_unit when all
+ * the booking details are sent in one comma-separated message — the prompts
+ * in generateChatbotReply/extractCustomerDetails now explicitly forbid this,
+ * but this backstops that instruction rather than replacing it.
+ *
+ * Deliberately does NOT strip a plate-pattern match — PLATE_PATTERN is loose
+ * enough to false-positive on real vehicle names ("RAV4", "CR-V").
+ */
+export function sanitizeVehicleUnit(v: unknown): string | null {
+  const cleaned = sanitizeDetail(v)
+  if (!cleaned) return null
+
+  // Split on comma/semicolon and drop empty pieces rather than a single
+  // trailing-separator regex — a phone AND an email both leaking in (the
+  // reported bug) leaves TWO dangling separators, not just one at the end.
+  const stripped = cleaned
+    .replace(TOKEN_PHONE, "")
+    .replace(TOKEN_EMAIL, "")
+    .split(/[,;]/)
+    .map((part) => part.trim())
+    .filter(Boolean)
+    .join(", ")
+    .replace(/[.\s]+$/, "") // a dangling separator period, if that's what was used instead
+    .trim()
+
+  return stripped || null
+}
+
+/**
  * Maps messenger_message rows (ordered NEWEST first, as the DB query returns
  * them) into chatbot history ordered oldest → newest. Pure — kept here so it can
  * be unit-tested without a Supabase mock.
@@ -663,7 +694,7 @@ export function buildBookingSummary(details: CustomerDetails, lang?: BotLanguage
     `• ${L.name}: ${sanitizeDetail(details.full_name) ?? "—"}`,
     `• ${L.contact}: ${sanitizeDetail(details.contact_number) ?? "—"}`,
     `• ${L.plate}: ${sanitizeDetail(details.plate_number) ?? "—"}`,
-    `• ${L.vehicle}: ${sanitizeDetail(details.vehicle_unit) ?? "—"}`,
+    `• ${L.vehicle}: ${sanitizeVehicleUnit(details.vehicle_unit) ?? "—"}`,
     `• ${L.email}: ${sanitizeDetail(details.email) ?? "—"}`,
     "",
     confirm,
@@ -839,7 +870,9 @@ export async function generateChatbotReply(input: {
   // about this turn keeps its earlier value.
   systemPrompt += `\n\nFor each customer detail (full name, contact number, plate number, vehicle, email): use the most recent value the customer has given for that specific field. If their latest message does not mention a field they already provided earlier in this booking, keep the earlier value — never return null for a detail the customer has already given. Start over with empty details if the customer says they want to book a different vehicle, or if they cancel or abandon the booking (e.g. "nevermind", "cancel it", "wag na") — in that case return null for every field and do not bring the booking up again unless they ask.
 
-Never write your own reasoning, notes, or alternatives into a customer detail field. Each field must contain only the plain value (e.g. "Toyota Fortuner"), with no parentheses, commentary, or corrections. If you are unsure of a value, return null for it.`
+Never write your own reasoning, notes, or alternatives into a customer detail field. Each field must contain only the plain value (e.g. "Toyota Fortuner"), with no parentheses, commentary, or corrections. If you are unsure of a value, return null for it.
+
+Each field must contain ONLY its own kind of information — never combine or append another field's value into a different field. If the customer sends everything in one message, e.g. "Juan Dela Cruz, 09171234567, ABC 1234, Toyota Vios, juan@email.com", extract vehicle_unit as exactly "Toyota Vios" — NOT "Toyota Vios, 09171234567, juan@email.com" or any other field's value tacked on. A phone number, email address, or plate number must never appear inside vehicle_unit (or any other field besides its own).`
 
   // Instruct the model to also surface any customer booking details it sees so
   // the webhook can store them in the inquiry's extracted_* columns. Even when
@@ -906,7 +939,7 @@ Never write your own reasoning, notes, or alternatives into a customer detail fi
             full_name:      sanitizeDetail(c.full_name),
             contact_number: sanitizeDetail(c.contact_number),
             plate_number:   sanitizeDetail(c.plate_number),
-            vehicle_unit:   sanitizeDetail(c.vehicle_unit),
+            vehicle_unit:   sanitizeVehicleUnit(c.vehicle_unit),
             email:          sanitizeDetail(c.email),
           }
         : null,
@@ -933,7 +966,9 @@ export async function extractCustomerDetails(input: {
   const { message, history = [], settings, system_prompt, knowledge } = input
 
   let systemPrompt = buildRuntimeSystemPrompt(settings, system_prompt, knowledge)
-  systemPrompt += `\n\nExtract the customer's booking details from the conversation. Return them in the JSON "customer" object: full_name, contact_number, plate_number, vehicle_unit, and email. For each field, use the most recent value the customer has given for that specific field; if their latest message does not mention a field they already provided earlier, keep the earlier value — never return null for a detail that appears anywhere in the conversation. Leave a field null only when the customer has never provided it. These are only noted for follow-up by our Sales team.`
+  systemPrompt += `\n\nExtract the customer's booking details from the conversation. Return them in the JSON "customer" object: full_name, contact_number, plate_number, vehicle_unit, and email. For each field, use the most recent value the customer has given for that specific field; if their latest message does not mention a field they already provided earlier, keep the earlier value — never return null for a detail that appears anywhere in the conversation. Leave a field null only when the customer has never provided it. These are only noted for follow-up by our Sales team.
+
+Each field must contain ONLY its own kind of information — never combine or append another field's value into a different field. If the customer sends everything in one message, e.g. "Juan Dela Cruz, 09171234567, ABC 1234, Toyota Vios, juan@email.com", extract vehicle_unit as exactly "Toyota Vios" — NOT "Toyota Vios, 09171234567, juan@email.com" or any other field's value tacked on. A phone number, email address, or plate number must never appear inside vehicle_unit (or any other field besides its own).`
 
   const contents: { role: "user" | "model"; parts: { text: string }[] }[] = [
     ...(history as ChatMessage[]).map((h) => ({
@@ -980,7 +1015,7 @@ export async function extractCustomerDetails(input: {
       full_name:      sanitizeDetail(c.full_name),
       contact_number: sanitizeDetail(c.contact_number),
       plate_number:   sanitizeDetail(c.plate_number),
-      vehicle_unit:   sanitizeDetail(c.vehicle_unit),
+      vehicle_unit:   sanitizeVehicleUnit(c.vehicle_unit),
       email:          sanitizeDetail(c.email),
     }
   } catch {

@@ -76,6 +76,7 @@ import {
   violationWarning as violationWarningCopy,
   ALL_MISSING_FIELDS_LEADS,
   type BotLanguage,
+  type EscalationReason,
 } from "@/lib/messenger/copy"
 import { logAudit } from "@/hooks/audit-helpers"
 
@@ -654,10 +655,16 @@ async function handleInboundMessage(
   // resolved earlier — the link-verification block needs them.
   let reply: string | null = statusReply
   let escalate = humanRequested || reportIntent || existingBookingIntent
-  let escalateReason: string | null = humanRequested
-    ? "customer asked to speak with a human"
-    : existingBookingIntent
-      ? "customer wants to modify/cancel an existing booking"
+  // Customer-safe reason surfaced in the escalation ack (escalationAck below).
+  // existingBookingIntent deliberately maps to null — it already gets its own
+  // dedicated pre-message via existingBookingHandoff, so a reason clause here
+  // would be redundant. Some internal reasons (impersonation, identity
+  // conflict, the model's own unvetted text) must NEVER be set here — see
+  // EscalationReason's doc comment in lib/messenger/copy.ts.
+  let escalateReason: EscalationReason | null = humanRequested
+    ? "human_requested"
+    : reportIntent
+      ? "report"
       : null
   let aiReason: string | null = null
   let aiViolation: "none" | "off_topic" | "policy" = "none"
@@ -681,11 +688,13 @@ async function handleInboundMessage(
     // trigger, so it honours the `unanswerable` rule.
     const modelEscalate = ruleEnabled("unanswerable") && result.escalate
     escalate = modelEscalate || humanRequested || reportIntent || existingBookingIntent
+    // The model's own `result.reason` is unvetted free-text — never surfaced
+    // to the customer (see the doc comment above).
     escalateReason = humanRequested
-      ? "customer asked to speak with a human"
-      : existingBookingIntent
-        ? "customer wants to modify/cancel an existing booking"
-        : (result.reason ?? null)
+      ? "human_requested"
+      : reportIntent
+        ? "report"
+        : null
     aiReason = result.reason ?? null
     aiViolation = result.violation ?? "none"
     extracted = result.customer ?? null
@@ -708,7 +717,7 @@ async function handleInboundMessage(
     // If the AI fails, err on the side of escalating to a human.
     console.error("[webhook/facebook] chatbot error:", err)
     escalate = true
-    escalateReason = "chatbot error"
+    escalateReason = "hiccup"
   }
 
   // Recorded on the inquiry when a booking / violation escalation needs a Sales
@@ -741,7 +750,7 @@ async function handleInboundMessage(
     if (vs.action === "escalate" && ruleEnabled("unanswerable")) {
       escalate = true
       const isPolicy = vs.policy >= 2
-      escalateReason = isPolicy ? "repeated policy violations" : "repeated off-topic messages"
+      escalateReason = "violation"
       conflictNote =
         `Auto-escalated after repeated ${isPolicy ? "policy-violating" : "off-topic"} messages. ` +
         `Last message: "${messageBody}".`
@@ -810,7 +819,9 @@ async function handleInboundMessage(
   // Every account-link claim is routed to Sales for out-of-band verification.
   if (linkEscalation) {
     escalate = true
-    escalateReason = linkEscalation.reason
+    // A conflict flagged as possible impersonation must never be surfaced to
+    // the customer — only a genuinely unrecognized code is safe to mention.
+    escalateReason = linkEscalation.impersonation ? null : "job_order_unrecognized"
     if (linkEscalation.note) conflictNote = linkEscalation.note
   }
 
@@ -884,7 +895,7 @@ async function handleInboundMessage(
           escalate = true
           escalateBooking = false
           forceHumanEscalation = true
-          escalateReason = "customer insists on re-booking a vehicle already in service"
+          escalateReason = "vehicle_in_service"
           conflictNote =
             `Re-booking plate ${normPlate}, currently in service (job status ${inSvc.status ?? "?"}). ` +
             "Customer was already informed once and is still pushing to book it."
@@ -1025,7 +1036,7 @@ async function handleInboundMessage(
         escalate = true
         escalateBooking = false
         forceHumanEscalation = true
-        escalateReason = "customer stuck providing booking details"
+        escalateReason = "stuck_details"
         conflictNote =
           `Bot asked ${trailingReasks + 1}× in a row for the same booking detail(s) (${missing.join(", ")}) ` +
           "with no progress. Handing to a human."
@@ -1102,6 +1113,7 @@ async function handleInboundMessage(
         // Sales without first seeing their details summarized.
         escalate = true
         escalateBooking = true
+        escalateReason = "booking_ready"
         await persistConfirmFlag(false)
         await persistConflictPending(false)
         await persistBookingFlowFlag(false)
@@ -1351,7 +1363,7 @@ async function handleInboundMessage(
 
     // Acknowledge to the customer that a human will follow up (no quick replies —
     // a human now owns the thread).
-    const escalationMsg = escalationAck(lang)
+    const escalationMsg = escalationAck(lang, escalateReason)
     const fbId = await sendMessengerText(senderId, escalationMsg)
     await insertMessage({
       conversation_id,

@@ -90,15 +90,49 @@ export const BOOKING_SUMMARY_COPY = {
   },
 } as const
 
+/**
+ * Closed set of customer-safe escalation reasons — deliberately opt-in. Only
+ * these exact keys, with this hand-authored wording, can ever reach a
+ * customer; an escalation trigger with no entry here (or explicitly passed
+ * `null`/`undefined`) falls back to the fully generic message with no reason
+ * clause at all. Some internal escalation reasons (a link-conflict flagged as
+ * possible impersonation, an identity-conflict note naming another customer's
+ * on-file details, the model's own unvetted free-text reason) must NEVER be
+ * surfaced here — see the callers in app/api/webhook/facebook/route.ts.
+ */
+export type EscalationReason =
+  | "human_requested"
+  | "report"
+  | "vehicle_in_service"
+  | "stuck_details"
+  | "booking_ready"
+  | "job_order_unrecognized"
+  | "violation"
+  | "hiccup"
+
+const ESCALATION_REASON_COPY: Record<EscalationReason, { english: string; filipino: string }> = {
+  human_requested:         { english: "You'd like to speak with our team directly",              filipino: "Gusto mong makausap ang aming team nang direkta" },
+  report:                  { english: "You'd like to report a concern",                          filipino: "Gusto mong mag-report ng concern" },
+  vehicle_in_service:      { english: "Your vehicle already has an active job with us",           filipino: "May kasalukuyan ka nang trabaho sa amin para sa sasakyang ito" },
+  stuck_details:           { english: "I want to make sure we get your booking details exactly right", filipino: "Gusto kong siguraduhing tama ang mga detalye ng iyong booking" },
+  booking_ready:           { english: "Your booking details are complete",                       filipino: "Kumpleto na ang mga detalye ng iyong booking" },
+  job_order_unrecognized:  { english: "I wasn't able to verify the Job Order Code you sent",      filipino: "Hindi ko na-verify ang Job Order Code na ipinadala mo" },
+  violation:               { english: "Let's continue this with a member of our team",            filipino: "Ipagpapatuloy na natin ito kasama ang isang miyembro ng aming team" },
+  hiccup:                  { english: "I ran into a small hiccup on my end",                      filipino: "Nagkaroon ako ng maliit na hiccup sa aking sistema" },
+}
+
 /** Bot has handed the conversation to a human. */
-export function escalationAck(lang?: BotLanguage): string {
+export function escalationAck(lang?: BotLanguage, reason?: EscalationReason | null): string {
+  const r = reason ? ESCALATION_REASON_COPY[reason] : null
   return pickCopy(
     lang,
-    "Thanks for reaching out to 826 Auto Care! I've passed this conversation to our team, " +
-      "and a staff member will follow up with you here personally. " +
+    "Thanks for reaching out to 826 Auto Care! " +
+      (r ? `${r.english}, so I've passed` : "I've passed") +
+      " this conversation to our team, and a staff member will follow up with you here personally. " +
       "I won't be able to send automated replies on this chat until your request has been resolved.",
-    "Salamat sa pag-message sa 826 Auto Care! Naipasa ko na ang usapang ito sa aming team, " +
-      "at may staff na susunod sa iyo rito nang personal. " +
+    "Salamat sa pag-message sa 826 Auto Care! " +
+      (r ? `${r.filipino}, kaya naipasa ko na` : "Naipasa ko na") +
+      " ang usapang ito sa aming team, at may staff na susunod sa iyo rito nang personal. " +
       "Hindi muna ako makakapagpadala ng automated na sagot dito hanggang matugunan ang iyong request.",
   )
 }
