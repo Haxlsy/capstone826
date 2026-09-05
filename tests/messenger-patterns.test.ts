@@ -4,6 +4,7 @@ import {
   PHONE_PATTERN,
   EMAIL_PATTERN,
   parseLinkClaim,
+  extractJobOrderCode,
 } from "@/lib/messenger/patterns"
 import { buildLinkVerificationPrompt } from "@/lib/messenger/vehicle"
 import { DEFAULT_NOT_LINKED_MESSAGE } from "@/types/chatbot"
@@ -105,42 +106,47 @@ describe("EMAIL_PATTERN", () => {
   })
 })
 
+describe("JOB_ORDER_CODE_PATTERN / extractJobOrderCode", () => {
+  it("reads a code out of a sentence and normalizes to uppercase", () => {
+    expect(extractJobOrderCode("my job order code is jo-8x2k9f thanks")).toBe("JO-8X2K9F")
+    expect(extractJobOrderCode("JO-8X2K9F")).toBe("JO-8X2K9F")
+  })
+
+  it("returns empty string when no code is present", () => {
+    expect(extractJobOrderCode("hello there")).toBe("")
+    expect(extractJobOrderCode("ABC-1234, 0917 555 0101")).toBe("")
+  })
+})
+
 describe("buildLinkVerificationPrompt", () => {
-  it("explains the account is not linked and routes linking to Sales", () => {
+  it("explains the account is not linked and asks for the Job Order Code", () => {
     const out = buildLinkVerificationPrompt()
     expect(out).toMatch(/isn't linked/i)
-    expect(out).toMatch(/plate number/i)
-    expect(out).toMatch(/sales/i)
+    expect(out).toMatch(/job order code/i)
   })
 
-  it("shows a format example when the reply was unreadable", () => {
-    const out = buildLinkVerificationPrompt({ retry: "unreadable" })
-    expect(out).toContain("ABC-1234, 0917 555 0101")
-    expect(out).toMatch(/couldn't read/i)
-  })
-
-  it("asks the customer to re-check, and offers Sales, when verification fails", () => {
-    const out = buildLinkVerificationPrompt({ retry: "unverified" })
+  it("shows a format example when the code was unrecognized", () => {
+    const out = buildLinkVerificationPrompt({ retry: "unrecognized" })
+    expect(out).toContain("JO-8X2K9F")
     expect(out).toMatch(/couldn't verify/i)
-    expect(out).toContain("ABC-1234, 0917 555 0101")
-    expect(out).toMatch(/if you're sure/i)
   })
 
-  it("never reveals WHY verification failed — no plate enumeration oracle", () => {
-    // The same message is sent whether the plate does not exist, its phone does
-    // not match, or it is already linked to somebody else's Messenger account.
-    // Any wording that separated those cases would let an attacker probe plate
-    // numbers and learn which ones are registered.
-    const out = buildLinkVerificationPrompt({ retry: "unverified" })
-    expect(out).not.toMatch(
+  it("never reveals WHY verification failed — no code enumeration oracle", () => {
+    // The same message is sent whether the code does not exist or it is already
+    // linked to somebody else's Messenger account. Any wording that separated
+    // those cases would let an attacker probe codes and learn which are valid.
+    const unrecognized = buildLinkVerificationPrompt({ retry: "unrecognized" })
+    const conflict = buildLinkVerificationPrompt({ retry: "conflict" })
+    expect(unrecognized).toBe(conflict)
+    expect(unrecognized).not.toMatch(
       /already (?:linked|registered|claimed|taken)|another account|someone else|belongs to|different (?:account|customer)|impersonat/i
     )
     // Nor may it confirm the opposite — that no such record exists.
-    expect(out).not.toMatch(/no (?:such )?(?:record|account|customer)|not found|doesn't exist/i)
+    expect(unrecognized).not.toMatch(/no (?:such )?(?:record|account|customer)|not found|doesn't exist/i)
   })
 
   it("sends the admin's wording verbatim when one is configured", () => {
-    const custom = "Hindi pa naka-link ang account mo. Pakisend ang plaka at numero mo."
+    const custom = "Hindi pa naka-link ang account mo. Pakisend ang Job Order Code mo."
     expect(buildLinkVerificationPrompt({ custom })).toBe(custom)
   })
 
@@ -154,21 +160,20 @@ describe("buildLinkVerificationPrompt", () => {
 
   it("keeps the custom wording out of the retry messages", () => {
     const custom = "CUSTOM-ONLY-TEXT"
-    expect(buildLinkVerificationPrompt({ retry: "unreadable", custom })).not.toContain(custom)
-    expect(buildLinkVerificationPrompt({ retry: "unverified", custom })).not.toContain(custom)
+    expect(buildLinkVerificationPrompt({ retry: "unrecognized", custom })).not.toContain(custom)
+    expect(buildLinkVerificationPrompt({ retry: "conflict", custom })).not.toContain(custom)
   })
 
   it("never claims a lookup was performed, in any variant", () => {
-    for (const opts of [undefined, { retry: "unreadable" as const }, { retry: "unverified" as const }]) {
+    for (const opts of [undefined, { retry: "unrecognized" as const }, { retry: "conflict" as const }]) {
       expect(buildLinkVerificationPrompt(opts)).not.toMatch(
         /checked our system|searched|no active job order/i
       )
     }
   })
 
-  it("emits an example that its own patterns can parse", () => {
+  it("emits an example that its own pattern can parse", () => {
     // Guards against the example drifting out of sync with the parser.
-    expect(plate("ABC-1234, 0917 555 0101")).toBe("ABC-1234")
-    expect(phone("ABC-1234, 0917 555 0101")).toBe("0917 555 0101")
+    expect(extractJobOrderCode("JO-8X2K9F")).toBe("JO-8X2K9F")
   })
 })

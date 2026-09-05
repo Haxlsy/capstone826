@@ -13,7 +13,7 @@ export async function GET(request: Request) {
     let query = supabase
       .from("job_order")
       .select(
-        `id, status, scheduled_at, actual_start_at, expected_completion_at, created_at,
+        `id, status, scheduled_at, actual_start_at, expected_completion_at, created_at, job_order_code,
          customer:customer_record_id(full_name, plate_number, vehicle_unit, contact_number),
          service:service_id(name),
          customer_name, contact_number, plate_number, vehicle_unit`
@@ -85,6 +85,7 @@ export async function GET(request: Request) {
       const team = teamMap.get(j.id) ?? { head_detailer: "Unassigned", head_installer: "Unassigned" }
       return {
         id:                      j.id,
+        job_order_code:          j.job_order_code,
         customer_name:           j.customer?.full_name ?? j.customer_name ?? "—",
         plate_number:            j.customer?.plate_number ?? j.plate_number ?? "—",
         vehicle_unit:            j.customer?.vehicle_unit ?? j.vehicle_unit ?? "—",

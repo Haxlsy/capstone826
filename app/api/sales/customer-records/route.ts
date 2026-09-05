@@ -17,10 +17,27 @@ export async function GET(request: Request) {
       )
       .order("created_at", { ascending: false })
 
-    if (search.trim()) {
-      query = query.or(
-        `full_name.ilike.%${search.trim()}%,plate_number.ilike.%${search.trim()}%,contact_number.ilike.%${search.trim()}%`
-      )
+    const trimmed = search.trim()
+    if (trimmed) {
+      // A Job Order Code lives on job_order, not customer_record — resolve it to
+      // the record(s) it points at so Sales can paste a code from a conflict
+      // note straight into this search box.
+      const { data: jobMatches } = await supabase
+        .from("job_order")
+        .select("customer_record_id")
+        .ilike("job_order_code", `%${trimmed}%`)
+        .not("customer_record_id", "is", null)
+      const idsFromCode = [...new Set((jobMatches ?? []).map((j) => j.customer_record_id as string))]
+
+      const orClauses = [
+        `full_name.ilike.%${trimmed}%`,
+        `plate_number.ilike.%${trimmed}%`,
+        `contact_number.ilike.%${trimmed}%`,
+      ]
+      if (idsFromCode.length > 0) {
+        orClauses.push(`id.in.(${idsFromCode.join(",")})`)
+      }
+      query = query.or(orClauses.join(","))
     }
 
     const { data, error } = await query

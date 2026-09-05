@@ -12,7 +12,7 @@ export async function GET() {
     const { data: jobs, error } = await supabase
       .from("job_order")
       .select(
-        `id, status, scheduled_at, actual_start_at, expected_completion_at, created_at,
+        `id, status, scheduled_at, actual_start_at, expected_completion_at, created_at, job_order_code,
          customer:customer_record_id(full_name),
          service:service_id(name),
          customer_name`
@@ -65,7 +65,7 @@ export async function GET() {
       }
       return {
         job_id:                  j.id,
-        display_id:              `JO-${new Date(j.created_at).getFullYear()}-${j.id.slice(-4).toUpperCase()}`,
+        display_id:              j.job_order_code,
         customer:                (j.customer as any)?.full_name ?? j.customer_name ?? "—",
         service:                 (j.service  as any)?.name ?? "—",
         status:                  j.status,

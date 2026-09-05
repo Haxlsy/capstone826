@@ -5,7 +5,7 @@ import Link from "next/link"
 import { useRouter } from "next/navigation"
 import {
   ArrowLeft, PackageCheck, ChevronDown, Users, RefreshCw, CheckCircle2, XCircle,
-  Clock, RotateCcw, UserPlus, Loader2, Trash2,
+  Clock, RotateCcw, UserPlus, Loader2, Trash2, FileText,
 } from "lucide-react"
 import { JobOrderDetailSkeleton } from "@/app/dashboard/job-management/[id]/loading"
 import { PageHeader } from "@/components/ui/PageHeader"
@@ -66,10 +66,12 @@ interface CrewMember {
 
 interface JobDetail {
   id: string
+  job_order_code: string
   customer_name: string
   plate_number: string
   vehicle_unit: string
   contact_number: string
+  email: string | null
   service: string
   head_detailer: TeamMember | null
   head_installer: TeamMember | null
@@ -316,6 +318,34 @@ export default function JobOrderDetail({ jobId }: { jobId: string }) {
       </div>
     )
 
+  const jobData = job
+
+  function exportPDF() {
+    const esc = (v: string) =>
+      v.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+    const rows: [string, string][] = [
+      ["Job Order ID", jobData.job_order_code],
+      ["Customer Name", jobData.customer_name],
+      ["Email", jobData.email ?? "—"],
+      ["Phone Number", jobData.contact_number],
+      ["Vehicle", jobData.vehicle_unit],
+      ["Plate Number", jobData.plate_number],
+      ["Service", jobData.service],
+    ]
+    const rowsHtml = rows
+      .map(([label, value]) => `<tr><td>${esc(label)}</td><td>${esc(value)}</td></tr>`)
+      .join("")
+    const html = `<html><head><title>Job Order ${esc(jobData.job_order_code)}</title>
+      <style>body{font-family:sans-serif;font-size:12px}table{width:100%;border-collapse:collapse}
+      th,td{border:1px solid #dddddd;padding:6px 8px;text-align:left}td:first-child{font-weight:600;width:40%;background:#f7f8f8}</style>
+      </head><body><h2>Job Order ${esc(jobData.job_order_code)}</h2>
+      <table><tbody>${rowsHtml}</tbody></table></body></html>`
+    const blob = new Blob([html], { type: "text/html;charset=utf-8;" })
+    const url = URL.createObjectURL(blob)
+    const win = window.open(url, "_blank")
+    if (win) win.addEventListener("load", () => { win.print(); URL.revokeObjectURL(url) })
+  }
+
   const categoryGroups = job.stages.reduce((acc, s) => {
     const key = s.category_id ?? `_${s.category_name}`
     if (!acc.has(key)) {
@@ -341,7 +371,7 @@ export default function JobOrderDetail({ jobId }: { jobId: string }) {
     !hasReworkStages &&
     (job.status === "For Inspection" ||
       (Boolean(job.finishing_approved_at) && !["For Release", "Released"].includes(job.status)))
-  const displayId = `JO-${new Date(job.created_at).getFullYear()}-${job.id.slice(-4).toUpperCase()}`
+  const displayId = job.job_order_code
 
   return (
     <div className="mx-auto flex max-w-5xl flex-col gap-6">
@@ -354,6 +384,10 @@ export default function JobOrderDetail({ jobId }: { jobId: string }) {
           Back to Job Management
         </Link>
         <div className="flex flex-wrap items-center gap-2">
+          <Button variant="secondary" onClick={exportPDF}>
+            <FileText className="h-4 w-4" />
+            Export PDF
+          </Button>
           {job.status === "Pending" && (
             <Button variant="danger" onClick={() => setCancelConfirm(true)}>
               <Trash2 className="h-4 w-4" />
@@ -397,6 +431,7 @@ export default function JobOrderDetail({ jobId }: { jobId: string }) {
               <p className="mb-1 font-mono text-xs text-muted">{displayId}</p>
               <h1 className="text-xl font-bold text-heading">{job.customer_name}</h1>
               <p className="mt-0.5 text-sm text-body">{job.contact_number}</p>
+              {job.email && <p className="mt-0.5 text-sm text-body">{job.email}</p>}
             </div>
             <StatusBadge status={job.status} />
           </div>

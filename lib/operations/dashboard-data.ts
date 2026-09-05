@@ -8,7 +8,7 @@ export async function getDashboardData(){
     const { data: jobs} = await supabase
       .from("job_order")
       .select(
-        `id, status, scheduled_at, actual_start_at, expected_completion_at, created_at,
+        `id, status, scheduled_at, actual_start_at, expected_completion_at, created_at, job_order_code,
          customer:customer_record_id(full_name),
          service:service_id(name)`
       )
@@ -139,7 +139,7 @@ export async function getDashboardData(){
     // Recent jobs (latest 5)
     const recent_jobs = rows.slice(0, 5).map((r: any) => ({
       id:         r.id,
-      display_id: `JO-${new Date(r.created_at).getFullYear()}-${(r.id as string).slice(-4).toUpperCase()}`,
+      display_id: r.job_order_code,
       customer:   r.customer?.full_name ?? "Manual Entry",
       service:    r.service?.name ?? "—",
       status:     r.status,
