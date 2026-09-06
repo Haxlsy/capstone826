@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef, useMemo } from "react"
 import { useSearchParams } from "next/navigation"
+import { useTechnicianJobs } from "@/hooks/use-technician-jobs"
 import {
   TriangleAlert,
   CheckCircle2,
@@ -185,9 +186,20 @@ export default function HeadTechConcernsPage() {
   const [fieldErrors, setFieldErrors] = useState<FieldErrors>({})
   const [submitted, setSubmitted]     = useState(false)
 
-  // Job searchable combobox
-  const [userRole, setUserRole]       = useState<"head_detailer" | "head_installer" | "">("")
-  const [jobs, setJobs]               = useState<JobOption[]>([])
+  // Job searchable combobox — cached via React Query so bouncing between
+  // Jobs and Concerns doesn't re-run the whole jobs pipeline every visit.
+  const { data: technicianJobsData } = useTechnicianJobs()
+  const userRole = (technicianJobsData?.userRole ?? "") as "head_detailer" | "head_installer" | ""
+  const jobs = useMemo<JobOption[]>(
+    () =>
+      (technicianJobsData?.jobs ?? [])
+        .filter((j) => j.status !== "Released" && j.status !== "Cancelled")
+        .map((j) => ({
+          raw_id: j.raw_id,
+          label:  `${j.job_id} · ${j.plate_number}${j.service ? ` · ${j.service}` : ""}`,
+        })),
+    [technicianJobsData],
+  )
   const [jobSearch, setJobSearch]     = useState("")
   const [jobDropOpen, setJobDropOpen] = useState(false)
   const [selectedJobId, setSelectedJobId]   = useState("")
@@ -224,28 +236,6 @@ export default function HeadTechConcernsPage() {
     }
     load()
   }, [submitted])
-
-  // Load job list for dropdown
-  useEffect(() => {
-    async function loadJobs() {
-      try {
-        const res  = await fetch("/api/head-technician/jobs")
-        const json = await res.json()
-        if (!res.ok) return
-        setUserRole(json.user_role ?? "")
-        const mapped: JobOption[] = (json.jobs ?? [])
-          .filter((j: any) => j.status !== "Released" && j.status !== "Cancelled")
-          .map((j: any) => ({
-            raw_id: j.raw_id as string,
-            label:  `${j.job_id} · ${j.plate_number}${j.service ? ` · ${j.service}` : ""}`,
-          }))
-        setJobs(mapped)
-      } catch {
-        // leave empty
-      }
-    }
-    loadJobs()
-  }, [])
 
   // Pre-fill the job combobox when arriving via a "Report Concern" deep link
   // (e.g. /head-technician/concerns?jobOrderId=<raw_id>).

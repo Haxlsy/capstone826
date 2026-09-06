@@ -5,6 +5,7 @@ import { createAdminClient } from "@/lib/supabase/admin"
 import { fmtDateTime } from "@/lib/time-display"
 import { getAuditCaller } from "@/lib/auth/caller"
 import { logAuditCall } from "@/hooks/audit-helpers"
+import { sendPushToUser } from "@/lib/push/send"
 
 // ── GET — fetch own submitted concerns ───────────────────────────────────────
 export async function GET() {
@@ -31,6 +32,7 @@ export async function GET() {
       `)
       .eq("submitted_by_id", user.id)
       .order("submitted_at", { ascending: false })
+      .limit(50)
 
     data  = primary.data as any[] | null
     error = primary.error
@@ -47,6 +49,7 @@ export async function GET() {
         `)
         .eq("submitted_by_id", user.id)
         .order("submitted_at", { ascending: false })
+        .limit(50)
       data  = fallback.data as any[] | null
       error = fallback.error
     }
@@ -179,6 +182,11 @@ export async function POST(request: Request) {
           is_read:      false,
         }))
         await admin.from("notification").insert(notifRows)
+        await Promise.all(
+          notifRows.map((n) =>
+            sendPushToUser(n.user_id, { title: "New concern", body: autoTitle, url: "/dashboard/concerns" })
+          )
+        )
       }
     } catch (notifErr) {
       console.error("[head-technician/concerns] notification fan-out failed:", notifErr)

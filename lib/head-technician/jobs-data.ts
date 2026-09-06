@@ -48,29 +48,31 @@ export async function getHeadTechnicianJobs(userId: string) {
     return { jobs: [] as TechnicianJob[], userRole: role, displayName: profile.full_name }
   }
 
-  const { data: jobs, error } = await admin
-    .from("job_order")
-    .select(`
-      id, status, scheduled_at, actual_start_at, created_at, job_order_code,
-      customer:customer_record_id(full_name, plate_number, vehicle_unit),
-      service:service_id(name),
-      customer_name, plate_number, vehicle_unit
-    `)
-    .in("id", jobIds)
-    .not("status", "in", '("Released","Cancelled")')
-    .order("scheduled_at", { ascending: true })
+  // These three only depend on jobIds, not on each other — run concurrently
+  // instead of paying for three sequential round-trips.
+  const [{ data: jobs, error }, { data: allTeam }, { data: stageProg }] = await Promise.all([
+    admin
+      .from("job_order")
+      .select(`
+        id, status, scheduled_at, actual_start_at, created_at, job_order_code,
+        customer:customer_record_id(full_name, plate_number, vehicle_unit),
+        service:service_id(name),
+        customer_name, plate_number, vehicle_unit
+      `)
+      .in("id", jobIds)
+      .not("status", "in", '("Released","Cancelled")')
+      .order("scheduled_at", { ascending: true }),
+    admin
+      .from("job_order_team")
+      .select("job_order_id, role_in_job, user_account:user_account_id(full_name)")
+      .in("job_order_id", jobIds),
+    admin
+      .from("job_stage_progress")
+      .select("job_order_id, status, service_stage_id, stage_duration_mins")
+      .in("job_order_id", jobIds),
+  ])
 
   if (error) throw new Error(error.message)
-
-  const { data: allTeam } = await admin
-    .from("job_order_team")
-    .select("job_order_id, role_in_job, user_account:user_account_id(full_name)")
-    .in("job_order_id", jobIds)
-
-  const { data: stageProg } = await admin
-    .from("job_stage_progress")
-    .select("job_order_id, status, service_stage_id, stage_duration_mins")
-    .in("job_order_id", jobIds)
 
   const ssIds = [...new Set((stageProg ?? []).map((s: any) => s.service_stage_id as string).filter(Boolean))]
   let ssRows: SSRow[] = []

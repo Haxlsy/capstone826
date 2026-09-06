@@ -4,6 +4,7 @@ import { createClient } from "@/lib/supabase/server"
 import { createAdminClient } from "@/lib/supabase/admin"
 import { logAudit } from "@/hooks/audit-helpers"
 import { getJobDetailData } from "@/lib/operations/job-detail-data"
+import { sendPushToUser } from "@/lib/push/send"
 
 export async function GET(
   _request: Request,
@@ -141,7 +142,18 @@ export async function PATCH(
           job_order_id: id,
         })
       }
-      if (reassignNotifs.length > 0) await admin.from("notification").insert(reassignNotifs)
+      if (reassignNotifs.length > 0) {
+        await admin.from("notification").insert(reassignNotifs)
+        await Promise.all(
+          reassignNotifs.map((n) =>
+            sendPushToUser(n.user_id as string, {
+              title: "New job assigned",
+              body: n.message as string,
+              url: `/head-technician/${id}`,
+            })
+          )
+        )
+      }
     } catch (notifErr) {
       console.error("[job-orders PATCH] notification fan-out failed:", notifErr)
     }

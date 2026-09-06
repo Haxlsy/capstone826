@@ -15,6 +15,7 @@ import { Textarea, FieldLabel } from "@/components/ui/Field";
 import { categorySwatch } from "@/lib/ui/category-colors";
 import { fmtDateTime, fmtDateTimeShort } from "@/lib/time-display";
 import { HeadTechJobDetailSkeleton } from "@/app/head-technician/[jobId]/loading";
+import { useRealtimeRefetch } from "@/hooks/useRealtimeRefetch";
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -143,8 +144,8 @@ export default function HeadTechJobHistoryPage({ jobId }: { jobId: string }) {
     } catch {}
   }, []);
 
-  const load = useCallback(async () => {
-    setLoading(true);
+  const load = useCallback(async (opts?: { silent?: boolean }) => {
+    if (!opts?.silent) setLoading(true);
     setLoadError(null);
     try {
       const res  = await fetch(`/api/head-technician/jobs/${jobId}`);
@@ -155,11 +156,15 @@ export default function HeadTechJobHistoryPage({ jobId }: { jobId: string }) {
     } catch (err: unknown) {
       setLoadError(err instanceof Error ? err.message : "Network error");
     } finally {
-      setLoading(false);
+      if (!opts?.silent) setLoading(false);
     }
   }, [jobId]);
 
   useEffect(() => { load(); }, [load]);
+
+  // An Operations rework flag (or any other stage change) should show up here
+  // immediately without the technician needing to back out and reopen the job.
+  useRealtimeRefetch("job_stage_progress", useCallback(() => load({ silent: true }), [load]));
 
   // ── Derived ───────────────────────────────────────────────────────────────
 
