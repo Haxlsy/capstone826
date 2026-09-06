@@ -1,12 +1,14 @@
 "use client"
 
-import { useState, useEffect, useCallback, useRef } from "react"
-import { Search, User } from "lucide-react"
+import { useState, useEffect, useCallback, useMemo, useRef } from "react"
+import { Search, Car } from "lucide-react"
 import { Modal } from "@/components/ui/Modal"
 import { Button } from "@/components/ui/Button"
 import { FieldLabel, Input } from "@/components/ui/Field"
+import { Popover } from "@/components/ui/Popover"
 import { useToast } from "@/components/ui/Toast"
-import { cn } from "@/lib/utils"
+import { getInitials } from "@/hooks/useCurrentUser"
+import { groupByCustomer } from "@/lib/customer-grouping"
 
 export interface CustomerRecordOption {
   id:             string
@@ -90,11 +92,18 @@ export function LinkAccountModal({ open, onClose, psid, initialRecordId, initial
     return () => clearTimeout(t)
   }, [search, open, load])
 
+  // Grouped the same way Customer Records presents a customer with multiple
+  // vehicles — one header, one row per vehicle — instead of a flat list
+  // where the same name repeats once per vehicle.
+  const groups = useMemo(
+    () => groupByCustomer(results, (r) => r.id, (r) => r.contact_number, (r) => r.psid),
+    [results],
+  )
+
   function selectRecord(r: CustomerRecordOption) {
     setSelectedId(r.id)
     setSelectedLabel({ name: r.full_name, sub: recordSubtitle(r) })
     setSearch("")
-    setDropOpen(false)
   }
 
   async function handleLink() {
@@ -151,49 +160,58 @@ export function LinkAccountModal({ open, onClose, psid, initialRecordId, initial
 
         <div>
           <FieldLabel>Search Customer Records</FieldLabel>
-          <div className="relative">
-            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted" />
-            <input
-              type="text"
-              value={selectedId && !dropOpen ? selectedLabel?.name ?? "" : search}
-              onFocus={() => {
-                if (selectedId) {
-                  setSelectedId(null)
-                  setSelectedLabel(null)
-                  setSearch("")
-                }
-                setDropOpen(true)
-              }}
-              onBlur={() => setTimeout(() => setDropOpen(false), 150)}
-              onChange={(e) => {
-                setSearch(e.target.value)
-                setDropOpen(true)
-              }}
-              placeholder="Search by name, plate, contact, or Job Order Code"
-              className="h-10 w-full rounded-sm border border-border bg-surface pl-9 pr-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
-            />
+          <Popover
+            open={dropOpen}
+            onOpenChange={setDropOpen}
+            matchTriggerWidth
+            placement="bottom"
+            panelClassName="max-h-72 overflow-y-auto p-0"
+            trigger={() => (
+              <div className="relative">
+                <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted" />
+                <input
+                  type="text"
+                  value={selectedId && !dropOpen ? selectedLabel?.name ?? "" : search}
+                  onFocus={() => {
+                    if (selectedId) {
+                      setSelectedId(null)
+                      setSelectedLabel(null)
+                      setSearch("")
+                    }
+                    setDropOpen(true)
+                  }}
+                  onChange={(e) => {
+                    setSearch(e.target.value)
+                    setDropOpen(true)
+                  }}
+                  placeholder="Search by name, plate, contact, or Job Order Code"
+                  className="h-10 w-full rounded-sm border border-border bg-surface pl-9 pr-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
+                />
+              </div>
+            )}
+          >
+            {(close) =>
+              loading ? (
+                <p className="p-4 text-center text-sm text-muted">Loading…</p>
+              ) : groups.length === 0 ? (
+                <p className="p-4 text-center text-sm text-muted">No matching customer records.</p>
+              ) : (
+                groups.map((group) => {
+                  const isMulti = group.vehicles.length > 1
 
-            {dropOpen && (
-              <div className="absolute z-50 mt-1 max-h-72 w-full overflow-y-auto rounded-card border border-border-subtle bg-surface shadow-pop">
-                {loading ? (
-                  <p className="p-4 text-center text-sm text-muted">Loading…</p>
-                ) : results.length === 0 ? (
-                  <p className="p-4 text-center text-sm text-muted">No matching customer records.</p>
-                ) : (
-                  results.map((r) => {
+                  if (!isMulti) {
+                    const r = group.primary
                     const isTaken = Boolean(r.psid) && r.psid !== psidValue.trim()
                     return (
                       <button
-                        key={r.id}
+                        key={group.key}
                         type="button"
                         onMouseDown={(e) => e.preventDefault()}
-                        onClick={() => selectRecord(r)}
-                        className={cn(
-                          "flex w-full items-center gap-3 border-b border-border-subtle px-4 py-3 text-left last:border-b-0 transition-colors hover:bg-surface-subtle",
-                        )}
+                        onClick={() => { selectRecord(r); close() }}
+                        className="flex w-full items-center gap-3 border-b border-border-subtle px-4 py-3 text-left last:border-b-0 transition-colors hover:bg-surface-subtle"
                       >
-                        <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-surface-muted text-body">
-                          <User className="h-4 w-4" />
+                        <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-surface-muted text-xs font-bold text-body">
+                          {getInitials(r.full_name)}
                         </span>
                         <div className="min-w-0 flex-1">
                           <p className="truncate text-sm font-medium text-heading">{r.full_name}</p>
@@ -206,11 +224,49 @@ export function LinkAccountModal({ open, onClose, psid, initialRecordId, initial
                         )}
                       </button>
                     )
-                  })
-                )}
-              </div>
-            )}
-          </div>
+                  }
+
+                  return (
+                    <div key={group.key} className="border-b border-border-subtle last:border-b-0">
+                      {/* Customer header — grouping label only, not itself selectable
+                          since a PSID attaches to one specific vehicle record. */}
+                      <div className="flex items-center gap-3 px-4 py-2.5 bg-surface-subtle">
+                        <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-surface-muted text-[11px] font-bold text-body">
+                          {getInitials(group.primary.full_name)}
+                        </span>
+                        <div className="min-w-0 flex-1">
+                          <p className="truncate text-sm font-medium text-heading">{group.primary.full_name}</p>
+                          <p className="truncate text-[11px] text-muted">{group.primary.contact_number}</p>
+                        </div>
+                      </div>
+                      {group.vehicles.map((r) => {
+                        const isTaken = Boolean(r.psid) && r.psid !== psidValue.trim()
+                        return (
+                          <button
+                            key={r.id}
+                            type="button"
+                            onMouseDown={(e) => e.preventDefault()}
+                            onClick={() => { selectRecord(r); close() }}
+                            className="flex w-full items-center gap-3 py-2.5 pl-11 pr-4 text-left transition-colors hover:bg-surface-subtle"
+                          >
+                            <Car className="h-3.5 w-3.5 shrink-0 text-muted" />
+                            <span className="min-w-0 flex-1 truncate text-sm text-body">
+                              <span className="font-mono font-medium text-heading">{r.plate_number}</span> · {r.vehicle_unit}
+                            </span>
+                            {isTaken && (
+                              <span className="shrink-0 rounded-full bg-status-warning/10 px-2 py-0.5 text-[10px] font-semibold text-status-warning">
+                                Already linked
+                              </span>
+                            )}
+                          </button>
+                        )
+                      })}
+                    </div>
+                  )
+                })
+              )
+            }
+          </Popover>
 
           {selectedId && selectedLabel && !dropOpen && (
             <p className="mt-1.5 truncate text-xs text-muted">{selectedLabel.sub}</p>
