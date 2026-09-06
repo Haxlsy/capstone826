@@ -10,7 +10,7 @@ import { SearchBar } from "@/components/ui/SearchBar"
 import { Popover } from "@/components/ui/Popover"
 import { FilterTrigger } from "@/components/ui/FilterTrigger"
 import { Tabs } from "@/components/ui/Tabs"
-import { DataTable, type Column } from "@/components/ui/DataTable"
+import { DataTable, RowActionHint, type Column } from "@/components/ui/DataTable"
 import { Pagination } from "@/components/ui/Pagination"
 import { StatusBadge } from "@/components/ui/Badge"
 import { FieldLabel } from "@/components/ui/Field"
@@ -113,12 +113,7 @@ export default function SalesJobList({ jobOrders: rawOrders }: { jobOrders: any[
       key: "go",
       header: "",
       align: "right",
-      cell: () => (
-        <span className="inline-flex items-center gap-1 text-[11px] font-medium text-muted">
-          <span className="hidden whitespace-nowrap group-hover:inline">View details</span>
-          <ArrowRight className="h-3.5 w-3.5" />
-        </span>
-      ),
+      cell: () => <RowActionHint icon={ArrowRight} />,
     },
   ]
 
