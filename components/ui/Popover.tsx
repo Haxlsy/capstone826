@@ -1,12 +1,21 @@
 "use client"
 
 import * as React from "react"
+import { createPortal } from "react-dom"
 import { cn } from "@/lib/utils"
 
 /**
- * Lightweight anchored popover: a trigger + a panel that closes on
- * outside-click / Escape. Used for filter menus, row ⋯-action menus,
- * and search-combobox dropdowns.
+ * Anchored popover: a trigger + a panel that closes on outside-click /
+ * Escape. Used for filter menus, row ⋯-action menus, and search-combobox
+ * dropdowns.
+ *
+ * The panel is rendered into a portal (document.body) and positioned from
+ * the trigger's live bounding rect, rather than as a normal absolutely-
+ * positioned DOM child. A plain child gets silently clipped by ANY ancestor
+ * with `overflow` set — a scrollable table wrapper, a card, etc. — which is
+ * exactly what was happening to every row-actions menu once its table
+ * container needed `overflow-y-hidden` for an unrelated scrollbar fix. A
+ * portal has no such ancestor to be clipped by.
  */
 export function Popover({
   trigger,
@@ -29,36 +38,91 @@ export function Popover({
     onOpenChange?.(next)
     if (controlledOpen === undefined) setUncontrolled(next)
   }
-  const ref = React.useRef<HTMLDivElement>(null)
+
+  const triggerRef = React.useRef<HTMLDivElement>(null)
+  const panelRef = React.useRef<HTMLDivElement>(null)
+  const [coords, setCoords] = React.useState<{ top?: number; bottom?: number; left?: number; right?: number } | null>(null)
+  const [mounted, setMounted] = React.useState(false)
+
+  // createPortal needs document.body, which doesn't exist during SSR.
+  React.useEffect(() => setMounted(true), [])
+
+  // Flips the panel above the trigger when there isn't room below (e.g. the
+  // trigger is near the bottom of the viewport, as on a table's last row) —
+  // measured off the panel's own real height, not a guess, so it only flips
+  // when actually needed. The panel is rendered `visibility: hidden` until
+  // `coords` is set (see below), so this first, unpositioned render is
+  // invisible but still gives us a real element to measure.
+  const updatePosition = React.useCallback(() => {
+    const rect = triggerRef.current?.getBoundingClientRect()
+    if (!rect) return
+    const panelHeight = panelRef.current?.getBoundingClientRect().height ?? 0
+    const spaceBelow = window.innerHeight - rect.bottom
+    const spaceAbove = rect.top
+    const openAbove = panelHeight > 0 && spaceBelow < panelHeight + 12 && spaceAbove > spaceBelow
+
+    setCoords({
+      ...(openAbove ? { bottom: window.innerHeight - rect.top + 6 } : { top: rect.bottom + 6 }),
+      ...(align === "end" ? { right: window.innerWidth - rect.right } : { left: rect.left }),
+    })
+  }, [align])
+
+  React.useLayoutEffect(() => {
+    if (open) updatePosition()
+    else setCoords(null)
+  }, [open, updatePosition])
 
   React.useEffect(() => {
     if (!open) return
+
     const onDown = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false)
+      const target = e.target as Node
+      if (triggerRef.current?.contains(target)) return
+      if (panelRef.current?.contains(target)) return
+      setOpen(false)
     }
     const onKey = (e: KeyboardEvent) => e.key === "Escape" && setOpen(false)
+    // A fixed-position panel would otherwise visually detach from its trigger
+    // as soon as any ancestor scrolls (the table itself, or the page) —
+    // closing on scroll is simpler and more robust than continuously
+    // re-tracking the trigger's position.
+    const onScroll = () => setOpen(false)
+
     document.addEventListener("mousedown", onDown)
     document.addEventListener("keydown", onKey)
+    window.addEventListener("scroll", onScroll, true)
+    window.addEventListener("resize", onScroll)
     return () => {
       document.removeEventListener("mousedown", onDown)
       document.removeEventListener("keydown", onKey)
+      window.removeEventListener("scroll", onScroll, true)
+      window.removeEventListener("resize", onScroll)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open])
 
   return (
-    <div className="relative" ref={ref}>
+    <div className="relative" ref={triggerRef}>
       {trigger({ open, toggle: () => setOpen(!open) })}
-      {open && (
+      {open && mounted && createPortal(
         <div
+          ref={panelRef}
+          style={{
+            position: "fixed",
+            visibility: coords ? "visible" : "hidden",
+            top: coords?.top,
+            bottom: coords?.bottom,
+            left: coords?.left,
+            right: coords?.right,
+          }}
           className={cn(
-            "absolute z-50 mt-1.5 min-w-[12rem] rounded-card border border-border-subtle bg-surface p-1.5 shadow-pop",
-            align === "end" ? "right-0" : "left-0",
+            "z-50 min-w-[12rem] rounded-card border border-border-subtle bg-surface p-1.5 shadow-pop",
             panelClassName,
           )}
         >
           {typeof children === "function" ? children(() => setOpen(false)) : children}
-        </div>
+        </div>,
+        document.body,
       )}
     </div>
   )
