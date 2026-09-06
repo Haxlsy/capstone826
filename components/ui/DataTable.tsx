@@ -14,6 +14,36 @@ export interface Column<Row> {
 }
 
 /**
+ * Trailing-column "go to detail" affordance: just the icon at rest, with a
+ * floating tooltip that appears above it on hover. Relies on the row's own
+ * `group` class (added below whenever `onRowClick` is set) — the tooltip is
+ * `absolute`, so it overlays the row instead of ever affecting its layout or
+ * width, unlike inline hover-revealed text.
+ */
+export function RowActionHint({
+  icon: Icon,
+  label = "View details",
+}: {
+  icon: React.ComponentType<{ className?: string }>
+  label?: string
+}) {
+  return (
+    <span className="relative inline-flex items-center justify-end">
+      <Icon className="h-3.5 w-3.5 text-muted" />
+      <span
+        className={cn(
+          "pointer-events-none absolute bottom-full right-0 mb-1.5 whitespace-nowrap rounded-sm",
+          "bg-heading px-2 py-1 text-[11px] font-medium text-white shadow-pop",
+          "opacity-0 transition-opacity group-hover:opacity-100",
+        )}
+      >
+        {label}
+      </span>
+    </span>
+  )
+}
+
+/**
  * Presentational table shell — gray uppercase header, muted empty-state block,
  * optional footer. Pages keep their own fetch / filter / sort / pagination
  * logic; this only renders.

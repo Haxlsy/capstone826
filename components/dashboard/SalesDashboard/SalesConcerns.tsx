@@ -9,7 +9,7 @@ import { toConcernRecords } from "@/lib/operations/concern-record"
 import { PageHeader } from "@/components/ui/PageHeader"
 import { SearchBar } from "@/components/ui/SearchBar"
 import { Tabs } from "@/components/ui/Tabs"
-import { DataTable, type Column } from "@/components/ui/DataTable"
+import { DataTable, RowActionHint, type Column } from "@/components/ui/DataTable"
 import { Pagination } from "@/components/ui/Pagination"
 import { Drawer } from "@/components/ui/Drawer"
 import { StatusBadge } from "@/components/ui/Badge"
@@ -176,15 +176,7 @@ export default function SalesConcerns({ concerns }: { concerns: any[] }) {
     },
     { key: "submitted", header: "Submitted", cell: (r) => <span className="whitespace-nowrap text-xs text-muted">{r.submitted_at}</span> },
     { key: "status", header: "Status", cell: (r) => <StatusBadge status={r.status} /> },
-    {
-      key: "go", header: "", align: "right",
-      cell: () => (
-        <span className="inline-flex items-center gap-1 text-[11px] font-medium text-muted">
-          <span className="hidden whitespace-nowrap group-hover:inline">View details</span>
-          <ArrowRight className="h-3.5 w-3.5" />
-        </span>
-      ),
-    },
+    { key: "go", header: "", align: "right", cell: () => <RowActionHint icon={ArrowRight} /> },
   ]
 
   return (

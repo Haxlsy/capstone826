@@ -96,13 +96,27 @@ export const DEFAULT_BOOKING_MESSAGE_FIL =
  * `DEFAULT_*_MESSAGE_EN`/`_FIL` constant above via `resolveTemplate()` in
  * lib/messenger/copy.ts.
  */
+export const weekdaySchema = z.enum(["mon", "tue", "wed", "thu", "fri", "sat", "sun"])
+export type Weekday = z.infer<typeof weekdaySchema>
+
+export const WEEKDAYS: Weekday[] = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"]
+
+/** Matches the shop's actual current hours — the default so nothing changes
+ *  in production until an admin edits the new Operating Hours setting. */
+export const DEFAULT_OPERATING_DAYS: Weekday[] = ["tue", "wed", "thu", "fri", "sat", "sun"]
+export const DEFAULT_OPERATING_OPEN_TIME  = "08:00"
+export const DEFAULT_OPERATING_CLOSE_TIME = "20:00"
+
 export const chatbotSettingsSchema = z.object({
   personality:             botPersonalitySchema,
   enable_ai_chatbot:       z.boolean().default(true),
   enable_media_validation: z.boolean().default(true),
   ai_disabled_message:     z.string().max(2000).default(DEFAULT_AI_DISABLED_MESSAGE),
-  notify_sales:            z.boolean(),
   language:                botLanguageSchema,
+  operating_days:                z.array(weekdaySchema).default(DEFAULT_OPERATING_DAYS),
+  operating_open_time:           z.string().default(DEFAULT_OPERATING_OPEN_TIME),
+  operating_close_time:          z.string().default(DEFAULT_OPERATING_CLOSE_TIME),
+  operating_closed_on_holidays:  z.boolean().default(true),
   vehicle_status_message_en:       z.string().max(2000),
   vehicle_status_message_fil:      z.string().max(2000),
   link_verification_message_en:    z.string().max(2000),
@@ -116,6 +130,63 @@ export const chatbotSettingsSchema = z.object({
 }).passthrough()
 
 export type ChatbotSettings = z.infer<typeof chatbotSettingsSchema>
+
+const WEEKDAY_LABELS: Record<Weekday, string> = {
+  mon: "Monday", tue: "Tuesday", wed: "Wednesday", thu: "Thursday",
+  fri: "Friday", sat: "Saturday", sun: "Sunday",
+}
+
+function fmtTime12h(hhmm: string): string {
+  const [hStr, mStr] = hhmm.split(":")
+  const h = Number(hStr) || 0
+  const m = Number(mStr) || 0
+  const period = h >= 12 ? "PM" : "AM"
+  const h12 = h % 12 === 0 ? 12 : h % 12
+  return m === 0 ? `${h12}:00 ${period}` : `${h12}:${String(m).padStart(2, "0")} ${period}`
+}
+
+/**
+ * Turns the structured Operating Hours setting into the same sentence shape
+ * customers/the AI previously saw as free-text knowledge-base content — e.g.
+ * "Tuesday to Sunday, 8:00 AM to 8:00 PM. Closed on Mondays and public
+ * holidays." Pure — lives here (not lib/messenger/chatbot.ts, which is
+ * server-only) so both the admin client's live preview and every server-side
+ * caller (chatbot prompt, "For Release" customer message) share one
+ * implementation and can never drift into disagreeing wording.
+ */
+export function formatOperatingHours(
+  s: Pick<ChatbotSettings, "operating_days" | "operating_open_time" | "operating_close_time" | "operating_closed_on_holidays">,
+): string {
+  const openDays = s.operating_days ?? []
+  if (openDays.length === 0) return "Operating hours have not been set yet."
+
+  const ordered = WEEKDAYS.filter((d) => openDays.includes(d))
+  const ranges: Weekday[][] = []
+  for (const d of ordered) {
+    const current = ranges.at(-1)
+    const lastDay = current?.at(-1)
+    if (current && lastDay && WEEKDAYS.indexOf(lastDay) === WEEKDAYS.indexOf(d) - 1) {
+      current.push(d)
+    } else {
+      ranges.push([d])
+    }
+  }
+  const dayText = ranges
+    .map((r) => (r.length > 1 ? `${WEEKDAY_LABELS[r[0]]} to ${WEEKDAY_LABELS[r.at(-1)!]}` : WEEKDAY_LABELS[r[0]]))
+    .join(", ")
+
+  const timeText = `${fmtTime12h(s.operating_open_time || DEFAULT_OPERATING_OPEN_TIME)} to ${fmtTime12h(s.operating_close_time || DEFAULT_OPERATING_CLOSE_TIME)}`
+
+  let text = `${dayText}, ${timeText}.`
+
+  const closedDays = WEEKDAYS.filter((d) => !openDays.includes(d))
+  const closedParts: string[] = []
+  if (closedDays.length > 0) closedParts.push(closedDays.map((d) => `${WEEKDAY_LABELS[d]}s`).join(" and "))
+  if (s.operating_closed_on_holidays) closedParts.push("public holidays")
+  if (closedParts.length > 0) text += ` Closed on ${closedParts.join(" and ")}.`
+
+  return text
+}
 
 // =================================================================
 // Knowledge base

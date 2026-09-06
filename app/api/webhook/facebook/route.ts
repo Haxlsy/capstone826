@@ -125,11 +125,10 @@ async function handOffWhileDisabled(
     messageBody: string
     timestamp: string
     message: string
-    notifySales: boolean
     note?: string
   },
 ) {
-  const { conversation_id, senderId, psidName, messageBody, timestamp, message, notifySales } = opts
+  const { conversation_id, senderId, psidName, messageBody, timestamp, message } = opts
   const note = opts.note ?? "AI chatbot is disabled — routed to staff." 
 
   try {
@@ -146,24 +145,22 @@ async function handOffWhileDisabled(
     })
     if (inquiryErr) console.error("[webhook/facebook] disabled-mode inquiry insert failed:", inquiryErr.message)
 
-    if (notifySales) {
-      const { data: salesUsers } = await admin
-        .from("user_account")
-        .select("id")
-        .eq("role", "sales")
-        .eq("is_archived", false)
+    const { data: salesUsers } = await admin
+      .from("user_account")
+      .select("id")
+      .eq("role", "sales")
+      .eq("is_archived", false)
 
-      if (salesUsers?.length) {
-        await admin.from("notification").insert(
-          salesUsers.map((u: any) => ({
-            user_id:      u.id,
-            type:         "inquiry",
-            message:      `New Human Response inquiry from ${psidName}`,
-            job_order_id: null,
-            is_read:      false,
-          })),
-        )
-      }
+    if (salesUsers?.length) {
+      await admin.from("notification").insert(
+        salesUsers.map((u: any) => ({
+          user_id:      u.id,
+          type:         "inquiry",
+          message:      `New Human Response inquiry from ${psidName}`,
+          job_order_id: null,
+          is_read:      false,
+        })),
+      )
     }
   } catch (err) {
     console.error("[webhook/facebook] disabled-mode handoff failed:", err)
@@ -353,7 +350,6 @@ async function handleInboundMessage(
       messageBody,
       timestamp,
       message: settings.ai_disabled_message?.trim() || DEFAULT_AI_DISABLED_MESSAGE,
-      notifySales: settings.notify_sales !== false,
     })
     return
   }
@@ -1267,11 +1263,8 @@ async function handleInboundMessage(
     })
     if (inquiryErr) console.error("[webhook/facebook] inquiry insert failed:", inquiryErr.message)
 
-    // ── Notify Sales users (gated by notify_sales + inquiry type) ───────────
-    if (
-      settings?.notify_sales &&
-      (inquiry_type === "Booking" || inquiry_type === "Human Response")
-    ) {
+    // ── Notify Sales users — always, for these inquiry types (mandatory) ────
+    if (inquiry_type === "Booking" || inquiry_type === "Human Response") {
       try {
         const { data: salesUsers } = await admin
           .from("user_account")
@@ -1294,8 +1287,8 @@ async function handleInboundMessage(
       }
     }
 
-    // A suspected impersonation attempt always notifies Sales — regardless of
-    // the notify_sales setting — so it is seen in real time, not just in the log.
+    // A suspected impersonation attempt always notifies Sales too, so it is
+    // seen in real time, not just in the log.
     if (linkEscalation?.impersonation) {
       try {
         const { data: salesUsers } = await admin
