@@ -4,11 +4,11 @@ import { useState, useEffect, useCallback, useRef } from "react"
 import { Search, User } from "lucide-react"
 import { Modal } from "@/components/ui/Modal"
 import { Button } from "@/components/ui/Button"
-import { Input, FieldLabel } from "@/components/ui/Field"
+import { FieldLabel, Input } from "@/components/ui/Field"
 import { useToast } from "@/components/ui/Toast"
 import { cn } from "@/lib/utils"
 
-interface CustomerRecordOption {
+export interface CustomerRecordOption {
   id:             string
   full_name:      string
   plate_number:   string
@@ -26,19 +26,30 @@ interface LinkAccountModalProps {
   /** Pre-selects a specific record when opened from that record's row
    *  (e.g. the Customer Records page). Still changeable via search. */
   initialRecordId?: string
+  /** Full data for `initialRecordId`, when the caller already has it in
+   *  memory (Customer Records does) — lets the combobox show the right
+   *  selection immediately without depending on that record turning up in
+   *  whatever the current paginated search happens to return. */
+  initialRecord?: CustomerRecordOption
   onLinked?: (recordId: string, psid: string) => void
+}
+
+function recordSubtitle(r: Pick<CustomerRecordOption, "plate_number" | "vehicle_unit" | "contact_number">) {
+  return `${r.plate_number} · ${r.vehicle_unit} · ${r.contact_number}`
 }
 
 // Replaces the old inline "paste the PSID into a record row" workflow: Sales
 // searches customer records (by name, plate, contact, or Job Order Code) and
 // picks the right one, instead of hunting for the row to edit by hand.
-export function LinkAccountModal({ open, onClose, psid, initialRecordId, onLinked }: LinkAccountModalProps) {
+export function LinkAccountModal({ open, onClose, psid, initialRecordId, initialRecord, onLinked }: LinkAccountModalProps) {
   const toast = useToast()
   const [psidValue, setPsidValue] = useState(psid ?? "")
   const [search, setSearch] = useState("")
+  const [dropOpen, setDropOpen] = useState(false)
   const [results, setResults] = useState<CustomerRecordOption[]>([])
   const [loading, setLoading] = useState(false)
   const [selectedId, setSelectedId] = useState<string | null>(null)
+  const [selectedLabel, setSelectedLabel] = useState<{ name: string; sub: string } | null>(null)
   const [linking, setLinking] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const isFirstLoad = useRef(true)
@@ -60,12 +71,14 @@ export function LinkAccountModal({ open, onClose, psid, initialRecordId, onLinke
     if (!open) return
     setPsidValue(psid ?? "")
     setSearch("")
+    setDropOpen(false)
     setSelectedId(initialRecordId ?? null)
+    setSelectedLabel(initialRecord ? { name: initialRecord.full_name, sub: recordSubtitle(initialRecord) } : null)
     setError(null)
     isFirstLoad.current = true
     load("")
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, psid, initialRecordId])
+  }, [open, psid, initialRecordId, initialRecord])
 
   useEffect(() => {
     if (!open) return
@@ -76,6 +89,13 @@ export function LinkAccountModal({ open, onClose, psid, initialRecordId, onLinke
     const t = setTimeout(() => load(search), 300)
     return () => clearTimeout(t)
   }, [search, open, load])
+
+  function selectRecord(r: CustomerRecordOption) {
+    setSelectedId(r.id)
+    setSelectedLabel({ name: r.full_name, sub: recordSubtitle(r) })
+    setSearch("")
+    setDropOpen(false)
+  }
 
   async function handleLink() {
     if (!selectedId || !psidValue.trim()) return
@@ -131,50 +151,69 @@ export function LinkAccountModal({ open, onClose, psid, initialRecordId, onLinke
 
         <div>
           <FieldLabel>Search Customer Records</FieldLabel>
-          <Input
-            icon={<Search />}
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search by name, plate, contact, or Job Order Code"
-          />
-        </div>
+          <div className="relative">
+            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted" />
+            <input
+              type="text"
+              value={selectedId && !dropOpen ? selectedLabel?.name ?? "" : search}
+              onFocus={() => {
+                if (selectedId) {
+                  setSelectedId(null)
+                  setSelectedLabel(null)
+                  setSearch("")
+                }
+                setDropOpen(true)
+              }}
+              onBlur={() => setTimeout(() => setDropOpen(false), 150)}
+              onChange={(e) => {
+                setSearch(e.target.value)
+                setDropOpen(true)
+              }}
+              placeholder="Search by name, plate, contact, or Job Order Code"
+              className="h-10 w-full rounded-sm border border-border bg-surface pl-9 pr-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
+            />
 
-        <div className="max-h-72 overflow-y-auto rounded-card border border-border-subtle">
-          {loading ? (
-            <p className="p-4 text-center text-sm text-muted">Loading…</p>
-          ) : results.length === 0 ? (
-            <p className="p-4 text-center text-sm text-muted">No matching customer records.</p>
-          ) : (
-            results.map((r) => {
-              const isSelected = selectedId === r.id
-              const isTaken = Boolean(r.psid) && r.psid !== psidValue.trim()
-              return (
-                <button
-                  key={r.id}
-                  type="button"
-                  onClick={() => setSelectedId(r.id)}
-                  className={cn(
-                    "flex w-full items-center gap-3 border-b border-border-subtle px-4 py-3 text-left last:border-b-0 transition-colors",
-                    isSelected ? "bg-primary/10" : "hover:bg-surface-subtle",
-                  )}
-                >
-                  <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-surface-muted text-body">
-                    <User className="h-4 w-4" />
-                  </span>
-                  <div className="min-w-0 flex-1">
-                    <p className="truncate text-sm font-medium text-heading">{r.full_name}</p>
-                    <p className="truncate text-xs text-muted">
-                      {r.plate_number} · {r.vehicle_unit} · {r.contact_number}
-                    </p>
-                  </div>
-                  {isTaken && (
-                    <span className="shrink-0 rounded-full bg-status-warning/10 px-2 py-0.5 text-[10px] font-semibold text-status-warning">
-                      Already linked
-                    </span>
-                  )}
-                </button>
-              )
-            })
+            {dropOpen && (
+              <div className="absolute z-50 mt-1 max-h-72 w-full overflow-y-auto rounded-card border border-border-subtle bg-surface shadow-pop">
+                {loading ? (
+                  <p className="p-4 text-center text-sm text-muted">Loading…</p>
+                ) : results.length === 0 ? (
+                  <p className="p-4 text-center text-sm text-muted">No matching customer records.</p>
+                ) : (
+                  results.map((r) => {
+                    const isTaken = Boolean(r.psid) && r.psid !== psidValue.trim()
+                    return (
+                      <button
+                        key={r.id}
+                        type="button"
+                        onMouseDown={(e) => e.preventDefault()}
+                        onClick={() => selectRecord(r)}
+                        className={cn(
+                          "flex w-full items-center gap-3 border-b border-border-subtle px-4 py-3 text-left last:border-b-0 transition-colors hover:bg-surface-subtle",
+                        )}
+                      >
+                        <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-surface-muted text-body">
+                          <User className="h-4 w-4" />
+                        </span>
+                        <div className="min-w-0 flex-1">
+                          <p className="truncate text-sm font-medium text-heading">{r.full_name}</p>
+                          <p className="truncate text-xs text-muted">{recordSubtitle(r)}</p>
+                        </div>
+                        {isTaken && (
+                          <span className="shrink-0 rounded-full bg-status-warning/10 px-2 py-0.5 text-[10px] font-semibold text-status-warning">
+                            Already linked
+                          </span>
+                        )}
+                      </button>
+                    )
+                  })
+                )}
+              </div>
+            )}
+          </div>
+
+          {selectedId && selectedLabel && !dropOpen && (
+            <p className="mt-1.5 truncate text-xs text-muted">{selectedLabel.sub}</p>
           )}
         </div>
 

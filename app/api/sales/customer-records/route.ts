@@ -8,6 +8,8 @@ export async function GET(request: Request) {
   try {
     const { searchParams } = new URL(request.url)
     const search = searchParams.get("search") ?? ""
+    const limit  = Math.min(Math.max(parseInt(searchParams.get("limit")  ?? "20", 10) || 20, 1), 100)
+    const offset = Math.max(parseInt(searchParams.get("offset") ?? "0",  10) || 0, 0)
 
     const supabase = createAdminClient()
     let query = supabase
@@ -40,9 +42,9 @@ export async function GET(request: Request) {
       query = query.or(orClauses.join(","))
     }
 
-    const { data, error } = await query
+    const { data, error } = await query.range(offset, offset + limit - 1)
     if (error) return NextResponse.json({ error: error.message }, { status: 500 })
-    return NextResponse.json({ records: data ?? [] })
+    return NextResponse.json({ records: data ?? [], hasMore: (data ?? []).length === limit })
   } catch (err: any) {
     return NextResponse.json({ error: err?.message ?? String(err) }, { status: 500 })
   }
