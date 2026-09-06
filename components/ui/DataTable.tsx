@@ -74,7 +74,7 @@ export function DataTable<Row>({
 
   return (
     <div className={cn("flex flex-col gap-4", className)}>
-      <div className="overflow-x-auto rounded-card border border-border-subtle bg-surface">
+      <div className="overflow-x-auto overflow-y-hidden rounded-card border border-border-subtle bg-surface">
         <table className="w-full min-w-[640px] text-sm">
           <thead>
             <tr className="border-b border-border-subtle bg-surface-subtle">

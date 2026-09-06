@@ -52,7 +52,7 @@ export function Tabs({
   }
 
   return (
-    <div className={cn("flex gap-1 overflow-x-auto border-b border-border-subtle", className)}>
+    <div className={cn("flex gap-1 overflow-x-auto overflow-y-hidden border-b border-border-subtle", className)}>
       {items.map((t) => (
         <button
           key={t.key}
