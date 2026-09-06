@@ -3,7 +3,7 @@
 import { useState, useMemo } from "react"
 import { useRouter } from "next/navigation"
 import { useRealtimeRefetch } from "@/hooks/useRealtimeRefetch"
-import { Paperclip, CheckCircle } from "lucide-react"
+import { Paperclip, CheckCircle, ArrowRight } from "lucide-react"
 import type { ConcernRecord } from "@/lib/operations/concern-record"
 import { toConcernRecords } from "@/lib/operations/concern-record"
 import { PageHeader } from "@/components/ui/PageHeader"
@@ -176,7 +176,15 @@ export default function SalesConcerns({ concerns }: { concerns: any[] }) {
     },
     { key: "submitted", header: "Submitted", cell: (r) => <span className="whitespace-nowrap text-xs text-muted">{r.submitted_at}</span> },
     { key: "status", header: "Status", cell: (r) => <StatusBadge status={r.status} /> },
-    { key: "go", header: "", align: "right", cell: () => <span className="whitespace-nowrap text-[11px] font-medium text-muted">View details →</span> },
+    {
+      key: "go", header: "", align: "right",
+      cell: () => (
+        <span className="inline-flex items-center gap-1 text-[11px] font-medium text-muted">
+          <span className="hidden whitespace-nowrap group-hover:inline">View details</span>
+          <ArrowRight className="h-3.5 w-3.5" />
+        </span>
+      ),
+    },
   ]
 
   return (

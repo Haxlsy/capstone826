@@ -8,7 +8,7 @@ export async function getDashboardData(){
     const { data: jobs} = await supabase
       .from("job_order")
       .select(
-        `id, status, scheduled_at, actual_start_at, expected_completion_at, created_at, job_order_code,
+        `id, status, scheduled_at, actual_start_at, expected_completion_at, created_at, updated_at, job_order_code,
          customer:customer_record_id(full_name),
          service:service_id(name)`
       )
@@ -136,15 +136,21 @@ export async function getDashboardData(){
 
     for (const _ of overdueJobIds) status_counts["delayed"]++
 
-    // Recent jobs (latest 5)
-    const recent_jobs = rows.slice(0, 5).map((r: any) => ({
-      id:         r.id,
-      display_id: r.job_order_code,
-      customer:   r.customer?.full_name ?? "Manual Entry",
-      service:    r.service?.name ?? "—",
-      status:     r.status,
-      created_at: r.created_at,
-    }))
+    // Recent jobs — last touched (updated_at), not last created, and excludes
+    // jobs that are already finished (nothing left to keep an eye on there).
+    const FINISHED_STATUSES = ["Released", "Cancelled"]
+    const recent_jobs = rows
+      .filter((r: any) => !FINISHED_STATUSES.includes(r.status as string))
+      .sort((a: any, b: any) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime())
+      .slice(0, 5)
+      .map((r: any) => ({
+        id:         r.id,
+        display_id: r.job_order_code,
+        customer:   r.customer?.full_name ?? "Manual Entry",
+        service:    r.service?.name ?? "—",
+        status:     r.status,
+        created_at: r.created_at,
+      }))
 
     // Calendar jobs — enriched with timing + team
     const calendar_jobs = rows

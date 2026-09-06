@@ -113,7 +113,12 @@ export default function SalesJobList({ jobOrders: rawOrders }: { jobOrders: any[
       key: "go",
       header: "",
       align: "right",
-      cell: () => <ArrowRight className="h-4 w-4 text-muted" />,
+      cell: () => (
+        <span className="inline-flex items-center gap-1 text-[11px] font-medium text-muted">
+          <span className="hidden whitespace-nowrap group-hover:inline">View details</span>
+          <ArrowRight className="h-3.5 w-3.5" />
+        </span>
+      ),
     },
   ]
 

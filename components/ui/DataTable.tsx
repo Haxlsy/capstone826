@@ -90,7 +90,7 @@ export function DataTable<Row>({
                   onClick={onRowClick ? () => onRowClick(row) : undefined}
                   className={cn(
                     "border-b border-border-subtle last:border-0 transition-colors",
-                    onRowClick && "cursor-pointer hover:bg-primary-soft/40",
+                    onRowClick && "group cursor-pointer hover:bg-primary-soft/40",
                   )}
                 >
                   {columns.map((c) => (

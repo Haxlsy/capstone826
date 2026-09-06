@@ -121,6 +121,8 @@ export default function JobOrderDetail({ jobId }: { jobId: string }) {
   const [cancelling, setCancelling] = useState(false)
   const [cancelError, setCancelError] = useState<string | null>(null)
 
+  const [completeConfirm, setCompleteConfirm] = useState(false)
+
   const [subModal, setSubModal] = useState(false)
   const [subRole, setSubRole] = useState<"detailer" | "installer">("detailer")
   const [subTechs, setSubTechs] = useState<
@@ -390,10 +392,12 @@ export default function JobOrderDetail({ jobId }: { jobId: string }) {
           Back to Job Management
         </Link>
         <div className="flex flex-wrap items-center gap-2">
-          <Button variant="secondary" onClick={exportPDF}>
-            <FileText className="h-4 w-4" />
-            Export PDF
-          </Button>
+          {job.status !== "Released" && (
+            <Button variant="secondary" onClick={exportPDF}>
+              <FileText className="h-4 w-4" />
+              Export PDF
+            </Button>
+          )}
           {job.status === "Pending" && (
             <Button variant="danger" onClick={() => setCancelConfirm(true)}>
               <Trash2 className="h-4 w-4" />
@@ -421,7 +425,7 @@ export default function JobOrderDetail({ jobId }: { jobId: string }) {
             Refresh
           </Button>
           {canRelease && (
-            <Button onClick={markReleased} disabled={releasing}>
+            <Button onClick={() => setCompleteConfirm(true)} disabled={releasing}>
               <PackageCheck className="h-4 w-4" />
               {releasing ? "Completing…" : "Mark as Completed"}
             </Button>
@@ -457,12 +461,14 @@ export default function JobOrderDetail({ jobId }: { jobId: string }) {
                 <p className="font-medium text-status-onjob">{fmtDateTime(updatedEst)}</p>
               </div>
             )}
-            <div className="col-span-2 pt-1 md:col-span-4">
-              <Button variant="secondary" size="sm" onClick={openSubModal}>
-                <UserPlus className="h-3.5 w-3.5" />
-                Add Substitute Technician
-              </Button>
-            </div>
+            {job.status !== "Released" && (
+              <div className="col-span-2 pt-1 md:col-span-4">
+                <Button variant="secondary" size="sm" onClick={openSubModal}>
+                  <UserPlus className="h-3.5 w-3.5" />
+                  Add Substitute Technician
+                </Button>
+              </div>
+            )}
           </div>
         </CardBody>
       </Card>
@@ -572,7 +578,7 @@ export default function JobOrderDetail({ jobId }: { jobId: string }) {
                               }
                               sentAt={stage.messenger_sent_at}
                             />
-                            {(resendStatus[stage.id] !== undefined
+                            {job.status !== "Released" && (resendStatus[stage.id] !== undefined
                               ? resendStatus[stage.id]
                               : stage.messenger_sent) !== true && (
                               <button
@@ -652,6 +658,23 @@ export default function JobOrderDetail({ jobId }: { jobId: string }) {
           </div>
         </CardBody>
       </Card>
+
+      {/* Mark as Completed Confirmation */}
+      <ConfirmModal
+        open={completeConfirm}
+        onClose={() => setCompleteConfirm(false)}
+        onConfirm={async () => {
+          setCompleteConfirm(false)
+          await markReleased()
+        }}
+        title="Mark Job as Completed"
+        message={`Mark ${job.customer_name}'s job as completed? This closes the job out for good — make sure this wasn't a misclick.`}
+        confirmLabel="Yes, Mark Completed"
+        cancelLabel="Go Back"
+        tone="primary"
+        loading={releasing}
+        icon={PackageCheck}
+      />
 
       {/* Cancel Confirmation */}
       <ConfirmModal

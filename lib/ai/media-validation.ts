@@ -2,7 +2,10 @@ import { GoogleGenAI } from "@google/genai"
 import sharp from "sharp"
 import { createAdminClient } from "@/lib/supabase/admin"
 
-const PROMPT = `You are an image validator for a professional automotive detailing and installation workshop. Technicians upload photos to document their work on customer vehicles. Bad photos hurt the company's reputation with customers.
+function buildPrompt(mediaKind: "photo" | "video"): string {
+  const noun = mediaKind === "video" ? "video" : "photo"
+  const verb = mediaKind === "video" ? "record" : "upload"
+  return `You are an image validator for a professional automotive detailing and installation workshop. Technicians upload ${noun}s to document their work on customer vehicles. Bad ${noun}s hurt the company's reputation with customers. You are being shown a single still frame${mediaKind === "video" ? " extracted from that video" : ""}.
 Be strict about rejecting selfies. A face photo with no vehicle is always REJECTED.
 
 APPROVE only if the image clearly shows:
@@ -35,9 +38,10 @@ Respond ONLY with valid JSON, no markdown, no extra text:
 {
   "approved": true or false,
   "category": one of ["vehicle", "vehicle_part", "workspace", "unrelated", "inappropriate"],
-  "reason": "One short phrase, max 8-20 words explain what they took a photo of, or why it was rejected  (e.g. 'selfie with no vehicle', 'car wheel being detailed', 'blurry photo of garage floor', 'photo of a cat', 'explicit content')",
-  "message": "One or two friendly sentences. If rejected, instruct them to upload a clear photo of the vehicle they are working on."
+  "reason": "One short phrase, max 8-20 words explain what they took a ${noun} of, or why it was rejected  (e.g. 'selfie with no vehicle', 'car wheel being detailed', 'blurry photo of garage floor', 'photo of a cat', 'explicit content')",
+  "message": "One or two friendly sentences. If rejected, instruct them to ${verb} a clear ${noun} of the vehicle they are working on."
 }`
+}
 
 if (!process.env.GEMINI_API_KEY) {
   console.warn("GEMINI_API_KEY is not set. Image validation will be unavailable.")
@@ -54,7 +58,7 @@ export interface MediaValidationResult {
   message: string
 }
 
-async function generateWithRetry(mimeType: string, base64: string, retries = 3) {
+async function generateWithRetry(mimeType: string, base64: string, mediaKind: "photo" | "video", retries = 3) {
   for (let attempt = 0; attempt < retries; attempt++) {
     try {
       const response = await ai.models.generateContent({
@@ -65,7 +69,7 @@ async function generateWithRetry(mimeType: string, base64: string, retries = 3) 
           },
         ],
         config: {
-          systemInstruction: PROMPT,
+          systemInstruction: buildPrompt(mediaKind),
           temperature: 0,
           maxOutputTokens: 256,
           responseMimeType: "application/json",
@@ -106,8 +110,13 @@ export function serviceError(): MediaValidationResult {
  * extracted frame) can call this directly. Fails OPEN (auto-approves) on any
  * Gemini/parsing failure — a validation-service hiccup should never block a
  * technician's upload.
+ *
+ * `mediaKind` is always "photo" for an actual photo. Pass "video" when
+ * `imageBuffer` is a still frame extracted from a video, so the generated
+ * `message` says "video" instead of "photo" — the raw input to Gemini is
+ * always a still image either way.
  */
-export async function validateAutomotiveImage(imageBuffer: Buffer): Promise<MediaValidationResult> {
+export async function validateAutomotiveImage(imageBuffer: Buffer, mediaKind: "photo" | "video" = "photo"): Promise<MediaValidationResult> {
   try {
     const resized = await sharp(imageBuffer)
       .resize({ width: 1024, height: 1024, fit: "inside", withoutEnlargement: true })
@@ -115,7 +124,7 @@ export async function validateAutomotiveImage(imageBuffer: Buffer): Promise<Medi
       .toBuffer()
     const base64 = resized.toString("base64")
 
-    const response = await generateWithRetry("image/jpeg", base64)
+    const response = await generateWithRetry("image/jpeg", base64, mediaKind)
     const text = response.text ?? ""
 
     try {
