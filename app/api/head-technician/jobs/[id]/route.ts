@@ -570,18 +570,60 @@ export async function PATCH(
         }
       }
 
+      const { data: cat } = await admin
+        .from("workflow_category")
+        .select("name")
+        .eq("id", category_id)
+        .single()
+      const categoryName = (cat as any)?.name ?? category_id
+
       if (caller) {
-        const { data: cat } = await admin
-          .from("workflow_category")
-          .select("name")
-          .eq("id", category_id)
-          .single()
-        const categoryName = (cat as any)?.name ?? category_id
         logAuditCall(caller, {
           category: "approve",
           action:   "Approved category handoff",
           target:   `${jobLabel} — ${categoryName}`,
         })
+      }
+
+      // ── Notify the other role's head technician — this is the actual handoff. ──
+      try {
+        const { data: callerProfile } = await admin
+          .from("user_account")
+          .select("role")
+          .eq("id", user.id)
+          .single()
+        const callerIsInstaller = (callerProfile as any)?.role === "head_installer"
+        const notifyRole = callerIsInstaller ? "head_detailer" : "head_installer"
+
+        const { data: nextTeam } = await admin
+          .from("job_order_team")
+          .select("user_account_id, role_in_job")
+          .eq("job_order_id", jobId)
+          .eq("role_in_job", notifyRole)
+
+        const notifRows = (nextTeam ?? [])
+          .filter((t: any) => t.user_account_id)
+          .map((t: any) => ({
+            user_id:      t.user_account_id,
+            type:         "handoff",
+            message:      `${categoryName} has been handed off to you.${handoff_notes ? ` Notes: ${handoff_notes}` : ""}`,
+            job_order_id: jobId,
+          }))
+
+        if (notifRows.length > 0) {
+          await admin.from("notification").insert(notifRows)
+          await Promise.all(
+            notifRows.map((n) =>
+              sendPushToUser(n.user_id, {
+                title: "Work handed off to you",
+                body:  n.message,
+                url:   `/head-technician/${jobId}`,
+              })
+            )
+          )
+        }
+      } catch (notifErr) {
+        console.error("[HT approve] handoff notification failed:", notifErr)
       }
 
       return NextResponse.json({ success: true })
