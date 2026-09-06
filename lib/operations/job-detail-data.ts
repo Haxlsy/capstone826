@@ -5,41 +5,48 @@ import { totalStageDurationMins, computeExpectedCompletion } from "@/lib/job-est
 export async function getJobDetailData(id: string) {
   const supabase = createAdminClient()
 
-  const { data: job, error } = await supabase
-    .from("job_order")
-    .select(
-      `id, status, scheduled_at, actual_start_at, expected_completion_at, created_at, finishing_approved_at, job_order_code,
-       customer:customer_record_id(full_name, plate_number, vehicle_unit, contact_number, email),
-       service:service_id(name),
-       customer_name, contact_number, plate_number, vehicle_unit`
-    )
-    .eq("id", id)
-    .single()
+  // These four only need the already-known `id` param — none depends on
+  // another's result — so run them concurrently instead of four sequential
+  // round-trips (same fix already applied to the head-technician job route).
+  const [
+    { data: job, error },
+    { data: team },
+    { data: history },
+    { data: stages },
+  ] = await Promise.all([
+    supabase
+      .from("job_order")
+      .select(
+        `id, status, scheduled_at, actual_start_at, expected_completion_at, created_at, finishing_approved_at, job_order_code,
+         customer:customer_record_id(full_name, plate_number, vehicle_unit, contact_number, email),
+         service:service_id(name),
+         customer_name, contact_number, plate_number, vehicle_unit`
+      )
+      .eq("id", id)
+      .single(),
+    supabase
+      .from("job_order_team")
+      .select("role_in_job, user_account:user_account_id(id, full_name), technician:technician_id(id, full_name)")
+      .eq("job_order_id", id),
+    supabase
+      .from("job_order_history")
+      .select("status, created_at, changed_by:changed_by_id(full_name)")
+      .eq("job_order_id", id)
+      .order("created_at", { ascending: true }),
+    supabase
+      .from("job_stage_progress")
+      .select(
+        `id, status, rework_instructions, handoff_notes, completion_notes, completed_at,
+         messenger_sent, messenger_sent_at,
+         custom_name, custom_sequence_order, stage_duration_mins,
+         service_stage_id,
+         media:stage_media(id, file_url, media_type)`
+      )
+      .eq("job_order_id", id)
+      .order("custom_sequence_order"),
+  ])
 
   if (error || !job) throw new Error(error?.message ?? "Not found.")
-
-  const { data: team } = await supabase
-    .from("job_order_team")
-    .select("role_in_job, user_account:user_account_id(id, full_name), technician:technician_id(id, full_name)")
-    .eq("job_order_id", id)
-
-  const { data: history } = await supabase
-    .from("job_order_history")
-    .select("status, created_at, changed_by:changed_by_id(full_name)")
-    .eq("job_order_id", id)
-    .order("created_at", { ascending: true })
-
-  const { data: stages } = await supabase
-    .from("job_stage_progress")
-    .select(
-      `id, status, rework_instructions, handoff_notes, completion_notes, completed_at,
-       messenger_sent, messenger_sent_at,
-       custom_name, custom_sequence_order, stage_duration_mins,
-       service_stage_id,
-       media:stage_media(id, file_url, media_type)`
-    )
-    .eq("job_order_id", id)
-    .order("custom_sequence_order")
 
   const ssIds = [...new Set((stages ?? []).map((s: any) => s.service_stage_id as string).filter(Boolean))]
   let ssRows: any[] = []

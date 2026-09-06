@@ -229,10 +229,14 @@ export default function InquiryManagement() {
     return () => el.removeEventListener("wheel", onWheel)
   }, [])
 
+  // "Unresolved" == status "open" only — a recorded inquiry already has
+  // resolved_at/resolved_by_id stamped server-side the moment it's recorded
+  // (see app/api/sales/inquiries/[id]/route.ts), so it's already concluded
+  // and shouldn't keep showing up here.
   const tabFiltered = activeTab === "all"
     ? inquiries
     : activeTab === "unresolved"
-      ? inquiries.filter((i) => i.status === "open" || i.status === "recorded")
+      ? inquiries.filter((i) => i.status === "open")
       : inquiries.filter((i) => i.status === activeTab)
   const filtered    = search.trim()
     ? tabFiltered.filter((i) => {
@@ -247,7 +251,7 @@ export default function InquiryManagement() {
   const openCount     = inquiries.filter((i) => i.status === "open").length
   const recCount      = inquiries.filter((i) => i.status === "recorded").length
   const resCount      = inquiries.filter((i) => i.status === "resolved").length
-  const unresolvedCnt = openCount + recCount
+  const unresolvedCnt = openCount
 
   function openRecordModal(inq: Inquiry) {
     setRecordForm({
