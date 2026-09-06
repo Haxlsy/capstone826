@@ -169,19 +169,20 @@ describe("always-on capabilities", () => {
     expect(prompt).toContain("General FAQs about detailing and installation")
   })
 
-  it("always lists all three escalation triggers", () => {
+  it("always lists both escalation triggers", () => {
     const prompt = buildSystemPrompt(settings)
     expect(prompt).toMatch(/customer asks to speak with a human/i)
-    expect(prompt).toMatch(/complaint or negative feedback/i)
     expect(prompt).toMatch(/on-topic 826 Auto Care question you cannot answer/i)
   })
 
-  it("tells the model not to self-escalate off-topic/policy messages", () => {
-    // Regression guard: the model used to set escalate=true for any message
-    // it "couldn't answer" — including off-topic/hypothetical/threatening
-    // ones — bypassing the graduated warning ladder entirely on message #1.
+  it("tells the model not to self-escalate complaint/off-topic/policy messages", () => {
+    // Regression guard: the model used to set escalate=true itself for a
+    // complaint, an off-topic message, or a threat — bypassing the
+    // report-confirmation flow and the graduated warning ladder entirely on
+    // message #1. A complaint/off-topic/policy message is instead classified
+    // via the "violation" field and handled entirely in code (route.ts).
     const prompt = buildSystemPrompt(settings)
-    expect(prompt).toMatch(/do not set "escalate" to true for an off-topic message/i)
+    expect(prompt).toMatch(/do not set "escalate" to true for a complaint/i)
   })
 
   it("always includes every quick-reply option", () => {

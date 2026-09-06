@@ -409,7 +409,7 @@ async function handleInboundMessage(
 
   // ── Report confirmation ───────────────────────────────────────────────────
   // The bot asked "want me to report this as a concern?" on the previous
-  // turn (see the "complaint" escalation_reason handling further down) — this
+  // turn (see the "complaint" violation handling further down) — this
   // message is the customer's answer to that, not a fresh topic.
   if (awaiting_report_confirmation) {
     const changedSubject =
@@ -729,7 +729,7 @@ async function handleInboundMessage(
       ? "report"
       : null
   let aiReason: string | null = null
-  let aiViolation: "none" | "off_topic" | "policy" = "none"
+  let aiViolation: "none" | "off_topic" | "policy" | "complaint" = "none"
   let extracted: ChatbotReply["customer"] = null
   // Set when a complaint gets downgraded to "ask first" below — persisted
   // after the try/catch so a failure there can't leave the flag half-set.
@@ -738,7 +738,7 @@ async function handleInboundMessage(
   try {
     // A deterministic status answer owns the reply — skip Gemini entirely.
     const result = statusReply
-      ? { reply: statusReply, escalate: false, reason: null, violation: "none" as const, escalation_reason: null, customer: null }
+      ? { reply: statusReply, escalate: false, reason: null, violation: "none" as const, customer: null }
       : await generateChatbotReply({
           message: messageBody,
           history,
@@ -763,27 +763,32 @@ async function handleInboundMessage(
     aiViolation = result.violation ?? "none"
     extracted = result.customer ?? null
 
-    // A complaint the model flagged for escalation is confirmed with the
-    // customer first, rather than escalated immediately — unless they already
-    // used explicit report/complaint wording or asked for a human outright,
-    // in which case escalating right away is correct as-is. This is what
-    // turns "sinira niyo kotse ko" from an instant "Human Response" escalation
-    // into an ask-first flow that files as "Report" once confirmed.
-    if (escalate && result.escalation_reason === "complaint" && !humanRequested && !reportIntent && !existingBookingIntent) {
+    // These three classifications are decided ENTIRELY here, in code — not by
+    // the model's separate `escalate` flag, which is unreliable for exactly
+    // these high-stakes cases (a threat, a strongly-worded complaint) despite
+    // being told not to escalate them itself. `escalate` is force-reset to
+    // false regardless of what the model set it to, unless a deterministic
+    // signal independently warrants escalating anyway (an explicit human
+    // request, explicit report wording, or an existing-booking operation).
+    const violationHandled = !humanRequested && !reportIntent && !existingBookingIntent
+    if (aiViolation === "complaint" && violationHandled) {
+      // Confirmed with the customer first rather than escalated immediately —
+      // this is what turns "sinira niyo kotse ko" from an instant "Human
+      // Response" escalation into an ask-first flow that files as "Report"
+      // once confirmed.
       escalate = false
       escalateReason = null
       reportConfirmationNeeded = true
       reply = reportConfirmationPrompt(effectiveLang)
-    }
-
-    // The model is instructed to redirect off-topic/policy-violating messages
-    // with a fixed sentence, but relying on it to translate that sentence live
-    // for "filipino"/"both" — or to freely compose its own reply to a policy
-    // violation (a jailbreak attempt, harmful content, a threat) — is
-    // unreliable at best. Override with reviewed, deterministic copy for both
-    // classifications, the same way violationWarningCopy() below supplies the
-    // warning sentence appended right after this.
-    if (aiViolation === "off_topic" || aiViolation === "policy") {
+    } else if ((aiViolation === "off_topic" || aiViolation === "policy") && violationHandled) {
+      // The graduated warning ladder below decides if/when this escalates —
+      // never on the first occurrence. Reply text is reviewed, deterministic
+      // copy rather than the model's own composition: relying on it to
+      // translate a fixed sentence live for "filipino"/"both", or to freely
+      // compose a reply to a policy violation (a jailbreak attempt, harmful
+      // content, a threat), is unreliable at best.
+      escalate = false
+      escalateReason = null
       reply = offTopicRedirect(effectiveLang)
     }
 
@@ -832,7 +837,9 @@ async function handleInboundMessage(
   ) {
     const vs = nextViolationState(
       { offtopic: offtopic_streak, policy: policy_streak },
-      aiViolation
+      // "complaint" has its own one-shot ask-first flow above — it is not
+      // part of the off-topic/policy streak ladder and must not affect it.
+      aiViolation === "complaint" ? "none" : aiViolation
     )
     await safe(() => setViolationStreaks(conversation_id, vs.offtopic, vs.policy))
     // Repeated off-topic/policy messages are the other "AI cannot help here"

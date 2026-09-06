@@ -250,11 +250,10 @@ export const customerDetailsSchema = z.object({
 export type CustomerDetails = z.infer<typeof customerDetailsSchema>
 
 export const chatbotReplySchema = z.object({
-  reply:             z.string(),
-  escalate:          z.boolean(),
-  reason:            z.string().nullable().optional(),
-  violation:         z.enum(["none", "off_topic", "policy"]).optional(),
-  escalation_reason: z.enum(["complaint", "cannot_answer"]).nullable().optional(),
-  customer:          customerDetailsSchema.nullable().optional(),
+  reply:     z.string(),
+  escalate:  z.boolean(),
+  reason:    z.string().nullable().optional(),
+  violation: z.enum(["none", "off_topic", "policy", "complaint"]).optional(),
+  customer:  customerDetailsSchema.nullable().optional(),
 })
 export type ChatbotReply = z.infer<typeof chatbotReplySchema>

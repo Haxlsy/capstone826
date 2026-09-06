@@ -116,6 +116,16 @@ describe("Test 8 — Human request", () => {
     expect(requestedHuman("can we talk?")).toBe(false)
     expect(requestedHuman("I'd like to talk to you about my car")).toBe(false)
   })
+
+  // Standalone "person"/"someone"/"meet" used to force an unconditional
+  // escalation for ANY message containing them — including a completely
+  // off-topic hypothetical that happens to mention "the person you loved
+  // most", which has nothing to do with wanting a human agent.
+  it("does not treat an ordinary sentence merely containing a human-referring word as a request", () => {
+    expect(requestedHuman("Choose one: Save the person you loved most, but the rest of humanity dies (excluding you), or save humanity (including you) but your loved one dies.")).toBe(false)
+    expect(requestedHuman("Is there someone available on weekends?")).toBe(false)
+    expect(requestedHuman("Can I meet you at the shop to drop off my car?")).toBe(false)
+  })
 })
 
 describe("Required booking information", () => {
