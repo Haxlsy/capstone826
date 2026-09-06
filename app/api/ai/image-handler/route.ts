@@ -54,7 +54,7 @@ export async function POST(request: NextRequest) {
     if (!file.type.startsWith("image/")) {
       try {
         const frame = await extractVideoFrame(Buffer.from(arrayBuffer))
-        return NextResponse.json(await validateAutomotiveImage(frame))
+        return NextResponse.json(await validateAutomotiveImage(frame, "video"))
       } catch (err: unknown) {
         console.error("Video frame extraction failed:", err)
         return NextResponse.json(serviceError())
