@@ -3,6 +3,7 @@ import { cookies } from "next/headers"
 import { createClient } from "@/lib/supabase/server"
 import { createAdminClient } from "@/lib/supabase/admin"
 import { logAudit } from "@/hooks/audit-helpers"
+import { sendPushToUser } from "@/lib/push/send"
 import { z } from "zod"
 
 const BodySchema = z.object({
@@ -90,6 +91,15 @@ export async function POST(
 
     if (notifRows.length > 0) {
       await admin.from("notification").insert(notifRows)
+      await Promise.all(
+        notifRows.map((n) =>
+          sendPushToUser(n.user_id, {
+            title: "Stage flagged for rework",
+            body: n.message,
+            url: `/head-technician/${jobId}`,
+          })
+        )
+      )
     }
 
     const { data: profile } = await admin

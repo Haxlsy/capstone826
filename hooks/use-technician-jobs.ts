@@ -19,13 +19,13 @@ type TechnicianJob = {
 }
 
 export function useTechnicianJobs() {
-  return useQuery<TechnicianJob[]>({
+  return useQuery<{ jobs: TechnicianJob[]; userRole: string }>({
     queryKey: ["technician-jobs"],
     queryFn: async () => {
       const res = await fetch("/api/head-technician/jobs")
       if (!res.ok) throw new Error("Failed to fetch technician jobs")
       const json = await res.json()
-      return json.jobs ?? []
+      return { jobs: json.jobs ?? [], userRole: json.user_role ?? "" }
     },
   })
 }

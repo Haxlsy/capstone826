@@ -19,6 +19,7 @@ import { useToast } from "@/components/ui/Toast"
 import StatusPickerModal, { type JobStatus, type StatusOption } from "./StatusPickerModal"
 import StatusConfirmDialog from "./StatusConfirmDialog"
 import { fmtDate } from "@/lib/time-display"
+import { useRealtimeRefetch } from "@/hooks/useRealtimeRefetch"
 
 interface JobOrder {
   id: string
@@ -69,8 +70,8 @@ export default function JobManagementTable() {
     setFilterDateTo("")
   }
 
-  const load = useCallback(async () => {
-    setLoading(true)
+  const load = useCallback(async (opts?: { silent?: boolean }) => {
+    if (!opts?.silent) setLoading(true)
     setFetchError(null)
     try {
       const res = await fetch("/api/operations/job-management/list-job-orders")
@@ -96,7 +97,7 @@ export default function JobManagementTable() {
     } catch (err: unknown) {
       setFetchError(err instanceof Error ? err.message : String(err))
     } finally {
-      setLoading(false)
+      if (!opts?.silent) setLoading(false)
     }
   }, [])
 
@@ -109,6 +110,10 @@ export default function JobManagementTable() {
     window.addEventListener("focus", onFocus)
     return () => window.removeEventListener("focus", onFocus)
   }, [load])
+
+  // A technician marking a stage done should reflect here without waiting for
+  // window focus or a manual reload — silent so it doesn't flash the skeleton.
+  useRealtimeRefetch("job_stage_progress", useCallback(() => load({ silent: true }), [load]))
 
   const uniqueServices = useMemo(
     () => [...new Set(jobOrders.map((j) => j.service).filter((s) => s !== "—"))].sort(),

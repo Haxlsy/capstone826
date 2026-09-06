@@ -20,6 +20,7 @@ import { cn } from "@/lib/utils"
 import { statusStyle } from "@/lib/ui/status"
 import { categorySwatch } from "@/lib/ui/category-colors"
 import { fmtDateTime } from "@/lib/time-display"
+import { useRealtimeRefetch } from "@/hooks/useRealtimeRefetch"
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -132,8 +133,8 @@ export default function JobOrderDetail({ jobId }: { jobId: string }) {
 
   const updatedEst = job?.updated_est ?? null
 
-  const load = useCallback(async () => {
-    setLoading(true)
+  const load = useCallback(async (opts?: { silent?: boolean }) => {
+    if (!opts?.silent) setLoading(true)
     setError(null)
     try {
       const res = await fetch(`/api/operations/job-orders/${jobId}`)
@@ -143,13 +144,18 @@ export default function JobOrderDetail({ jobId }: { jobId: string }) {
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : String(err))
     } finally {
-      setLoading(false)
+      if (!opts?.silent) setLoading(false)
     }
   }, [jobId])
 
   useEffect(() => {
     load()
   }, [load])
+
+  // A technician updating this job's stages should reflect here immediately —
+  // silent (no skeleton, no toast) so it doesn't interrupt anyone mid-read;
+  // the manual Refresh button stays for an explicit re-check.
+  useRealtimeRefetch("job_stage_progress", useCallback(() => load({ silent: true }), [load]))
 
   async function markReleased() {
     setReleasing(true)

@@ -4,6 +4,7 @@ import { createClient } from "@/lib/supabase/server"
 import { createAdminClient } from "@/lib/supabase/admin"
 import { getAuditCaller } from "@/lib/auth/caller"
 import { logAuditCall } from "@/hooks/audit-helpers"
+import { sendPushToUser } from "@/lib/push/send"
 
 export async function GET(
   _request: Request,
@@ -106,6 +107,11 @@ export async function PATCH(
           message:      response_note ?? "Your concern has been resolved.",
           job_order_id: concernJobId,
           is_read:      false,
+        })
+        await sendPushToUser(submitterId, {
+          title: "Concern resolved",
+          body:  response_note ?? "Your concern has been resolved.",
+          url:   concernJobId ? `/head-technician/${concernJobId}` : "/head-technician",
         })
       } catch (notifErr) {
         console.error("[job-concerns] resolve notification failed:", notifErr)

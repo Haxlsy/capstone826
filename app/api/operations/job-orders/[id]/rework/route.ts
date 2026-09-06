@@ -3,6 +3,7 @@ import { cookies } from "next/headers"
 import { createClient } from "@/lib/supabase/server"
 import { createAdminClient } from "@/lib/supabase/admin"
 import { logAudit } from "@/hooks/audit-helpers"
+import { sendPushToUser } from "@/lib/push/send"
 
 // POST /api/operations/job-orders/[id]/rework
 // Body: { stage_ids: string[], rework_instructions: string }
@@ -76,6 +77,15 @@ export async function POST(
 
     if (notifRows.length > 0) {
       await admin.from("notification").insert(notifRows)
+      await Promise.all(
+        notifRows.map((n) =>
+          sendPushToUser(n.user_id, {
+            title: "Stage(s) flagged for rework",
+            body: n.message,
+            url: `/head-technician/${jobId}`,
+          })
+        )
+      )
     }
 
     const { data: profile } = await admin.from("user_account").select("full_name, role").eq("id", user.id).single()
