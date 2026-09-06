@@ -21,6 +21,14 @@ self.addEventListener("push", (event) => {
   );
 });
 
+// Pure network passthrough — no caching/offline logic needed here, this
+// exists solely so Chrome counts the site as an installable PWA (it requires
+// a registered service worker with a fetch handler to offer "Install app"
+// instead of falling back to a plain "Create shortcut").
+self.addEventListener("fetch", (event) => {
+  event.respondWith(fetch(event.request));
+});
+
 self.addEventListener("notificationclick", (event) => {
   event.notification.close();
   const url = event.notification.data?.url || "/head-technician";
