@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback, useMemo } from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
-import { Plus } from "lucide-react"
+import { Plus, ArrowRight } from "lucide-react"
 import { JobManagementSkeleton } from "@/app/dashboard/job-management/loading"
 import { PageHeader } from "@/components/ui/PageHeader"
 import { Button } from "@/components/ui/Button"
@@ -258,7 +258,12 @@ export default function JobManagementTable() {
       key: "go",
       header: "",
       align: "right",
-      cell: () => <span className="whitespace-nowrap text-[11px] font-medium text-muted">View details →</span>,
+      cell: () => (
+        <span className="inline-flex items-center gap-1 text-[11px] font-medium text-muted">
+          <span className="hidden whitespace-nowrap group-hover:inline">View details</span>
+          <ArrowRight className="h-3.5 w-3.5" />
+        </span>
+      ),
     },
   ]
 
