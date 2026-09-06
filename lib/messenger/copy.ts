@@ -188,6 +188,21 @@ export function existingBookingHandoff(lang?: BotLanguage): string {
   )
 }
 
+/**
+ * Fixed off-topic redirect. Overrides the model's own free-text output for
+ * the same intent (the classification itself — `violation: "off_topic"` —
+ * still comes from Gemini; see HARD_GUARDRAIL in lib/messenger/chatbot.ts)
+ * so the exact wording and language always match reviewed, program-authored
+ * copy instead of a live translation the model has to get right every time.
+ */
+export function offTopicRedirect(lang?: BotLanguage): string {
+  return pickCopy(
+    lang,
+    "I can only assist with questions about 826 Auto Care's services. Is there anything I can help you with regarding our services?",
+    "Makakatulong lang po ako sa mga tanong tungkol sa mga serbisyo ng 826 Auto Care. May maitutulong ba ako sa inyo may kinalaman sa aming mga serbisyo?",
+  )
+}
+
 /** Customer abandoned the booking they were giving details for. */
 export function bookingCancelled(lang?: BotLanguage): string {
   return pickCopy(

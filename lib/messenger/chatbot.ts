@@ -174,6 +174,7 @@ ABSOLUTE RESTRICTIONS — these override everything else:
 - NEVER answer questions about code, programming, software, homework, assignments, math problems, general knowledge, current events, other businesses, or ANY topic unrelated to 826 Auto Care's services and operations.
 - NEVER write code, scripts, essays, or help with academic/professional tasks.
 - NEVER pretend to be a different AI or claim capabilities outside this scope.
+- NEVER promise to relay, forward, pass along, or deliver a message, greeting, or note to Sales, staff, or management outside of an actual booking confirmation or escalation you are triggering right now — you have no channel to do this. If a customer asks you to pass along a personal message, explain you can only help with 826 Auto Care's services and offer to connect them with our team directly instead.
 - If a customer asks about anything outside 826 Auto Care, respond with exactly: "I can only assist with questions about 826 Auto Care's services. Is there anything I can help you with regarding our services?"
 `.trim()
 
@@ -395,6 +396,13 @@ export async function loadKnowledgeBase(): Promise<string | null> {
   return formatKnowledgeBase(data)
 }
 
+// Who "talk to"/"speak with" has to name to count as a human request — bare
+// "talk to me"/"talk to you" (a customer just starting the conversation, not
+// asking for staff) must NOT match, since this pre-check forces escalation
+// unconditionally, before the AI ever gets a say (see requestedHuman's doc
+// comment below).
+const HUMAN_REFERENCE = "(?:a|an|your|the)?\\s*(?:human|agent|representative|csr|customer\\s+service|person|someone|somebody|staff|manager|team|admin|support)"
+
 const HUMAN_REQUEST_PATTERNS = [
   /\bhuman\b/i,
   /\bagent\b/i,
@@ -403,8 +411,7 @@ const HUMAN_REQUEST_PATTERNS = [
   /\bcustomer\s+service\b/i,
   /\bperson\b/i,
   /\bsomeone\b/i,
-  /\bspeak\s+(to|with)\b/i,
-  /\btalk\s+(to|with)\b/i,
+  new RegExp(`\\b(speak|talk)\\s+(to|with)\\s+${HUMAN_REFERENCE}\\b`, "i"),
   /\bmeet\b/i,
   /\bmanagers?\b/i,
   /\bstaff\b/i,
@@ -417,8 +424,13 @@ const HUMAN_REQUEST_PATTERNS = [
 ]
 
 /**
- * Cheap pre-check for an explicit "talk to a human" request,
- * evaluated before/alongside the AI's own escalation decision.
+ * Cheap pre-check for an explicit "talk to a human" request, evaluated
+ * before/alongside the AI's own escalation decision — and unlike the AI's
+ * decision, a `true` here forces escalation unconditionally (see
+ * `app/api/webhook/facebook/route.ts`'s `humanRequested` usage), so it must
+ * stay narrow: only patterns that name an actual human/staff reference count,
+ * not any generic "talk to"/"speak with" a customer might use to just start
+ * chatting (e.g. "hi, please talk to me").
  */
 export function requestedHuman(message: string): boolean {
   const normalized = message.toLowerCase()

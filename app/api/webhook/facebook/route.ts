@@ -84,6 +84,7 @@ import {
   escalationAck,
   existingBookingHandoff,
   violationWarning as violationWarningCopy,
+  offTopicRedirect,
   resolveTemplate,
   pickCopy,
   ALL_MISSING_FIELDS_LEADS,
@@ -691,6 +692,15 @@ async function handleInboundMessage(
     aiReason = result.reason ?? null
     aiViolation = result.violation ?? "none"
     extracted = result.customer ?? null
+
+    // The model is instructed to redirect off-topic messages with a fixed
+    // sentence, but relying on it to translate that sentence live for
+    // "filipino"/"both" is unreliable — override with reviewed, deterministic
+    // copy instead, the same way violationWarningCopy() below supplies the
+    // warning sentence appended right after this.
+    if (aiViolation === "off_topic") {
+      reply = offTopicRedirect(lang)
+    }
 
     // Option B safety net: If we're in a vehicle status flow and the lookup
     // returned real status data (not just a "must be verified" prompt), the AI
