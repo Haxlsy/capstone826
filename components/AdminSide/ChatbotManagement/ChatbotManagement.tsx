@@ -289,15 +289,6 @@ export default function ChatbotManagement() {
             </div>
           </Section>
 
-          {/* Notify Sales — always on, not admin-configurable. Booking wording
-              itself lives in Message Templates. */}
-          <Section icon={<Users className="w-4 h-4" />} title="Booking Notifications" subtitle="How the team is alerted when a booking request comes in.">
-            <p className="text-sm text-body">
-              Sales is always notified when a booking request comes in — this isn&apos;t optional.
-            </p>
-            <p className="text-xs text-muted mt-1">Booking requests will appear in the Inquiries section for your Sales team to action.</p>
-          </Section>
-
           {/* Operating Hours — drives both the AI chatbot's answers and the
               "For Release" customer message; see formatOperatingHours in
               types/chatbot.ts, the single source both sides read. */}

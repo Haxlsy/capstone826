@@ -13,8 +13,8 @@ export function PageHeader({
   className?: string
 }) {
   return (
-    <div className={cn("flex items-start justify-between gap-4", className)}>
-      <div>
+    <div className={cn("flex flex-wrap items-start justify-between gap-4", className)}>
+      <div className="min-w-0">
         <h1 className="text-2xl font-bold text-display text-heading tracking-tight">{title}</h1>
         {subtitle && <p className="mt-1 text-sm text-body">{subtitle}</p>}
       </div>

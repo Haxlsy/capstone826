@@ -25,7 +25,7 @@ export function AppShell({
       <AppSidebar nav={nav} settingsHref={settingsHref} />
       <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
         <AppTopBar fallbackName={fallbackName} showBell={showBell} />
-        <main className="flex-1 overflow-y-auto rounded-tl-panel bg-surface-subtle">{children}</main>
+        <main className="flex-1 overflow-x-auto overflow-y-auto rounded-tl-panel bg-surface-subtle">{children}</main>
       </div>
     </div>
   )
