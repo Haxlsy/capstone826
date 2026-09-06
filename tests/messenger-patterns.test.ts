@@ -7,7 +7,7 @@ import {
   extractJobOrderCode,
 } from "@/lib/messenger/patterns"
 import { buildLinkVerificationPrompt } from "@/lib/messenger/vehicle"
-import { resolveTemplate, detectMessageLanguage, quickReplyLabel, offTopicRedirect } from "@/lib/messenger/copy"
+import { resolveTemplate, detectMessageLanguage, quickReplyLabel, offTopicRedirect, reportConfirmationPrompt, reportDeclinedAck } from "@/lib/messenger/copy"
 import { quickRepliesFor } from "@/lib/messenger/handoff"
 import {
   DEFAULT_VEHICLE_STATUS_MESSAGE_EN,
@@ -98,6 +98,19 @@ describe("PLATE_PATTERN", () => {
 
   it("ignores text with no digits", () => {
     expect(plate("Ford Everest")).toBeNull()
+  })
+
+  // Regression: an off-topic logic-puzzle message got misread as containing a
+  // plate ("is 25", "is 23", "of 826"), which hijacked the reply into the
+  // deterministic booking flow instead of letting the AI see it as off-topic.
+  it("does not misread an ordinary sentence's short connector words as a plate", () => {
+    expect(plate("John is 25 years old. Mary is older than John. Mary is 23 years old.")).toBeNull()
+    expect(plate("A bat and a ball cost 110 total. Who is owner of 826?")).toBeNull()
+    expect(plate("I'll be there at 5 to pick up my car")).toBeNull()
+  })
+
+  it("still finds a real plate elsewhere in a sentence containing those words", () => {
+    expect(plate("is my plate ABC 1234 on file?")).toBe("ABC 1234")
   })
 })
 
@@ -276,5 +289,23 @@ describe("offTopicRedirect", () => {
     expect(text).toContain("I can only assist with questions about 826 Auto Care's services")
     expect(text).toContain("Makakatulong lang po ako")
     expect(text.indexOf("I can only assist")).toBeLessThan(text.indexOf("Makakatulong"))
+  })
+})
+
+describe("reportConfirmationPrompt / reportDeclinedAck", () => {
+  it("asks to confirm in English, Filipino, and both", () => {
+    expect(reportConfirmationPrompt("english")).toMatch(/report this as a concern/i)
+    expect(reportConfirmationPrompt("filipino")).toMatch(/i-report ko ito/i)
+    const both = reportConfirmationPrompt("both")
+    expect(both).toMatch(/report this as a concern/i)
+    expect(both).toMatch(/i-report ko ito/i)
+  })
+
+  it("acknowledges a decline in English, Filipino, and both", () => {
+    expect(reportDeclinedAck("english")).toMatch(/no problem/i)
+    expect(reportDeclinedAck("filipino")).toMatch(/walang problema/i)
+    const both = reportDeclinedAck("both")
+    expect(both).toMatch(/no problem/i)
+    expect(both).toMatch(/walang problema/i)
   })
 })

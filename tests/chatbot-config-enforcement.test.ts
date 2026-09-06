@@ -173,7 +173,15 @@ describe("always-on capabilities", () => {
     const prompt = buildSystemPrompt(settings)
     expect(prompt).toMatch(/customer asks to speak with a human/i)
     expect(prompt).toMatch(/complaint or negative feedback/i)
-    expect(prompt).toMatch(/cannot answer the customer's question/i)
+    expect(prompt).toMatch(/on-topic 826 Auto Care question you cannot answer/i)
+  })
+
+  it("tells the model not to self-escalate off-topic/policy messages", () => {
+    // Regression guard: the model used to set escalate=true for any message
+    // it "couldn't answer" — including off-topic/hypothetical/threatening
+    // ones — bypassing the graduated warning ladder entirely on message #1.
+    const prompt = buildSystemPrompt(settings)
+    expect(prompt).toMatch(/do not set "escalate" to true for an off-topic message/i)
   })
 
   it("always includes every quick-reply option", () => {
