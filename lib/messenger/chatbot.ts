@@ -21,6 +21,10 @@ import {
   DEFAULT_RESOLVED_MESSAGE_FIL,
   DEFAULT_BOOKING_MESSAGE_EN,
   DEFAULT_BOOKING_MESSAGE_FIL,
+  formatOperatingHours,
+  DEFAULT_OPERATING_DAYS,
+  DEFAULT_OPERATING_OPEN_TIME,
+  DEFAULT_OPERATING_CLOSE_TIME,
   type ChatbotSettings,
   type ChatMessage,
   type ChatbotReply,
@@ -204,11 +208,12 @@ export function buildSystemPrompt(s: ChatbotSettings): string {
   lines.push("1. Collect their Full Name, Contact Number, Plate Number, Vehicle Type, and Email.")
   lines.push("2. Read the details back and ask them to confirm (e.g. \"Is this correct? Reply YES to confirm.\").")
   lines.push("3. Do NOT tell the customer their booking is confirmed, submitted, scheduled, received, or booked. Sales finalizes every booking after the details are collected.")
-  if (s.notify_sales) {
-    lines.push("Our system passes the confirmed details to the Sales team automatically — you never send a confirmation message yourself.")
-  }
+  lines.push("Our system passes the confirmed details to the Sales team automatically — you never send a confirmation message yourself.")
   lines.push("Never ask the customer which service, package, or treatment they want — Sales handles service selection. Only ever collect the five fields listed above.")
   lines.push("IMPORTANT: You do NOT confirm or schedule bookings. You only collect information.")
+
+  lines.push("")
+  lines.push(`OPERATING HOURS: ${formatOperatingHours(s)} State these hours exactly whenever a customer asks about business or operating hours — do not use any other hours information, even if the knowledge base mentions hours elsewhere.`)
 
   lines.push("")
   lines.push("When a customer asks about their vehicle status:")
@@ -297,8 +302,11 @@ function buildRuntimeSystemPrompt(
     enable_ai_chatbot: true,
     enable_media_validation: true,
     ai_disabled_message: DEFAULT_AI_DISABLED_MESSAGE,
-    notify_sales: true,
     language: "english",
+    operating_days: DEFAULT_OPERATING_DAYS,
+    operating_open_time: DEFAULT_OPERATING_OPEN_TIME,
+    operating_close_time: DEFAULT_OPERATING_CLOSE_TIME,
+    operating_closed_on_holidays: true,
     vehicle_status_message_en: DEFAULT_VEHICLE_STATUS_MESSAGE_EN,
     vehicle_status_message_fil: DEFAULT_VEHICLE_STATUS_MESSAGE_FIL,
     link_verification_message_en: DEFAULT_LINK_VERIFICATION_MESSAGE_EN,

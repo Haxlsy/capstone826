@@ -26,6 +26,12 @@ import {
   DEFAULT_RESOLVED_MESSAGE_FIL,
   DEFAULT_BOOKING_MESSAGE_EN,
   DEFAULT_BOOKING_MESSAGE_FIL,
+  DEFAULT_OPERATING_DAYS,
+  DEFAULT_OPERATING_OPEN_TIME,
+  DEFAULT_OPERATING_CLOSE_TIME,
+  formatOperatingHours,
+  WEEKDAYS,
+  type Weekday,
 } from "@/types/chatbot"
 
 type Tab = "settings" | "knowledge_base" | "message_templates"
@@ -40,8 +46,11 @@ const DEFAULT_SETTINGS: AdminChatbotSettings = {
   enable_media_validation: true,
   ai_disabled_message:     DEFAULT_AI_DISABLED_MESSAGE,
   personality:             "friendly",
-  notify_sales:            true,
   language:                "english",
+  operating_days:               DEFAULT_OPERATING_DAYS,
+  operating_open_time:          DEFAULT_OPERATING_OPEN_TIME,
+  operating_close_time:         DEFAULT_OPERATING_CLOSE_TIME,
+  operating_closed_on_holidays: true,
   // Seeded from the message the system actually sends, so the editor opens
   // showing exactly what customers receive today.
   vehicle_status_message_en:     DEFAULT_VEHICLE_STATUS_MESSAGE_EN,
@@ -280,15 +289,79 @@ export default function ChatbotManagement() {
             </div>
           </Section>
 
-          {/* Notify Sales — booking wording itself now lives in Message Templates */}
+          {/* Notify Sales — always on, not admin-configurable. Booking wording
+              itself lives in Message Templates. */}
           <Section icon={<Users className="w-4 h-4" />} title="Booking Notifications" subtitle="How the team is alerted when a booking request comes in.">
-            <div className="flex flex-col gap-1">
+            <p className="text-sm text-body">
+              Sales is always notified when a booking request comes in — this isn&apos;t optional.
+            </p>
+            <p className="text-xs text-muted mt-1">Booking requests will appear in the Inquiries section for your Sales team to action.</p>
+          </Section>
+
+          {/* Operating Hours — drives both the AI chatbot's answers and the
+              "For Release" customer message; see formatOperatingHours in
+              types/chatbot.ts, the single source both sides read. */}
+          <Section icon={<Globe className="w-4 h-4" />} title="Operating Hours" subtitle="When customers can reach you and pick up their vehicle. The chatbot and pickup-ready messages use this directly.">
+            <div className="flex flex-col gap-4">
+              <div>
+                <p className="text-xs font-medium text-body mb-2">Open days</p>
+                <div className="flex flex-wrap gap-2">
+                  {WEEKDAYS.map((day) => {
+                    const labels: Record<Weekday, string> = { mon: "Mon", tue: "Tue", wed: "Wed", thu: "Thu", fri: "Fri", sat: "Sat", sun: "Sun" }
+                    const isOpen = settings.operating_days.includes(day)
+                    return (
+                      <button
+                        key={day}
+                        onClick={() => {
+                          const next = isOpen
+                            ? settings.operating_days.filter((d) => d !== day)
+                            : [...settings.operating_days, day]
+                          patch("operating_days", next)
+                        }}
+                        className={`w-14 py-2 rounded-card text-sm font-medium border transition-colors ${
+                          isOpen
+                            ? "bg-primary text-white border-primary"
+                            : "bg-surface text-body border-border hover:border-primary/40"
+                        }`}
+                      >
+                        {labels[day]}
+                      </button>
+                    )
+                  })}
+                </div>
+              </div>
+
+              <div className="flex flex-wrap items-end gap-4">
+                <div className="flex flex-col gap-1.5">
+                  <label className="text-xs font-medium text-body">Opens</label>
+                  <input
+                    type="time"
+                    value={settings.operating_open_time}
+                    onChange={(e) => patch("operating_open_time", e.target.value)}
+                    className="border border-border rounded-sm px-3 py-2 text-sm text-body bg-surface focus:outline-none focus:ring-2 focus:ring-primary/30"
+                  />
+                </div>
+                <div className="flex flex-col gap-1.5">
+                  <label className="text-xs font-medium text-body">Closes</label>
+                  <input
+                    type="time"
+                    value={settings.operating_close_time}
+                    onChange={(e) => patch("operating_close_time", e.target.value)}
+                    className="border border-border rounded-sm px-3 py-2 text-sm text-body bg-surface focus:outline-none focus:ring-2 focus:ring-primary/30"
+                  />
+                </div>
+              </div>
+
               <Toggle
-                checked={settings.notify_sales}
-                onChange={(v) => patch("notify_sales", v)}
-                label="Notify Sales team when a booking request comes in"
+                checked={settings.operating_closed_on_holidays}
+                onChange={(v) => patch("operating_closed_on_holidays", v)}
+                label="Also closed on public holidays"
               />
-              <p className="text-xs text-muted ml-12">Booking requests will appear in the Inquiries section for your Sales team to action.</p>
+
+              <div className="rounded-card bg-surface-muted px-4 py-3">
+                <p className="text-[11px] font-semibold uppercase tracking-wide text-muted mb-1">Customers will see</p>
+                <p className="text-sm text-body">{formatOperatingHours(settings)}</p>
+              </div>
             </div>
           </Section>
 
