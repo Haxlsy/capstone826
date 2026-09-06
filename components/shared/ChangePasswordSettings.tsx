@@ -5,10 +5,11 @@ import { Eye, EyeOff, KeyRound, Check, ShieldCheck } from "lucide-react"
 import { Modal } from "@/components/ui/Modal"
 import { Button } from "@/components/ui/Button"
 import { useLogout } from "@/hooks/useLogout"
+import AccountInfoCard from "./AccountInfoCard"
 
 const LOGOUT_DELAY_MS = 2500
 
-export default function ChangePasswordSettings() {
+export default function ChangePasswordSettings({ extraSection }: { extraSection?: React.ReactNode } = {}) {
   const logout = useLogout()
   const [form, setForm] = useState({
     currentPassword: "",
@@ -87,8 +88,12 @@ export default function ChangePasswordSettings() {
       {/* Header */}
       <div className="mb-6">
         <h1 className="text-xl font-bold text-heading">Settings</h1>
-        <p className="text-sm text-muted mt-0.5">Manage your account security.</p>
+        <p className="text-sm text-muted mt-0.5">Manage your account.</p>
       </div>
+
+      <AccountInfoCard />
+
+      {extraSection}
 
       <div className="bg-surface border border-border rounded-card overflow-hidden">
         {/* Section header */}
