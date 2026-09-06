@@ -98,7 +98,7 @@ export default function SalesJobDetail({ job }: { job: JobDetail }) {
   const progress    = totalStages > 0 ? Math.round((doneStages / totalStages) * 100) : 0
 
   return (
-    <div className="max-w-4xl flex flex-col gap-6">
+    <div className="mx-auto max-w-6xl flex flex-col gap-6">
 
       {/* Header */}
       <div className="flex items-start justify-between gap-4">
@@ -121,7 +121,7 @@ export default function SalesJobDetail({ job }: { job: JobDetail }) {
       </div>
 
       {/* Info grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
         {/* Customer */}
         <div className="bg-surface border border-border-subtle rounded-card p-4 flex flex-col gap-3">
           <p className="text-xs font-semibold text-muted uppercase tracking-wide">Customer</p>
@@ -142,34 +142,12 @@ export default function SalesJobDetail({ job }: { job: JobDetail }) {
             <InfoRow label="Finishing Passed" value={fmtDateTime(job.finishing_approved_at)} />
           )}
         </div>
-      </div>
 
-      {/* Progress */}
-      <div className="bg-surface border border-border-subtle rounded-card p-4 flex flex-col gap-2">
-        <div className="flex justify-between text-xs font-medium text-body">
-          <span>Overall Progress</span>
-          <span>{doneStages} / {totalStages} stages · {progress}%</span>
-        </div>
-        <div className="h-2 bg-surface-muted rounded-full overflow-hidden">
-          <div
-            className={`h-full rounded-full transition-all ${progress === 100 ? "bg-status-inspection" : progress >= 50 ? "bg-primary" : "bg-status-total"}`}
-            style={{ width: `${progress}%` }}
-          />
-        </div>
-      </div>
-
-      {/* Team */}
-      <div className="bg-surface border border-border-subtle rounded-card p-4 flex flex-col gap-3">
-        <p className="text-xs font-semibold text-muted uppercase tracking-wide">Team</p>
-        <div className="grid grid-cols-2 gap-4">
-          <div>
-            <p className="text-xs text-muted mb-1">Head Detailer</p>
-            <p className="text-sm font-medium text-heading">{job.head_detailer?.full_name ?? "Unassigned"}</p>
-          </div>
-          <div>
-            <p className="text-xs text-muted mb-1">Head Installer</p>
-            <p className="text-sm font-medium text-heading">{job.head_installer?.full_name ?? "Unassigned"}</p>
-          </div>
+        {/* Team */}
+        <div className="bg-surface border border-border-subtle rounded-card p-4 flex flex-col gap-3">
+          <p className="text-xs font-semibold text-muted uppercase tracking-wide">Team</p>
+          <InfoRow label="Head Detailer"  value={job.head_detailer?.full_name  ?? "Unassigned"} />
+          <InfoRow label="Head Installer" value={job.head_installer?.full_name ?? "Unassigned"} />
           {job.detailers.length > 0 && (
             <div>
               <p className="text-xs text-muted mb-1">Detailers</p>
@@ -190,6 +168,20 @@ export default function SalesJobDetail({ job }: { job: JobDetail }) {
               </ul>
             </div>
           )}
+        </div>
+      </div>
+
+      {/* Progress */}
+      <div className="bg-surface border border-border-subtle rounded-card p-4 flex flex-col gap-2">
+        <div className="flex justify-between text-xs font-medium text-body">
+          <span>Overall Progress</span>
+          <span>{doneStages} / {totalStages} stages · {progress}%</span>
+        </div>
+        <div className="h-2 bg-surface-muted rounded-full overflow-hidden">
+          <div
+            className={`h-full rounded-full transition-all ${progress === 100 ? "bg-status-inspection" : progress >= 50 ? "bg-primary" : "bg-status-total"}`}
+            style={{ width: `${progress}%` }}
+          />
         </div>
       </div>
 
