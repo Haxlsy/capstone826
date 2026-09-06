@@ -78,7 +78,7 @@ export default function SecurityView({ initialLogs }: { initialLogs: any[] }) {
                     </select>
                 </div>
                 </div>
-                <div className="overflow-x-auto">
+                <div className="overflow-x-auto overflow-y-hidden">
                 <table className="w-full text-sm">
                     <thead>
                     <tr className="border-b border-border-subtle">
