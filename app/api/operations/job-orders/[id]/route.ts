@@ -5,6 +5,8 @@ import { createAdminClient } from "@/lib/supabase/admin"
 import { logAudit } from "@/hooks/audit-helpers"
 import { getJobDetailData } from "@/lib/operations/job-detail-data"
 import { sendPushToUser } from "@/lib/push/send"
+import { sendMessengerText } from "@/lib/messenger/graph"
+import { buildReleaseMessage, buildCompletionMessage, getOperatingHoursText } from "@/lib/messenger/status-update"
 
 export async function GET(
   _request: Request,
@@ -181,6 +183,39 @@ export async function PATCH(
           action:    `Updated job status to ${newStatus}`,
           target:    current?.customer_name ?? id,
         })
+      }
+
+      // ── Customer-facing status messages ────────────────────────────────────
+      // "For Release" → ready-for-pickup, "Released" → thank-you. Wrapped so a
+      // messaging failure never breaks the status-update response — same
+      // philosophy as the head-technician stage-update auto-send.
+      if (newStatus === "For Release" || newStatus === "Released") {
+        try {
+          const { data: custRow } = await admin
+            .from("job_order")
+            .select(
+              `plate_number, vehicle_unit, customer_name,
+               customer:customer_record_id(psid, full_name, vehicle_unit, plate_number)`
+            )
+            .eq("id", id)
+            .single()
+          const cr = custRow as any
+          const psid = cr?.customer?.psid ?? null
+
+          if (psid && process.env.META_PAGE_ACCESS_TOKEN) {
+            const customerName = cr?.customer?.full_name ?? cr?.customer_name ?? null
+            const vehicleUnit  = cr?.customer?.vehicle_unit ?? cr?.vehicle_unit ?? null
+            const plate        = cr?.customer?.plate_number ?? cr?.plate_number ?? null
+
+            const message = newStatus === "For Release"
+              ? buildReleaseMessage({ customerName, vehicleUnit, plate, operatingHours: await getOperatingHoursText() })
+              : buildCompletionMessage({ customerName, vehicleUnit, plate })
+
+            await sendMessengerText(psid, message)
+          }
+        } catch (msgErr) {
+          console.error("[job-orders PATCH] customer status message failed:", msgErr)
+        }
       }
     } else if (head_detailer_id !== undefined || head_installer_id !== undefined || scheduled_at !== undefined) {
       const { data: profile } = await admin.from("user_account").select("full_name, role").eq("id", user.id).single()
