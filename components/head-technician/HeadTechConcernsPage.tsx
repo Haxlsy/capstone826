@@ -42,7 +42,7 @@ type Concern = {
   media:          ConcernMedia[]
 }
 
-type JobOption   = { raw_id: string; label: string }
+type JobOption   = { raw_id: string; label: string; customer_name: string }
 type StageOption = { id: string; label: string }
 
 type FieldErrors = {
@@ -197,6 +197,7 @@ export default function HeadTechConcernsPage() {
         .map((j) => ({
           raw_id: j.raw_id,
           label:  `${j.job_id} · ${j.plate_number}${j.service ? ` · ${j.service}` : ""}`,
+          customer_name: j.customer_name ?? "",
         })),
     [technicianJobsData],
   )
@@ -217,7 +218,10 @@ export default function HeadTechConcernsPage() {
   const filteredJobs = useMemo(() => {
     const q = jobSearch.trim().toLowerCase()
     if (!q) return jobs
-    return jobs.filter((j) => j.label.toLowerCase().includes(q))
+    // label already embeds job order ID and plate number (see the `jobs`
+    // useMemo above), so this covers all three requested fields: job order
+    // ID, customer name, and plate number.
+    return jobs.filter((j) => j.label.toLowerCase().includes(q) || j.customer_name.toLowerCase().includes(q))
   }, [jobSearch, jobs])
 
   // Load concerns
@@ -401,7 +405,7 @@ export default function HeadTechConcernsPage() {
                 <Search size={13} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-muted pointer-events-none" />
                 <input
                   type="text"
-                  placeholder="Search job ID or plate…"
+                  placeholder="Search job ID, customer name, or plate…"
                   value={selectedJobId ? selectedJobLabel : jobSearch}
                   onFocus={() => { if (selectedJobId) { setJobSearch(""); setSelectedJobId(""); setSelectedJobLabel("") } setJobDropOpen(true) }}
                   onBlur={() => setTimeout(() => setJobDropOpen(false), 180)}
@@ -429,6 +433,9 @@ export default function HeadTechConcernsPage() {
                           className="w-full text-left px-4 py-3 text-sm hover:bg-primary/10 transition-colors border-b last:border-none border-border-subtle"
                         >
                           <span className="font-semibold text-heading text-xs">{j.label}</span>
+                          {j.customer_name && (
+                            <span className="block text-[11px] text-muted mt-0.5">{j.customer_name}</span>
+                          )}
                         </button>
                       )) : (
                         <div className="px-4 py-8 text-center text-sm text-muted">No matching jobs</div>
