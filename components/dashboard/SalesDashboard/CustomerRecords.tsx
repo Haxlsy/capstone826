@@ -50,15 +50,20 @@ function groupByCustomer(records: CustomerRecord[]): CustomerGroup[] {
   }))
 }
 
+const PAGE_SIZE = 20
+
 export default function CustomerRecords() {
   const toast = useToast()
   const [records, setRecords] = useState<CustomerRecord[]>([])
   const [loading, setLoading] = useState(true)
+  const [loadingMore, setLoadingMore] = useState(false)
+  const [hasMore, setHasMore] = useState(false)
   const [fetchErr, setFetchErr] = useState<string | null>(null)
   const [search, setSearch] = useState("")
   const [expanded, setExpanded] = useState<Record<string, boolean>>({})
 
   const isFirstRender = useRef(true)
+  const sentinelRef = useRef<HTMLDivElement>(null)
 
   const [editingId, setEditingId] = useState<string | null>(null)
   const [editDraft, setEditDraft] = useState<Partial<CustomerRecord>>({})
@@ -67,30 +72,58 @@ export default function CustomerRecords() {
 
   const [linkTargetId, setLinkTargetId] = useState<string | null>(null)
 
+  function shapeRecords(raw: any[]): CustomerRecord[] {
+    return raw.map((r: any) => ({
+      id: r.id,
+      fullName: r.full_name,
+      contactNumber: r.contact_number,
+      email: r.email ?? null,
+      plateNumber: r.plate_number,
+      vehicleUnit: r.vehicle_unit,
+      psid: r.psid ?? null,
+      createdAt: fmtDate(r.created_at),
+    }))
+  }
+
+  // Fetches the first page for a (possibly new) search term, replacing
+  // whatever's currently shown — the lazy-loaded pages beyond it are handled
+  // by loadMore() below.
   const load = useCallback(async (q = "") => {
     setLoading(true)
     setFetchErr(null)
     try {
-      const res = await fetch(`/api/sales/customer-records${q ? `?search=${encodeURIComponent(q)}` : ""}`)
+      const params = new URLSearchParams({ limit: String(PAGE_SIZE) })
+      if (q) params.set("search", q)
+      const res = await fetch(`/api/sales/customer-records?${params}`)
       const json = await res.json()
       if (!res.ok) throw new Error(json?.error ?? "Failed to load records")
-      const shaped: CustomerRecord[] = (json.records ?? []).map((r: any) => ({
-        id: r.id,
-        fullName: r.full_name,
-        contactNumber: r.contact_number,
-        email: r.email ?? null,
-        plateNumber: r.plate_number,
-        vehicleUnit: r.vehicle_unit,
-        psid: r.psid ?? null,
-        createdAt: fmtDate(r.created_at),
-      }))
-      setRecords(shaped)
+      setRecords(shapeRecords(json.records ?? []))
+      setHasMore(Boolean(json.hasMore))
     } catch (err: unknown) {
       setFetchErr(err instanceof Error ? err.message : String(err))
     } finally {
       setLoading(false)
     }
   }, [])
+
+  // Appends the next page — triggered by the sentinel scrolling into view.
+  const loadMore = useCallback(async () => {
+    setLoadingMore(true)
+    try {
+      const params = new URLSearchParams({ limit: String(PAGE_SIZE), offset: String(records.length) })
+      if (search.trim()) params.set("search", search.trim())
+      const res = await fetch(`/api/sales/customer-records?${params}`)
+      const json = await res.json()
+      if (!res.ok) throw new Error(json?.error ?? "Failed to load more records")
+      setRecords((prev) => [...prev, ...shapeRecords(json.records ?? [])])
+      setHasMore(Boolean(json.hasMore))
+    } catch {
+      // A failed "load more" isn't worth a page-level error — what's already
+      // shown stays usable; the user can just retry by scrolling again.
+    } finally {
+      setLoadingMore(false)
+    }
+  }, [records.length, search])
 
   useEffect(() => {
     if (isFirstRender.current) {
@@ -103,6 +136,21 @@ export default function CustomerRecords() {
     }, 300)
     return () => clearTimeout(t)
   }, [search, load])
+
+  // Lazy-loads the next page as the sentinel at the bottom of the list
+  // scrolls into view — no "Load More" click needed.
+  useEffect(() => {
+    const el = sentinelRef.current
+    if (!el || !hasMore) return
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0]?.isIntersecting && !loading && !loadingMore) loadMore()
+      },
+      { rootMargin: "200px" },
+    )
+    observer.observe(el)
+    return () => observer.disconnect()
+  }, [hasMore, loading, loadingMore, loadMore])
 
   // Live updates when a record is created from an inquiry or edited elsewhere.
   // Re-runs with the active search term so the visible filter is preserved.
@@ -313,10 +361,30 @@ export default function CustomerRecords() {
         })}
       </div>
 
+      {/* Lazy-load sentinel — scrolling this into view fetches the next page. */}
+      {hasMore && (
+        <div ref={sentinelRef} className="py-2 text-center text-xs text-muted">
+          {loadingMore ? "Loading more…" : ""}
+        </div>
+      )}
+
       <LinkAccountModal
         open={linkTargetId !== null}
         onClose={() => setLinkTargetId(null)}
         initialRecordId={linkTargetId ?? undefined}
+        initialRecord={(() => {
+          const r = records.find((rec) => rec.id === linkTargetId)
+          return r
+            ? {
+                id: r.id,
+                full_name: r.fullName,
+                plate_number: r.plateNumber,
+                vehicle_unit: r.vehicleUnit,
+                contact_number: r.contactNumber,
+                psid: r.psid,
+              }
+            : undefined
+        })()}
         onLinked={(id, psid) =>
           setRecords((prev) => prev.map((r) => (r.id === id ? { ...r, psid } : r)))
         }
