@@ -76,7 +76,7 @@ export function DelayedJobsTable({ initialData }: { initialData?: DelayedJob[] }
       ) : jobs.length === 0 ? (
         <EmptyState title="No delayed jobs" compact />
       ) : (
-        <div className="overflow-x-auto">
+        <div className="overflow-x-auto overflow-y-hidden">
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-border-subtle">
