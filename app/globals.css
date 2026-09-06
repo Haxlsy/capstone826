@@ -101,18 +101,6 @@
   .text-display {
     font-family: var(--font-display);
   }
-
-  /* Hides the native up/down stepper on <input type="number"> — used by
-     compact HH:MM duration fields, where the stepper crowds/overlaps the
-     digits instead of being useful. */
-  .no-spinner {
-    -moz-appearance: textfield;
-  }
-  .no-spinner::-webkit-outer-spin-button,
-  .no-spinner::-webkit-inner-spin-button {
-    -webkit-appearance: none;
-    margin: 0;
-  }
 }
 
 /* ----------------------------------------------------------------------------

@@ -263,7 +263,7 @@ export function StageList({
                   value={durHH}
                   onChange={(e) => commitDuration(parseInt(e.target.value, 10) || 0, durMM)}
                   aria-label={`Stage ${index + 1} hours`}
-                  className="no-spinner w-10 px-1.5 py-2 text-xs text-center bg-transparent focus:outline-none"
+                  className="w-14 px-1.5 py-2 text-xs text-center bg-transparent focus:outline-none"
                   placeholder="00"
                 />
                 <span className="text-muted text-xs font-medium">:</span>
@@ -274,7 +274,7 @@ export function StageList({
                   value={durMM}
                   onChange={(e) => commitDuration(durHH, parseInt(e.target.value, 10) || 0)}
                   aria-label={`Stage ${index + 1} minutes`}
-                  className="no-spinner w-10 px-1.5 py-2 text-xs text-center bg-transparent focus:outline-none"
+                  className="w-14 px-1.5 py-2 text-xs text-center bg-transparent focus:outline-none"
                   placeholder="00"
                 />
               </div>

@@ -1,4 +1,11 @@
 import { createAdminClient } from "@/lib/supabase/admin"
+import {
+  formatOperatingHours,
+  DEFAULT_OPERATING_DAYS,
+  DEFAULT_OPERATING_OPEN_TIME,
+  DEFAULT_OPERATING_CLOSE_TIME,
+  type Weekday,
+} from "@/types/chatbot"
 
 /**
  * Builds the customer-facing Messenger messages sent when a job order's
@@ -72,23 +79,36 @@ export function buildCompletionMessage(i: CompletionMessageInput): string {
 }
 
 /**
- * Reads the shop's operating hours straight from the admin-managed knowledge
- * base (`chatbot_knowledge`, category "Hours") so the release message always
- * reflects whatever an admin last configured, with no hardcoded time to drift
- * out of sync. Returns null (not a guess) if that entry doesn't exist.
+ * Reads the shop's structured Operating Hours setting (`chatbot_config.settings`)
+ * so the release message always reflects whatever an admin last configured —
+ * same source of truth the AI chatbot uses (see formatOperatingHours in
+ * types/chatbot.ts), just no hardcoded/free-text hours to drift out of sync.
+ * Falls back to the documented defaults (not null) on any read failure, since
+ * "some hours" beats silently dropping the line — this mirrors the fail-open
+ * philosophy used elsewhere (e.g. isMediaValidationEnabled).
  */
 export async function getOperatingHoursText(): Promise<string | null> {
   try {
     const supabase = createAdminClient()
     const { data } = await supabase
-      .from("chatbot_knowledge")
-      .select("content")
-      .ilike("category", "hours")
-      .order("created_at", { ascending: true })
+      .from("chatbot_config")
+      .select("settings")
       .limit(1)
-      .maybeSingle()
+      .single()
 
-    return clean(data?.content as string | undefined)
+    const settings = (data?.settings ?? {}) as {
+      operating_days?: Weekday[]
+      operating_open_time?: string
+      operating_close_time?: string
+      operating_closed_on_holidays?: boolean
+    }
+
+    return formatOperatingHours({
+      operating_days: settings.operating_days ?? DEFAULT_OPERATING_DAYS,
+      operating_open_time: settings.operating_open_time ?? DEFAULT_OPERATING_OPEN_TIME,
+      operating_close_time: settings.operating_close_time ?? DEFAULT_OPERATING_CLOSE_TIME,
+      operating_closed_on_holidays: settings.operating_closed_on_holidays ?? true,
+    })
   } catch (err) {
     console.error("[status-update] operating hours lookup failed:", err)
     return null

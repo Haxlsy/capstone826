@@ -137,7 +137,7 @@ function StageList({
                   onUpdateDuration(stage.id, hh * 60 + durMM)
                 }}
                 aria-label={`Stage ${localIdx + 1} hours`}
-                className="no-spinner w-8 px-1 py-0.5 text-[10px] text-center bg-surface focus:outline-none text-body"
+                className="w-11 px-1 py-0.5 text-[10px] text-center bg-surface focus:outline-none text-body"
               />
               <span className="text-[10px] text-muted">:</span>
               <input
@@ -150,7 +150,7 @@ function StageList({
                   onUpdateDuration(stage.id, durHH * 60 + mm)
                 }}
                 aria-label={`Stage ${localIdx + 1} minutes`}
-                className="no-spinner w-8 px-1 py-0.5 text-[10px] text-center bg-surface focus:outline-none text-body"
+                className="w-11 px-1 py-0.5 text-[10px] text-center bg-surface focus:outline-none text-body"
               />
             </div>
 
