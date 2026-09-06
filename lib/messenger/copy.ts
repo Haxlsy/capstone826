@@ -227,7 +227,7 @@ export function violationWarning(kind: "policy" | "offtopic", lang?: BotLanguage
   )
 }
 
-/** Quick-reply button labels. Menus are short, so `both` uses "EN / FIL". */
+/** Quick-reply button labels. Menus are short, so `both` picks one language. */
 export const QUICK_REPLY_LABELS: Record<string, { english: string; filipino: string }> = {
   services: { english: "Services & Prices", filipino: "Serbisyo at Presyo" },
   booking:  { english: "Booking",           filipino: "Request ng Booking" },
@@ -236,14 +236,39 @@ export const QUICK_REPLY_LABELS: Record<string, { english: string; filipino: str
 }
 
 /**
- * Messenger caps quick-reply titles at 20 characters, so `both` cannot show
- * two languages side by side — Filipino is used, matching how a bilingual shop
- * would label its own menu.
+ * Common Filipino function words — the same handful of particles almost any
+ * Filipino or Taglish sentence contains at least one of, even a short one.
+ * Word-boundary matched, case-insensitive.
  */
-export function quickReplyLabel(payload: string, lang?: BotLanguage): string | null {
+const FILIPINO_MARKERS =
+  /\b(ang|mga|ng|nang|sa|ko|mo|niya|natin|namin|nila|kayo|sila|hindi|oo|opo|po|ba|na|yung|yun|ito|iyon|paano|gusto|pwede|puwede|salamat|magkano|meron|wala|kailan|saan|sino|paki|pakisuri|pakipadala)\b/i
+
+/**
+ * Guesses whether a message is Filipino/Taglish or English, for callers that
+ * need a single-language decision (quick-reply button titles) when the shop's
+ * Response Language is "both". A per-message heuristic, not a persisted
+ * conversation preference — see `quickReplyLabel`.
+ */
+export function detectMessageLanguage(text: string | null | undefined): "english" | "filipino" {
+  return text && FILIPINO_MARKERS.test(text) ? "filipino" : "english"
+}
+
+/**
+ * Messenger caps quick-reply titles at 20 characters, so `both` cannot show
+ * two languages side by side. `detected` (from `detectMessageLanguage`, keyed
+ * off the customer's own last message) picks which one; when it's not
+ * supplied, "both" falls back to Filipino, matching the previous fixed
+ * behavior for any caller that can't provide the customer's text.
+ */
+export function quickReplyLabel(
+  payload: string,
+  lang?: BotLanguage,
+  detected?: "english" | "filipino",
+): string | null {
   const entry = QUICK_REPLY_LABELS[payload]
   if (!entry) return null
-  return lang === "filipino" || lang === "both" ? entry.filipino : entry.english
+  if (lang === "both") return detected === "english" ? entry.english : entry.filipino
+  return lang === "filipino" ? entry.filipino : entry.english
 }
 
 /** Deterministic vehicle-status wording. */

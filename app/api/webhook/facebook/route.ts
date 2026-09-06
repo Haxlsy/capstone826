@@ -56,6 +56,7 @@ import {
   sendMessengerText,
   sendMessengerQuickReply,
   fetchMessengerProfile,
+  sendSenderAction,
 } from "@/lib/messenger/graph"
 import { QUICK_REPLIES, quickRepliesFor } from "@/lib/messenger/handoff"
 import {
@@ -293,6 +294,13 @@ async function handleInboundMessage(
   // If the conversation is already escalated, Sales is handling it —
   // just record the message, do not auto-reply.
   if (status === "pending") return
+
+  // Show the Messenger typing indicator as early as possible on every reply
+  // path (deterministic hand-offs and canned replies included, not just full
+  // AI turns) — there's no queue here, so the customer would otherwise see
+  // nothing while up to 3 sequential Gemini calls run. Facebook clears this
+  // automatically once a message is sent, so no matching typing_off is needed.
+  await safe(() => sendSenderAction(senderId, "typing_on"))
 
   // Chatbot config is loaded here — before ANY reply path — because the
   // `enable_ai_chatbot` master switch below has to short-circuit every one of
@@ -795,7 +803,7 @@ async function handleInboundMessage(
       sent_at: new Date().toISOString(),
       fb_message_id: mid,
     })
-    await sendMessengerQuickReply(senderId, "Anything else?", quickRepliesFor(lang))
+    await sendMessengerQuickReply(senderId, "Anything else?", quickRepliesFor(lang, messageBody))
     return
   }
 
@@ -1383,7 +1391,7 @@ async function handleInboundMessage(
     // Append the graduated-violation warning (set when the customer is one turn
     // away from an off-topic / policy escalation).
     if (violationWarning) reply = `${reply}${violationWarning}`
-    const fbId = await sendMessengerQuickReply(senderId, reply, quickRepliesFor(lang))
+    const fbId = await sendMessengerQuickReply(senderId, reply, quickRepliesFor(lang, messageBody))
     await insertMessage({
       conversation_id,
       sender_type: "agent",

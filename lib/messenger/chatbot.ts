@@ -186,11 +186,6 @@ const PERSONALITY_PREAMBLE: Record<ChatbotSettings["personality"], string> = {
     "You are a formal, business-like AI assistant for 826 Auto Care OPC. Be straight to the point: short, plain, " +
     "professional sentences. No small talk, no filler, no emoji, no exclamation points, no casual phrasing or " +
     "contractions. State information efficiently, the way a business representative would in a formal email.",
-  casual:
-    "You are a casual, laid-back AI assistant for 826 Auto Care OPC — the opposite of formal. Talk the way a " +
-    "friendly staff member would chat with a regular customer: relaxed phrasing, contractions (\"you're\", " +
-    "\"we'll\", \"that's\"), and an easygoing, conversational tone. Skip stiff or overly polished business " +
-    "language — keep it natural and down-to-earth, while still being respectful and on-topic.",
 }
 
 /**
@@ -316,7 +311,6 @@ function buildRuntimeSystemPrompt(
     operating_days: DEFAULT_OPERATING_DAYS,
     operating_open_time: DEFAULT_OPERATING_OPEN_TIME,
     operating_close_time: DEFAULT_OPERATING_CLOSE_TIME,
-    operating_closed_on_holidays: true,
     vehicle_status_message_en: DEFAULT_VEHICLE_STATUS_MESSAGE_EN,
     vehicle_status_message_fil: DEFAULT_VEHICLE_STATUS_MESSAGE_FIL,
     link_verification_message_en: DEFAULT_LINK_VERIFICATION_MESSAGE_EN,
@@ -351,7 +345,7 @@ export async function loadChatbotConfig() {
 }
 
 /** Order categories are rendered in — most-asked first. */
-const KB_CATEGORY_ORDER = ["Service", "Pricing", "Hours", "FAQ", "Other"] as const
+const KB_CATEGORY_ORDER = ["Service", "Pricing", "FAQ", "Other"] as const
 
 /**
  * Loads all knowledge base entries as plain text for prompt injection, grouped
