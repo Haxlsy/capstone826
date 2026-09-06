@@ -230,8 +230,8 @@ export function violationWarning(kind: "policy" | "offtopic", lang?: BotLanguage
 /** Quick-reply button labels. Menus are short, so `both` uses "EN / FIL". */
 export const QUICK_REPLY_LABELS: Record<string, { english: string; filipino: string }> = {
   services: { english: "Services & Prices", filipino: "Serbisyo at Presyo" },
-  booking:  { english: "Booking",           filipino: "Magpa-book" },
-  report:   { english: "Report a Concern",  filipino: "Mag-report" },
+  booking:  { english: "Booking",           filipino: "Request ng Booking" },
+  report:   { english: "Report a Concern",  filipino: "Mag-report ng Concern" },
   status:   { english: "Vehicle Status",    filipino: "Status ng Sasakyan" },
 }
 
