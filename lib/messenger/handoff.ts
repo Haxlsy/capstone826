@@ -1,7 +1,7 @@
 import { createAdminClient } from "@/lib/supabase/admin"
 import { insertMessage } from "@/lib/messenger/messenger-data"
 import { sendMessengerQuickReply, type MessengerQuickReply } from "@/lib/messenger/graph"
-import { quickReplyLabel, resolvedMessage, resolveTemplate, type BotLanguage } from "@/lib/messenger/copy"
+import { quickReplyLabel, detectMessageLanguage, resolvedMessage, resolveTemplate, type BotLanguage } from "@/lib/messenger/copy"
 import { loadChatbotConfig } from "@/lib/messenger/chatbot"
 import { DEFAULT_RESOLVED_MESSAGE_EN, DEFAULT_RESOLVED_MESSAGE_FIL } from "@/types/chatbot"
 
@@ -20,11 +20,19 @@ export const QUICK_REPLIES: MessengerQuickReply[] = [
   { content_type: "text", title: "Vehicle Status",    payload: "status"   },
 ]
 
-/** The menu, localized to the shop's configured language. */
-export function quickRepliesFor(lang?: BotLanguage): MessengerQuickReply[] {
+/**
+ * The menu, localized to the shop's configured language. `lastCustomerMessage`
+ * is only consulted when `lang` is "both", to pick English or Filipino button
+ * titles based on which language the customer last wrote in.
+ */
+export function quickRepliesFor(lang?: BotLanguage, lastCustomerMessage?: string | null): MessengerQuickReply[] {
+  // No signal to read → leave `detected` undefined so quickReplyLabel falls
+  // back to its own default (Filipino), rather than detectMessageLanguage's
+  // own empty-string default (English) silently overriding that.
+  const detected = lang === "both" && lastCustomerMessage ? detectMessageLanguage(lastCustomerMessage) : undefined
   return QUICK_REPLIES.map((qr) => ({
     ...qr,
-    title: quickReplyLabel(qr.payload ?? "", lang) ?? qr.title,
+    title: quickReplyLabel(qr.payload ?? "", lang, detected) ?? qr.title,
   }))
 }
 
@@ -104,7 +112,7 @@ export async function resumeBotAfterHandoff(psid: string): Promise<void> {
     // which staff status changes also stamp, so it is not a reliable window signal.
     const { data: lastCustomerMsg } = await admin
       .from("messenger_message")
-      .select("sent_at")
+      .select("sent_at, message_body")
       .eq("conversation_id", conv.conversation_id)
       .eq("sender_type", "customer")
       .order("sent_at", { ascending: false })
@@ -165,7 +173,7 @@ export async function resumeBotAfterHandoff(psid: string): Promise<void> {
     )
     const resumeMessage = resolvedMessage(lang, template)
 
-    const mid = await sendMessengerQuickReply(psid, resumeMessage, quickRepliesFor(lang))
+    const mid = await sendMessengerQuickReply(psid, resumeMessage, quickRepliesFor(lang, lastCustomerMsg?.message_body))
 
     // Only record a message that actually reached the customer — a failed send
     // written to history would poison the AI context and the staff transcript.

@@ -4,7 +4,7 @@ import { z } from "zod"
 // Chatbot settings
 // =================================================================
 
-export const botPersonalitySchema = z.enum(["friendly", "formal", "casual"])
+export const botPersonalitySchema = z.enum(["friendly", "formal"])
 export const botLanguageSchema = z.enum(["english", "filipino", "both"])
 
 /**
@@ -116,7 +116,6 @@ export const chatbotSettingsSchema = z.object({
   operating_days:                z.array(weekdaySchema).default(DEFAULT_OPERATING_DAYS),
   operating_open_time:           z.string().default(DEFAULT_OPERATING_OPEN_TIME),
   operating_close_time:          z.string().default(DEFAULT_OPERATING_CLOSE_TIME),
-  operating_closed_on_holidays:  z.boolean().default(true),
   vehicle_status_message_en:       z.string().max(2000),
   vehicle_status_message_fil:      z.string().max(2000),
   link_verification_message_en:    z.string().max(2000),
@@ -148,14 +147,14 @@ function fmtTime12h(hhmm: string): string {
 /**
  * Turns the structured Operating Hours setting into the same sentence shape
  * customers/the AI previously saw as free-text knowledge-base content — e.g.
- * "Tuesday to Sunday, 8:00 AM to 8:00 PM. Closed on Mondays and public
- * holidays." Pure — lives here (not lib/messenger/chatbot.ts, which is
- * server-only) so both the admin client's live preview and every server-side
- * caller (chatbot prompt, "For Release" customer message) share one
- * implementation and can never drift into disagreeing wording.
+ * "Tuesday to Sunday, 8:00 AM to 8:00 PM. Closed on Mondays." Pure — lives
+ * here (not lib/messenger/chatbot.ts, which is server-only) so both the admin
+ * client's live preview and every server-side caller (chatbot prompt, "For
+ * Release" customer message) share one implementation and can never drift
+ * into disagreeing wording.
  */
 export function formatOperatingHours(
-  s: Pick<ChatbotSettings, "operating_days" | "operating_open_time" | "operating_close_time" | "operating_closed_on_holidays">,
+  s: Pick<ChatbotSettings, "operating_days" | "operating_open_time" | "operating_close_time">,
 ): string {
   const openDays = s.operating_days ?? []
   if (openDays.length === 0) return "Operating hours have not been set yet."
@@ -180,10 +179,9 @@ export function formatOperatingHours(
   let text = `${dayText}, ${timeText}.`
 
   const closedDays = WEEKDAYS.filter((d) => !openDays.includes(d))
-  const closedParts: string[] = []
-  if (closedDays.length > 0) closedParts.push(closedDays.map((d) => `${WEEKDAY_LABELS[d]}s`).join(" and "))
-  if (s.operating_closed_on_holidays) closedParts.push("public holidays")
-  if (closedParts.length > 0) text += ` Closed on ${closedParts.join(" and ")}.`
+  if (closedDays.length > 0) {
+    text += ` Closed on ${closedDays.map((d) => `${WEEKDAY_LABELS[d]}s`).join(" and ")}.`
+  }
 
   return text
 }
@@ -192,7 +190,7 @@ export function formatOperatingHours(
 // Knowledge base
 // =================================================================
 
-export const kbCategorySchema = z.enum(["Service", "Pricing", "Hours", "FAQ", "Other"])
+export const kbCategorySchema = z.enum(["Service", "Pricing", "FAQ", "Other"])
 export type KBCategory = z.infer<typeof kbCategorySchema>
 
 export const KB_CATEGORIES = kbCategorySchema.options as KBCategory[]
@@ -200,7 +198,6 @@ export const KB_CATEGORIES = kbCategorySchema.options as KBCategory[]
 export const KB_CATEGORY_COLORS: Record<KBCategory, string> = {
   Service: "bg-blue-50 text-blue-600 border-blue-200",
   Pricing: "bg-green-50 text-green-600 border-green-200",
-  Hours:   "bg-orange-50 text-orange-600 border-orange-200",
   FAQ:     "bg-purple-50 text-purple-600 border-purple-200",
   Other:   "bg-gray-100 text-gray-500 border-gray-200",
 }

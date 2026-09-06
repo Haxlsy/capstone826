@@ -35,7 +35,7 @@ import {
 } from "@/types/chatbot"
 
 type Tab = "settings" | "knowledge_base" | "message_templates"
-type Personality = "friendly" | "formal" | "casual"
+type Personality = "friendly" | "formal"
 
 // The master toggles are part of chatbotSettingsSchema now, so ChatbotSettings
 // already carries them; the alias is kept for readability at the call sites.
@@ -50,7 +50,6 @@ const DEFAULT_SETTINGS: AdminChatbotSettings = {
   operating_days:               DEFAULT_OPERATING_DAYS,
   operating_open_time:          DEFAULT_OPERATING_OPEN_TIME,
   operating_close_time:         DEFAULT_OPERATING_CLOSE_TIME,
-  operating_closed_on_holidays: true,
   // Seeded from the message the system actually sends, so the editor opens
   // showing exactly what customers receive today.
   vehicle_status_message_en:     DEFAULT_VEHICLE_STATUS_MESSAGE_EN,
@@ -270,8 +269,8 @@ export default function ChatbotManagement() {
           {/* A — Personality */}
           <Section icon={<Bot className="w-4 h-4" />} title="Bot Personality" subtitle="Choose the tone the chatbot uses when talking to customers.">
             <div className="flex gap-3 flex-wrap">
-              {(["friendly", "formal", "casual"] as Personality[]).map((p) => {
-                const labels: Record<Personality, string> = { friendly: "Friendly", formal: "Formal", casual: "Casual" }
+              {(["friendly", "formal"] as Personality[]).map((p) => {
+                const labels: Record<Personality, string> = { friendly: "Friendly", formal: "Formal" }
                 return (
                   <button
                     key={p}
@@ -342,12 +341,6 @@ export default function ChatbotManagement() {
                   />
                 </div>
               </div>
-
-              <Toggle
-                checked={settings.operating_closed_on_holidays}
-                onChange={(v) => patch("operating_closed_on_holidays", v)}
-                label="Also closed on public holidays"
-              />
 
               <div className="rounded-card bg-surface-muted px-4 py-3">
                 <p className="text-[11px] font-semibold uppercase tracking-wide text-muted mb-1">Customers will see</p>
