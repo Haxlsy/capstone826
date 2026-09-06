@@ -7,7 +7,8 @@ import {
   extractJobOrderCode,
 } from "@/lib/messenger/patterns"
 import { buildLinkVerificationPrompt } from "@/lib/messenger/vehicle"
-import { resolveTemplate } from "@/lib/messenger/copy"
+import { resolveTemplate, detectMessageLanguage, quickReplyLabel } from "@/lib/messenger/copy"
+import { quickRepliesFor } from "@/lib/messenger/handoff"
 import {
   DEFAULT_VEHICLE_STATUS_MESSAGE_EN,
   DEFAULT_VEHICLE_STATUS_MESSAGE_FIL,
@@ -200,5 +201,61 @@ describe("buildLinkVerificationPrompt", () => {
   it("emits an example that its own pattern can parse", () => {
     // Guards against the example drifting out of sync with the parser.
     expect(extractJobOrderCode("JO-8X2K9F")).toBe("JO-8X2K9F")
+  })
+})
+
+describe("detectMessageLanguage", () => {
+  it("reads plain English as english", () => {
+    expect(detectMessageLanguage("how much is ceramic coating")).toBe("english")
+  })
+
+  it("reads plain Filipino as filipino", () => {
+    expect(detectMessageLanguage("magkano po ang ceramic coating")).toBe("filipino")
+  })
+
+  it("reads Taglish carrying a Filipino particle as filipino", () => {
+    expect(detectMessageLanguage("pwede po ba mag book ngayon")).toBe("filipino")
+  })
+
+  it("falls back to english for empty or missing text", () => {
+    expect(detectMessageLanguage("")).toBe("english")
+    expect(detectMessageLanguage(null)).toBe("english")
+    expect(detectMessageLanguage(undefined)).toBe("english")
+  })
+})
+
+describe("quickReplyLabel — \"both\" language", () => {
+  it("uses English titles when the detected language is english", () => {
+    expect(quickReplyLabel("services", "both", "english")).toBe("Services & Prices")
+  })
+
+  it("uses Filipino titles when the detected language is filipino", () => {
+    expect(quickReplyLabel("services", "both", "filipino")).toBe("Serbisyo at Presyo")
+  })
+
+  it("falls back to Filipino when no detected language is supplied", () => {
+    expect(quickReplyLabel("services", "both")).toBe("Serbisyo at Presyo")
+  })
+
+  it("ignores the detected language entirely outside of \"both\"", () => {
+    expect(quickReplyLabel("services", "english", "filipino")).toBe("Services & Prices")
+    expect(quickReplyLabel("services", "filipino", "english")).toBe("Serbisyo at Presyo")
+  })
+})
+
+describe("quickRepliesFor — \"both\" language picks up the customer's last message", () => {
+  it("renders English button titles after an English message", () => {
+    const menu = quickRepliesFor("both", "how much is ceramic coating")
+    expect(menu.find((m) => m.payload === "services")?.title).toBe("Services & Prices")
+  })
+
+  it("renders Filipino button titles after a Filipino message", () => {
+    const menu = quickRepliesFor("both", "magkano po ang ceramic coating")
+    expect(menu.find((m) => m.payload === "services")?.title).toBe("Serbisyo at Presyo")
+  })
+
+  it("falls back to Filipino when there is no last customer message to read", () => {
+    const menu = quickRepliesFor("both", undefined)
+    expect(menu.find((m) => m.payload === "services")?.title).toBe("Serbisyo at Presyo")
   })
 })

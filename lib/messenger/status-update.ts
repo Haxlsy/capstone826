@@ -33,7 +33,7 @@ export interface ReleaseMessageInput {
   customerName: string | null | undefined
   vehicleUnit: string | null | undefined
   plate: string | null | undefined
-  /** Live text from the "Hours" knowledge base entry — null if it's missing/deleted. */
+  /** Live text from the structured Operating Hours setting — null on lookup failure. */
   operatingHours: string | null | undefined
 }
 
@@ -100,14 +100,12 @@ export async function getOperatingHoursText(): Promise<string | null> {
       operating_days?: Weekday[]
       operating_open_time?: string
       operating_close_time?: string
-      operating_closed_on_holidays?: boolean
     }
 
     return formatOperatingHours({
       operating_days: settings.operating_days ?? DEFAULT_OPERATING_DAYS,
       operating_open_time: settings.operating_open_time ?? DEFAULT_OPERATING_OPEN_TIME,
       operating_close_time: settings.operating_close_time ?? DEFAULT_OPERATING_CLOSE_TIME,
-      operating_closed_on_holidays: settings.operating_closed_on_holidays ?? true,
     })
   } catch (err) {
     console.error("[status-update] operating hours lookup failed:", err)

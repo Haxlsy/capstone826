@@ -162,6 +162,42 @@ export async function sendMessengerVideo(
 }
 
 /**
+ * Sends a "sender action" — `typing_on`/`typing_off` toggle the typing
+ * indicator in the customer's Messenger thread, `mark_seen` shows the read
+ * receipt. Facebook auto-clears `typing_on` as soon as a message is sent to
+ * the recipient (or after ~20s), so callers don't need to pair it with an
+ * explicit `typing_off` before their reply. Never throws — a failure here
+ * must not affect message delivery.
+ */
+export async function sendSenderAction(
+  psid: string,
+  action: "typing_on" | "typing_off" | "mark_seen"
+): Promise<void> {
+  const token = process.env.META_PAGE_ACCESS_TOKEN
+  if (!token || !psid) return
+
+  try {
+    const res = await fetch(
+      `${GRAPH_API_URL}?access_token=${token}`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          recipient:     { id: psid },
+          sender_action: action,
+        }),
+      }
+    )
+
+    if (!res.ok) {
+      console.error("[messenger/graph] sendSenderAction failed:", res.status, await res.text().catch(() => ""))
+    }
+  } catch (err) {
+    console.error("[messenger/graph] sendSenderAction threw:", err)
+  }
+}
+
+/**
  * Fetches the public profile (name + profile_pic) for a Messenger PSID.
  */
 export async function fetchMessengerProfile(psid: string): Promise<{
