@@ -271,7 +271,7 @@ export default function ChatbotManagement() {
           <Section icon={<Bot className="w-4 h-4" />} title="Bot Personality" subtitle="Choose the tone the chatbot uses when talking to customers.">
             <div className="flex gap-3 flex-wrap">
               {(["friendly", "formal", "casual"] as Personality[]).map((p) => {
-                const labels: Record<Personality, string> = { friendly: "Friendly & Professional", formal: "Formal & Concise", casual: "Casual & Conversational" }
+                const labels: Record<Personality, string> = { friendly: "Friendly", formal: "Formal", casual: "Casual" }
                 return (
                   <button
                     key={p}
