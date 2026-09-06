@@ -5,7 +5,7 @@ import { useRealtimeRefetch } from "@/hooks/useRealtimeRefetch"
 import { Car, Phone, Mail, Pencil, X, Check, ChevronDown, ChevronUp } from "lucide-react"
 import { getInitials } from "@/hooks/useCurrentUser"
 import { fmtDate } from "@/lib/time-display"
-import { normalizePhone } from "@/lib/phone"
+import { groupByCustomer } from "@/lib/customer-grouping"
 import { PageHeader } from "@/components/ui/PageHeader"
 import { SearchBar } from "@/components/ui/SearchBar"
 import { Button } from "@/components/ui/Button"
@@ -26,29 +26,6 @@ interface CustomerRecord {
   createdAt: string
 }
 
-interface CustomerGroup {
-  key: string
-  vehicles: CustomerRecord[]
-  /** The record shown in the group header — whichever holds the psid, else the newest. */
-  primary: CustomerRecord
-}
-
-/** Groups vehicle rows into one entry per customer, by normalized phone number
- *  — the same correlation the Messenger status flow already uses to find a
- *  customer's other vehicles, since only one row can ever hold a given psid. */
-function groupByCustomer(records: CustomerRecord[]): CustomerGroup[] {
-  const map = new Map<string, CustomerRecord[]>()
-  for (const r of records) {
-    const key = normalizePhone(r.contactNumber) || `unknown:${r.id}`
-    if (!map.has(key)) map.set(key, [])
-    map.get(key)!.push(r)
-  }
-  return [...map.entries()].map(([key, vehicles]) => ({
-    key,
-    vehicles,
-    primary: vehicles.find((v) => v.psid) ?? vehicles[0],
-  }))
-}
 
 const PAGE_SIZE = 20
 
@@ -156,7 +133,10 @@ export default function CustomerRecords() {
   // Re-runs with the active search term so the visible filter is preserved.
   useRealtimeRefetch("customer_record", () => load(search))
 
-  const groups = useMemo(() => groupByCustomer(records), [records])
+  const groups = useMemo(
+    () => groupByCustomer(records, (r) => r.id, (r) => r.contactNumber, (r) => r.psid),
+    [records],
+  )
 
   function startEdit(record: CustomerRecord) {
     setEditingId(record.id)
