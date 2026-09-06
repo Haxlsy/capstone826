@@ -350,6 +350,23 @@ export async function PATCH(
       if (!stage_id) return NextResponse.json({ error: "stage_id is required." }, { status: 400 })
       if (!completion_notes?.trim()) return NextResponse.json({ error: "Completion notes are required." }, { status: 400 })
 
+      // Server-side backstop for the client's photo+video requirement — a
+      // direct API call must not be able to skip it. A reworked stage was
+      // already marked done once before, so its existing media already
+      // satisfies this; no separate rework case needed.
+      const { data: stageMedia } = await admin
+        .from("stage_media")
+        .select("media_type")
+        .eq("job_stage_progress_id", stage_id)
+      const hasPhoto = (stageMedia ?? []).some((m) => m.media_type === "photo")
+      const hasVideo = (stageMedia ?? []).some((m) => m.media_type === "video")
+      if (!hasPhoto || !hasVideo) {
+        return NextResponse.json(
+          { error: "At least one photo and one video are required before this stage can be marked done." },
+          { status: 400 },
+        )
+      }
+
       await admin
         .from("job_stage_progress")
         .update({

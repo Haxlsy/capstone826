@@ -7,7 +7,7 @@ import {
   extractJobOrderCode,
 } from "@/lib/messenger/patterns"
 import { buildLinkVerificationPrompt } from "@/lib/messenger/vehicle"
-import { resolveTemplate, detectMessageLanguage, quickReplyLabel } from "@/lib/messenger/copy"
+import { resolveTemplate, detectMessageLanguage, quickReplyLabel, offTopicRedirect } from "@/lib/messenger/copy"
 import { quickRepliesFor } from "@/lib/messenger/handoff"
 import {
   DEFAULT_VEHICLE_STATUS_MESSAGE_EN,
@@ -257,5 +257,24 @@ describe("quickRepliesFor — \"both\" language picks up the customer's last mes
   it("falls back to Filipino when there is no last customer message to read", () => {
     const menu = quickRepliesFor("both", undefined)
     expect(menu.find((m) => m.payload === "services")?.title).toBe("Serbisyo at Presyo")
+  })
+})
+
+describe("offTopicRedirect", () => {
+  it("renders English only for the english setting", () => {
+    const text = offTopicRedirect("english")
+    expect(text).toBe("I can only assist with questions about 826 Auto Care's services. Is there anything I can help you with regarding our services?")
+  })
+
+  it("renders Filipino only for the filipino setting", () => {
+    const text = offTopicRedirect("filipino")
+    expect(text).toBe("Makakatulong lang po ako sa mga tanong tungkol sa mga serbisyo ng 826 Auto Care. May maitutulong ba ako sa inyo may kinalaman sa aming mga serbisyo?")
+  })
+
+  it("concatenates English then Filipino for the both setting", () => {
+    const text = offTopicRedirect("both")
+    expect(text).toContain("I can only assist with questions about 826 Auto Care's services")
+    expect(text).toContain("Makakatulong lang po ako")
+    expect(text.indexOf("I can only assist")).toBeLessThan(text.indexOf("Makakatulong"))
   })
 })

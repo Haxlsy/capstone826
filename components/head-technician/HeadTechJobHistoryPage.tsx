@@ -273,6 +273,9 @@ export default function HeadTechJobHistoryPage({ jobId }: { jobId: string }) {
             s.id === stage.id ? { ...s, status: "done", completed_at: now, completion_notes: notes || null } : s
           ),
         } : prev);
+      } else {
+        const j = await res.json().catch(() => null);
+        toast.error(j?.error ?? "Failed to mark stage done.");
       }
     } catch {}
     setMarkingId(null);
@@ -1096,8 +1099,14 @@ function StageCard({
 
       {!readOnly && (
         <div className="px-4 pb-4 space-y-2">
-          {!done && !rework && stage.media.length === 0 && (
-            <p className="text-[11px] text-muted">Upload a photo or video before marking done.</p>
+          {!done && !rework && (photoCount === 0 || videoCount === 0) && (
+            <p className="text-[11px] text-muted">
+              {photoCount === 0 && videoCount === 0
+                ? "Upload at least 1 photo and 1 video before marking done."
+                : photoCount === 0
+                ? "Upload at least 1 photo before marking done."
+                : "Upload at least 1 video before marking done."}
+            </p>
           )}
           {rework && <p className="text-[11px] text-status-rework">Stage flagged for rework — mark done again to confirm.</p>}
           {!done && (
@@ -1142,7 +1151,7 @@ function StageCard({
             {!done && (
               <button
                 onClick={() => onMarkDone(rework ? (stage.completion_notes ?? "Rework confirmed") : notes)}
-                disabled={isMarking || isUploading || (!rework && (stage.media.length === 0 || !notes.trim()))}
+                disabled={isMarking || isUploading || (!rework && (photoCount === 0 || videoCount === 0 || !notes.trim()))}
                 className="flex-1 flex items-center justify-center gap-1.5 text-xs font-semibold text-white bg-primary rounded-card py-2.5 hover:bg-shell-alt active:scale-[0.98] transition-all disabled:opacity-40 disabled:cursor-not-allowed"
               >
                 {isMarking ? <Loader2 size={12} className="animate-spin" /> : <CheckCircle2 size={12} />}
