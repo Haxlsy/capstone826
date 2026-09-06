@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono, Poppins } from "next/font/google";
 import QueryProvider from "@/providers/query-provider";
 import { ToastProvider } from "@/components/ui/Toast";
@@ -23,6 +23,16 @@ const poppins = Poppins({
 export const metadata: Metadata = {
   title: "826 Auto Aesthetic & Protection",
   description: "Job management and service operations for 826 Auto Aesthetic & Protection.",
+  manifest: "/manifest.json",
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: "default",
+    title: "826 Tech",
+  },
+};
+
+export const viewport: Viewport = {
+  themeColor: "#ffffff",
 };
 
 export default function RootLayout({

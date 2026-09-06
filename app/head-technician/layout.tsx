@@ -1,5 +1,6 @@
 import { requireRole } from "@/lib/auth/guard"
 import { MobileTopBar } from "@/components/ui/MobileTopBar"
+import { PushRegistration } from "@/components/head-technician/PushRegistration"
 
 export default async function HeadTechnicianLayout({
   children,
@@ -10,6 +11,7 @@ export default async function HeadTechnicianLayout({
 
   return (
     <div className="min-h-screen bg-surface-subtle">
+      <PushRegistration />
       <MobileTopBar />
       {children}
     </div>

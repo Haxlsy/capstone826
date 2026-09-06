@@ -8,6 +8,7 @@ import { getAuditCaller } from "@/lib/auth/caller"
 import { logAuditCall } from "@/hooks/audit-helpers"
 import { sendMessengerText, sendMessengerImage, sendMessengerVideo } from "@/lib/messenger/graph"
 import { buildStageUpdateMessage } from "@/lib/messenger/stage-update"
+import { sendPushToUser } from "@/lib/push/send"
 
 export async function GET(
   _request: Request,
@@ -23,47 +24,50 @@ export async function GET(
 
     const admin = createAdminClient()
 
-    const { data: profile } = await admin
-      .from("user_account")
-      .select("role")
-      .eq("id", user.id)
-      .single()
+    // None of these five depend on each other's results — they only need
+    // `id` (route param) and `user.id` (from auth) — so run them concurrently
+    // instead of five sequential round-trips.
+    const [
+      { data: profile },
+      { data: job, error },
+      { data: team },
+      { data: history },
+      { data: stageRows },
+    ] = await Promise.all([
+      admin.from("user_account").select("role").eq("id", user.id).single(),
+      admin
+        .from("job_order")
+        .select(
+          `id, status, scheduled_at, actual_start_at, created_at, finishing_approved_at, category_handoffs, job_order_code,
+           customer:customer_record_id(full_name, plate_number, vehicle_unit),
+           service:service_id(name),
+           customer_name, plate_number, vehicle_unit`
+        )
+        .eq("id", id)
+        .single(),
+      admin
+        .from("job_order_team")
+        .select("role_in_job, user_account:user_account_id(id, full_name), technician:technician_id(id, full_name)")
+        .eq("job_order_id", id),
+      admin
+        .from("job_order_history")
+        .select("status, created_at, changed_by:changed_by_id(full_name)")
+        .eq("job_order_id", id)
+        .order("created_at", { ascending: true }),
+      // Two-step query to avoid PostgREST FK embedding ambiguity (silently returns null).
+      // Step 1: raw job_stage_progress rows
+      admin
+        .from("job_stage_progress")
+        .select("id, status, rework_instructions, handoff_notes, completion_notes, completed_at, stage_duration_mins, service_stage_id, media:stage_media(id, file_url, media_type)")
+        .eq("job_order_id", id),
+    ])
 
     const role = (profile as any)?.role as string | undefined
-
-    const { data: job, error } = await admin
-      .from("job_order")
-      .select(
-        `id, status, scheduled_at, actual_start_at, created_at, finishing_approved_at, category_handoffs, job_order_code,
-         customer:customer_record_id(full_name, plate_number, vehicle_unit),
-         service:service_id(name),
-         customer_name, plate_number, vehicle_unit`
-      )
-      .eq("id", id)
-      .single()
 
     if (error || !job) {
       console.error("[HT job detail] query failed — id:", id, "error:", error?.message, "code:", error?.code)
       return NextResponse.json({ error: error?.message ?? "Not found." }, { status: 404 })
     }
-
-    const { data: team } = await admin
-      .from("job_order_team")
-      .select("role_in_job, user_account:user_account_id(id, full_name), technician:technician_id(id, full_name)")
-      .eq("job_order_id", id)
-
-    const { data: history } = await admin
-      .from("job_order_history")
-      .select("status, created_at, changed_by:changed_by_id(full_name)")
-      .eq("job_order_id", id)
-      .order("created_at", { ascending: true })
-
-    // Two-step query to avoid PostgREST FK embedding ambiguity (silently returns null).
-    // Step 1: raw job_stage_progress rows
-    const { data: stageRows } = await admin
-      .from("job_stage_progress")
-      .select("id, status, rework_instructions, handoff_notes, completion_notes, completed_at, stage_duration_mins, service_stage_id, media:stage_media(id, file_url, media_type)")
-      .eq("job_order_id", id)
 
     // Step 2: resolve service_stage details + category names via explicit two-step lookup.
     // FK embedding (workflow_category(name)) silently returns null in this codebase.
@@ -721,7 +725,18 @@ export async function PATCH(
           job_order_id: jobId,
         }))
 
-      if (notifRows.length > 0) await admin.from("notification").insert(notifRows)
+      if (notifRows.length > 0) {
+        await admin.from("notification").insert(notifRows)
+        await Promise.all(
+          notifRows.map((n) =>
+            sendPushToUser(n.user_id, {
+              title: "Stage flagged for rework",
+              body: `${jobLabel}: ${rework_instructions.trim()}`,
+              url: `/head-technician/${jobId}`,
+            })
+          )
+        )
+      }
 
       if (caller) {
         logAuditCall(caller, {

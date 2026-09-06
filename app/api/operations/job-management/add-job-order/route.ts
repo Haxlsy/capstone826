@@ -5,6 +5,7 @@ import { createAdminClient } from "@/lib/supabase/admin"
 import { logAudit } from "@/hooks/audit-helpers"
 import { addWorkingMins } from "@/hooks/time-utils"
 import { normalizePhone } from "@/lib/phone"
+import { sendPushToUser } from "@/lib/push/send"
 
 interface CustomStage {
   service_stage_id:      string | null   // null for stages added only for this job
@@ -292,7 +293,18 @@ export async function POST(request: Request) {
           job_order_id: job.id,
         })
       }
-      if (headNotifs.length > 0) await admin.from("notification").insert(headNotifs)
+      if (headNotifs.length > 0) {
+        await admin.from("notification").insert(headNotifs)
+        await Promise.all(
+          headNotifs.map((n) =>
+            sendPushToUser(n.user_id as string, {
+              title: "New job assigned",
+              body: n.message as string,
+              url: `/head-technician/${job.id}`,
+            })
+          )
+        )
+      }
     } catch (notifErr) {
       console.error("[add-job-order] notification fan-out failed:", notifErr)
     }
