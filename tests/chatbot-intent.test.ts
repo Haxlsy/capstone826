@@ -104,6 +104,17 @@ describe("Test 8 — Human request", () => {
     expect(requestedHuman("I want to talk to an agent.")).toBe(true)
     expect(requestedHuman("gusto ko kausap ng tao")).toBe(true)
     expect(requestedHuman("may makakausap ba akong tao")).toBe(true)
+    expect(requestedHuman("Can I speak with a representative?")).toBe(true)
+    expect(requestedHuman("let me talk to your manager")).toBe(true)
+  })
+
+  // A bare "talk to me"/"talk to you" used to match the same pattern as
+  // "talk to an agent" and force an unconditional escalation — even though
+  // the customer was just opening the conversation, not asking for staff.
+  it("does not treat a customer just starting the conversation as a human request", () => {
+    expect(requestedHuman("Hi please talk to me")).toBe(false)
+    expect(requestedHuman("can we talk?")).toBe(false)
+    expect(requestedHuman("I'd like to talk to you about my car")).toBe(false)
   })
 })
 
