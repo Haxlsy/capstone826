@@ -195,18 +195,9 @@ export default function LoginPage() {
           </button>
         </div>
 
-        {/* Error / Forgot Password Row */}
-        {errors.password ? (
+        {/* Error Row */}
+        {errors.password && (
           <p className="mt-1.5 text-xs font-medium text-status-delayed">{errors.password}</p>
-        ) : (
-          <div className="mt-2 flex justify-end">
-            <button
-              type="button"
-              className="text-xs font-medium text-slate-500 hover:text-accent transition-colors"
-            >
-              Forgot password?
-            </button>
-          </div>
         )}
       </div>
 

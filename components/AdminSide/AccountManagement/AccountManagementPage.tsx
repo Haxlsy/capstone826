@@ -27,8 +27,8 @@ export default function AccountManagementPage() {
   }
 
   return (
-    <div className="flex h-full flex-col">
-      <div className="shrink-0 bg-surface px-6 pt-5">
+    <div className="flex flex-col">
+      <div className="bg-surface px-6 pt-5">
         <Tabs
           items={[
             { key: "staff", label: "Staff Accounts" },
@@ -49,9 +49,7 @@ export default function AccountManagementPage() {
         />
       </div>
 
-      <div className="flex-1 overflow-y-auto">
-        {activeTab === "staff" ? <AccountTable /> : <AdminAccountTable />}
-      </div>
+      {activeTab === "staff" ? <AccountTable /> : <AdminAccountTable />}
     </div>
   )
 }

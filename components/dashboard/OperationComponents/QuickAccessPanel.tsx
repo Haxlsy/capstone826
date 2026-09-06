@@ -41,15 +41,7 @@ export default function QuickAccessPanel({ loading, recentJobs }: Props) {
   return (
     <Card>
       <CardBody className="flex flex-col gap-4">
-        <div className="flex items-center justify-between">
-          <span className="text-sm font-semibold text-heading">Recent Job Orders</span>
-          <button
-            onClick={() => router.push("/dashboard/job-order-records")}
-            className="text-xs font-medium text-primary transition-colors hover:text-primary-hover"
-          >
-            View All →
-          </button>
-        </div>
+        <span className="text-sm font-semibold text-heading">Recent Job Orders</span>
 
         {loading ? (
           <div className="space-y-3">
@@ -68,9 +60,10 @@ export default function QuickAccessPanel({ loading, recentJobs }: Props) {
         ) : (
           <div className="flex flex-col">
             {mapped.map((item, idx) => (
-              <div
+              <button
                 key={item.id}
-                className={`flex items-center justify-between py-2.5 ${
+                onClick={() => router.push(`/dashboard/job-management/${item.id}`)}
+                className={`flex w-full items-center justify-between py-2.5 text-left transition-colors hover:bg-surface-muted ${
                   idx < mapped.length - 1 ? "border-b border-border-subtle" : ""
                 }`}
               >
@@ -79,7 +72,7 @@ export default function QuickAccessPanel({ loading, recentJobs }: Props) {
                   <p className="mt-0.5 text-sm font-medium text-heading">{item.customer}</p>
                 </div>
                 <StatusBadge status={item.status} />
-              </div>
+              </button>
             ))}
           </div>
         )}

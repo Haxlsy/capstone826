@@ -16,6 +16,8 @@ import { categorySwatch } from "@/lib/ui/category-colors";
 import { fmtDateTime, fmtDateTimeShort } from "@/lib/time-display";
 import { HeadTechJobDetailSkeleton } from "@/app/head-technician/[jobId]/loading";
 import { useRealtimeRefetch } from "@/hooks/useRealtimeRefetch";
+import { VideoRecorderModal } from "./VideoRecorderModal";
+import { MAX_VIDEO_MB, MAX_VIDEO_BYTES } from "@/lib/media/limits";
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -120,7 +122,8 @@ export default function HeadTechJobHistoryPage({ jobId }: { jobId: string }) {
 
   const [markingId,    setMarkingId]    = useState<string | null>(null);
   const [startingJob,  setStartingJob]  = useState(false);
-  const [rejectionAlert, setRejectionAlert] = useState<{ message: string } | null>(null);
+  const [rejectionAlert, setRejectionAlert] = useState<{ message: string; kind: "photo" | "video" } | null>(null);
+  const [videoRecorderStage, setVideoRecorderStage] = useState<StageDoc | null>(null);
 
   // Unified approve state — tracks which category is being approved
   const [approvingCategoryId, setApprovingCategoryId] = useState<string | null>(null);
@@ -275,68 +278,45 @@ export default function HeadTechJobHistoryPage({ jobId }: { jobId: string }) {
     setMarkingId(null);
   }
 
-  async function handleFileChange(stage: StageDoc, files: FileList | null) {
-    if (!files || files.length === 0) return;
-    setUploadingId(stage.id);
-    setUploadError((prev) => { const n = { ...prev }; delete n[stage.id]; return n; });
+  // Shared by the photo `<input>` onChange and the video recorder's onCapture
+  // — one file, validate + upload, update `job` state. Pulled out of
+  // `handleFileChange` so both paths share the exact same logic.
+  async function uploadOneFile(stage: StageDoc, file: File) {
+    const isPhoto = file.type.startsWith("image/");
+    if (isPhoto) file = await compressImage(file);
 
-    for (let file of Array.from(files)) {
-      const isPhoto = file.type.startsWith("image/");
-      if (isPhoto) file = await compressImage(file);
+    // Client-side size guard for video — defense in depth alongside the
+    // server's cap. The recorder's auto-stop at MAX_RECORDING_SECONDS should
+    // normally keep clips under this, but a high-bitrate device still could
+    // exceed it, so this catches a video picked some other way too.
+    if (!isPhoto && file.size > MAX_VIDEO_BYTES) {
+      setRejectionAlert({
+        message: `This video is ${(file.size / (1024 * 1024)).toFixed(1)} MB, over the ${MAX_VIDEO_MB} MB limit. Please record a shorter video and try again.`,
+        kind:    "video",
+      });
+      return;
+    }
 
-      const tmpId    = `tmp-${Date.now()}`;
-      const localUrl = URL.createObjectURL(file);
+    const tmpId    = `tmp-${Date.now()}`;
+    const localUrl = URL.createObjectURL(file);
 
-      setJob((prev) => prev ? {
-        ...prev,
-        stages: prev.stages.map((s) =>
-          s.id === stage.id
-            ? { ...s, media: [...s.media, { id: tmpId, url: localUrl, type: isPhoto ? "photo" : "video", pending: true }] }
-            : s
-        ),
-      } : prev);
+    setJob((prev) => prev ? {
+      ...prev,
+      stages: prev.stages.map((s) =>
+        s.id === stage.id
+          ? { ...s, media: [...s.media, { id: tmpId, url: localUrl, type: isPhoto ? "photo" : "video", pending: true }] }
+          : s
+      ),
+    } : prev);
 
-      if (isPhoto) {
-        try {
-          const validateForm = new FormData();
-          validateForm.append("file", file);
-          const validateRes  = await fetch("/api/ai/image-handler", { method: "POST", body: validateForm });
-          const validateJson = await validateRes.json();
-
-          if (!validateJson.approved) {
-            URL.revokeObjectURL(localUrl);
-            setJob((prev) => prev ? {
-              ...prev,
-              stages: prev.stages.map((s) =>
-                s.id === stage.id ? { ...s, media: s.media.filter((m) => m.id !== tmpId) } : s
-              ),
-            } : prev);
-            setRejectionAlert({ message: validateJson.message ?? "This image is not acceptable. Please retake the photo." });
-            continue;
-          }
-        } catch {}
-      }
-
+    if (isPhoto) {
       try {
-        const form = new FormData();
-        form.append("file", file);
-        const res  = await fetch(`/api/head-technician/jobs/${jobId}/stages/${stage.id}/media`, { method: "POST", body: form });
-        const json = await res.json();
+        const validateForm = new FormData();
+        validateForm.append("file", file);
+        const validateRes  = await fetch("/api/ai/image-handler", { method: "POST", body: validateForm });
+        const validateJson = await validateRes.json();
 
-        if (res.ok && json.media) {
-          URL.revokeObjectURL(localUrl);
-          setJob((prev) => prev ? {
-            ...prev,
-            stages: prev.stages.map((s) =>
-              s.id === stage.id
-                ? { ...s, media: s.media.map((m) => m.id === tmpId
-                    ? { id: json.media.id, url: json.media.file_url, type: json.media.media_type }
-                    : m
-                  )}
-                : s
-            ),
-          } : prev);
-        } else {
+        if (!validateJson.approved) {
           URL.revokeObjectURL(localUrl);
           setJob((prev) => prev ? {
             ...prev,
@@ -344,15 +324,32 @@ export default function HeadTechJobHistoryPage({ jobId }: { jobId: string }) {
               s.id === stage.id ? { ...s, media: s.media.filter((m) => m.id !== tmpId) } : s
             ),
           } : prev);
-          if (json?.approved === false) {
-            // AI-rejected video (e.g. non-automotive content) — same modal a
-            // rejected photo gets, instead of the generic upload-error banner.
-            setRejectionAlert({ message: json.message ?? json.error ?? "This video is not acceptable. Please retake it." });
-          } else {
-            setUploadError((prev) => ({ ...prev, [stage.id]: json?.error ?? "Upload failed." }));
-          }
+          setRejectionAlert({ message: validateJson.message ?? "This image is not acceptable. Please retake the photo.", kind: "photo" });
+          return;
         }
-      } catch (err: unknown) {
+      } catch {}
+    }
+
+    try {
+      const form = new FormData();
+      form.append("file", file);
+      const res  = await fetch(`/api/head-technician/jobs/${jobId}/stages/${stage.id}/media`, { method: "POST", body: form });
+      const json = await res.json();
+
+      if (res.ok && json.media) {
+        URL.revokeObjectURL(localUrl);
+        setJob((prev) => prev ? {
+          ...prev,
+          stages: prev.stages.map((s) =>
+            s.id === stage.id
+              ? { ...s, media: s.media.map((m) => m.id === tmpId
+                  ? { id: json.media.id, url: json.media.file_url, type: json.media.media_type }
+                  : m
+                )}
+              : s
+          ),
+        } : prev);
+      } else {
         URL.revokeObjectURL(localUrl);
         setJob((prev) => prev ? {
           ...prev,
@@ -360,9 +357,44 @@ export default function HeadTechJobHistoryPage({ jobId }: { jobId: string }) {
             s.id === stage.id ? { ...s, media: s.media.filter((m) => m.id !== tmpId) } : s
           ),
         } : prev);
-        setUploadError((prev) => ({ ...prev, [stage.id]: err instanceof Error ? err.message : "Upload failed." }));
+        if (json?.approved === false) {
+          // AI-rejected video (e.g. non-automotive content) — same modal a
+          // rejected photo gets, instead of the generic upload-error banner.
+          setRejectionAlert({ message: json.message ?? json.error ?? "This video is not acceptable. Please retake it.", kind: isPhoto ? "photo" : "video" });
+        } else if (!isPhoto && res.status === 400 && /too large/i.test(json?.error ?? "")) {
+          // Server-side size cap — same friendly "please retake" modal rather
+          // than the small inline error banner.
+          setRejectionAlert({ message: json.error, kind: "video" });
+        } else {
+          setUploadError((prev) => ({ ...prev, [stage.id]: json?.error ?? "Upload failed." }));
+        }
       }
+    } catch (err: unknown) {
+      URL.revokeObjectURL(localUrl);
+      setJob((prev) => prev ? {
+        ...prev,
+        stages: prev.stages.map((s) =>
+          s.id === stage.id ? { ...s, media: s.media.filter((m) => m.id !== tmpId) } : s
+        ),
+      } : prev);
+      setUploadError((prev) => ({ ...prev, [stage.id]: err instanceof Error ? err.message : "Upload failed." }));
     }
+  }
+
+  async function handleFileChange(stage: StageDoc, files: FileList | null) {
+    if (!files || files.length === 0) return;
+    setUploadingId(stage.id);
+    setUploadError((prev) => { const n = { ...prev }; delete n[stage.id]; return n; });
+    for (const file of Array.from(files)) {
+      await uploadOneFile(stage, file);
+    }
+    setUploadingId(null);
+  }
+
+  async function handleVideoCaptured(stage: StageDoc, file: File) {
+    setUploadingId(stage.id);
+    setUploadError((prev) => { const n = { ...prev }; delete n[stage.id]; return n; });
+    await uploadOneFile(stage, file);
     setUploadingId(null);
   }
 
@@ -678,6 +710,7 @@ export default function HeadTechJobHistoryPage({ jobId }: { jobId: string }) {
                   uploadError={uploadError[stage.id] ?? null}
                   onMarkDone={(notes) => markDone(stage, notes)}
                   onFileChange={(files) => handleFileChange(stage, files)}
+                  onRecordVideo={() => setVideoRecorderStage(stage)}
                   onRemoveMedia={(mediaId) => removeMedia(stage, mediaId)}
                   onPreview={(url, type) => setPreview({ url, type })}
                 />
@@ -819,15 +852,25 @@ export default function HeadTechJobHistoryPage({ jobId }: { jobId: string }) {
           <span className="flex h-11 w-11 items-center justify-center rounded-full bg-status-delayed/12 text-status-delayed">
             <AlertTriangle size={20} />
           </span>
-          <h2 className="text-base font-semibold text-heading">Image Not Accepted</h2>
+          <h2 className="text-base font-semibold text-heading">
+            {rejectionAlert?.kind === "video" ? "Video Not Accepted" : "Image Not Accepted"}
+          </h2>
           <p className="text-sm text-body">{rejectionAlert?.message ?? "Please retake your photo."}</p>
         </div>
         <div className="mt-4">
           <Button fullWidth onClick={() => setRejectionAlert(null)}>
-            OK, Retake Photo
+            OK, Retake {rejectionAlert?.kind === "video" ? "Video" : "Photo"}
           </Button>
         </div>
       </Modal>
+
+      <VideoRecorderModal
+        open={videoRecorderStage !== null}
+        onClose={() => setVideoRecorderStage(null)}
+        onCapture={(file) => {
+          if (videoRecorderStage) handleVideoCaptured(videoRecorderStage, file);
+        }}
+      />
 
       <BottomNav active="jobs" />
     </>
@@ -943,7 +986,7 @@ function fmtDuration(mins: number): string {
 
 function StageCard({
   stage, readOnly, isMarking, isUploading, removingId, uploadError,
-  onMarkDone, onFileChange, onRemoveMedia, onPreview,
+  onMarkDone, onFileChange, onRecordVideo, onRemoveMedia, onPreview,
 }: {
   stage:         StageDoc;
   readOnly:      boolean;
@@ -953,6 +996,7 @@ function StageCard({
   uploadError:   string | null;
   onMarkDone:    (notes: string) => void;
   onFileChange:  (files: FileList | null) => void;
+  onRecordVideo: () => void;
   onRemoveMedia: (mediaId: string) => void;
   onPreview:     (url: string, type: string) => void;
 }) {
@@ -1081,15 +1125,19 @@ function StageCard({
               <input type="file" accept="image/*" capture="environment" className="hidden" disabled={isUploading || photoFull || done || rework} onChange={(e) => onFileChange(e.target.files)} />
             </label>
 
-            <label className={`flex-1 flex items-center justify-center gap-1.5 text-xs font-semibold border rounded-card py-2.5 transition-colors ${
-              isUploading || videoFull || done || rework
-                ? "opacity-40 pointer-events-none text-muted border-border bg-surface-subtle"
-                : "text-body border-border hover:bg-surface-muted cursor-pointer bg-surface"
-            }`}>
+            <button
+              type="button"
+              onClick={onRecordVideo}
+              disabled={isUploading || videoFull || done || rework}
+              className={`flex-1 flex items-center justify-center gap-1.5 text-xs font-semibold border rounded-card py-2.5 transition-colors ${
+                isUploading || videoFull || done || rework
+                  ? "opacity-40 pointer-events-none text-muted border-border bg-surface-subtle"
+                  : "text-body border-border hover:bg-surface-muted cursor-pointer bg-surface"
+              }`}
+            >
               <Video size={13} />
               Video {videoFull ? "(1/1)" : ""}
-              <input type="file" accept="video/*" capture="environment" className="hidden" onChange={(e) => onFileChange(e.target.files)} disabled={done || rework} />
-            </label>
+            </button>
 
             {!done && (
               <button

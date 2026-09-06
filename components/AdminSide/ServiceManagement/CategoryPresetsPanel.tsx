@@ -404,7 +404,7 @@ export default function CategoryPresetsPanel({
                               max="99"
                               value={stage.hh}
                               onChange={(e) => updateStage(stage.key, "hh", e.target.value.padStart(2, "0").slice(-2))}
-                              className="w-12 px-2 py-2 text-sm text-center bg-transparent focus:outline-none"
+                              className="no-spinner w-12 px-2 py-2 text-sm text-center bg-transparent focus:outline-none"
                             />
                             <span className="text-muted text-sm font-medium">:</span>
                             <input
@@ -413,7 +413,7 @@ export default function CategoryPresetsPanel({
                               max="59"
                               value={stage.mm}
                               onChange={(e) => updateStage(stage.key, "mm", e.target.value.padStart(2, "0").slice(-2))}
-                              className="w-12 px-2 py-2 text-sm text-center bg-transparent focus:outline-none"
+                              className="no-spinner w-12 px-2 py-2 text-sm text-center bg-transparent focus:outline-none"
                             />
                           </div>
                           <button

@@ -4,6 +4,7 @@ import { createClient } from "@/lib/supabase/server"
 import { createAdminClient } from "@/lib/supabase/admin"
 import { extractVideoFrame, stripAudio } from "@/lib/media/video"
 import { validateAutomotiveImage, isMediaValidationEnabled } from "@/lib/ai/media-validation"
+import { MAX_PHOTO_MB, MAX_VIDEO_MB, MAX_PHOTO_BYTES, MAX_VIDEO_BYTES } from "@/lib/media/limits"
 
 // POST /api/head-technician/jobs/[id]/stages/[stageId]/media
 // Accepts a multipart form with file field "file".
@@ -30,9 +31,9 @@ export async function POST(
       return NextResponse.json({ error: "Only image or video files are supported." }, { status: 400 })
     }
 
-    const maxBytes = isPhoto ? 5 * 1024 * 1024 : 20 * 1024 * 1024
+    const maxBytes = isPhoto ? MAX_PHOTO_BYTES : MAX_VIDEO_BYTES
     if (file.size > maxBytes) {
-      const limit = isPhoto ? "5 MB" : "20 MB"
+      const limit = isPhoto ? `${MAX_PHOTO_MB} MB` : `${MAX_VIDEO_MB} MB`
       return NextResponse.json({ error: `File too large. Maximum is ${limit}.` }, { status: 400 })
     }
 
@@ -54,7 +55,7 @@ export async function POST(
       if (await isMediaValidationEnabled()) {
         try {
           const frame = await extractVideoFrame(original)
-          const result = await validateAutomotiveImage(frame)
+          const result = await validateAutomotiveImage(frame, "video")
           if (!result.approved) {
             return NextResponse.json({ ...result, error: result.message }, { status: 400 })
           }

@@ -4,7 +4,7 @@ import { useState, useEffect } from "react"
 import {
   Bot, BookOpen, Save, Plus, Pencil, Trash2, X, Check,
   ChevronDown, ChevronUp, MessageSquare, Settings, AlertTriangle,
-  Globe, SlidersHorizontal, Users,
+  Globe, SlidersHorizontal, Users, Search,
 } from "lucide-react"
 import MessageTemplates from "./MessageTemplates"
 import ChatbotPreview from "./ChatbotPreview"
@@ -85,6 +85,8 @@ export default function ChatbotManagement() {
   const [form, setForm]               = useState<KBForm>(EMPTY_KB_FORM)
   const [expandedId, setExpandedId]   = useState<string | null>(null)
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null)
+  const [kbSearch, setKbSearch]               = useState("")
+  const [kbCategoryFilter, setKbCategoryFilter] = useState<KBCategory | "All">("All")
 
   useEffect(() => {
     fetch("/api/admin/chatbot/config")
@@ -195,6 +197,14 @@ export default function ChatbotManagement() {
       setKbSaving(false)
     }
   }
+
+  const kbSearchActive = kbSearch.trim().length > 0 || kbCategoryFilter !== "All"
+  const filteredKbEntries = kbEntries.filter((entry) => {
+    if (kbCategoryFilter !== "All" && entry.category !== kbCategoryFilter) return false
+    const q = kbSearch.trim().toLowerCase()
+    if (!q) return true
+    return entry.topic.toLowerCase().includes(q) || entry.category.toLowerCase().includes(q)
+  })
 
   return (
     <div className="flex flex-col gap-5">
@@ -351,7 +361,9 @@ export default function ChatbotManagement() {
         <div className="flex flex-col gap-4">
           <div className="flex items-center justify-between">
             <p className="text-sm text-body">
-              {kbEntries.length} {kbEntries.length === 1 ? "entry" : "entries"} in the knowledge base.
+              {kbSearchActive
+                ? `${filteredKbEntries.length} of ${kbEntries.length} ${kbEntries.length === 1 ? "entry" : "entries"} shown.`
+                : `${kbEntries.length} ${kbEntries.length === 1 ? "entry" : "entries"} in the knowledge base.`}
             </p>
             <button
               onClick={openAdd}
@@ -360,6 +372,29 @@ export default function ChatbotManagement() {
               <Plus className="w-4 h-4" />
               Add Entry
             </button>
+          </div>
+
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+            <div className="relative flex-1">
+              <Search className="absolute left-3 top-1/2 w-3.5 h-3.5 -translate-y-1/2 text-muted" />
+              <input
+                type="text"
+                value={kbSearch}
+                onChange={(e) => setKbSearch(e.target.value)}
+                placeholder="Search by topic or category…"
+                className="w-full rounded-sm border border-border py-2 pl-8 pr-3 text-sm text-body focus:outline-none focus:ring-2 focus:ring-primary/30"
+              />
+            </div>
+            <select
+              value={kbCategoryFilter}
+              onChange={(e) => setKbCategoryFilter(e.target.value as KBCategory | "All")}
+              className="border border-border rounded-sm bg-surface px-3 py-2 text-sm text-body focus:outline-none focus:ring-2 focus:ring-primary/30 sm:w-48"
+            >
+              <option value="All">All Categories</option>
+              {KB_CATEGORIES.map((c) => (
+                <option key={c} value={c}>{c}</option>
+              ))}
+            </select>
           </div>
 
           {kbError && (
@@ -432,7 +467,10 @@ export default function ChatbotManagement() {
             {!kbLoading && kbEntries.length === 0 && !kbError && (
               <div className="text-center py-10 text-sm text-muted">No knowledge base entries yet. Add one above.</div>
             )}
-            {kbEntries.map((entry) => {
+            {!kbLoading && kbEntries.length > 0 && filteredKbEntries.length === 0 && !kbError && (
+              <div className="text-center py-10 text-sm text-muted">No entries match your search or filter.</div>
+            )}
+            {filteredKbEntries.map((entry) => {
               const isExpanded = expandedId === entry.id
               const isDeleteConfirm = deleteConfirmId === entry.id
               return (
