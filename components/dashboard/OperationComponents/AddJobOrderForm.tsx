@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef, useMemo } from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
-import { CheckCircle2 } from "lucide-react"
+import { CheckCircle2, User, Phone, Mail, IdCard, Car } from "lucide-react"
 import ServiceOverridePanel, { type Stage } from "./ServiceOverridePanel"
 import JobOrderConfirmDialog, { type JobOrderSummary } from "./JobOrderConfirmDialog"
 import { fmtDateTime } from "@/lib/time-display"
@@ -732,12 +732,29 @@ export default function AddJobOrderForm() {
               </div>
 
               {selectedCustomer && (
-                <div className="bg-primary/10 border border-primary/30 rounded-sm p-4 space-y-1.5">
-                  <p className="text-sm font-semibold text-blue-900">{selectedCustomer.full_name}</p>
-                  <p className="text-xs text-primary">📞 {selectedCustomer.contact_number}</p>
-                  <p className="text-xs text-primary">✉️ {selectedCustomer.email ?? "—"}</p>
-                  <p className="text-xs text-primary">🚗 {selectedCustomer.plate_number}</p>
-                  {selectedCustomer.vehicle_unit && <p className="text-xs text-primary">Unit: {selectedCustomer.vehicle_unit}</p>}
+                <div className="bg-primary/10 border border-primary/30 rounded-sm p-4 space-y-2">
+                  <p className="flex items-center gap-1.5 text-sm font-semibold text-heading">
+                    <User className="h-3.5 w-3.5 shrink-0" />
+                    {selectedCustomer.full_name}
+                  </p>
+                  <p className="flex items-center gap-1.5 text-xs text-primary">
+                    <Phone className="h-3.5 w-3.5 shrink-0" />
+                    {selectedCustomer.contact_number}
+                  </p>
+                  <p className="flex items-center gap-1.5 text-xs text-primary">
+                    <Mail className="h-3.5 w-3.5 shrink-0" />
+                    {selectedCustomer.email ?? "—"}
+                  </p>
+                  <p className="flex items-center gap-1.5 text-xs text-primary">
+                    <IdCard className="h-3.5 w-3.5 shrink-0" />
+                    {selectedCustomer.plate_number}
+                  </p>
+                  {selectedCustomer.vehicle_unit && (
+                    <p className="flex items-center gap-1.5 text-xs text-primary">
+                      <Car className="h-3.5 w-3.5 shrink-0" />
+                      Vehicle Unit: {selectedCustomer.vehicle_unit}
+                    </p>
+                  )}
                 </div>
               )}
             </div>
