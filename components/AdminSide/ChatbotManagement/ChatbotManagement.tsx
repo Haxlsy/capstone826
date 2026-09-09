@@ -217,7 +217,7 @@ export default function ChatbotManagement() {
   return (
     <div className="flex flex-col gap-5">
       <div>
-        <h1 className="text-xl font-bold text-heading">AI Configuration Management</h1>
+        <h1 className="text-xl font-bold text-heading">AI Configuration</h1>
         <p className="text-sm text-muted mt-0.5">Configure how your chatbot interacts with customers.</p>
       </div>
 
