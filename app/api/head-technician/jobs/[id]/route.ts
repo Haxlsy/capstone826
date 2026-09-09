@@ -7,6 +7,7 @@ import { computeStageDelays } from "@/lib/job-delay"
 import { fmtDateTime } from "@/lib/time-display"
 import { getAuditCaller } from "@/lib/auth/caller"
 import { logAuditCall } from "@/hooks/audit-helpers"
+import { notifyRole } from "@/lib/notify-role"
 import { sendMessengerText, sendMessengerImage, sendMessengerVideo } from "@/lib/messenger/graph"
 import { buildStageUpdateMessage } from "@/lib/messenger/stage-update"
 import { sendPushToUser } from "@/lib/push/send"
@@ -423,6 +424,11 @@ export async function PATCH(
             status:        "For Inspection",
             changed_by_id: user.id,
           })
+          await notifyRole(admin, "operations", {
+            type:         "job_status",
+            message:      `Job ${jobLabel} is ready for inspection after rework.`,
+            job_order_id: jobId,
+          })
         }
       }
 
@@ -717,6 +723,11 @@ export async function PATCH(
       if (caller) {
         logAuditCall(caller, { category: "approve", action: "Passed job to operations", target: jobLabel })
       }
+      await notifyRole(admin, "operations", {
+        type:         "job_status",
+        message:      `Job ${jobLabel} is ready for inspection.`,
+        job_order_id: jobId,
+      })
 
       return NextResponse.json({ success: true })
     }

@@ -54,7 +54,7 @@ const CATEGORIES: Category[] = [
   },
   {
     key: "booking_confirmation",
-    label: "Booking Confirmation",
+    label: "Booking Request Confirmation",
     enField: "booking_message_en",
     filField: "booking_message_fil",
     description:

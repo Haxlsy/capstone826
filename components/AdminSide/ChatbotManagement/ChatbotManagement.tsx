@@ -217,12 +217,12 @@ export default function ChatbotManagement() {
   return (
     <div className="flex flex-col gap-5">
       <div>
-        <h1 className="text-xl font-bold text-heading">AI Chatbot Management</h1>
+        <h1 className="text-xl font-bold text-heading">AI Configuration Management</h1>
         <p className="text-sm text-muted mt-0.5">Configure how your chatbot interacts with customers.</p>
       </div>
 
       <div className="flex border-b border-border gap-1">
-        <TabButton active={activeTab === "settings"} onClick={() => setActiveTab("settings")} icon={<Settings className="w-4 h-4" />} label="Chatbot Settings" />
+        <TabButton active={activeTab === "settings"} onClick={() => setActiveTab("settings")} icon={<Settings className="w-4 h-4" />} label="AI Settings" />
         <TabButton active={activeTab === "knowledge_base"} onClick={() => setActiveTab("knowledge_base")} icon={<BookOpen className="w-4 h-4" />} label="Knowledge Base" />
         <TabButton active={activeTab === "message_templates"} onClick={() => setActiveTab("message_templates")} icon={<MessageSquare className="w-4 h-4" />} label="Message Templates" />
       </div>

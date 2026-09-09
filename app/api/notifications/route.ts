@@ -1,6 +1,9 @@
 import { NextResponse } from "next/server"
 import { cookies } from "next/headers"
 import { createClient } from "@/lib/supabase/server"
+import { createAdminClient } from "@/lib/supabase/admin"
+import { getAuditCaller } from "@/lib/auth/caller"
+import { isJobDelayed, ACTIVE_JOB_STATUSES } from "@/lib/job-delay"
 
 export async function GET() {
   try {
@@ -39,7 +42,29 @@ export async function GET() {
       created_at: n.created_at,
     }))
 
-    return NextResponse.json({ notifications: shaped, unreadCount: unreadCount ?? 0 })
+    // Operations (and Admin, who also has a dedicated dashboard widget for
+    // this) additionally see a live count of currently overdue jobs blended
+    // into the bell — "delayed" has no discrete event to notify on
+    // (lib/job-delay.ts is the single source of truth for what counts),
+    // so this is computed fresh on every request rather than a stored alert
+    // that could go stale, duplicate, or need its own read/unread state.
+    // Deliberately its own field, not folded into `unreadCount`: mixing a
+    // live gauge into "things you haven't acknowledged yet" would make that
+    // number jump back up right after "mark all read", reading as new
+    // notifications arriving when nothing actually did.
+    let delayedJobCount = 0
+    const caller = await getAuditCaller()
+    if (caller && ["operations", "admin", "super_admin"].includes(caller.role)) {
+      const admin = createAdminClient()
+      const { data: activeJobs } = await admin
+        .from("job_order")
+        .select("status, expected_completion_at")
+        .in("status", ACTIVE_JOB_STATUSES as unknown as string[])
+        .eq("is_archived", false)
+      delayedJobCount = (activeJobs ?? []).filter(isJobDelayed).length
+    }
+
+    return NextResponse.json({ notifications: shaped, unreadCount: unreadCount ?? 0, delayedJobCount })
   } catch (err: any) {
     return NextResponse.json({ error: err?.message ?? String(err) }, { status: 500 })
   }

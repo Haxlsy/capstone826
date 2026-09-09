@@ -93,6 +93,7 @@ import {
   type EscalationReason,
 } from "@/lib/messenger/copy"
 import { logAudit } from "@/hooks/audit-helpers"
+import { notifyRole } from "@/lib/notify-role"
 
 const VERIFY_TOKEN = process.env.META_VERIFY_TOKEN!
 
@@ -148,23 +149,10 @@ async function handOffWhileDisabled(
     })
     if (inquiryErr) console.error("[webhook/facebook] disabled-mode inquiry insert failed:", inquiryErr.message)
 
-    const { data: salesUsers } = await admin
-      .from("user_account")
-      .select("id")
-      .eq("role", "sales")
-      .eq("is_archived", false)
-
-    if (salesUsers?.length) {
-      await admin.from("notification").insert(
-        salesUsers.map((u: any) => ({
-          user_id:      u.id,
-          type:         "inquiry",
-          message:      `New Human Response inquiry from ${psidName}`,
-          job_order_id: null,
-          is_read:      false,
-        })),
-      )
-    }
+    await notifyRole(admin, "sales", {
+      type:    "inquiry",
+      message: `New Human Response inquiry from ${psidName}`,
+    })
   } catch (err) {
     console.error("[webhook/facebook] disabled-mode handoff failed:", err)
   }
@@ -1331,52 +1319,19 @@ async function handleInboundMessage(
 
     // ── Notify Sales users — always, for these inquiry types (mandatory) ────
     if (inquiry_type === "Booking" || inquiry_type === "Human Response") {
-      try {
-        const { data: salesUsers } = await admin
-          .from("user_account")
-          .select("id")
-          .eq("role", "sales")
-          .eq("is_archived", false)
-
-        if (salesUsers?.length) {
-          const notifRows = salesUsers.map((u: any) => ({
-            user_id:      u.id,
-            type:         "inquiry",
-            message:      `New ${inquiry_type} inquiry from ${profile.name}`,
-            job_order_id: null,
-            is_read:      false,
-          }))
-          await admin.from("notification").insert(notifRows)
-        }
-      } catch (notifErr) {
-        console.error("[webhook/facebook] sales notification fan-out failed:", notifErr)
-      }
+      await notifyRole(admin, "sales", {
+        type:    "inquiry",
+        message: `New ${inquiry_type} inquiry from ${profile.name}`,
+      })
     }
 
     // A suspected impersonation attempt always notifies Sales too, so it is
     // seen in real time, not just in the log.
     if (linkEscalation?.impersonation) {
-      try {
-        const { data: salesUsers } = await admin
-          .from("user_account")
-          .select("id")
-          .eq("role", "sales")
-          .eq("is_archived", false)
-
-        if (salesUsers?.length) {
-          await admin.from("notification").insert(
-            salesUsers.map((u: any) => ({
-              user_id:      u.id,
-              type:         "inquiry",
-              message:      `⚠️ Possible impersonation attempt from ${profile.name}`,
-              job_order_id: null,
-              is_read:      false,
-            }))
-          )
-        }
-      } catch (notifErr) {
-        console.error("[webhook/facebook] impersonation notification failed:", notifErr)
-      }
+      await notifyRole(admin, "sales", {
+        type:    "inquiry",
+        message: `⚠️ Possible impersonation attempt from ${profile.name}`,
+      })
     }
 
     // Booking requests first receive the configured confirmation message, then
