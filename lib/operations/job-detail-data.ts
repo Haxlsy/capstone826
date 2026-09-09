@@ -160,6 +160,11 @@ export async function getJobDetailData(id: string) {
       scheduled_at: j.scheduled_at,
       actual_start_at: j.actual_start_at,
       expected_completion_at: expectedCompletionAt,
+      // Lets the client preview a new Est. Completion (via the existing
+      // /api/operations/job-management/estimate-completion endpoint) while
+      // editing Scheduled Start, without re-implementing working-hours math
+      // in the browser.
+      total_duration_mins: totalDurationMins,
       updated_est: updatedEstAt,
       created_at: j.created_at,
       finishing_approved_at: j.finishing_approved_at,
