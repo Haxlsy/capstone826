@@ -6,6 +6,7 @@ import { Car, Phone, Mail, Pencil, X, Check, ChevronDown, ChevronUp } from "luci
 import { getInitials } from "@/hooks/useCurrentUser"
 import { fmtDate } from "@/lib/time-display"
 import { groupByCustomer } from "@/lib/customer-grouping"
+import { EMAIL_PATTERN } from "@/lib/messenger/patterns"
 import { PageHeader } from "@/components/ui/PageHeader"
 import { SearchBar } from "@/components/ui/SearchBar"
 import { Button } from "@/components/ui/Button"
@@ -156,7 +157,21 @@ export default function CustomerRecords() {
     setSaveErr(null)
   }
 
+  function validateDraft(): string | null {
+    if (!editDraft.plateNumber?.trim()) return "Plate number is required."
+    if (!editDraft.vehicleUnit?.trim()) return "Vehicle unit is required."
+    if (!editDraft.contactNumber?.trim()) return "Contact number is required."
+    const email = editDraft.email?.trim()
+    if (email && !EMAIL_PATTERN.test(email)) return "Enter a valid email address."
+    return null
+  }
+
   async function saveEdit(id: string) {
+    const validationErr = validateDraft()
+    if (validationErr) {
+      setSaveErr(validationErr)
+      return
+    }
     setSaving(true)
     setSaveErr(null)
     try {
@@ -261,6 +276,7 @@ export default function CustomerRecords() {
                           {isEditing ? (
                             <Input
                               aria-label="Plate number"
+                              maxLength={50}
                               className={cn(editCell, "w-28")}
                               value={editDraft.plateNumber ?? ""}
                               onChange={(e) => setEditDraft((d) => ({ ...d, plateNumber: e.target.value }))}
@@ -271,6 +287,7 @@ export default function CustomerRecords() {
                           {isEditing ? (
                             <Input
                               aria-label="Vehicle unit"
+                              maxLength={255}
                               className={cn(editCell, "w-36")}
                               value={editDraft.vehicleUnit ?? ""}
                               onChange={(e) => setEditDraft((d) => ({ ...d, vehicleUnit: e.target.value }))}
@@ -285,6 +302,8 @@ export default function CustomerRecords() {
                           {isEditing ? (
                             <Input
                               aria-label="Contact number"
+                              type="tel"
+                              maxLength={20}
                               className={cn(editCell, "w-36")}
                               value={editDraft.contactNumber ?? ""}
                               onChange={(e) => setEditDraft((d) => ({ ...d, contactNumber: e.target.value }))}
@@ -300,6 +319,7 @@ export default function CustomerRecords() {
                             <Input
                               aria-label="Email"
                               type="email"
+                              maxLength={255}
                               className={cn(editCell, "w-44")}
                               value={editDraft.email ?? ""}
                               onChange={(e) => setEditDraft((d) => ({ ...d, email: e.target.value }))}

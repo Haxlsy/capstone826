@@ -20,6 +20,7 @@ import StatusPickerModal, { type JobStatus, type StatusOption } from "./StatusPi
 import StatusConfirmDialog from "./StatusConfirmDialog"
 import { fmtDate } from "@/lib/time-display"
 import { useRealtimeRefetch } from "@/hooks/useRealtimeRefetch"
+import { displayJobStatus } from "@/lib/job-delay"
 
 interface JobOrder {
   id: string
@@ -129,9 +130,7 @@ export default function JobManagementTable() {
   const filtered = useMemo(
     () =>
       jobOrders.filter((job) => {
-        const isDelayed =
-          job.status === "Delayed" ||
-          (job.is_overdue && (job.status === "Pending" || job.status === "Ongoing"))
+        const isDelayed = displayJobStatus(job.status, job.is_overdue) === "Delayed"
         const matchesTab =
           activeTab === "All" || (activeTab === "Delayed" ? isDelayed : job.status === activeTab)
         const q = searchQuery.toLowerCase()
@@ -247,11 +246,7 @@ export default function JobManagementTable() {
       key: "status",
       header: "Status",
       cell: (job) => {
-        const display =
-          job.is_overdue && (job.status === "Pending" || job.status === "Ongoing")
-            ? "Delayed"
-            : job.status
-        return <StatusBadge status={display} />
+        return <StatusBadge status={displayJobStatus(job.status, job.is_overdue)} />
       },
     },
     {

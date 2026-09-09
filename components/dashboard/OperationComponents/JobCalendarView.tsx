@@ -9,6 +9,7 @@ import { Sk } from "@/components/ui/skeleton"
 import { cn } from "@/lib/utils"
 import { statusStyle } from "@/lib/ui/status"
 import { fmtDateTimeShort } from "@/lib/time-display"
+import { displayJobStatus } from "@/lib/job-delay"
 
 const DAY_HEADERS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]
 const MONTH_NAMES = [
@@ -30,6 +31,7 @@ interface CalendarJob {
   actual_start_at: string | null
   expected_completion_at: string | null
   status: string
+  is_overdue: boolean
   customer: string
   service: string
   head_detailer: string | null
@@ -48,13 +50,16 @@ function CompactTooltip({ jobs, align = "left" }: { jobs: CalendarJob[]; align?:
         {jobs.length} job{jobs.length !== 1 ? "s" : ""}
       </p>
       <div className="max-h-44 overflow-y-auto">
-        {jobs.map((job) => (
-          <div key={job.id} className="flex items-center gap-2 px-3 py-1">
-            <span className={cn("h-1.5 w-1.5 shrink-0 rounded-full", statusStyle(job.status).dot)} />
-            <span className="flex-1 truncate text-xs text-heading">{job.customer}</span>
-            <StatusBadge status={job.status} className="shrink-0 text-[10px]" />
-          </div>
-        ))}
+        {jobs.map((job) => {
+          const status = displayJobStatus(job.status, job.is_overdue)
+          return (
+            <div key={job.id} className="flex items-center gap-2 px-3 py-1">
+              <span className={cn("h-1.5 w-1.5 shrink-0 rounded-full", statusStyle(status).dot)} />
+              <span className="flex-1 truncate text-xs text-heading">{job.customer}</span>
+              <StatusBadge status={status} className="shrink-0 text-[10px]" />
+            </div>
+          )
+        })}
       </div>
       <p className="mt-1 border-t border-border-subtle px-3 pt-1.5 text-center text-[10px] text-muted">
         Click for full details
@@ -203,7 +208,7 @@ export default function JobCalendarView({ loading, calendarJobs }: Props) {
                   </span>
                   <div className="flex flex-wrap justify-center gap-0.5 px-1">
                     {dayJobs.slice(0, 3).map((job, i) => (
-                      <span key={i} className={cn("h-1.5 w-1.5 rounded-full", statusStyle(job.status).dot)} />
+                      <span key={i} className={cn("h-1.5 w-1.5 rounded-full", statusStyle(displayJobStatus(job.status, job.is_overdue)).dot)} />
                     ))}
                     {dayJobs.length > 3 && (
                       <span className="text-xs text-muted">+{dayJobs.length - 3}</span>
@@ -246,7 +251,7 @@ export default function JobCalendarView({ loading, calendarJobs }: Props) {
                   <p className="truncate text-sm font-semibold text-heading">{job.customer}</p>
                   <p className="mt-0.5 text-xs text-body">{job.service}</p>
                 </div>
-                <StatusBadge status={job.status} className="shrink-0" />
+                <StatusBadge status={displayJobStatus(job.status, job.is_overdue)} className="shrink-0" />
               </div>
 
               <div className="mb-3 grid grid-cols-2 gap-x-4 gap-y-2 text-xs">

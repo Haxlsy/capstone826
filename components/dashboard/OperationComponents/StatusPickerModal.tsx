@@ -2,7 +2,7 @@
 
 import type { ComponentType } from "react"
 import {
-  Clock, PlayCircle, RefreshCw, ShieldCheck, ClipboardCheck, PackageCheck, AlertTriangle,
+  Clock, PlayCircle, RefreshCw, ShieldCheck, ClipboardCheck, PackageCheck,
 } from "lucide-react"
 import { Modal } from "@/components/ui/Modal"
 import { Button } from "@/components/ui/Button"
@@ -25,6 +25,11 @@ export interface StatusOption {
   icon: ComponentType<{ className?: string }>
 }
 
+// "Delayed" is deliberately NOT a selectable option — it's now fully
+// computed (see lib/job-delay.ts's isJobDelayed/displayJobStatus) instead of
+// something a staff member sets by hand. It's kept in JobStatus/ALLOWED_NEXT
+// below only so a legacy job order that still literally has that stored
+// status can be shown as "Current: Delayed" and moved forward out of it.
 export const STATUS_OPTIONS: StatusOption[] = [
   { label: "Pending", db: "Pending", icon: Clock },
   { label: "Ongoing", db: "Ongoing", icon: PlayCircle },
@@ -32,7 +37,6 @@ export const STATUS_OPTIONS: StatusOption[] = [
   { label: "For Inspection", db: "For Inspection", icon: ShieldCheck },
   { label: "For Release", db: "For Release", icon: ClipboardCheck },
   { label: "Released", db: "Released", icon: PackageCheck },
-  { label: "Delayed", db: "Delayed", icon: AlertTriangle },
 ]
 
 export const ALLOWED_NEXT: Record<JobStatus, JobStatus[]> = {

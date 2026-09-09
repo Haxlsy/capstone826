@@ -18,6 +18,7 @@ import { EmptyState } from "@/components/ui/EmptyState"
 import { useToast } from "@/components/ui/Toast"
 import { cn } from "@/lib/utils"
 import { statusStyle } from "@/lib/ui/status"
+import { displayJobStatus } from "@/lib/job-delay"
 import { categorySwatch } from "@/lib/ui/category-colors"
 import { fmtDateTime } from "@/lib/time-display"
 import { useRealtimeRefetch } from "@/hooks/useRealtimeRefetch"
@@ -79,6 +80,7 @@ interface JobDetail {
   detailers: CrewMember[]
   installers: CrewMember[]
   status: string
+  is_overdue: boolean
   scheduled_at: string | null
   actual_start_at: string | null
   expected_completion_at: string | null
@@ -443,7 +445,7 @@ export default function JobOrderDetail({ jobId }: { jobId: string }) {
               <p className="mt-0.5 text-sm text-body">{job.contact_number}</p>
               {job.email && <p className="mt-0.5 text-sm text-body">{job.email}</p>}
             </div>
-            <StatusBadge status={job.status} />
+            <StatusBadge status={displayJobStatus(job.status, job.is_overdue)} />
           </div>
 
           <div className="grid grid-cols-2 gap-4 text-sm md:grid-cols-4">

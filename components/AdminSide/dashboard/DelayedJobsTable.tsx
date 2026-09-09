@@ -103,7 +103,7 @@ export function DelayedJobsTable({ initialData }: { initialData?: DelayedJob[] }
                       {isOverdue ? (
                         <Badge className={statusStyle("delayed").soft}>+{delayedBy}</Badge>
                       ) : (
-                        <Badge className={statusStyle("rework").soft}>Delayed</Badge>
+                        <Badge className={statusStyle("delayed").soft}>Delayed</Badge>
                       )}
                     </td>
                   </tr>

@@ -7,6 +7,7 @@ import { fmtDateTime } from "@/lib/time-display"
 import { StatusBadge, Badge } from "@/components/ui/Badge"
 import { cn } from "@/lib/utils"
 import { statusStyle } from "@/lib/ui/status"
+import { displayJobStatus } from "@/lib/job-delay"
 
 interface StageMedia {
   id:         string
@@ -48,6 +49,7 @@ interface JobDetail {
   detailers:              CrewMember[]
   installers:             CrewMember[]
   status:                 string
+  is_overdue:             boolean
   scheduled_at:           string | null
   actual_start_at:        string | null
   expected_completion_at: string | null
@@ -112,7 +114,7 @@ export default function SalesJobDetail({ job }: { job: JobDetail }) {
           </Link>
           <h1 className="text-xl font-bold text-heading">{displayId}</h1>
         </div>
-        <StatusBadge status={job.status} className="mt-6 px-3 py-1 text-sm" />
+        <StatusBadge status={displayJobStatus(job.status, job.is_overdue)} className="mt-6 px-3 py-1 text-sm" />
       </div>
 
       {/* Read-only notice */}

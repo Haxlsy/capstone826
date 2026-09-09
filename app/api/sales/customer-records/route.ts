@@ -1,8 +1,9 @@
 import { NextResponse } from "next/server"
 import { createAdminClient } from "@/lib/supabase/admin"
-import { getAuditCaller } from "@/lib/auth/caller"
+import { requireAuditCaller } from "@/lib/auth/caller"
 import { logAuditCall } from "@/hooks/audit-helpers"
 import { normalizePhone } from "@/lib/phone"
+import { CreateCustomerRecordSchema } from "./schema"
 
 export async function GET(request: Request) {
   try {
@@ -52,15 +53,17 @@ export async function GET(request: Request) {
 
 export async function POST(request: Request) {
   try {
-    const body = await request.json()
-    const { full_name, contact_number, email, plate_number, vehicle_unit, psid } = body
+    const auth = await requireAuditCaller()
+    if ("error" in auth) return auth.error
+    const { caller } = auth
 
-    if (!full_name || !contact_number || !plate_number || !vehicle_unit) {
-      return NextResponse.json(
-        { error: "full_name, contact_number, plate_number, and vehicle_unit are required." },
-        { status: 400 }
-      )
+    const body = await request.json()
+    const parsed = CreateCustomerRecordSchema.safeParse(body)
+    if (!parsed.success) {
+      return NextResponse.json({ error: parsed.error.issues[0]?.message ?? "Validation failed." }, { status: 400 })
     }
+    const { full_name, contact_number, plate_number, vehicle_unit, psid } = parsed.data
+    const email = parsed.data.email || null
 
     const supabase = createAdminClient()
 
@@ -112,16 +115,21 @@ export async function POST(request: Request) {
       isNewRecord = true
     }
 
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 })
-
-    const caller = await getAuditCaller()
-    if (caller) {
-      logAuditCall(caller, {
-        category: isNewRecord ? "create" : "update",
-        action:   isNewRecord ? "Created customer record" : "Updated customer record",
-        target:   full_name,
-      })
+    if (error) {
+      if (error.code === "23505") {
+        return NextResponse.json(
+          { error: "That value conflicts with another customer record." },
+          { status: 409 }
+        )
+      }
+      return NextResponse.json({ error: error.message }, { status: 500 })
     }
+
+    logAuditCall(caller, {
+      category: isNewRecord ? "create" : "update",
+      action:   isNewRecord ? "Created customer record" : "Updated customer record",
+      target:   full_name,
+    })
 
     return NextResponse.json({ record: data }, { status: isNewRecord ? 201 : 200 })
   } catch (err: any) {

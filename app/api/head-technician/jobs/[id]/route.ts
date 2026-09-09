@@ -3,6 +3,7 @@ import { cookies } from "next/headers"
 import { createClient } from "@/lib/supabase/server"
 import { createAdminClient } from "@/lib/supabase/admin"
 import { addWorkingMins } from "@/hooks/time-utils"
+import { computeStageDelays } from "@/lib/job-delay"
 import { fmtDateTime } from "@/lib/time-display"
 import { getAuditCaller } from "@/lib/auth/caller"
 import { logAuditCall } from "@/hooks/audit-helpers"
@@ -197,28 +198,24 @@ export async function GET(
     // Build a lookup from jsp id → computed is_unlocked
     const unlockedMap = new Map(computedStages.map((s: any) => [s.id as string, s.is_unlocked as boolean]))
 
-    // Compute expected_end_at and is_delayed per stage using working-hours-aware accumulation
-    const expectedEndMap  = new Map<string, string>()
-    const isDelayedMap    = new Map<string, boolean>()
-    if (j.actual_start_at) {
-      const sorted = [...stagesWithInfo].sort(
-        (a: any, b: any) => (a.stageInfo.sequence_order as number) - (b.stageInfo.sequence_order as number)
-      )
-      const jobStart = new Date(j.actual_start_at as string)
-      const nowMs    = Date.now()
-      let cumulativeMins = 0
-      for (const s of sorted as any[]) {
-        const overrideDuration = s.stage_duration_mins as number | null
-        const serviceDuration  = s.stageInfo?.stage_duration_mins ?? 0
-        const durationMins     = overrideDuration != null ? overrideDuration : serviceDuration
-        cumulativeMins += durationMins
-        if (durationMins > 0) {
-          const expectedEnd = addWorkingMins(jobStart, cumulativeMins)
-          expectedEndMap.set(s.id as string, expectedEnd.toISOString())
-          const stStatus = s.status as string
-          isDelayedMap.set(s.id as string, stStatus !== "done" && stStatus !== "for_rework" && nowMs > expectedEnd.getTime())
-        }
-      }
+    // Compute expected_end_at and is_delayed per stage — lib/job-delay.ts is
+    // the single shared definition, also used by Operations' job-detail and
+    // dashboard endpoints.
+    const stageDelays = computeStageDelays(
+      (stagesWithInfo as any[]).map((s) => ({
+        id: s.id as string,
+        status: s.status as string,
+        sequence_order: (s.stageInfo?.sequence_order as number) ?? 0,
+        stage_duration_mins: (s.stage_duration_mins as number | null) ?? null,
+        service_stage_duration_mins: (s.stageInfo?.stage_duration_mins as number | null) ?? null,
+      })),
+      j.actual_start_at as string | null,
+    )
+    const expectedEndMap = new Map<string, string>()
+    const isDelayedMap   = new Map<string, boolean>()
+    for (const [stageId, d] of stageDelays) {
+      if (d.expected_end_at) expectedEndMap.set(stageId, d.expected_end_at)
+      isDelayedMap.set(stageId, d.is_delayed)
     }
 
     return NextResponse.json({

@@ -1,5 +1,5 @@
 import { createAdminClient } from "@/lib/supabase/admin"
-import { addWorkingMins } from "@/hooks/time-utils"
+import { computeStageDelays, hasAnyStageDelayed, type StageForDelay } from "@/lib/job-delay"
 import { fmtDate } from "@/lib/time-display"
 
 export type TechnicianJob = {
@@ -118,30 +118,24 @@ export async function getHeadTechnicianJobs(userId: string) {
     if ((s as any).status === "done") g.done++
   }
 
-  const nowMs = Date.now()
+  // lib/job-delay.ts — the single shared definition of "delayed", also used
+  // by Operations' job-detail and dashboard endpoints.
   const delayedJobIds = new Set<string>()
   for (const j of jobs ?? []) {
     if (!j.actual_start_at) continue
     const stages = jobStagesMap.get(j.id) ?? []
-    const sorted = [...stages].sort((a: any, b: any) => {
-      const ssA = a.service_stage_id ? ssMap.get(a.service_stage_id) : null
-      const ssB = b.service_stage_id ? ssMap.get(b.service_stage_id) : null
-      return ((ssA?.sequence_order ?? 0) as number) - ((ssB?.sequence_order ?? 0) as number)
-    })
-    const jobStart = new Date(j.actual_start_at as string)
-    let cumMins = 0
-    for (const s of sorted) {
+    const shaped: StageForDelay[] = stages.map((s: any, idx: number) => {
       const ss = s.service_stage_id ? ssMap.get(s.service_stage_id) : null
-      const override = (s as any).stage_duration_mins as number | null
-      const base = ss?.stage_duration_mins ?? 0
-      const mins = override != null ? override : base
-      cumMins += mins
-      if (mins > 0 && (s.status as string) !== "done" && (s.status as string) !== "for_rework") {
-        if (nowMs > addWorkingMins(jobStart, cumMins).getTime()) {
-          delayedJobIds.add(j.id as string)
-          break
-        }
+      return {
+        id: String(idx),
+        status: s.status,
+        sequence_order: ss?.sequence_order ?? 0,
+        stage_duration_mins: s.stage_duration_mins,
+        service_stage_duration_mins: ss?.stage_duration_mins ?? null,
       }
+    })
+    if (hasAnyStageDelayed(computeStageDelays(shaped, j.actual_start_at as string))) {
+      delayedJobIds.add(j.id as string)
     }
   }
 
