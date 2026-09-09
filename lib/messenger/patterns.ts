@@ -56,7 +56,7 @@ export const PHONE_PATTERN = /(?:\+?63|0)\s?9\d{2}[\s.-]?\d{3}[\s.-]?\d{4}(?!\d)
 export const EMAIL_PATTERN = /\b[\w.+-]+@[\w-]+\.[\w.]+\b/
 
 /**
- * Job Order Code (e.g. JO-8X2K9F) — replaces plate+phone as the credential a
+ * Job Order ID(e.g. JO-8X2K9F) — replaces plate+phone as the credential a
  * Messenger customer uses to link their account and check vehicle status.
  * Distinctive "JO-" prefix means a `\b` boundary is safe here, unlike the
  * plate/phone patterns above.
@@ -71,7 +71,7 @@ export const TOKEN_PHONE = new RegExp(PHONE_PATTERN.source, "g")
 export const TOKEN_EMAIL = new RegExp(EMAIL_PATTERN.source, "g")
 
 /**
- * Pulls a Job Order Code out of free text, normalized to uppercase. Returns
+ * Pulls a Job Order ID out of free text, normalized to uppercase. Returns
  * "" when absent — the caller decides what that means.
  */
 export function extractJobOrderCode(text: string): string {

@@ -34,7 +34,7 @@ const CATEGORIES: Category[] = [
     enField: "link_verification_message_en",
     filField: "link_verification_message_fil",
     description:
-      "Sent when a customer's Job Order Code can't be verified — either it doesn't match any job order on file, or it's already linked to a different Messenger account. The same message covers both cases on purpose, so a stranger can't use the reply to guess which codes are valid.",
+      "Sent when a customer's Job Order ID can't be verified — either it doesn't match any job order on file, or it's already linked to a different Messenger account. The same message covers both cases on purpose, so a stranger can't use the reply to guess which codes are valid.",
   },
   {
     key: "human_escalation",

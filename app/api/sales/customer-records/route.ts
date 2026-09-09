@@ -22,7 +22,7 @@ export async function GET(request: Request) {
 
     const trimmed = search.trim()
     if (trimmed) {
-      // A Job Order Code lives on job_order, not customer_record — resolve it to
+      // A Job Order ID lives on job_order, not customer_record — resolve it to
       // the record(s) it points at so Sales can paste a code from a conflict
       // note straight into this search box.
       const { data: jobMatches } = await supabase
