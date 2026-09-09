@@ -99,6 +99,19 @@ describe("PLATE_PATTERN", () => {
   it("ignores text with no digits", () => {
     expect(plate("Ford Everest")).toBeNull()
   })
+
+  // Regression: an off-topic logic-puzzle message got misread as containing a
+  // plate ("is 25", "is 23", "of 826"), which hijacked the reply into the
+  // deterministic booking flow instead of letting the AI see it as off-topic.
+  it("does not misread an ordinary sentence's short connector words as a plate", () => {
+    expect(plate("John is 25 years old. Mary is older than John. Mary is 23 years old.")).toBeNull()
+    expect(plate("A bat and a ball cost 110 total. Who is owner of 826?")).toBeNull()
+    expect(plate("I'll be there at 5 to pick up my car")).toBeNull()
+  })
+
+  it("still finds a real plate elsewhere in a sentence containing those words", () => {
+    expect(plate("is my plate ABC 1234 on file?")).toBe("ABC 1234")
+  })
 })
 
 describe("EMAIL_PATTERN", () => {
@@ -278,3 +291,4 @@ describe("offTopicRedirect", () => {
     expect(text.indexOf("I can only assist")).toBeLessThan(text.indexOf("Makakatulong"))
   })
 })
+

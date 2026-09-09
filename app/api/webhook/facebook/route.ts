@@ -87,6 +87,7 @@ import {
   offTopicRedirect,
   resolveTemplate,
   pickCopy,
+  detectMessageLanguage,
   ALL_MISSING_FIELDS_LEADS,
   type BotLanguage,
   type EscalationReason,
@@ -190,6 +191,7 @@ const REPORT_PATTERNS = [
   /\breklamo\b/i,
   /\bmagreklamo\b/i,
 ]
+
 
 /** True when the extracted customer object carries at least one real detail. */
 const hasExtractedDetails = (c: CustomerDetails | null | undefined): boolean =>
@@ -328,6 +330,16 @@ async function handleInboundMessage(
   // model's free text — those used to be hardcoded English regardless.
   const lang = settings?.language as BotLanguage | undefined
 
+  // Every deterministic, fixed-copy reply this turn uses this instead of raw
+  // `lang` — "both" used to mean "show English AND Filipino, concatenated,
+  // every time" for these, which read as a wall of duplicated text to a
+  // customer clearly writing in only one language. Resolved the same way the
+  // quick-reply buttons already are: detect the customer's own last message
+  // and pick just that language. `lang` itself is left untouched for the
+  // Gemini system prompt, which keeps its own per-turn detect-and-match
+  // instruction for the AI's free-text replies.
+  const effectiveLang: BotLanguage | undefined = lang === "both" ? detectMessageLanguage(messageBody) : lang
+
   // Admin-editable Message Templates, each resolved against its built-in
   // default once per turn and reused at every send site below.
   const vehicleStatusTemplate = resolveTemplate(
@@ -369,7 +381,10 @@ async function handleInboundMessage(
   // deliberate subject change ("I want to book", "let me talk to someone") from a
   // failed attempt at sending a plate + phone.
   const humanRequested = requestedHuman(messageBody)
-  const reportIntent =
+  // `let` — a message classified as a complaint (see the violation handling
+  // further down) sets this true so the existing reportIntent-driven
+  // escalation-type/ack logic further down picks "Report" up for free.
+  let reportIntent =
     quickReplyPayload === "report" ||
     REPORT_PATTERNS.some((re) => re.test(messageBody))
 
@@ -421,7 +436,7 @@ async function handleInboundMessage(
         return false
       }
       await safe(() => setLinkAttempts(conversation_id, attempts))
-      const askAgain = buildLinkVerificationPrompt({ retry: "unrecognized", lang, linkVerificationTemplate })
+      const askAgain = buildLinkVerificationPrompt({ retry: "unrecognized", lang: effectiveLang, linkVerificationTemplate })
       const mid = await sendMessengerText(senderId, askAgain)
       await insertMessage({ conversation_id, sender_type: "agent", message_body: askAgain, sent_at: new Date().toISOString(), fb_message_id: mid })
       return true
@@ -482,7 +497,7 @@ async function handleInboundMessage(
         } else {
           await safe(() => setLinkConflictPending(conversation_id, true))
           await safe(() => setLinkAttempts(conversation_id, link_attempts + 1))
-          const askAgain = buildLinkVerificationPrompt({ retry: "conflict", lang, linkVerificationTemplate })
+          const askAgain = buildLinkVerificationPrompt({ retry: "conflict", lang: effectiveLang, linkVerificationTemplate })
           const mid = await sendMessengerText(senderId, askAgain)
           await insertMessage({ conversation_id, sender_type: "agent", message_body: askAgain, sent_at: new Date().toISOString(), fb_message_id: mid })
           return
@@ -630,7 +645,7 @@ async function handleInboundMessage(
       statusReply = formatVehicleStatusForCustomer(outcome, {
         focusPlate,
         vehicleStatusTemplate,
-        lang,
+        lang: effectiveLang,
       })
       if (outcome.kind === "ok" && outcome.soft) {
         logAudit({ ...auditActor, category: "flag", action: "messenger status: soft-matched via own inquiry", target: `psid=${senderId} jobs=${jobPlates.join("/") || "none"}` })
@@ -662,8 +677,14 @@ async function handleInboundMessage(
       ? "report"
       : null
   let aiReason: string | null = null
-  let aiViolation: "none" | "off_topic" | "policy" = "none"
+  let aiViolation: "none" | "off_topic" | "policy" | "complaint" = "none"
   let extracted: ChatbotReply["customer"] = null
+  // Recorded on the inquiry when a booking / violation escalation needs a
+  // Sales note (identity conflict, repeat in-service booking, an immediate
+  // threat/policy escalation, repeated violations…). Declared here (not just
+  // before the graduated-ladder block below) so the policy-violation branch
+  // in the try block can set it too.
+  let conflictNote: string | null = null
 
   try {
     // A deterministic status answer owns the reply — skip Gemini entirely.
@@ -693,13 +714,40 @@ async function handleInboundMessage(
     aiViolation = result.violation ?? "none"
     extracted = result.customer ?? null
 
-    // The model is instructed to redirect off-topic messages with a fixed
-    // sentence, but relying on it to translate that sentence live for
-    // "filipino"/"both" is unreliable — override with reviewed, deterministic
-    // copy instead, the same way violationWarningCopy() below supplies the
-    // warning sentence appended right after this.
-    if (aiViolation === "off_topic") {
-      reply = offTopicRedirect(lang)
+    // These classifications are decided ENTIRELY here, in code — not by the
+    // model's separate `escalate` flag, which is unreliable for exactly these
+    // high-stakes cases (a threat, a strongly-worded complaint) despite being
+    // told not to escalate them itself. `escalate` is force-set here
+    // regardless of what the model set it to, unless a deterministic signal
+    // independently warrants escalating anyway (an explicit human request,
+    // explicit report wording, or an existing-booking operation).
+    const violationHandled = !humanRequested && !reportIntent && !existingBookingIntent
+    if (aiViolation === "complaint" && violationHandled) {
+      // A complaint is a real concern — escalate immediately, filed as a
+      // Report rather than a generic Human Response. Reusing `reportIntent`
+      // (already a `let`) gets that routing and the "report" ack for free
+      // from the existing logic just above and the inquiry_type resolution
+      // further down — no other changes needed there.
+      escalate = true
+      reportIntent = true
+      escalateReason = "report"
+    } else if (aiViolation === "policy" && violationHandled) {
+      // A threat, jailbreak attempt, or abusive/harassing message is also a
+      // real concern — escalate immediately rather than warning first. The
+      // conflict note flags exactly why, since this can include an actual
+      // threat that needs careful handling, not just a repeated nuisance.
+      escalate = true
+      escalateReason = "violation"
+      conflictNote = `Auto-escalated: message classified as a possible threat or policy violation. Last message: "${messageBody}".`
+    } else if (aiViolation === "off_topic" && violationHandled) {
+      // Genuinely benign — the graduated warning ladder below decides if/when
+      // this escalates, never on the first occurrence. Reply text is
+      // reviewed, deterministic copy rather than the model's own
+      // composition: relying on it to translate a fixed sentence live for
+      // "filipino"/"both" is unreliable at best.
+      escalate = false
+      escalateReason = null
+      reply = offTopicRedirect(effectiveLang)
     }
 
     // Option B safety net: If we're in a vehicle status flow and the lookup
@@ -723,10 +771,6 @@ async function handleInboundMessage(
     escalateReason = "hiccup"
   }
 
-  // Recorded on the inquiry when a booking / violation escalation needs a Sales
-  // note (identity conflict, repeat in-service booking, repeated violations…).
-  let conflictNote: string | null = null
-
   // ── Graduated off-topic / policy-violation escalation ────────────────────
   // Count consecutive violation turns. Off-topic escalates after 5 (warned on
   // 4); safety/policy escalates after 2 (warned on 1). The streak resets on any
@@ -743,7 +787,11 @@ async function handleInboundMessage(
   ) {
     const vs = nextViolationState(
       { offtopic: offtopic_streak, policy: policy_streak },
-      aiViolation
+      // "complaint" and "policy" both escalate immediately above and never
+      // reach here with `escalate` still false — this mapping is purely for
+      // TypeScript; a "complaint" classification is not part of the
+      // off-topic/policy streak ladder and must not affect it.
+      aiViolation === "complaint" ? "none" : aiViolation
     )
     await safe(() => setViolationStreaks(conversation_id, vs.offtopic, vs.policy))
     // Repeated off-topic/policy messages are the other "AI cannot help here"
@@ -757,7 +805,7 @@ async function handleInboundMessage(
         `Auto-escalated after repeated ${isPolicy ? "policy-violating" : "off-topic"} messages. ` +
         `Last message: "${messageBody}".`
     } else if (vs.action === "warn") {
-      violationWarning = violationWarningCopy(vs.policy >= 1 ? "policy" : "offtopic", lang)
+      violationWarning = violationWarningCopy(vs.policy >= 1 ? "policy" : "offtopic", effectiveLang)
     }
   }
 
@@ -804,7 +852,7 @@ async function handleInboundMessage(
     await safe(() => setBookingDuplicateNotified(conversation_id, false))
     await safe(() => setBookingDraft(conversation_id, null))
 
-    const cancelReply = buildBookingCancelledMessage(lang)
+    const cancelReply = buildBookingCancelledMessage(effectiveLang)
     const mid = await sendMessengerText(senderId, cancelReply)
     await insertMessage({
       conversation_id,
@@ -813,7 +861,7 @@ async function handleInboundMessage(
       sent_at: new Date().toISOString(),
       fb_message_id: mid,
     })
-    await sendMessengerQuickReply(senderId, "Anything else?", quickRepliesFor(lang, messageBody))
+    await sendMessengerQuickReply(senderId, "Anything else?", quickRepliesFor(effectiveLang))
     return
   }
 
@@ -1046,7 +1094,7 @@ async function handleInboundMessage(
       } else {
         escalate = false
         await persistConfirmFlag(false)
-        reply = activeBookingLine + buildMissingFieldsPrompt(missing, lang)
+        reply = activeBookingLine + buildMissingFieldsPrompt(missing, effectiveLang)
       }
     } else {
       // Phase 4 (identity conflict): a COMPLETE booking whose details contradict
@@ -1178,7 +1226,7 @@ async function handleInboundMessage(
     // Render the confirmation summary deterministically from the freshest
     // extraction so the customer always sees every detail before confirming.
     if (confirmSummary && !escalate && extracted && isCompleteBooking(extracted)) {
-      reply = activeBookingLine + buildBookingSummary(extracted, lang)
+      reply = activeBookingLine + buildBookingSummary(extracted, effectiveLang)
     }
 
     // Bug 8/10 backstop: a booking-flow reply must never ask which service the
@@ -1190,8 +1238,8 @@ async function handleInboundMessage(
       if (asksService || claimsDone) {
         reply =
           extracted && isCompleteBooking(extracted)
-            ? activeBookingLine + buildBookingSummary(extracted, lang)
-            : activeBookingLine + buildMissingFieldsPrompt(missingBookingFields(extracted), lang)
+            ? activeBookingLine + buildBookingSummary(extracted, effectiveLang)
+            : activeBookingLine + buildMissingFieldsPrompt(missingBookingFields(extracted), effectiveLang)
       }
     }
   }
@@ -1335,7 +1383,7 @@ async function handleInboundMessage(
     // the escalation ack — the customer knows their booking was received before
     // being told a human will follow up.
     if (inquiry_type === "Booking") {
-      const bookingMsg = pickCopy(lang, bookingTemplate.en, bookingTemplate.fil)
+      const bookingMsg = pickCopy(effectiveLang, bookingTemplate.en, bookingTemplate.fil)
       const confirmId = await sendMessengerText(senderId, bookingMsg)
       await insertMessage({
         conversation_id,
@@ -1349,7 +1397,7 @@ async function handleInboundMessage(
     // Existing-booking operations first receive the handoff message so the
     // customer knows a human will assist with their existing booking.
     if (existingBookingIntent) {
-      const existingBookingMsg = existingBookingHandoff(lang)
+      const existingBookingMsg = existingBookingHandoff(effectiveLang)
       const handoffId = await sendMessengerText(senderId, existingBookingMsg)
       await insertMessage({
         conversation_id,
@@ -1362,7 +1410,7 @@ async function handleInboundMessage(
 
     // Acknowledge to the customer that a human will follow up (no quick replies —
     // a human now owns the thread).
-    const escalationMsg = escalationAck(lang, escalateReason, escalationTemplate)
+    const escalationMsg = escalationAck(effectiveLang, escalateReason, escalationTemplate)
     const fbId = await sendMessengerText(senderId, escalationMsg)
     await insertMessage({
       conversation_id,
@@ -1401,7 +1449,7 @@ async function handleInboundMessage(
     // Append the graduated-violation warning (set when the customer is one turn
     // away from an off-topic / policy escalation).
     if (violationWarning) reply = `${reply}${violationWarning}`
-    const fbId = await sendMessengerQuickReply(senderId, reply, quickRepliesFor(lang, messageBody))
+    const fbId = await sendMessengerQuickReply(senderId, reply, quickRepliesFor(effectiveLang))
     await insertMessage({
       conversation_id,
       sender_type: "agent",

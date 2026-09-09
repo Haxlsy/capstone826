@@ -167,13 +167,17 @@ export async function resumeBotAfterHandoff(psid: string): Promise<void> {
 
     const { settings } = await loadChatbotConfig()
     const lang = settings?.language
+    // Same "both" resolution as the webhook route — pick English or Filipino
+    // off the customer's own last message instead of sending both concatenated.
+    const effectiveLang: BotLanguage | undefined =
+      lang === "both" ? detectMessageLanguage(lastCustomerMsg?.message_body) : lang
     const template = resolveTemplate(
       settings?.resolved_message_en, settings?.resolved_message_fil,
       DEFAULT_RESOLVED_MESSAGE_EN, DEFAULT_RESOLVED_MESSAGE_FIL,
     )
-    const resumeMessage = resolvedMessage(lang, template)
+    const resumeMessage = resolvedMessage(effectiveLang, template)
 
-    const mid = await sendMessengerQuickReply(psid, resumeMessage, quickRepliesFor(lang, lastCustomerMsg?.message_body))
+    const mid = await sendMessengerQuickReply(psid, resumeMessage, quickRepliesFor(effectiveLang))
 
     // Only record a message that actually reached the customer — a failed send
     // written to history would poison the AI context and the staff transcript.
