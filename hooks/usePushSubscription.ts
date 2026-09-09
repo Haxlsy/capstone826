@@ -2,6 +2,7 @@
 
 import { useEffect } from "react"
 import { subscribeToPush } from "@/lib/push/client"
+import { useIsMobileViewport } from "@/hooks/useIsMobileViewport"
 
 /**
  * Registers the service worker and subscribes this device to Web Push so the
@@ -11,9 +12,16 @@ import { subscribeToPush } from "@/lib/push/client"
  * See lib/push/client.ts for the shared subscribe logic, also used by the
  * manual "Enable Notifications" control in Settings
  * (components/head-technician/PushNotificationSettings.tsx).
+ *
+ * Mobile-only by design (not a technical limitation — desktop browsers
+ * support the Push API too): field technicians use their phones for job
+ * alerts, so a desktop/tablet session shouldn't silently register for push.
+ * Matches the same restriction shown in Settings.
  */
 export function usePushSubscription() {
+  const isMobile = useIsMobileViewport()
+
   useEffect(() => {
-    subscribeToPush()
-  }, [])
+    if (isMobile) subscribeToPush()
+  }, [isMobile])
 }

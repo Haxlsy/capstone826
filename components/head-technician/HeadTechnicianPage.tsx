@@ -35,6 +35,7 @@ export default function HeadTechnicianPage({
     if (searchQuery.trim()) {
       const q = searchQuery.toLowerCase()
       const matches =
+        job.job_id?.toLowerCase().includes(q) ||
         job.customer_name?.toLowerCase().includes(q) ||
         job.plate_number?.toLowerCase().includes(q) ||
         job.car_make?.toLowerCase().includes(q) ||
@@ -127,7 +128,7 @@ export default function HeadTechnicianPage({
             type="text"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="Search by customer, plate, vehicle, service…"
+            placeholder="Search by job order ID, customer, plate, vehicle, service…"
             className="w-full pl-8 pr-8 py-2.5 text-sm bg-surface border border-border rounded-card focus:outline-none focus:ring-2 focus:ring-gray-200 focus:border-border transition-all placeholder:text-muted"
           />
           {searchQuery && (

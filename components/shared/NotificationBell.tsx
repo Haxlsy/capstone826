@@ -19,7 +19,7 @@ const dotStyles: Record<string, string> = {
 }
 
 export default function NotificationBell({ variant = "dark" }: { variant?: "dark" | "light" }) {
-  const { notifications, unreadCount, delayedJobCount, markOne, markAll } = useNotifications()
+  const { notifications, unreadCount, delayedJobCount, markOne, markAll, refresh } = useNotifications()
   const [open, setOpen] = useState(false)
   const ref = useRef<HTMLDivElement>(null)
   const router = useRouter()
@@ -37,7 +37,16 @@ export default function NotificationBell({ variant = "dark" }: { variant?: "dark
   return (
     <div className="relative" ref={ref}>
       <button
-        onClick={() => setOpen((v) => !v)}
+        onClick={() => {
+          // Realtime keeps this fresh while the bell stays mounted, but a
+          // missed/delayed event (backgrounded tab, reconnect gap, etc.)
+          // would otherwise leave delayedJobCount stale until a full page
+          // reload — so force a fresh fetch on every open instead of trusting
+          // realtime alone.
+          const next = !open
+          setOpen(next)
+          if (next) refresh()
+        }}
         className={cn(
           "relative rounded-md p-1.5 transition-colors",
           variant === "dark"
