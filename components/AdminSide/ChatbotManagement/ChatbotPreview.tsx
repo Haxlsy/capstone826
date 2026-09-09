@@ -99,7 +99,7 @@ export default function ChatbotPreview({ settings }: { settings: ChatbotSettings
             826
           </div>
           <div>
-            <p className="text-sm font-semibold text-heading leading-none">Test Your Chatbot</p>
+            <p className="text-sm font-semibold text-heading leading-none">Chatbot Preview</p>
             <p className="text-[11px] text-muted mt-0.5">See how your AI will respond.</p>
           </div>
         </div>

@@ -148,7 +148,7 @@ const ESCALATION_REASON_COPY: Record<EscalationReason, { english: string; filipi
   vehicle_in_service:      { english: "Your vehicle already has an active job with us.",           filipino: "May kasalukuyan ka nang trabaho sa amin para sa sasakyang ito." },
   stuck_details:           { english: "I want to make sure we get your booking details exactly right.", filipino: "Gusto kong siguraduhing tama ang mga detalye ng iyong booking." },
   booking_ready:           { english: "Your booking details are complete.",                       filipino: "Kumpleto na ang mga detalye ng iyong booking." },
-  job_order_unrecognized:  { english: "I wasn't able to verify the Job Order Code you sent.",      filipino: "Hindi ko na-verify ang Job Order Code na ipinadala mo." },
+  job_order_unrecognized:  { english: "I wasn't able to verify the Job Order ID you sent.",      filipino: "Hindi ko na-verify ang Job Order ID na ipinadala mo." },
   violation:               { english: "Let's continue this with a member of our team.",            filipino: "Ipagpapatuloy na natin ito kasama ang isang miyembro ng aming team." },
   hiccup:                  { english: "I ran into a small hiccup on my end.",                      filipino: "Nagkaroon ako ng maliit na hiccup sa aking sistema." },
 }

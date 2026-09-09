@@ -279,9 +279,9 @@ const MISMATCH_TEXT =
 const NOT_LINKED_TEXT =
   "This Messenger account is not linked to any customer record, so NOTHING was looked up. " +
   "Do NOT share any status. Do NOT claim to have checked, searched, or reviewed our system. " +
-  "Do NOT state whether any Job Order Code has a job order — no such lookup was performed. " +
+  "Do NOT state whether any Job Order ID has a job order — no such lookup was performed. " +
   "Explain only that their Messenger account is not yet linked to a customer record, ask for " +
-  "the Job Order Code on their receipt/booking confirmation so their account can be linked, " +
+  "the Job Order ID on their receipt/booking confirmation so their account can be linked, " +
   "or offer to connect them with our team."
 
 /**

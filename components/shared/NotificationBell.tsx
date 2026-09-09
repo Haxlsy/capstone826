@@ -1,7 +1,8 @@
 "use client"
 
-import { Bell, X, CheckCheck } from "lucide-react"
+import { Bell, X, CheckCheck, AlertTriangle } from "lucide-react"
 import { useState, useRef, useEffect } from "react"
+import { useRouter } from "next/navigation"
 import {
   useNotifications,
   TYPE_LABELS,
@@ -18,9 +19,10 @@ const dotStyles: Record<string, string> = {
 }
 
 export default function NotificationBell({ variant = "dark" }: { variant?: "dark" | "light" }) {
-  const { notifications, unreadCount, markOne, markAll } = useNotifications()
+  const { notifications, unreadCount, delayedJobCount, markOne, markAll } = useNotifications()
   const [open, setOpen] = useState(false)
   const ref = useRef<HTMLDivElement>(null)
+  const router = useRouter()
 
   useEffect(() => {
     function handleClick(e: MouseEvent) {
@@ -45,9 +47,12 @@ export default function NotificationBell({ variant = "dark" }: { variant?: "dark
         aria-label="Notifications"
       >
         <Bell className="h-5 w-5" />
-        {unreadCount > 0 && (
+        {(unreadCount > 0 || delayedJobCount > 0) && (
           <span className="absolute -right-1 -top-1 flex h-4 min-w-[16px] items-center justify-center rounded-full bg-status-delayed px-0.5 text-[9px] font-bold text-white">
-            {unreadCount > 9 ? "9+" : unreadCount}
+            {/* Real unread notifications take priority; falls back to the live
+                delayed-job count so the bell never sits silent while jobs are
+                overdue with nothing new to "read". */}
+            {unreadCount > 0 ? (unreadCount > 9 ? "9+" : unreadCount) : (delayedJobCount > 9 ? "9+" : delayedJobCount)}
           </span>
         )}
       </button>
@@ -77,7 +82,21 @@ export default function NotificationBell({ variant = "dark" }: { variant?: "dark
           </div>
 
           <ul className="max-h-80 divide-y divide-border-subtle overflow-y-auto">
-            {notifications.length === 0 && (
+            {delayedJobCount > 0 && (
+              <li
+                onClick={() => { setOpen(false); router.push("/dashboard/job-management") }}
+                className="flex cursor-pointer items-start gap-3 bg-status-delayed/10 px-4 py-3 transition-colors hover:bg-status-delayed/15"
+              >
+                <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-status-delayed" />
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm font-medium text-heading">
+                    {delayedJobCount} job{delayedJobCount !== 1 ? "s" : ""} currently delayed
+                  </p>
+                  <p className="mt-0.5 text-xs text-muted">Tap to view Job Management</p>
+                </div>
+              </li>
+            )}
+            {notifications.length === 0 && delayedJobCount === 0 && (
               <li className="py-8 text-center text-sm text-muted">No notifications</li>
             )}
             {notifications.map((n: Notification) => {

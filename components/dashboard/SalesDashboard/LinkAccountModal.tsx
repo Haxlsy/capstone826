@@ -41,7 +41,7 @@ function recordSubtitle(r: Pick<CustomerRecordOption, "plate_number" | "vehicle_
 }
 
 // Replaces the old inline "paste the PSID into a record row" workflow: Sales
-// searches customer records (by name, plate, contact, or Job Order Code) and
+// searches customer records (by name, plate, contact, or Job Order ID) and
 // picks the right one, instead of hunting for the row to edit by hand.
 export function LinkAccountModal({ open, onClose, psid, initialRecordId, initialRecord, onLinked }: LinkAccountModalProps) {
   const toast = useToast()
@@ -184,7 +184,7 @@ export function LinkAccountModal({ open, onClose, psid, initialRecordId, initial
                     setSearch(e.target.value)
                     setDropOpen(true)
                   }}
-                  placeholder="Search by name, plate, contact, or Job Order Code"
+                  placeholder="Search by name, plate, contact, or Job Order ID"
                   className="h-10 w-full rounded-sm border border-border bg-surface pl-9 pr-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
                 />
               </div>

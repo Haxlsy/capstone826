@@ -156,10 +156,12 @@ export default function JobOrderDetail({ jobId }: { jobId: string }) {
     load()
   }, [load])
 
-  // A technician updating this job's stages should reflect here immediately —
-  // silent (no skeleton, no toast) so it doesn't interrupt anyone mid-read;
-  // the manual Refresh button stays for an explicit re-check.
-  useRealtimeRefetch("job_stage_progress", useCallback(() => load({ silent: true }), [load]))
+  // A technician updating this job's stages, or its own row changing (status,
+  // team assignment, schedule), should reflect here immediately — silent (no
+  // skeleton, no toast) so it doesn't interrupt anyone mid-read. This covers
+  // everything the manual Refresh button used to be needed for, so that
+  // button is gone now.
+  useRealtimeRefetch(["job_stage_progress", "job_order"], useCallback(() => load({ silent: true }), [load]))
 
   async function markReleased() {
     setReleasing(true)
@@ -422,10 +424,6 @@ export default function JobOrderDetail({ jobId }: { jobId: string }) {
               {settingForRelease ? "Processing…" : "For Release"}
             </Button>
           )}
-          <Button variant="subtle" onClick={() => load()} disabled={loading} title="Refresh">
-            <RefreshCw className={cn("h-4 w-4", loading && "animate-spin")} />
-            Refresh
-          </Button>
           {canRelease && (
             <Button onClick={() => setCompleteConfirm(true)} disabled={releasing}>
               <PackageCheck className="h-4 w-4" />
