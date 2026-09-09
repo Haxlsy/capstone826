@@ -1,6 +1,7 @@
 import { createAdminClient } from "@/lib/supabase/admin"
+import { ACTIVE_JOB_STATUSES } from "@/lib/job-delay"
 
-const ACTIVE_STATUSES = ["Pending", "Ongoing", "For Rework", "For Release"]
+const ACTIVE_STATUSES: readonly string[] = ACTIVE_JOB_STATUSES
 
 export async function getDashboardSummary() {
   const admin = createAdminClient()

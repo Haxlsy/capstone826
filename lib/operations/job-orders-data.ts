@@ -1,4 +1,5 @@
 import { createAdminClient } from "@/lib/supabase/admin"
+import { isJobDelayed } from "@/lib/job-delay"
 
 export async function getJobOrdersData(released = false) {
   const supabase = createAdminClient()
@@ -71,7 +72,6 @@ export async function getJobOrdersData(released = false) {
     }
   }
 
-  const nowMs = Date.now()
   const result = (jobs ?? []).map((j: any) => {
     const prog = progressMap.get(j.id) ?? { total: 0, done: 0 }
     const team = teamMap.get(j.id) ?? { head_detailer: "Unassigned", head_installer: "Unassigned" }
@@ -92,7 +92,7 @@ export async function getJobOrdersData(released = false) {
       released_at: releasedAtMap.get(j.id) ?? null,
       created_at: j.created_at,
       progress: prog.total > 0 ? Math.round((prog.done / prog.total) * 100) : 0,
-      is_overdue: !!j.actual_start_at && prog.done < prog.total && ["Ongoing", "For Rework", "For Inspection", "For Release"].includes(j.status) && !!j.expected_completion_at && new Date(j.expected_completion_at).getTime() < nowMs,
+      is_overdue: isJobDelayed(j),
     }
   })
 

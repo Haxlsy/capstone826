@@ -1,5 +1,5 @@
 import { createAdminClient } from "@/lib/supabase/admin"
-import { addWorkingMins } from "@/hooks/time-utils"
+import { computeStageDelays, isJobDelayed } from "@/lib/job-delay"
 import { totalStageDurationMins, computeExpectedCompletion } from "@/lib/job-estimates"
 
 export async function getJobDetailData(id: string) {
@@ -114,30 +114,31 @@ export async function getJobDetailData(id: string) {
         is_delayed: false,
         expected_end_at: null as string | null,
         _raw_duration_mins: (s.stage_duration_mins as number | null) ?? null,
+        _service_duration_mins: (ss?.stage_duration_mins as number | null) ?? null,
       }
     })
 
-    if (j.actual_start_at) {
-      const sorted = [...mapped].sort((a, b) => a.sequence_order - b.sequence_order)
-      const nowMs = Date.now()
-      let cumulativeMins = 0
-      const jobStart = new Date(j.actual_start_at)
-      for (const stage of sorted) {
-        const overrideDuration = stage._raw_duration_mins as number | null
-        const serviceDuration  = stage.id
-          ? (ssMap.get(stages?.find((s: any) => s.id === stage.id)?.service_stage_id)?.stage_duration_mins ?? 0)
-          : 0
-        const durationMins = overrideDuration != null ? overrideDuration : serviceDuration
-        cumulativeMins += durationMins
-        if (durationMins > 0) {
-          const expectedEnd = addWorkingMins(jobStart, cumulativeMins)
-          stage.expected_end_at = expectedEnd.toISOString()
-          stage.is_delayed = stage.status !== "done" && stage.status !== "for_rework" && nowMs > expectedEnd.getTime()
-        }
+    // lib/job-delay.ts — the single shared definition of "delayed", also used
+    // by Head Detailer/Installer's job list and job-detail endpoints.
+    const delays = computeStageDelays(
+      mapped.map((s) => ({
+        id: s.id,
+        status: s.status,
+        sequence_order: s.sequence_order,
+        stage_duration_mins: s._raw_duration_mins,
+        service_stage_duration_mins: s._service_duration_mins,
+      })),
+      j.actual_start_at,
+    )
+    for (const stage of mapped) {
+      const d = delays.get(stage.id)
+      if (d) {
+        stage.expected_end_at = d.expected_end_at
+        stage.is_delayed = d.is_delayed
       }
     }
 
-    return mapped.map(({ _raw_duration_mins: _rd, ...rest }) => rest)
+    return mapped.map(({ _raw_duration_mins: _rd, _service_duration_mins: _sd, ...rest }) => rest)
   })()
 
   return {
@@ -155,6 +156,7 @@ export async function getJobDetailData(id: string) {
       detailers,
       installers,
       status: j.status,
+      is_overdue: isJobDelayed({ status: j.status, expected_completion_at: expectedCompletionAt }),
       scheduled_at: j.scheduled_at,
       actual_start_at: j.actual_start_at,
       expected_completion_at: expectedCompletionAt,
