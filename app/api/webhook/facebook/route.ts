@@ -93,6 +93,7 @@ import {
   type EscalationReason,
 } from "@/lib/messenger/copy"
 import { logAudit } from "@/hooks/audit-helpers"
+import { notifyRole } from "@/lib/notify-role"
 
 const VERIFY_TOKEN = process.env.META_VERIFY_TOKEN!
 
@@ -148,23 +149,10 @@ async function handOffWhileDisabled(
     })
     if (inquiryErr) console.error("[webhook/facebook] disabled-mode inquiry insert failed:", inquiryErr.message)
 
-    const { data: salesUsers } = await admin
-      .from("user_account")
-      .select("id")
-      .eq("role", "sales")
-      .eq("is_archived", false)
-
-    if (salesUsers?.length) {
-      await admin.from("notification").insert(
-        salesUsers.map((u: any) => ({
-          user_id:      u.id,
-          type:         "inquiry",
-          message:      `New Human Response inquiry from ${psidName}`,
-          job_order_id: null,
-          is_read:      false,
-        })),
-      )
-    }
+    await notifyRole(admin, "sales", {
+      type:    "inquiry",
+      message: `New Human Response inquiry from ${psidName}`,
+    })
   } catch (err) {
     console.error("[webhook/facebook] disabled-mode handoff failed:", err)
   }
@@ -389,7 +377,7 @@ async function handleInboundMessage(
     REPORT_PATTERNS.some((re) => re.test(messageBody))
 
   // ── Account-linking verification ─────────────────────────────────────────
-  // When the bot has asked an unlinked customer for their Job Order Code, the
+  // When the bot has asked an unlinked customer for their Job Order ID, the
   // next message is a link CLAIM. Handled BEFORE any booking-signal logic so a
   // code reply is not swallowed by the booking flow.
   //
@@ -416,7 +404,7 @@ async function handleInboundMessage(
       impersonation: true,
       reason: "possible impersonation — link attempt on a record owned by another Messenger account",
       note:
-        `POSSIBLE IMPERSONATION. Messenger PSID ${senderId} (FB name "${profile.name}") tried to claim Job Order Code ${code}, ` +
+        `POSSIBLE IMPERSONATION. Messenger PSID ${senderId} (FB name "${profile.name}") tried to claim Job Order ID ${code}, ` +
         `which is already linked to a different Messenger account. ` +
         (attempt === "repeat"
           ? "They were given a neutral re-ask and claimed it again. "
@@ -460,7 +448,7 @@ async function handleInboundMessage(
         // Code. Re-ask with a format example instead of dropping them into the
         // AI, which would answer as though a lookup had happened.
         const handled = await countFailedAttempt(
-          `Account link attempt failed ${JOB_ORDER_LINK_ATTEMPT_CAP} times. The customer never sent a recognizable Job Order Code. ` +
+          `Account link attempt failed ${JOB_ORDER_LINK_ATTEMPT_CAP} times. The customer never sent a recognizable Job Order ID. ` +
           `Last message: "${messageBody}".`
         )
         if (handled) return
@@ -475,7 +463,7 @@ async function handleInboundMessage(
       } else if (claim.kind === "linked") {
         // Auto-linked just now — no Sales step. Show status this same turn.
         await clearLink()
-        logAudit({ ...auditActor, category: "flag", action: "messenger: auto-linked account via Job Order Code", target: `psid=${senderId} code=${code}` })
+        logAudit({ ...auditActor, category: "flag", action: "messenger: auto-linked account via Job Order ID", target: `psid=${senderId} code=${code}` })
         linkedVehicleContext = formatOwnVehicleStatus(claim.outcome)
       } else if (claim.kind === "owned_by_other") {
         // The code belongs to a DIFFERENT Messenger account. The customer is
@@ -506,7 +494,7 @@ async function handleInboundMessage(
         // no_record — let the customer self-correct, then escalate. Same
         // message as the owned-by-another case above, deliberately.
         const handled = await countFailedAttempt(
-          `Account link attempt failed verification ${JOB_ORDER_LINK_ATTEMPT_CAP} times. Last claim: Job Order Code ${code}, no matching linkable record.`
+          `Account link attempt failed verification ${JOB_ORDER_LINK_ATTEMPT_CAP} times. Last claim: Job Order ID ${code}, no matching linkable record.`
         )
         if (handled) return
       }
@@ -655,7 +643,7 @@ async function handleInboundMessage(
       }
       if (outcome.kind === "not_linked") {
         logAudit({ ...auditActor, category: "flag", action: "messenger status: no linked customer record", target: `psid=${senderId}${plateInMsg ? ` requested_plate=${plateInMsg}` : ""}` })
-        // Ask for the Job Order Code so the next message can link the account.
+        // Ask for the Job Order ID so the next message can link the account.
         await safe(() => setAwaitingLinkVerification(conversation_id, true))
       }
     }
@@ -1331,52 +1319,19 @@ async function handleInboundMessage(
 
     // ── Notify Sales users — always, for these inquiry types (mandatory) ────
     if (inquiry_type === "Booking" || inquiry_type === "Human Response") {
-      try {
-        const { data: salesUsers } = await admin
-          .from("user_account")
-          .select("id")
-          .eq("role", "sales")
-          .eq("is_archived", false)
-
-        if (salesUsers?.length) {
-          const notifRows = salesUsers.map((u: any) => ({
-            user_id:      u.id,
-            type:         "inquiry",
-            message:      `New ${inquiry_type} inquiry from ${profile.name}`,
-            job_order_id: null,
-            is_read:      false,
-          }))
-          await admin.from("notification").insert(notifRows)
-        }
-      } catch (notifErr) {
-        console.error("[webhook/facebook] sales notification fan-out failed:", notifErr)
-      }
+      await notifyRole(admin, "sales", {
+        type:    "inquiry",
+        message: `New ${inquiry_type} inquiry from ${profile.name}`,
+      })
     }
 
     // A suspected impersonation attempt always notifies Sales too, so it is
     // seen in real time, not just in the log.
     if (linkEscalation?.impersonation) {
-      try {
-        const { data: salesUsers } = await admin
-          .from("user_account")
-          .select("id")
-          .eq("role", "sales")
-          .eq("is_archived", false)
-
-        if (salesUsers?.length) {
-          await admin.from("notification").insert(
-            salesUsers.map((u: any) => ({
-              user_id:      u.id,
-              type:         "inquiry",
-              message:      `⚠️ Possible impersonation attempt from ${profile.name}`,
-              job_order_id: null,
-              is_read:      false,
-            }))
-          )
-        }
-      } catch (notifErr) {
-        console.error("[webhook/facebook] impersonation notification failed:", notifErr)
-      }
+      await notifyRole(admin, "sales", {
+        type:    "inquiry",
+        message: `⚠️ Possible impersonation attempt from ${profile.name}`,
+      })
     }
 
     // Booking requests first receive the configured confirmation message, then

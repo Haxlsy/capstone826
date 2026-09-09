@@ -2,6 +2,7 @@
 
 import { useEffect, useCallback, useRef, useState } from "react"
 import { createClient } from "@/lib/supabase/client"
+import { useRealtimeRefetch } from "@/hooks/useRealtimeRefetch"
 
 export interface Notification {
   id: string
@@ -14,7 +15,7 @@ export interface Notification {
   created_at: string
 }
 
-type NotificationType = "rework" | "concern" | "concern_resolved" | "inquiry" | "job_assigned"
+type NotificationType = "rework" | "concern" | "concern_resolved" | "inquiry" | "job_assigned" | "job_status"
 
 const TYPE_LABELS: Record<string, string> = {
   rework: "Rework Flagged",
@@ -22,6 +23,7 @@ const TYPE_LABELS: Record<string, string> = {
   concern_resolved: "Concern Resolved",
   inquiry: "New Inquiry",
   job_assigned: "New Assignment",
+  job_status: "Job Update",
 }
 
 const TYPE_COLORS: Record<string, "info" | "warning" | "success"> = {
@@ -30,6 +32,7 @@ const TYPE_COLORS: Record<string, "info" | "warning" | "success"> = {
   concern_resolved: "success",
   inquiry: "info",
   job_assigned: "info",
+  job_status: "info",
 }
 
 function relativeTime(iso: string): string {
@@ -47,6 +50,7 @@ function relativeTime(iso: string): string {
 export function useNotifications() {
   const [notifications, setNotifications] = useState<Notification[]>([])
   const [unreadCount, setUnreadCount] = useState(0)
+  const [delayedJobCount, setDelayedJobCount] = useState(0)
   const [userId, setUserId] = useState<string | null>(null)
   const channelRef = useRef<ReturnType<ReturnType<typeof createClient>["channel"]> | null>(null)
 
@@ -57,8 +61,15 @@ export function useNotifications() {
       const data = await res.json()
       setNotifications(data.notifications ?? [])
       setUnreadCount(data.unreadCount ?? 0)
+      setDelayedJobCount(data.delayedJobCount ?? 0)
     } catch {}
   }, [])
+
+  // Recomputes the live delayed-job count (and picks up any job_status
+  // notification) the moment any job order changes — separate from the
+  // filtered `notification`-INSERT subscription below, which only fires for
+  // this user's own rows.
+  useRealtimeRefetch("job_order", fetchNotifications)
 
   const markOne = useCallback(async (id: string) => {
     setNotifications((prev) =>
@@ -124,6 +135,7 @@ export function useNotifications() {
   return {
     notifications,
     unreadCount,
+    delayedJobCount,
     markOne,
     markAll,
     refresh: fetchNotifications,
