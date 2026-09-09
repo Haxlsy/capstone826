@@ -47,6 +47,16 @@ export async function PATCH(
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) return NextResponse.json({ error: "Unauthorized." }, { status: 401 })
 
+    // "Delayed" is fully computed now (lib/job-delay.ts) — no one, including
+    // a direct API call bypassing the status picker's own UI-only guard,
+    // sets it manually anymore.
+    if (status === "Delayed") {
+      return NextResponse.json(
+        { error: "Delayed is now automatic and can't be set manually." },
+        { status: 400 }
+      )
+    }
+
     const admin = createAdminClient()
 
     // Fetch current job to detect status change

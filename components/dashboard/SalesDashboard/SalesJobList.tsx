@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation"
 import { useRealtimeRefetch } from "@/hooks/useRealtimeRefetch"
 import { ArrowRight } from "lucide-react"
 import { fmtDate } from "@/lib/time-display"
+import { displayJobStatus } from "@/lib/job-delay"
 import { PageHeader } from "@/components/ui/PageHeader"
 import { SearchBar } from "@/components/ui/SearchBar"
 import { Popover } from "@/components/ui/Popover"
@@ -54,7 +55,9 @@ export default function SalesJobList({ jobOrders: rawOrders }: { jobOrders: any[
         headInstaller: r.head_installer ?? "Unassigned",
         scheduled: fmtDate(r.scheduled_at),
         scheduledRaw: r.scheduled_at ?? "",
-        status: r.status ?? "Pending",
+        // Resolved once here — tabs/counts/badge all read this one field, so
+        // they never need their own separate "is it actually delayed" check.
+        status: displayJobStatus(r.status ?? "Pending", Boolean(r.is_overdue)),
       })),
     [rawOrders],
   )

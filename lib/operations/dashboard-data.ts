@@ -1,5 +1,5 @@
 import {createAdminClient} from '@/lib/supabase/admin'
-import {addWorkingMins} from '@/hooks/time-utils'
+import { ACTIVE_JOB_STATUSES, isJobDelayed, computeStageDelays, hasAnyStageDelayed, type StageForDelay } from '@/lib/job-delay'
 
 export async function getDashboardData(){
        const supabase = createAdminClient()
@@ -18,8 +18,7 @@ export async function getDashboardData(){
     const rows   = jobs ?? []
     const jobIds = rows.map((j: any) => j.id)
 
-    const ACTIVE_STATUSES = ["Pending", "Ongoing", "For Rework", "For Inspection", "For Release"]
-    const activeJobs    = rows.filter((r: any) => ACTIVE_STATUSES.includes(r.status as string) && r.actual_start_at)
+    const activeJobs    = rows.filter((r: any) => (ACTIVE_JOB_STATUSES as readonly string[]).includes(r.status) && r.actual_start_at)
     const activeJobIds  = activeJobs.map((r: any) => r.id as string)
 
     // Run remaining queries in parallel
@@ -74,34 +73,19 @@ export async function getDashboardData(){
       if (key) status_counts[key]++
     }
 
-    // Auto-detect overdue — two signals, each job counted at most once
-    const nowMs = Date.now()
+    // Auto-detect overdue — two signals, each job counted at most once. Both
+    // go through lib/job-delay.ts, the single shared definition of "delayed"
+    // every other surface (Admin, Head Detailer/Installer) also uses.
     const overdueJobIds = new Set<string>()
 
-    // Build stage progress map from stageRows (already fetched for activeJobs)
-    const stageProgressMap = new Map<string, { total: number; done: number }>()
-    for (const s of stageRows) {
-      const entry = stageProgressMap.get(s.job_order_id) ?? { total: 0, done: 0 }
-      entry.total++
-      if ((s.status as string) === "done") entry.done++
-      stageProgressMap.set(s.job_order_id, entry)
-    }
-
-    // Signal 1: job-level expected_completion_at.
-    // Requires job to have been started (actual_start_at) and not all stages done.
+    // Signal 1: job-level expected_completion_at (isJobDelayed).
     for (const row of activeJobs) {
-      if (
-        row.expected_completion_at &&
-        new Date(row.expected_completion_at as string).getTime() < nowMs
-      ) {
-        const prog = stageProgressMap.get(row.id as string) ?? { total: 0, done: 0 }
-        if (prog.done < prog.total) {
-          overdueJobIds.add(row.id as string)
-        }
+      if (isJobDelayed(row as { status: string; expected_completion_at: string | null })) {
+        overdueJobIds.add(row.id as string)
       }
     }
 
-    // Signal 2: stage-level — check incomplete stages against cumulative expected end
+    // Signal 2: stage-level — any incomplete stage past its cumulative expected end.
     if (stageRows.length > 0) {
       const jobStagesMap = new Map<string, any[]>()
       for (const s of stageRows) {
@@ -114,22 +98,15 @@ export async function getDashboardData(){
         if (overdueJobIds.has(jobId)) continue
         const startAt = startMap.get(jobId)
         if (!startAt) continue
-        const sorted = [...stages].sort((a: any, b: any) =>
-          ((a.service_stage as any)?.sequence_order ?? 0) - ((b.service_stage as any)?.sequence_order ?? 0)
-        )
-        const jobStart = new Date(startAt)
-        let cumMins = 0
-        for (const s of sorted) {
-          const override = s.stage_duration_mins as number | null
-          const base     = (s.service_stage as any)?.stage_duration_mins ?? 0
-          const mins     = override != null ? override : base
-          cumMins += mins
-          if (mins > 0 && (s.status as string) !== "done" && (s.status as string) !== "for_rework") {
-            if (nowMs > addWorkingMins(jobStart, cumMins).getTime()) {
-              overdueJobIds.add(jobId)
-              break
-            }
-          }
+        const shaped: StageForDelay[] = stages.map((s: any, idx: number) => ({
+          id: String(idx),
+          status: s.status,
+          sequence_order: (s.service_stage as any)?.sequence_order ?? 0,
+          stage_duration_mins: s.stage_duration_mins,
+          service_stage_duration_mins: (s.service_stage as any)?.stage_duration_mins ?? null,
+        }))
+        if (hasAnyStageDelayed(computeStageDelays(shaped, startAt))) {
+          overdueJobIds.add(jobId)
         }
       }
     }
@@ -149,6 +126,7 @@ export async function getDashboardData(){
         customer:   r.customer?.full_name ?? "Manual Entry",
         service:    r.service?.name ?? "—",
         status:     r.status,
+        is_overdue: isJobDelayed(r),
         created_at: r.created_at,
       }))
 
@@ -163,6 +141,7 @@ export async function getDashboardData(){
           actual_start_at:        r.actual_start_at,
           expected_completion_at: r.expected_completion_at,
           status:                 r.status,
+          is_overdue:             isJobDelayed(r),
           customer:               r.customer?.full_name ?? "Manual Entry",
           service:                r.service?.name ?? "—",
           head_detailer:          team.head_detailer,
