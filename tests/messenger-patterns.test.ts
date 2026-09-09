@@ -7,7 +7,7 @@ import {
   extractJobOrderCode,
 } from "@/lib/messenger/patterns"
 import { buildLinkVerificationPrompt } from "@/lib/messenger/vehicle"
-import { resolveTemplate, detectMessageLanguage, quickReplyLabel, offTopicRedirect, reportConfirmationPrompt, reportDeclinedAck } from "@/lib/messenger/copy"
+import { resolveTemplate, detectMessageLanguage, quickReplyLabel, offTopicRedirect } from "@/lib/messenger/copy"
 import { quickRepliesFor } from "@/lib/messenger/handoff"
 import {
   DEFAULT_VEHICLE_STATUS_MESSAGE_EN,
@@ -292,20 +292,3 @@ describe("offTopicRedirect", () => {
   })
 })
 
-describe("reportConfirmationPrompt / reportDeclinedAck", () => {
-  it("asks to confirm in English, Filipino, and both", () => {
-    expect(reportConfirmationPrompt("english")).toMatch(/report this as a concern/i)
-    expect(reportConfirmationPrompt("filipino")).toMatch(/i-report ko ito/i)
-    const both = reportConfirmationPrompt("both")
-    expect(both).toMatch(/report this as a concern/i)
-    expect(both).toMatch(/i-report ko ito/i)
-  })
-
-  it("acknowledges a decline in English, Filipino, and both", () => {
-    expect(reportDeclinedAck("english")).toMatch(/no problem/i)
-    expect(reportDeclinedAck("filipino")).toMatch(/walang problema/i)
-    const both = reportDeclinedAck("both")
-    expect(both).toMatch(/no problem/i)
-    expect(both).toMatch(/walang problema/i)
-  })
-})

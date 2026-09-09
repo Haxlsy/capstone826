@@ -15,7 +15,6 @@ import {
   setLinkConflictPending,
   setViolationStreaks,
   setBookingDraft,
-  setAwaitingReportConfirmation,
   getConversationHistory,
 } from "@/lib/messenger/messenger-data"
 import {
@@ -86,8 +85,6 @@ import {
   existingBookingHandoff,
   violationWarning as violationWarningCopy,
   offTopicRedirect,
-  reportConfirmationPrompt,
-  reportDeclinedAck,
   resolveTemplate,
   pickCopy,
   detectMessageLanguage,
@@ -195,18 +192,6 @@ const REPORT_PATTERNS = [
   /\bmagreklamo\b/i,
 ]
 
-// A customer's answer to "want me to report this as a concern?" — matched
-// against a fresh message, so this is deliberately narrow (declining a report
-// is not the same intent-space as e.g. hasCancelIntent's booking wording).
-const REPORT_DECLINE_PATTERNS = [
-  /\bno\b/i,
-  /\bnope\b/i,
-  /\bhindi\b/i,
-  /\bwag\b/i,
-  /\bayoko\b/i,
-  /\bnever\s?mind\b/i,
-  /\bnvm\b/i,
-]
 
 /** True when the extracted customer object carries at least one real detail. */
 const hasExtractedDetails = (c: CustomerDetails | null | undefined): boolean =>
@@ -289,7 +274,7 @@ async function handleInboundMessage(
   const profile = await fetchMessengerProfile(senderId)
 
   // Get or create the conversation and capture its current status + flow flags.
-  const { conversation_id, status, is_vehicle_inquiry, is_booking_flow, awaiting_confirmation, active_booking_offered, booking_duplicate_notified, conflict_pending, awaiting_link_verification, link_attempts, link_conflict_pending, offtopic_streak, policy_streak, awaiting_report_confirmation, pending_report_text, booking_draft } =
+  const { conversation_id, status, is_vehicle_inquiry, is_booking_flow, awaiting_confirmation, active_booking_offered, booking_duplicate_notified, conflict_pending, awaiting_link_verification, link_attempts, link_conflict_pending, offtopic_streak, policy_streak, booking_draft } =
     await getOrCreateConversationByPsid(senderId, profile.name)
 
   // Best-effort flag persistence: a failure here must not abort the reply.
@@ -396,49 +381,12 @@ async function handleInboundMessage(
   // deliberate subject change ("I want to book", "let me talk to someone") from a
   // failed attempt at sending a plate + phone.
   const humanRequested = requestedHuman(messageBody)
-  // `let` — a confirmed pending report (see below) sets this true so the
-  // existing reportIntent-driven escalation-type/ack logic further down picks
-  // "Report" up with no other changes needed there.
+  // `let` — a message classified as a complaint (see the violation handling
+  // further down) sets this true so the existing reportIntent-driven
+  // escalation-type/ack logic further down picks "Report" up for free.
   let reportIntent =
     quickReplyPayload === "report" ||
     REPORT_PATTERNS.some((re) => re.test(messageBody))
-  // Overridden to the customer's original complaint text once a pending
-  // report is confirmed, so the inquiry records what they actually
-  // complained about rather than their one-word "yes"/"opo".
-  let inquiryLastMessage = messageBody
-
-  // ── Report confirmation ───────────────────────────────────────────────────
-  // The bot asked "want me to report this as a concern?" on the previous
-  // turn (see the "complaint" violation handling further down) — this
-  // message is the customer's answer to that, not a fresh topic.
-  if (awaiting_report_confirmation) {
-    const changedSubject =
-      Boolean(quickReplyPayload) ||
-      humanRequested ||
-      hasBookingIntent(messageBody) ||
-      hasExistingBookingIntent(messageBody) ||
-      hasStatusIntent(messageBody)
-    const declined = REPORT_DECLINE_PATTERNS.some((re) => re.test(messageBody))
-
-    if (declined) {
-      await safe(() => setAwaitingReportConfirmation(conversation_id, false, null))
-      const declineReply = reportDeclinedAck(effectiveLang)
-      const mid = await sendMessengerText(senderId, declineReply)
-      await insertMessage({ conversation_id, sender_type: "agent", message_body: declineReply, sent_at: new Date().toISOString(), fb_message_id: mid })
-      return
-    } else if (changedSubject) {
-      // A clear, different intent — drop the pending report and let this
-      // turn be handled normally, same escape valve as the link-verification
-      // block below uses for the same reason.
-      await safe(() => setAwaitingReportConfirmation(conversation_id, false, null))
-    } else {
-      // Anything else — a plain "yes"/"opo", or continuing to describe the
-      // issue — is treated as confirmation.
-      await safe(() => setAwaitingReportConfirmation(conversation_id, false, null))
-      reportIntent = true
-      inquiryLastMessage = pending_report_text ?? messageBody
-    }
-  }
 
   // ── Account-linking verification ─────────────────────────────────────────
   // When the bot has asked an unlinked customer for their Job Order Code, the
@@ -731,9 +679,12 @@ async function handleInboundMessage(
   let aiReason: string | null = null
   let aiViolation: "none" | "off_topic" | "policy" | "complaint" = "none"
   let extracted: ChatbotReply["customer"] = null
-  // Set when a complaint gets downgraded to "ask first" below — persisted
-  // after the try/catch so a failure there can't leave the flag half-set.
-  let reportConfirmationNeeded = false
+  // Recorded on the inquiry when a booking / violation escalation needs a
+  // Sales note (identity conflict, repeat in-service booking, an immediate
+  // threat/policy escalation, repeated violations…). Declared here (not just
+  // before the graduated-ladder block below) so the policy-violation branch
+  // in the try block can set it too.
+  let conflictNote: string | null = null
 
   try {
     // A deterministic status answer owns the reply — skip Gemini entirely.
@@ -763,30 +714,37 @@ async function handleInboundMessage(
     aiViolation = result.violation ?? "none"
     extracted = result.customer ?? null
 
-    // These three classifications are decided ENTIRELY here, in code — not by
-    // the model's separate `escalate` flag, which is unreliable for exactly
-    // these high-stakes cases (a threat, a strongly-worded complaint) despite
-    // being told not to escalate them itself. `escalate` is force-reset to
-    // false regardless of what the model set it to, unless a deterministic
-    // signal independently warrants escalating anyway (an explicit human
-    // request, explicit report wording, or an existing-booking operation).
+    // These classifications are decided ENTIRELY here, in code — not by the
+    // model's separate `escalate` flag, which is unreliable for exactly these
+    // high-stakes cases (a threat, a strongly-worded complaint) despite being
+    // told not to escalate them itself. `escalate` is force-set here
+    // regardless of what the model set it to, unless a deterministic signal
+    // independently warrants escalating anyway (an explicit human request,
+    // explicit report wording, or an existing-booking operation).
     const violationHandled = !humanRequested && !reportIntent && !existingBookingIntent
     if (aiViolation === "complaint" && violationHandled) {
-      // Confirmed with the customer first rather than escalated immediately —
-      // this is what turns "sinira niyo kotse ko" from an instant "Human
-      // Response" escalation into an ask-first flow that files as "Report"
-      // once confirmed.
-      escalate = false
-      escalateReason = null
-      reportConfirmationNeeded = true
-      reply = reportConfirmationPrompt(effectiveLang)
-    } else if ((aiViolation === "off_topic" || aiViolation === "policy") && violationHandled) {
-      // The graduated warning ladder below decides if/when this escalates —
-      // never on the first occurrence. Reply text is reviewed, deterministic
-      // copy rather than the model's own composition: relying on it to
-      // translate a fixed sentence live for "filipino"/"both", or to freely
-      // compose a reply to a policy violation (a jailbreak attempt, harmful
-      // content, a threat), is unreliable at best.
+      // A complaint is a real concern — escalate immediately, filed as a
+      // Report rather than a generic Human Response. Reusing `reportIntent`
+      // (already a `let`) gets that routing and the "report" ack for free
+      // from the existing logic just above and the inquiry_type resolution
+      // further down — no other changes needed there.
+      escalate = true
+      reportIntent = true
+      escalateReason = "report"
+    } else if (aiViolation === "policy" && violationHandled) {
+      // A threat, jailbreak attempt, or abusive/harassing message is also a
+      // real concern — escalate immediately rather than warning first. The
+      // conflict note flags exactly why, since this can include an actual
+      // threat that needs careful handling, not just a repeated nuisance.
+      escalate = true
+      escalateReason = "violation"
+      conflictNote = `Auto-escalated: message classified as a possible threat or policy violation. Last message: "${messageBody}".`
+    } else if (aiViolation === "off_topic" && violationHandled) {
+      // Genuinely benign — the graduated warning ladder below decides if/when
+      // this escalates, never on the first occurrence. Reply text is
+      // reviewed, deterministic copy rather than the model's own
+      // composition: relying on it to translate a fixed sentence live for
+      // "filipino"/"both" is unreliable at best.
       escalate = false
       escalateReason = null
       reply = offTopicRedirect(effectiveLang)
@@ -813,14 +771,6 @@ async function handleInboundMessage(
     escalateReason = "hiccup"
   }
 
-  if (reportConfirmationNeeded) {
-    await safe(() => setAwaitingReportConfirmation(conversation_id, true, messageBody))
-  }
-
-  // Recorded on the inquiry when a booking / violation escalation needs a Sales
-  // note (identity conflict, repeat in-service booking, repeated violations…).
-  let conflictNote: string | null = null
-
   // ── Graduated off-topic / policy-violation escalation ────────────────────
   // Count consecutive violation turns. Off-topic escalates after 5 (warned on
   // 4); safety/policy escalates after 2 (warned on 1). The streak resets on any
@@ -837,8 +787,10 @@ async function handleInboundMessage(
   ) {
     const vs = nextViolationState(
       { offtopic: offtopic_streak, policy: policy_streak },
-      // "complaint" has its own one-shot ask-first flow above — it is not
-      // part of the off-topic/policy streak ladder and must not affect it.
+      // "complaint" and "policy" both escalate immediately above and never
+      // reach here with `escalate` still false — this mapping is purely for
+      // TypeScript; a "complaint" classification is not part of the
+      // off-topic/policy streak ladder and must not affect it.
       aiViolation === "complaint" ? "none" : aiViolation
     )
     await safe(() => setViolationStreaks(conversation_id, vs.offtopic, vs.policy))
@@ -1367,7 +1319,7 @@ async function handleInboundMessage(
       inquiry_type,
       status: "open",
       escalated_at: timestamp,
-      last_message: inquiryLastMessage,
+      last_message: messageBody,
       conflict_note:     conflictNote,
       extracted_name:    extracted?.full_name      ?? null,
       extracted_contact: extracted?.contact_number ?? null,

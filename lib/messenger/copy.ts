@@ -203,31 +203,6 @@ export function offTopicRedirect(lang?: BotLanguage): string {
   )
 }
 
-/**
- * Asked before escalating a message the AI flagged as a complaint but that
- * carried none of the explicit report/complaint/concern wording `reportIntent`
- * matches on — lets the customer confirm they want it raised with the team
- * (filed as a Report) instead of the bot silently escalating on the first
- * angry-sounding message. See `escalation_reason` in
- * `lib/messenger/chatbot.ts`'s `generateChatbotReply`.
- */
-export function reportConfirmationPrompt(lang?: BotLanguage): string {
-  return pickCopy(
-    lang,
-    "I'm sorry to hear that. Would you like me to report this as a concern to our team? Just reply YES and I'll pass it along right away.",
-    "Pasensya na po sa nangyari. Gusto niyo po bang i-report ko ito bilang concern sa aming team? I-reply lang po ang OO at ipapasa ko agad ito.",
-  )
-}
-
-/** Sent when the customer declines to have their message reported. */
-export function reportDeclinedAck(lang?: BotLanguage): string {
-  return pickCopy(
-    lang,
-    "Okay, no problem. Is there anything else I can help you with?",
-    "Sige po, walang problema. May iba pa po ba akong maitutulong?",
-  )
-}
-
 /** Customer abandoned the booking they were giving details for. */
 export function bookingCancelled(lang?: BotLanguage): string {
   return pickCopy(

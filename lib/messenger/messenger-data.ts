@@ -21,8 +21,6 @@ export async function getOrCreateConversationByPsid(
   link_conflict_pending: boolean
   offtopic_streak: number
   policy_streak: number
-  awaiting_report_confirmation: boolean
-  pending_report_text: string | null
   booking_draft: CustomerDetails
 }> {
   const supabase = createAdminClient()
@@ -30,7 +28,7 @@ export async function getOrCreateConversationByPsid(
   const { data: existing } = await supabase
     .from("messenger_conversation")
     .select(
-      "conversation_id, status, is_vehicle_inquiry, is_booking_flow, awaiting_confirmation, active_booking_offered, booking_duplicate_notified, conflict_pending, awaiting_link_verification, link_attempts, link_conflict_pending, offtopic_streak, policy_streak, awaiting_report_confirmation, pending_report_text, draft_name, draft_contact, draft_plate, draft_vehicle, draft_email"
+      "conversation_id, status, is_vehicle_inquiry, is_booking_flow, awaiting_confirmation, active_booking_offered, booking_duplicate_notified, conflict_pending, awaiting_link_verification, link_attempts, link_conflict_pending, offtopic_streak, policy_streak, draft_name, draft_contact, draft_plate, draft_vehicle, draft_email"
     )
     .eq("psid", psid)
     .maybeSingle()
@@ -57,8 +55,6 @@ export async function getOrCreateConversationByPsid(
       link_conflict_pending: Boolean(existing.link_conflict_pending),
       offtopic_streak: Number(existing.offtopic_streak ?? 0),
       policy_streak: Number(existing.policy_streak ?? 0),
-      awaiting_report_confirmation: Boolean(existing.awaiting_report_confirmation),
-      pending_report_text: existing.pending_report_text ?? null,
       booking_draft: {
         full_name:      existing.draft_name    ?? null,
         contact_number: existing.draft_contact ?? null,
@@ -86,7 +82,7 @@ export async function getOrCreateConversationByPsid(
     throw new Error(error?.message ?? "Failed to create conversation")
   }
 
-  return { conversation_id: data.conversation_id, status: "open", is_vehicle_inquiry: false, is_booking_flow: false, awaiting_confirmation: false, active_booking_offered: false, booking_duplicate_notified: false, conflict_pending: false, awaiting_link_verification: false, link_attempts: 0, link_conflict_pending: false, offtopic_streak: 0, policy_streak: 0, awaiting_report_confirmation: false, pending_report_text: null, booking_draft: { full_name: null, contact_number: null, plate_number: null, vehicle_unit: null, email: null } }
+  return { conversation_id: data.conversation_id, status: "open", is_vehicle_inquiry: false, is_booking_flow: false, awaiting_confirmation: false, active_booking_offered: false, booking_duplicate_notified: false, conflict_pending: false, awaiting_link_verification: false, link_attempts: 0, link_conflict_pending: false, offtopic_streak: 0, policy_streak: 0, booking_draft: { full_name: null, contact_number: null, plate_number: null, vehicle_unit: null, email: null } }
 }
 
 /**
@@ -137,27 +133,6 @@ export async function setAwaitingLinkVerification(conversation_id: number, value
   const { error } = await supabase
     .from("messenger_conversation")
     .update({ awaiting_link_verification: value })
-    .eq("conversation_id", conversation_id)
-
-  if (error) throw new Error(error.message)
-}
-
-/**
- * Marks whether the next customer message is their yes/no answer to "want me
- * to report this as a concern?" — `text` is the original complaint, stored so
- * the eventual inquiry's `last_message` is what the customer actually
- * complained about, not their one-word confirmation. Pass `null` to clear.
- */
-export async function setAwaitingReportConfirmation(
-  conversation_id: number,
-  value: boolean,
-  text: string | null
-) {
-  const supabase = createAdminClient()
-
-  const { error } = await supabase
-    .from("messenger_conversation")
-    .update({ awaiting_report_confirmation: value, pending_report_text: text })
     .eq("conversation_id", conversation_id)
 
   if (error) throw new Error(error.message)
