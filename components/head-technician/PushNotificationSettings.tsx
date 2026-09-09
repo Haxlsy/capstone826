@@ -4,12 +4,14 @@ import { useEffect, useState } from "react"
 import { Bell, BellRing, BellOff, Loader2, Send } from "lucide-react"
 import { useToast } from "@/components/ui/Toast"
 import { getPushStatus, subscribeToPush, type PushStatus } from "@/lib/push/client"
+import { useIsMobileViewport } from "@/hooks/useIsMobileViewport"
 
 export default function PushNotificationSettings() {
   const toast = useToast()
   const [status, setStatus] = useState<PushStatus | null>(null)
   const [enabling, setEnabling] = useState(false)
   const [testing, setTesting] = useState(false)
+  const isMobile = useIsMobileViewport()
 
   async function refresh() {
     setStatus(await getPushStatus())
@@ -50,6 +52,7 @@ export default function PushNotificationSettings() {
   const enabled = status?.subscribed && status.permission === "granted"
   const blocked = status?.permission === "denied"
   const unsupported = status?.supported === false
+  const desktopOnly = isMobile === false
 
   return (
     <div className="bg-surface border border-border rounded-card overflow-hidden mb-5">
@@ -64,8 +67,13 @@ export default function PushNotificationSettings() {
       </div>
 
       <div className="px-6 py-5 space-y-4">
-        {status === null ? (
+        {status === null || isMobile === null ? (
           <p className="text-sm text-muted">Checking status…</p>
+        ) : desktopOnly ? (
+          <div className="flex items-center gap-2.5 text-sm text-muted">
+            <BellOff className="w-4 h-4 shrink-0" />
+            Push notifications are only available on mobile — open this page on your phone to enable them.
+          </div>
         ) : unsupported ? (
           <div className="flex items-center gap-2.5 text-sm text-muted">
             <BellOff className="w-4 h-4 shrink-0" />
@@ -89,7 +97,7 @@ export default function PushNotificationSettings() {
         )}
 
         <div className="flex flex-wrap items-center gap-3">
-          {!enabled && !unsupported && !blocked && (
+          {!enabled && !unsupported && !blocked && !desktopOnly && (
             <button
               onClick={handleEnable}
               disabled={enabling}

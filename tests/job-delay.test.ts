@@ -1,5 +1,22 @@
-import { describe, it, expect } from "vitest"
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest"
 import { isJobDelayed, computeStageDelays, hasAnyStageDelayed, displayJobStatus, ACTIVE_JOB_STATUSES } from "@/lib/job-delay"
+
+// 2:00 PM Asia/Manila (06:00 UTC) — comfortably mid-day, so every relative
+// offset used below (minutes/hours "ago") lands within the 8 AM–8 PM
+// working-hours window addWorkingMins (hooks/time-utils.ts) enforces,
+// regardless of what time it actually is when this suite runs. Without this,
+// computeStageDelays tests silently depend on wall-clock time — they've
+// already failed once when the suite ran past 8 PM Manila.
+const FIXED_NOW = "2026-01-06T06:00:00.000Z"
+
+beforeEach(() => {
+  vi.useFakeTimers()
+  vi.setSystemTime(new Date(FIXED_NOW))
+})
+
+afterEach(() => {
+  vi.useRealTimers()
+})
 
 const hourMs = 60 * 60 * 1000
 const past   = (ms: number) => new Date(Date.now() - ms).toISOString()

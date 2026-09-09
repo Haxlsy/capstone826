@@ -5,7 +5,7 @@ import Link from "next/link"
 import { useRouter } from "next/navigation"
 import {
   ArrowLeft, PackageCheck, ChevronDown, Users, RefreshCw, CheckCircle2, XCircle,
-  Clock, RotateCcw, UserPlus, Loader2, Trash2, FileText,
+  Clock, RotateCcw, UserPlus, Loader2, Trash2, FileText, Pencil,
 } from "lucide-react"
 import { JobOrderDetailSkeleton } from "@/app/dashboard/job-management/[id]/loading"
 import { PageHeader } from "@/components/ui/PageHeader"
@@ -13,7 +13,7 @@ import { Button, IconButton } from "@/components/ui/Button"
 import { Card, CardBody } from "@/components/ui/Card"
 import { Modal, ConfirmModal } from "@/components/ui/Modal"
 import { StatusBadge, Badge } from "@/components/ui/Badge"
-import { Textarea } from "@/components/ui/Field"
+import { Textarea, Input } from "@/components/ui/Field"
 import { EmptyState } from "@/components/ui/EmptyState"
 import { useToast } from "@/components/ui/Toast"
 import { cn } from "@/lib/utils"
@@ -84,6 +84,10 @@ interface JobDetail {
   scheduled_at: string | null
   actual_start_at: string | null
   expected_completion_at: string | null
+  // Lets the client preview a new Est. Completion (via the shared
+  // estimate-completion endpoint) while editing Scheduled Start, without
+  // re-implementing working-hours math in the browser.
+  total_duration_mins: number
   updated_est: string | null
   created_at: string
   finishing_approved_at: string | null
@@ -134,6 +138,12 @@ export default function JobOrderDetail({ jobId }: { jobId: string }) {
   const [selectedSubId, setSelectedSubId] = useState<string | null>(null)
   const [addingSub, setAddingSub] = useState(false)
   const [subError, setSubError] = useState<string | null>(null)
+
+  const [scheduleModal, setScheduleModal] = useState(false)
+  const [scheduleValue, setScheduleValue] = useState("")
+  const [schedulePreview, setSchedulePreview] = useState<string | null>(null)
+  const [savingSchedule, setSavingSchedule] = useState(false)
+  const [scheduleError, setScheduleError] = useState<string | null>(null)
 
   const updatedEst = job?.updated_est ?? null
 
@@ -302,6 +312,63 @@ export default function JobOrderDetail({ jobId }: { jobId: string }) {
     }
   }
 
+  function openScheduleModal() {
+    if (!job) return
+    setScheduleValue(job.scheduled_at ? toDatetimeLocalValue(job.scheduled_at) : "")
+    setSchedulePreview(null)
+    setScheduleError(null)
+    setScheduleModal(true)
+  }
+
+  // Est. Completion preview is computed server-side (same engine that
+  // persists the estimate on save) — the browser never re-implements
+  // working-hours math. Mirrors AddJobOrderForm's fetchEstimate.
+  useEffect(() => {
+    if (!scheduleModal || !scheduleValue || !job?.total_duration_mins) { setSchedulePreview(null); return }
+    let cancelled = false
+    ;(async () => {
+      try {
+        const res = await fetch("/api/operations/job-management/estimate-completion", {
+          method:  "POST",
+          headers: { "Content-Type": "application/json" },
+          body:    JSON.stringify({
+            startIso:     new Date(scheduleValue).toISOString(),
+            durationMins: job.total_duration_mins,
+          }),
+        })
+        if (cancelled) return
+        if (!res.ok) { setSchedulePreview(null); return }
+        const data = await res.json()
+        setSchedulePreview((data?.expected_display as string) ?? null)
+      } catch {
+        if (!cancelled) setSchedulePreview(null)
+      }
+    })()
+    return () => { cancelled = true }
+  }, [scheduleModal, scheduleValue, job?.total_duration_mins])
+
+  async function saveScheduledStart() {
+    if (!scheduleValue) return
+    setSavingSchedule(true)
+    setScheduleError(null)
+    try {
+      const res = await fetch(`/api/operations/job-orders/${jobId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ scheduled_at: new Date(scheduleValue).toISOString() }),
+      })
+      const json = await res.json()
+      if (!res.ok) throw new Error(json?.error ?? "Failed to update scheduled start")
+      setScheduleModal(false)
+      await load()
+      toast.success("Scheduled start updated.")
+    } catch (err: unknown) {
+      setScheduleError(err instanceof Error ? err.message : String(err))
+    } finally {
+      setSavingSchedule(false)
+    }
+  }
+
   async function cancelJob() {
     setCancelling(true)
     setCancelError(null)
@@ -450,7 +517,22 @@ export default function JobOrderDetail({ jobId }: { jobId: string }) {
             <InfoCell label="Vehicle" value={job.vehicle_unit} />
             <InfoCell label="Plate" value={job.plate_number} accent />
             <InfoCell label="Service" value={job.service} />
-            <InfoCell label="Scheduled Start" value={fmtDateTime(job.scheduled_at)} />
+            {job.status === "Pending" ? (
+              <button
+                type="button"
+                onClick={openScheduleModal}
+                className="group text-left"
+                title="Edit scheduled start"
+              >
+                <p className="mb-0.5 text-xs uppercase tracking-wide text-muted">Scheduled Start</p>
+                <p className="flex items-center gap-1 font-medium text-body group-hover:text-primary">
+                  {fmtDateTime(job.scheduled_at)}
+                  <Pencil className="h-3 w-3 text-muted group-hover:text-primary" />
+                </p>
+              </button>
+            ) : (
+              <InfoCell label="Scheduled Start" value={fmtDateTime(job.scheduled_at)} />
+            )}
             <CrewCell label="Head Detailer" lead={job.head_detailer?.full_name ?? "Unassigned"} crew={job.detailers} />
             <CrewCell label="Head Installer" lead={job.head_installer?.full_name ?? "Unassigned"} crew={job.installers} />
             <InfoCell label="Started" value={fmtDateTime(job.actual_start_at)} />
@@ -768,6 +850,48 @@ export default function JobOrderDetail({ jobId }: { jobId: string }) {
         {subError && <p className="mt-3 text-xs text-status-delayed">{subError}</p>}
       </Modal>
 
+      {/* Edit Scheduled Start Modal */}
+      <Modal
+        open={scheduleModal}
+        onClose={() => {
+          setScheduleModal(false)
+          setScheduleError(null)
+        }}
+        title="Edit Scheduled Start"
+        description="Only available while the job is Pending. Est. Completion updates to match."
+        size="sm"
+        footer={
+          <>
+            <Button variant="ghost" onClick={() => setScheduleModal(false)} disabled={savingSchedule}>
+              Cancel
+            </Button>
+            <Button onClick={saveScheduledStart} disabled={!scheduleValue || savingSchedule}>
+              {savingSchedule ? <Loader2 className="h-4 w-4 animate-spin" /> : "Save"}
+            </Button>
+          </>
+        }
+      >
+        <div className="flex flex-col gap-1.5">
+          <label className="text-xs font-medium text-body">Scheduled Date &amp; Time</label>
+          <Input
+            aria-label="Scheduled Date and Time"
+            type="datetime-local"
+            value={scheduleValue}
+            onChange={(e) => setScheduleValue(e.target.value)}
+          />
+          <p className="text-[10px] text-muted">Working hours: 8:00 AM – 8:00 PM</p>
+        </div>
+
+        {scheduleValue && (
+          <div className="mt-4 rounded-sm border border-border-subtle bg-surface-muted px-3 py-2">
+            <p className="mb-0.5 text-xs uppercase tracking-wide text-muted">New Est. Completion</p>
+            <p className="font-medium text-body">{schedulePreview ?? "Calculating…"}</p>
+          </div>
+        )}
+
+        {scheduleError && <p className="mt-3 text-xs text-status-delayed">{scheduleError}</p>}
+      </Modal>
+
       {/* Stage Rework Modal */}
       <Modal
         open={reworkModal !== null}
@@ -807,6 +931,16 @@ export default function JobOrderDetail({ jobId }: { jobId: string }) {
       </Modal>
     </div>
   )
+}
+
+// Converts a stored ISO timestamp to a `datetime-local` input value, using
+// the browser's own local time — the same interpretation the browser applies
+// when that value is later read back via `new Date(value)` on save, so the
+// round trip never drifts (matches AddJobOrderForm's resolveStartDate).
+function toDatetimeLocalValue(iso: string): string {
+  const d = new Date(iso)
+  const pad = (n: number) => String(n).padStart(2, "0")
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`
 }
 
 function InfoCell({ label, value, accent }: { label: string; value: string; accent?: boolean }) {

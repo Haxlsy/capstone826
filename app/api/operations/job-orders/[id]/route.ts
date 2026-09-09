@@ -4,6 +4,7 @@ import { createClient } from "@/lib/supabase/server"
 import { createAdminClient } from "@/lib/supabase/admin"
 import { logAudit } from "@/hooks/audit-helpers"
 import { getJobDetailData } from "@/lib/operations/job-detail-data"
+import { totalStageDurationMins, computeExpectedCompletion } from "@/lib/job-estimates"
 import { sendPushToUser } from "@/lib/push/send"
 import { sendMessengerText } from "@/lib/messenger/graph"
 import { buildReleaseMessage, buildCompletionMessage, getOperatingHoursText } from "@/lib/messenger/status-update"
@@ -81,12 +82,49 @@ export async function PATCH(
       }
     }
 
+    // Guard: Scheduled Start is only editable while the job hasn't started
+    // yet — once it's Ongoing (or beyond), actual_start_at already anchors
+    // the estimate and moving the schedule retroactively would be misleading.
+    if (scheduled_at !== undefined && current?.status !== "Pending") {
+      return NextResponse.json(
+        { error: "Scheduled Start can only be edited while the job is Pending." },
+        { status: 400 }
+      )
+    }
+
     const updates: Record<string, any> = {}
     if (status !== undefined)      updates.status      = status
     if (scheduled_at !== undefined) updates.scheduled_at = scheduled_at
     // Set actual_start_at when first moved to Ongoing
     if (status === "Ongoing" && !current?.actual_start_at) {
       updates.actual_start_at = new Date().toISOString()
+    }
+
+    // Editing Scheduled Start moves Est. Completion with it — recompute and
+    // persist the same way lib/operations/job-detail-data.ts derives it for
+    // display, so every other surface (dashboards, delay checks) that reads
+    // the stored column stays in sync instead of only the detail page.
+    if (scheduled_at !== undefined) {
+      const { data: stages } = await admin
+        .from("job_stage_progress")
+        .select("stage_duration_mins, service_stage_id")
+        .eq("job_order_id", id)
+      const ssIds = [...new Set((stages ?? []).map((s) => s.service_stage_id).filter(Boolean) as string[])]
+      let ssMap = new Map<string, { stage_duration_mins: number }>()
+      if (ssIds.length > 0) {
+        const { data: ssRows } = await admin
+          .from("service_stage")
+          .select("id, stage_duration_mins")
+          .in("id", ssIds)
+        ssMap = new Map((ssRows ?? []).map((r) => [r.id, r]))
+      }
+      const totalDurationMins = totalStageDurationMins(stages ?? [], ssMap)
+      const { expected } = computeExpectedCompletion({
+        scheduled_at,
+        actual_start_at: current?.actual_start_at ?? null,
+        totalDurationMins,
+      })
+      updates.expected_completion_at = expected
     }
 
     if (Object.keys(updates).length > 0) {
@@ -230,12 +268,13 @@ export async function PATCH(
     } else if (head_detailer_id !== undefined || head_installer_id !== undefined || scheduled_at !== undefined) {
       const { data: profile } = await admin.from("user_account").select("full_name, role").eq("id", user.id).single()
       if (profile) {
+        const isScheduleOnly = scheduled_at !== undefined && head_detailer_id === undefined && head_installer_id === undefined
         logAudit({
           user_id:   user.id,
           user_name: profile.full_name,
           role:      profile.role,
           category:  "update",
-          action:    "Updated job assignment",
+          action:    isScheduleOnly ? "Updated scheduled start" : "Updated job assignment",
           target:    current?.customer_name ?? id,
         })
       }
