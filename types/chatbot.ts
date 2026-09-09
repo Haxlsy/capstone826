@@ -253,7 +253,7 @@ export const chatbotReplySchema = z.object({
   reply:     z.string(),
   escalate:  z.boolean(),
   reason:    z.string().nullable().optional(),
-  violation: z.enum(["none", "off_topic", "policy"]).optional(),
+  violation: z.enum(["none", "off_topic", "policy", "complaint"]).optional(),
   customer:  customerDetailsSchema.nullable().optional(),
 })
 export type ChatbotReply = z.infer<typeof chatbotReplySchema>

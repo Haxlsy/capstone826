@@ -10,11 +10,40 @@
  */
 
 /**
+ * Common short connector words that would otherwise misparse as a plate's
+ * letter portion whenever one happens to sit right before a number in an
+ * ordinary sentence — "is 25", "of 826", "at 5" all technically fit
+ * `[A-Z]{1,4}\d+`, but none of these words is ever a real plate prefix. This
+ * caused a real bug: an off-topic message ("...Mary is 23 years old...",
+ * "...who is owner of 826?") got misread as containing a plate number, which
+ * hijacked the whole reply into the deterministic booking flow instead of
+ * the AI ever seeing it as off-topic. A word-list, not a grammar — this
+ * fixes the false positives actually seen without narrowing what a real
+ * plate can look like.
+ */
+const PLATE_FALSE_POSITIVE_WORDS = [
+  "is", "of", "at", "on", "in", "to", "no", "we", "he", "it", "be", "as", "by",
+  "or", "if", "so", "up", "am", "pm",
+  "the", "are", "was", "has", "had", "not", "but", "you", "can", "may", "day",
+  "old", "new", "out", "got", "let", "per", "via", "for", "and", "all", "get",
+  "put", "our", "his", "her", "its", "who", "why", "how", "now", "top", "way",
+  "use", "cost", "pay", "paid", "total", "price", "worth", "than", "just",
+  "only", "over", "under", "about", "near", "give", "need", "want", "have",
+  "like", "said", "says", "make", "made", "call", "chat", "text", "send",
+  "sent", "with", "them", "were", "will", "does",
+]
+
+/**
  * Loose PH plate-number pattern (e.g. ABC 1234, XYZ-567, AAA-111-B).
  * `(?<![A-Z])` forbids only a preceding LETTER, so a digit may butt up against
- * the plate. A run of digits alone can never match — a letter is still required.
+ * the plate. A run of digits alone can never match — a letter is still
+ * required. The negative lookahead rejects a `PLATE_FALSE_POSITIVE_WORDS`
+ * entry immediately followed by a number, which otherwise reads as a plate.
  */
-export const PLATE_PATTERN = /(?<![A-Z])[A-Z]{1,4}\s?-?\s?\d{1,6}(?:\s?-\s?[A-Z]{1,2})?\b/i
+export const PLATE_PATTERN = new RegExp(
+  `(?<![A-Z])(?!(?:${PLATE_FALSE_POSITIVE_WORDS.join("|")})\\s?-?\\s?\\d)[A-Z]{1,4}\\s?-?\\s?\\d{1,6}(?:\\s?-\\s?[A-Z]{1,2})?\\b`,
+  "i"
+)
 
 /**
  * Loose Philippine mobile-number pattern (e.g. 0917 555 0101, +639175550101).
