@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server"
 import { cookies } from "next/headers"
 import { createClient } from "@/lib/supabase/server"
+import { createAdminClient } from "@/lib/supabase/admin"
 import { isSessionCurrent } from "@/lib/auth/session-check"
 
 // GET /api/auth/session-status — single active session per account.
@@ -14,19 +15,45 @@ export async function GET() {
   try {
     const cookieStore = await cookies()
     const supabase = createClient(cookieStore)
-    const { data: { user } } = await supabase.auth.getUser()
+    const sessionToken = cookieStore.get("826_session_token")?.value ?? null
 
-    if (!user) {
-      // No session at all — this is the normal shape of a deliberate logout
-      // (hooks/useLogout.ts signs out, then this check can fire before the
-      // redirect completes) just as much as a genuinely stale one. Distinct
-      // from "mismatch" below so the caller doesn't misreport an ordinary
-      // logout as "signed in on another device".
+    if (!sessionToken) {
+      // No cookie at all — the shape of a deliberate logout
+      // (app/api/auth/logout/route.ts actively clears this cookie, and this
+      // check can fire before that flow's own redirect completes). Nothing
+      // left to compare against, so nothing to report as a mismatch.
       return NextResponse.json({ valid: false, reason: "no_session" }, { headers: { "Cache-Control": "no-store" } })
     }
 
-    const sessionToken = cookieStore.get("826_session_token")?.value ?? null
-    const valid = await isSessionCurrent(supabase, user.id, sessionToken)
+    const { data: { user } } = await supabase.auth.getUser()
+
+    if (user) {
+      const valid = await isSessionCurrent(supabase, user.id, sessionToken)
+      return NextResponse.json(
+        { valid, reason: valid ? undefined : "mismatch" },
+        { headers: { "Cache-Control": "no-store" } },
+      )
+    }
+
+    // getUser() failed — this device's session is already revoked (login
+    // calls admin.auth.admin.signOut(newToken, "others"), which invalidates
+    // the OLD device's session at the Auth server immediately, not just its
+    // session_token row) — so by the time this runs, "kicked out by another
+    // device" and "genuinely logged out" both look identical to getUser().
+    // The cookie is still present here (checked above), which a deliberate
+    // logout would have cleared — so this really is the "kicked out
+    // elsewhere" case, not a false positive. getSession() decodes the JWT
+    // locally (no live revocation check) purely to recover whose cookie this
+    // was, so it still works even though the session itself is dead.
+    const { data: { session } } = await supabase.auth.getSession()
+    const staleUserId = session?.user?.id ?? null
+
+    if (!staleUserId) {
+      return NextResponse.json({ valid: false, reason: "no_session" }, { headers: { "Cache-Control": "no-store" } })
+    }
+
+    const admin = createAdminClient()
+    const valid = await isSessionCurrent(admin, staleUserId, sessionToken)
 
     return NextResponse.json(
       { valid, reason: valid ? undefined : "mismatch" },
