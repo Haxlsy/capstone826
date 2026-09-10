@@ -2,7 +2,7 @@
 // dashboard so Operations can navigate to Add Job Order / Concerns and queue
 // work while offline (see docs/plan/operations-offline-testing-guide.md).
 
-const SW_VERSION = "v3";
+const SW_VERSION = "v4";
 const PAGES_CACHE  = `pages-${SW_VERSION}`;
 const RSC_CACHE    = `rsc-${SW_VERSION}`;
 const STATIC_CACHE = `static-${SW_VERSION}`;
@@ -33,6 +33,31 @@ function isRscRequest(request, url) {
 
 function bareKey(url) {
   return url.origin + url.pathname;
+}
+
+// After caching an HTML document or an RSC/flight payload, make sure the JS/CSS
+// chunks it references are cached too. Without this, an offline visit to a page
+// that wasn't opened while online renders the server shell but its client
+// components never hydrate — forms are dead and nothing gets queued to
+// IndexedDB. Next.js chunk names are content-hashed, so both the HTML and the
+// flight payload embed the exact `/_next/static/...` paths for that route.
+async function warmReferencedAssets(bodyText) {
+  const cache = await caches.open(STATIC_CACHE);
+  const refs = new Set();
+  const re = /\/_next\/static\/[A-Za-z0-9._/-]+?\.(?:js|css|woff2?)/g;
+  let m;
+  while ((m = re.exec(bodyText)) !== null) refs.add(m[0]);
+  await Promise.all(
+    [...refs].map(async (path) => {
+      if (await cache.match(path)) return;
+      try {
+        const r = await fetch(path);
+        if (r.ok) await cache.put(path, r);
+      } catch {
+        // asset unreachable (offline / 404 after a deploy) — skip it
+      }
+    })
+  );
 }
 
 // ── Lifecycle ────────────────────────────────────────────────────────────────
@@ -123,11 +148,20 @@ self.addEventListener("fetch", (event) => {
         try {
           const res = await fetch(request);
           if (res.ok) {
+            let store = false;
             if (rsc) {
-              cache.put(bareKey(url), res.clone());
+              store = true;
             } else {
               const ct = res.headers.get("content-type") || "";
-              if (ct.includes("text/html")) cache.put(bareKey(url), res.clone());
+              store = ct.includes("text/html");
+            }
+            if (store) {
+              cache.put(bareKey(url), res.clone());
+              // Warm the JS/CSS this page/payload references so it can hydrate
+              // offline. Fire-and-forget, but keep the SW alive for it.
+              event.waitUntil(
+                res.clone().text().then(warmReferencedAssets).catch(() => {})
+              );
             }
           }
           return res;

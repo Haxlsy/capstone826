@@ -12,10 +12,14 @@ export interface SyncResult {
 async function replayItem(item: OutboxItem): Promise<void> {
   switch (item.type) {
     case "add_job_order": {
+      // `_display` is a UI-only snapshot (customer/service/tech names) the Job
+      // Order list uses to render the queued row — never send it to the API.
+      const body = { ...item.payload }
+      delete body._display
       const res = await fetch("/api/operations/job-management/add-job-order", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(item.payload),
+        body: JSON.stringify(body),
       })
       if (!res.ok) {
         const json = await res.json().catch(() => ({}))
