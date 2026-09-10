@@ -101,7 +101,7 @@ export default function NotificationBell({ variant = "dark" }: { variant?: "dark
                   <p className="text-sm font-medium text-heading">
                     {delayedJobCount} job{delayedJobCount !== 1 ? "s" : ""} currently delayed
                   </p>
-                  <p className="mt-0.5 text-xs text-muted">Tap to view Job Management</p>
+                  <p className="mt-0.5 text-xs text-muted">Tap to view Job Order</p>
                 </div>
               </li>
             )}

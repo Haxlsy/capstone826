@@ -16,7 +16,7 @@ export default function OfflineSyncSettings() {
     <div className="bg-surface border border-border rounded-card overflow-hidden mb-5">
       <div className="flex items-center gap-3 px-6 py-4 border-b border-border-subtle">
         <div className="w-8 h-8 rounded-sm bg-primary/10 flex items-center justify-center">
-          <CloudUpload className="w-4 h-4 text-primary" />
+          <RefreshCw className="w-4 h-4 text-primary" />
         </div>
         <div>
           <p className="text-sm font-semibold text-heading">Backup Sync</p>
