@@ -104,12 +104,20 @@ const STAGE_PILL: Record<string, string> = {
 
 // ── Component ─────────────────────────────────────────────────────────────────
 
-export default function JobOrderDetail({ jobId }: { jobId: string }) {
+export default function JobOrderDetail({
+  jobId,
+  initialJob,
+}: {
+  jobId: string
+  initialJob?: JobDetail | null
+}) {
   const router = useRouter()
   const toast = useToast()
 
-  const [job, setJob] = useState<JobDetail | null>(null)
-  const [loading, setLoading] = useState(true)
+  const [job, setJob] = useState<JobDetail | null>(initialJob ?? null)
+  // initialJob means there's already something to show — skip the skeleton
+  // and silently revalidate in the background instead (below).
+  const [loading, setLoading] = useState(!initialJob)
   const [error, setError] = useState<string | null>(null)
 
   const [releasing, setReleasing] = useState(false)
@@ -163,8 +171,10 @@ export default function JobOrderDetail({ jobId }: { jobId: string }) {
   }, [jobId])
 
   useEffect(() => {
-    load()
-  }, [load])
+    // Already have initialJob from the server — revalidate silently in the
+    // background instead of flashing the skeleton again.
+    load({ silent: !!initialJob })
+  }, [load, initialJob])
 
   // A technician updating this job's stages, or its own row changing (status,
   // team assignment, schedule), should reflect here immediately — silent (no

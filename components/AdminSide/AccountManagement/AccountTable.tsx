@@ -16,6 +16,7 @@ import { useToast } from "@/components/ui/Toast"
 import { cn } from "@/lib/utils"
 import { roleStyle, roleLabel } from "@/lib/ui/roles"
 import { initials } from "@/lib/ui/avatar"
+import { useRealtimeRefetch } from "@/hooks/useRealtimeRefetch"
 
 type UserRole = "operations" | "sales" | "head_detailer" | "head_installer"
 
@@ -54,6 +55,10 @@ export default function AccountTable() {
   const [refetchKey, setRefetchKey] = useState(0)
 
   const forceRefetch = () => setRefetchKey((k) => k + 1)
+
+  // Another admin creating/archiving/editing an account should show up here
+  // without a manual reload.
+  useRealtimeRefetch("user_account", forceRefetch)
 
   useEffect(() => {
     setPage(1)

@@ -1,11 +1,9 @@
 "use client"
 
-import { useState, useMemo } from "react"
-import { useRouter } from "next/navigation"
-import { useRealtimeRefetch } from "@/hooks/useRealtimeRefetch"
+import { useState } from "react"
 import { Paperclip, CheckCircle, ArrowRight } from "lucide-react"
 import type { ConcernRecord } from "@/lib/operations/concern-record"
-import { toConcernRecords } from "@/lib/operations/concern-record"
+import { useConcerns } from "@/hooks/use-concerns"
 import { PageHeader } from "@/components/ui/PageHeader"
 import { SearchBar } from "@/components/ui/SearchBar"
 import { Tabs } from "@/components/ui/Tabs"
@@ -111,13 +109,11 @@ function Field({ label, icon, children }: { label: string; icon?: React.ReactNod
   )
 }
 
-export default function SalesConcerns({ concerns }: { concerns: any[] }) {
-  const router = useRouter()
-  const records = useMemo(() => toConcernRecords(concerns), [concerns])
-
-  // Concerns are server-fetched into props, so a realtime change re-runs the
-  // server component rather than refetching here — no client API route needed.
-  useRealtimeRefetch(["concern", "concern_media"], () => router.refresh())
+export default function SalesConcerns({ initialRecords }: { initialRecords: ConcernRecord[] }) {
+  // Shares the exact same cached + realtime-refetched query Operations'
+  // Job Concerns page uses (hooks/use-concerns.ts) — same `concern` table,
+  // no reason to maintain a second copy of this live-data logic.
+  const { data: records = [] } = useConcerns(initialRecords)
   const [activeFilter, setActiveFilter] = useState<FilterType>("All")
   const [searchQuery, setSearchQuery] = useState("")
   const [currentPage, setCurrentPage] = useState(1)
