@@ -96,6 +96,7 @@ export default function ChatbotManagement() {
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null)
   const [kbSearch, setKbSearch]               = useState("")
   const [kbCategoryFilter, setKbCategoryFilter] = useState<KBCategory | "All">("All")
+  const [openKbCats, setOpenKbCats]           = useState<Set<string>>(new Set())
 
   useEffect(() => {
     fetch("/api/admin/chatbot/config")
@@ -219,6 +220,21 @@ export default function ChatbotManagement() {
     if (!q) return true
     return entry.topic.toLowerCase().includes(q) || entry.category.toLowerCase().includes(q)
   })
+
+  // Grouped by category in canonical order, empty groups dropped. Groups
+  // collapse by default (the "organized" look); a group auto-expands while a
+  // search term or the category filter is active so results are never hidden.
+  const kbGroups = KB_CATEGORIES
+    .map((cat) => ({ cat, entries: filteredKbEntries.filter((e) => e.category === cat) }))
+    .filter((g) => g.entries.length > 0)
+  function toggleKbCat(cat: string) {
+    setOpenKbCats((prev) => {
+      const next = new Set(prev)
+      if (next.has(cat)) next.delete(cat)
+      else next.add(cat)
+      return next
+    })
+  }
 
   return (
     <div className="flex flex-col gap-5">
@@ -533,41 +549,64 @@ export default function ChatbotManagement() {
             {!kbLoading && kbEntries.length > 0 && filteredKbEntries.length === 0 && !kbError && (
               <div className="text-center py-10 text-sm text-muted">No entries match your search or filter.</div>
             )}
-            {filteredKbEntries.map((entry) => {
-              const isExpanded = expandedId === entry.id
-              const isDeleteConfirm = deleteConfirmId === entry.id
+            {kbGroups.map((group) => {
+              const groupOpen = kbSearchActive || openKbCats.has(group.cat)
               return (
-                <div key={entry.id} className="bg-surface border border-border rounded-card overflow-hidden">
-                  <div
-                    className="flex items-center gap-3 px-5 py-3.5 cursor-pointer hover:bg-surface-muted/50 transition-colors"
-                    onClick={() => setExpandedId(isExpanded ? null : entry.id)}
+                <div key={group.cat} className="flex flex-col gap-2">
+                  <button
+                    type="button"
+                    onClick={() => toggleKbCat(group.cat)}
+                    className="flex items-center gap-3 px-5 py-3 bg-surface border border-border rounded-card hover:bg-surface-muted/50 transition-colors"
                   >
-                    <span className={`text-[11px] font-medium px-2 py-0.5 rounded-full border shrink-0 ${KB_CATEGORY_COLORS[entry.category]}`}>
-                      {entry.category}
+                    <span className={`text-[11px] font-medium px-2 py-0.5 rounded-full border shrink-0 ${KB_CATEGORY_COLORS[group.cat]}`}>
+                      {group.cat}
                     </span>
-                    <p className="flex-1 text-sm font-medium text-heading truncate">{entry.topic}</p>
-                    <div className="flex items-center gap-2 shrink-0">
-                      <button onClick={(e) => { e.stopPropagation(); openEdit(entry) }} className="p-1.5 text-muted hover:text-primary hover:bg-primary/10 rounded-sm transition-colors">
-                        <Pencil className="w-3.5 h-3.5" />
-                      </button>
-                      <button onClick={(e) => { e.stopPropagation(); setDeleteConfirmId(entry.id) }} className="p-1.5 text-muted hover:text-status-delayed hover:bg-status-delayed/10 rounded-sm transition-colors">
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </button>
-                      {isExpanded ? <ChevronUp className="w-4 h-4 text-muted" /> : <ChevronDown className="w-4 h-4 text-muted" />}
-                    </div>
-                  </div>
-                  {isExpanded && (
-                    <div className="px-5 pb-4 pt-0 border-t border-border-subtle">
-                      <p className="text-sm text-body leading-relaxed mt-3">{entry.content}</p>
-                    </div>
-                  )}
-                  {isDeleteConfirm && (
-                    <div className="px-5 py-3 bg-status-delayed/10 border-t border-status-delayed/30 flex items-center justify-between">
-                      <p className="text-sm text-status-delayed">Remove this entry?</p>
-                      <div className="flex gap-2">
-                        <button onClick={() => deleteEntry(entry.id)} disabled={kbSaving} className="px-3 py-1.5 text-xs font-medium bg-status-delayed text-white rounded-sm hover:brightness-95 transition-colors">Remove</button>
-                        <button onClick={() => setDeleteConfirmId(null)} className="px-3 py-1.5 text-xs font-medium border border-border text-body rounded-sm hover:bg-surface transition-colors">Cancel</button>
-                      </div>
+                    <span className="flex-1 text-left text-sm font-semibold text-heading">
+                      {group.cat}
+                      <span className="ml-1.5 font-normal text-muted">· {group.entries.length}</span>
+                    </span>
+                    {groupOpen ? <ChevronUp className="w-4 h-4 text-muted" /> : <ChevronDown className="w-4 h-4 text-muted" />}
+                  </button>
+
+                  {groupOpen && (
+                    <div className="flex flex-col gap-2 pl-3">
+                      {group.entries.map((entry) => {
+                        const isExpanded = expandedId === entry.id
+                        const isDeleteConfirm = deleteConfirmId === entry.id
+                        return (
+                          <div key={entry.id} className="bg-surface border border-border rounded-card overflow-hidden">
+                            <div
+                              className="flex items-center gap-3 px-5 py-3.5 cursor-pointer hover:bg-surface-muted/50 transition-colors"
+                              onClick={() => setExpandedId(isExpanded ? null : entry.id)}
+                            >
+                              <p className="flex-1 text-sm font-medium text-heading truncate">{entry.topic}</p>
+                              <div className="flex items-center gap-2 shrink-0">
+                                <button onClick={(e) => { e.stopPropagation(); openEdit(entry) }} className="p-1.5 text-muted hover:text-primary hover:bg-primary/10 rounded-sm transition-colors">
+                                  <Pencil className="w-3.5 h-3.5" />
+                                </button>
+                                <button onClick={(e) => { e.stopPropagation(); setDeleteConfirmId(entry.id) }} className="p-1.5 text-muted hover:text-status-delayed hover:bg-status-delayed/10 rounded-sm transition-colors">
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                </button>
+                                {isExpanded ? <ChevronUp className="w-4 h-4 text-muted" /> : <ChevronDown className="w-4 h-4 text-muted" />}
+                              </div>
+                            </div>
+                            {isExpanded && (
+                              <div className="px-5 pb-4 pt-0 border-t border-border-subtle">
+                                <p className="text-sm text-body leading-relaxed mt-3">{entry.content}</p>
+                              </div>
+                            )}
+                            {isDeleteConfirm && (
+                              <div className="px-5 py-3 bg-status-delayed/10 border-t border-status-delayed/30 flex items-center justify-between">
+                                <p className="text-sm text-status-delayed">Remove this entry?</p>
+                                <div className="flex gap-2">
+                                  <button onClick={() => deleteEntry(entry.id)} disabled={kbSaving} className="px-3 py-1.5 text-xs font-medium bg-status-delayed text-white rounded-sm hover:brightness-95 transition-colors">Remove</button>
+                                  <button onClick={() => setDeleteConfirmId(null)} className="px-3 py-1.5 text-xs font-medium border border-border text-body rounded-sm hover:bg-surface transition-colors">Cancel</button>
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        )
+                      })}
                     </div>
                   )}
                 </div>
