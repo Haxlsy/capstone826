@@ -75,10 +75,13 @@ export function AppSidebar({
   nav,
   settingsHref,
   brand = "826 Auto Care",
+  lockSettingsOffline = false,
 }: {
   nav: NavItem[]
   settingsHref: string
   brand?: string
+  /** Grey out the Settings link while offline (Operations only). */
+  lockSettingsOffline?: boolean
 }) {
   const pathname = usePathname()
   const [collapsed, toggle] = useCollapsed()
@@ -120,37 +123,38 @@ export function AppSidebar({
         </button>
       </div>
 
-      {/* Nav */}
       <SidebarOnlineContext.Provider value={isOnline}>
+        {/* Nav */}
         <nav className="flex-1 space-y-1 overflow-y-auto px-3 py-4 scroll-track">
           {nav.map((item) => (
             <NavNode key={item.label} item={item} pathname={pathname} collapsed={collapsed} />
           ))}
         </nav>
-      </SidebarOnlineContext.Provider>
 
-      {/* Footer */}
-      <div className="space-y-1 border-t border-shell-border px-3 py-4">
-        <SidebarLink
-          href={settingsHref}
-          icon={Settings}
-          label="Settings"
-          active={isActive(pathname, settingsHref)}
-          collapsed={collapsed}
-        />
-        <button
-          type="button"
-          onClick={requestLogout}
-          className={cn(
-            "flex w-full items-center gap-3 rounded-sm px-3 py-2.5 text-sm font-medium text-white/60 transition-colors hover:bg-status-delayed/20 hover:text-white",
-            collapsed && "justify-center px-0",
-          )}
-          title={collapsed ? "Log Out" : undefined}
-        >
-          <LogOut className="h-4 w-4 shrink-0" />
-          {!collapsed && "Log Out"}
-        </button>
-      </div>
+        {/* Footer */}
+        <div className="space-y-1 border-t border-shell-border px-3 py-4">
+          <SidebarLink
+            href={settingsHref}
+            icon={Settings}
+            label="Settings"
+            active={isActive(pathname, settingsHref)}
+            collapsed={collapsed}
+            disabledOffline={lockSettingsOffline}
+          />
+          <button
+            type="button"
+            onClick={requestLogout}
+            className={cn(
+              "flex w-full items-center gap-3 rounded-sm px-3 py-2.5 text-sm font-medium text-white/60 transition-colors hover:bg-status-delayed/20 hover:text-white",
+              collapsed && "justify-center px-0",
+            )}
+            title={collapsed ? "Log Out" : undefined}
+          >
+            <LogOut className="h-4 w-4 shrink-0" />
+            {!collapsed && "Log Out"}
+          </button>
+        </div>
+      </SidebarOnlineContext.Provider>
 
       <ConfirmModal
         open={confirming}

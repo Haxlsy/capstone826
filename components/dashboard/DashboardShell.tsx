@@ -35,6 +35,7 @@ export default function DashboardShell({ children }: { children: React.ReactNode
       fallbackName={fallbackName}
       showBell={showBell}
       showOfflineBanner={area === "operations"}
+      lockSettingsOffline={area === "operations"}
     >
       <SessionEnforcement />
       <ServiceWorkerRegistration prewarm={area === "operations"} />

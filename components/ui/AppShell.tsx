@@ -14,6 +14,7 @@ export function AppShell({
   fallbackName,
   showBell = true,
   showOfflineBanner = false,
+  lockSettingsOffline = false,
   children,
 }: {
   nav: NavItem[]
@@ -22,11 +23,13 @@ export function AppShell({
   showBell?: boolean
   /** Operations-only for now — see docs/plan/operations-offline-mode-plan.md */
   showOfflineBanner?: boolean
+  /** Operations-only — grey out the Settings nav link while offline. */
+  lockSettingsOffline?: boolean
   children: React.ReactNode
 }) {
   return (
     <div className="flex h-screen overflow-hidden bg-shell">
-      <AppSidebar nav={nav} settingsHref={settingsHref} />
+      <AppSidebar nav={nav} settingsHref={settingsHref} lockSettingsOffline={lockSettingsOffline} />
       <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
         <AppTopBar fallbackName={fallbackName} showBell={showBell} />
         {showOfflineBanner && <OfflineBanner />}
