@@ -4,6 +4,7 @@ import { usePathname } from "next/navigation"
 import { AppShell } from "@/components/ui/AppShell"
 import { useConcerns } from "@/hooks/use-concerns"
 import { resolveNavArea, navFor } from "@/lib/ui/nav"
+import { OfflineSyncProvider } from "@/components/dashboard/OperationComponents/OfflineSyncContext"
 
 /**
  * Single dashboard shell for operations / sales / admin. The nav config is
@@ -31,8 +32,9 @@ export default function DashboardShell({ children }: { children: React.ReactNode
       settingsHref={settingsHref}
       fallbackName={fallbackName}
       showBell={showBell}
+      showOfflineBanner={area === "operations"}
     >
-      {children}
+      {area === "operations" ? <OfflineSyncProvider>{children}</OfflineSyncProvider> : children}
     </AppShell>
   )
 }

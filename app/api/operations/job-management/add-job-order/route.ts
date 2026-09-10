@@ -20,6 +20,12 @@ export async function POST(request: Request) {
   try {
     const body = await request.json()
     const {
+      // Client-generated UUID (offline outbox sync only — see
+      // docs/plan/operations-offline-mode-plan.md). Lets a retried sync
+      // request — network drops after the server commits but before the
+      // client sees the response — be a safe no-op instead of creating a
+      // duplicate job order.
+      id,
       customer_record_id,
       service_id,
       head_detailer_id,
@@ -56,6 +62,17 @@ export async function POST(request: Request) {
     if (!user) return NextResponse.json({ error: "Unauthorized." }, { status: 401 })
 
     const admin = createAdminClient()
+
+    // Idempotency check — if this exact request already landed (a prior
+    // attempt whose response the client never saw), return the existing job
+    // instead of re-running creation, team assignment, notifications, and
+    // history a second time.
+    if (id) {
+      const { data: existingJob } = await admin.from("job_order").select().eq("id", id).maybeSingle()
+      if (existingJob) {
+        return NextResponse.json({ success: true, job: existingJob }, { status: 200 })
+      }
+    }
 
     console.log("[add-job-order] step: fetch service", service_id)
     const [{ data: svc, error: svcErr }, { data: callerProfile }] = await Promise.all([
@@ -176,6 +193,7 @@ export async function POST(request: Request) {
 
     // ── Insert job order ──────────────────────────────────────────────────────
     const jobPayload: Record<string, unknown> = {
+      ...(id ? { id } : {}), // explicit id overrides the column's gen_random_uuid() default
       service_id,
       scheduled_at:           scheduled_at ?? null,
       expected_completion_at,
