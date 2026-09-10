@@ -15,11 +15,16 @@ export async function POST() {
 
     const response = NextResponse.json({ success: true })
     response.cookies.set("826_role", "", { maxAge: 0, path: "/" })
+    response.cookies.set("826_session_token", "", { maxAge: 0, path: "/" })
 
     // Log the logout event after sign-out (fire-and-forget)
     if (user) {
       const admin = createAdminClient()
       await createAuditLogEntry(admin, user.id);
+      // Not strictly required for security (the next login overwrites this
+      // row regardless), but avoids a stale marker lingering after a clean
+      // logout.
+      await admin.from("user_active_session").delete().eq("user_id", user.id);
     }
 
     return response

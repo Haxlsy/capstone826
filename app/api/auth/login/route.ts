@@ -55,7 +55,21 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Access denied" }, { status: 403 })
     }
 
-    // 4. Log Event (Awaited for reliability in Serverless)
+    // 4. Single active session per account — revoke every other session this
+    // user has anywhere else, then record this one as the current session so
+    // proxy.ts can recognize (and reject) a stale browser immediately rather
+    // than waiting on Supabase's own revocation to be noticed. See
+    // docs/plan and supabase/migrations/20260910000002_user_active_session.sql.
+    if (authData.session) {
+      await admin.auth.admin.signOut(authData.session.access_token, "others")
+    }
+    const sessionToken = crypto.randomUUID()
+    await admin.from("user_active_session").upsert({
+      user_id:       authData.user.id,
+      session_token: sessionToken,
+    })
+
+    // 5. Log Event (Awaited for reliability in Serverless)
     await createAuditLog(admin, authData.user.id, profile, "Logged in")
 
     const response = NextResponse.json({ user: profile })
@@ -64,6 +78,12 @@ export async function POST(request: Request) {
       sameSite: "lax",
       path: "/",
       maxAge: 60 * 60 * 8, // 8h
+    })
+    response.cookies.set("826_session_token", sessionToken, {
+      httpOnly: true,
+      sameSite: "lax",
+      path: "/",
+      maxAge: 60 * 60 * 8, // 8h — matches 826_role
     })
 
     return response
