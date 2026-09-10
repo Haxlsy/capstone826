@@ -13,7 +13,8 @@ import {
   type LucideIcon,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
-import { useLogout } from "@/hooks/useLogout"
+import { useLogoutConfirm } from "@/hooks/useLogout"
+import { ConfirmModal } from "@/components/ui/Modal"
 
 export interface NavChild {
   label: string
@@ -72,7 +73,7 @@ export function AppSidebar({
 }) {
   const pathname = usePathname()
   const [collapsed, toggle] = useCollapsed()
-  const logout = useLogout()
+  const { confirming, loading, requestLogout, cancel, confirm } = useLogoutConfirm()
 
   return (
     <aside
@@ -127,7 +128,7 @@ export function AppSidebar({
         />
         <button
           type="button"
-          onClick={logout}
+          onClick={requestLogout}
           className={cn(
             "flex w-full items-center gap-3 rounded-sm px-3 py-2.5 text-sm font-medium text-white/60 transition-colors hover:bg-status-delayed/20 hover:text-white",
             collapsed && "justify-center px-0",
@@ -138,6 +139,18 @@ export function AppSidebar({
           {!collapsed && "Log Out"}
         </button>
       </div>
+
+      <ConfirmModal
+        open={confirming}
+        onClose={cancel}
+        onConfirm={confirm}
+        title="Log out?"
+        message="You'll need to sign in again to get back in."
+        confirmLabel="Log Out"
+        tone="danger"
+        loading={loading}
+        icon={LogOut}
+      />
     </aside>
   )
 }

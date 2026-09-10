@@ -2,7 +2,8 @@
 
 import { useRouter } from "next/navigation";
 import { BriefcaseBusiness, TriangleAlert, Settings, LogOut } from "lucide-react";
-import { useLogout } from "@/hooks/useLogout";
+import { useLogoutConfirm } from "@/hooks/useLogout";
+import { ConfirmModal } from "@/components/ui/Modal";
 
 export type ActiveTab = "jobs" | "concerns" | "settings";
 
@@ -27,11 +28,11 @@ type BottomNavProps = {
 
 export function BottomNav({ active = "jobs" }: BottomNavProps) {
   const router = useRouter();
-  const handleLogout = useLogout();
+  const { confirming, loading, requestLogout, cancel, confirm } = useLogoutConfirm();
 
   function handlePress(item: NavItem) {
     if (item.id === "logout") {
-      handleLogout();
+      requestLogout();
     } else if (item.href) {
       router.push(item.href);
     }
@@ -82,6 +83,18 @@ export function BottomNav({ active = "jobs" }: BottomNavProps) {
           );
         })}
       </nav>
+
+      <ConfirmModal
+        open={confirming}
+        onClose={cancel}
+        onConfirm={confirm}
+        title="Log out?"
+        message="You'll need to sign in again to get back in."
+        confirmLabel="Log Out"
+        tone="danger"
+        loading={loading}
+        icon={LogOut}
+      />
     </div>
   );
 }
