@@ -17,6 +17,7 @@ import { Input, Select, FieldLabel } from "@/components/ui/Field"
 import { DayPillSelector } from "@/components/ui/DayPillSelector"
 import { TimeRangeInputs } from "@/components/ui/TimeRange"
 import { useToast } from "@/components/ui/Toast"
+import { useOfflineLock, OfflinePausedNote, OFFLINE_ACTION_HINT } from "@/hooks/useOfflineLock"
 import { cn } from "@/lib/utils"
 import { avatarColor, initials } from "@/lib/ui/avatar"
 import { roleStyle } from "@/lib/ui/roles"
@@ -72,6 +73,7 @@ const EMPTY_FORM: TechForm = { firstName: "", lastName: "", role: "detailer", da
 
 export default function TechnicianAvailability() {
   const toast = useToast()
+  const { isOnline, lockProps } = useOfflineLock()
   const [technicians, setTechnicians] = useState<Technician[]>([])
   const [loading, setLoading] = useState(true)
   const [fetchError, setFetchError] = useState<string | null>(null)
@@ -299,11 +301,12 @@ export default function TechnicianAvailability() {
         title="Technician Availability"
         subtitle="View and manage which technicians are available for assignment."
         actions={
-          <Button onClick={openAdd}>
+          <Button onClick={openAdd} {...lockProps}>
             <span className="text-base leading-none">+</span> Add Technician
           </Button>
         }
       />
+      {!isOnline && <OfflinePausedNote className="-mt-3" />}
 
       <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
         <StatCard label="Total" value={activeTechs.length} icon={Users} tone="total" variant="solid" />
@@ -448,13 +451,15 @@ export default function TechnicianAvailability() {
                             aria-label="Edit technician"
                             size="sm"
                             onClick={() => openEdit(tech)}
-                            disabled={onJob || tech.is_archived}
+                            disabled={onJob || tech.is_archived || !isOnline}
                             title={
-                              tech.is_archived
-                                ? "Restore this technician to edit their details"
-                                : onJob
-                                  ? "Cannot edit while on an active job"
-                                  : "Edit details"
+                              !isOnline
+                                ? OFFLINE_ACTION_HINT
+                                : tech.is_archived
+                                  ? "Restore this technician to edit their details"
+                                  : onJob
+                                    ? "Cannot edit while on an active job"
+                                    : "Edit details"
                             }
                           >
                             <Pencil className="h-4 w-4" />
@@ -465,7 +470,8 @@ export default function TechnicianAvailability() {
                               size="sm"
                               variant="ghost"
                               onClick={() => restore(tech)}
-                              title="Restore to the active roster"
+                              title={isOnline ? "Restore to the active roster" : OFFLINE_ACTION_HINT}
+                              {...lockProps}
                             >
                               <ArchiveRestore className="h-4 w-4" />
                             </IconButton>
@@ -478,8 +484,14 @@ export default function TechnicianAvailability() {
                                 setArchiveTarget(tech)
                                 setArchiveError(null)
                               }}
-                              disabled={onJob}
-                              title={onJob ? "Cannot archive while on an active job" : "Archive technician"}
+                              disabled={onJob || !isOnline}
+                              title={
+                                !isOnline
+                                  ? OFFLINE_ACTION_HINT
+                                  : onJob
+                                    ? "Cannot archive while on an active job"
+                                    : "Archive technician"
+                              }
                               className="hover:bg-status-delayed/10 hover:text-status-delayed"
                             >
                               <Archive className="h-4 w-4" />
@@ -487,12 +499,14 @@ export default function TechnicianAvailability() {
                           )}
                         </div>
 
-                        <Toggle
-                          checked={onJob ? true : tech.is_available}
-                          onChange={() => toggle(tech)}
-                          disabled={onJob || tech.is_archived}
-                          label={`Toggle availability for ${tech.full_name}`}
-                        />
+                        <span className="inline-flex" title={!isOnline ? OFFLINE_ACTION_HINT : undefined}>
+                          <Toggle
+                            checked={onJob ? true : tech.is_available}
+                            onChange={() => toggle(tech)}
+                            disabled={onJob || tech.is_archived || !isOnline}
+                            label={`Toggle availability for ${tech.full_name}`}
+                          />
+                        </span>
                       </div>
                     )
                   })}

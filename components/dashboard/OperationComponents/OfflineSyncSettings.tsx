@@ -1,6 +1,6 @@
 "use client"
 
-import { CloudOff, CloudUpload, Loader2, RefreshCw } from "lucide-react"
+import { Check, CloudOff, CloudUpload, Loader2, Minus, RefreshCw } from "lucide-react"
 import { useOfflineSyncContext } from "@/components/dashboard/OperationComponents/OfflineSyncContext"
 
 /**
@@ -29,6 +29,51 @@ export default function OfflineSyncSettings() {
       </div>
 
       <div className="px-6 py-5 space-y-4">
+        <div className="grid gap-4 sm:grid-cols-2">
+          <div className="space-y-1.5">
+            <p className="text-xs font-semibold uppercase tracking-wide text-muted">Available offline</p>
+            <ul className="space-y-1 text-xs text-body">
+              <li className="flex gap-1.5">
+                <Check className="w-3.5 h-3.5 shrink-0 text-status-inspection mt-0.5" />
+                Create a job order — saved on this device, created when you reconnect
+              </li>
+              <li className="flex gap-1.5">
+                <Check className="w-3.5 h-3.5 shrink-0 text-status-inspection mt-0.5" />
+                Resolve a concern — saved on this device, applied when you reconnect
+              </li>
+            </ul>
+          </div>
+          <div className="space-y-1.5">
+            <p className="text-xs font-semibold uppercase tracking-wide text-muted">Paused while offline</p>
+            <ul className="space-y-1 text-xs text-muted">
+              <li className="flex gap-1.5">
+                <Minus className="w-3.5 h-3.5 shrink-0 mt-0.5" />
+                Changing job status, marking complete, cancelling a job
+              </li>
+              <li className="flex gap-1.5">
+                <Minus className="w-3.5 h-3.5 shrink-0 mt-0.5" />
+                Editing a job order or its schedule
+              </li>
+              <li className="flex gap-1.5">
+                <Minus className="w-3.5 h-3.5 shrink-0 mt-0.5" />
+                Adding a substitute technician or head technician
+              </li>
+              <li className="flex gap-1.5">
+                <Minus className="w-3.5 h-3.5 shrink-0 mt-0.5" />
+                Flagging a stage for rework, resending a Messenger update
+              </li>
+              <li className="flex gap-1.5">
+                <Minus className="w-3.5 h-3.5 shrink-0 mt-0.5" />
+                Adding, editing, or archiving technicians
+              </li>
+            </ul>
+            <p className="text-xs text-muted pt-0.5">
+              Buttons for these are disabled with a hint until you&apos;re back online.
+            </p>
+          </div>
+        </div>
+
+        <div className="border-t border-border-subtle pt-4 space-y-4">
         {!hasQueue ? (
           <div className="flex items-center gap-2.5 text-sm text-status-inspection">
             <CloudUpload className="w-4 h-4 shrink-0" />
@@ -63,6 +108,7 @@ export default function OfflineSyncSettings() {
             {syncing ? "Syncing…" : "Sync Now"}
           </button>
         )}
+        </div>
       </div>
     </div>
   )
