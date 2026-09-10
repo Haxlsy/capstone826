@@ -17,13 +17,21 @@ export async function GET() {
     const { data: { user } } = await supabase.auth.getUser()
 
     if (!user) {
-      return NextResponse.json({ valid: false }, { headers: { "Cache-Control": "no-store" } })
+      // No session at all — this is the normal shape of a deliberate logout
+      // (hooks/useLogout.ts signs out, then this check can fire before the
+      // redirect completes) just as much as a genuinely stale one. Distinct
+      // from "mismatch" below so the caller doesn't misreport an ordinary
+      // logout as "signed in on another device".
+      return NextResponse.json({ valid: false, reason: "no_session" }, { headers: { "Cache-Control": "no-store" } })
     }
 
     const sessionToken = cookieStore.get("826_session_token")?.value ?? null
     const valid = await isSessionCurrent(supabase, user.id, sessionToken)
 
-    return NextResponse.json({ valid }, { headers: { "Cache-Control": "no-store" } })
+    return NextResponse.json(
+      { valid, reason: valid ? undefined : "mismatch" },
+      { headers: { "Cache-Control": "no-store" } },
+    )
   } catch (err: unknown) {
     console.error("[session-status] check failed:", err)
     // No `valid` field on error — a transient failure here (network blip, DB
