@@ -22,6 +22,7 @@ import StatusConfirmDialog from "./StatusConfirmDialog"
 import { fmtDate } from "@/lib/time-display"
 import { useRealtimeRefetch } from "@/hooks/useRealtimeRefetch"
 import { displayJobStatus } from "@/lib/job-delay"
+import { remove as removeQueued } from "@/lib/offline/outbox"
 import type { JobOrdersData } from "@/lib/operations/job-orders-data"
 import type { OutboxItem } from "@/lib/offline/db"
 
@@ -122,6 +123,14 @@ export default function JobManagementTable({ initialJobOrders }: { initialJobOrd
     setFilterDateTo("")
   }
 
+  // Mirror the hook's online state into a ref so `load` (a stable useCallback)
+  // can read it. Chrome DevTools "Network: Offline" leaves navigator.onLine
+  // === true, so we can't trust navigator.onLine here.
+  const isOnlineRef = useRef(isOnline)
+  useEffect(() => {
+    isOnlineRef.current = isOnline
+  }, [isOnline])
+
   const load = useCallback(async (opts?: { silent?: boolean }) => {
     if (!opts?.silent) setLoading(true)
     setFetchError(null)
@@ -134,13 +143,15 @@ export default function JobManagementTable({ initialJobOrders }: { initialJobOrd
 
       setJobOrders(mapped)
     } catch (err: unknown) {
-      // Offline: the fetch just failed because there's no connection — keep the
-      // last-known rows and let the offline note + queued rows carry the view.
-      // Only surface an error when we actually have a connection.
-      if (navigator.onLine) {
-        setFetchError(err instanceof Error ? err.message : String(err))
-      } else {
+      // A rejected fetch (network error → TypeError) or being offline means we
+      // couldn't reach the server at all — keep the last-known + queued rows
+      // instead of blanking them. Only a real HTTP error (our own thrown Error)
+      // surfaces as "Failed to fetch".
+      const cantReachServer = err instanceof TypeError || !isOnlineRef.current
+      if (cantReachServer) {
         setFetchError(null)
+      } else {
+        setFetchError(err instanceof Error ? err.message : String(err))
       }
     } finally {
       if (!opts?.silent) setLoading(false)
@@ -242,6 +253,19 @@ export default function JobManagementTable({ initialJobOrders }: { initialJobOrd
     setUpdateError(null)
   }
 
+  // Drop a queued Add Job Order that can't sync (bad/stale payload from an
+  // earlier session). The outbox broadcasts a change event, so useOfflineSync
+  // refreshes and the row disappears.
+  async function discardQueued(id: string) {
+    try {
+      await removeQueued(id)
+      toast.info("Removed the queued job order.")
+    } catch (err) {
+      console.error("[offline] discard queued item failed", err)
+      toast.error("Couldn't remove that item.")
+    }
+  }
+
   async function confirmUpdate(reason: string) {
     if (!confirmTarget || !pickerJob) return
     setUpdating(true)
@@ -331,7 +355,21 @@ export default function JobManagementTable({ initialJobOrders }: { initialJobOrd
       key: "go",
       header: "",
       align: "right",
-      cell: () => <RowActionHint icon={ArrowRight} />,
+      cell: (job) =>
+        job.isQueued && job.queueStatus === "failed" ? (
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation()
+              discardQueued(job.id)
+            }}
+            className="rounded-sm px-2 py-1 text-xs font-medium text-status-delayed transition-colors hover:bg-status-delayed/10"
+          >
+            Discard
+          </button>
+        ) : job.isQueued ? null : (
+          <RowActionHint icon={ArrowRight} />
+        ),
     },
   ]
 

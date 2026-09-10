@@ -5,6 +5,8 @@ import * as outbox from "@/lib/offline/outbox"
 export interface SyncResult {
   synced: number
   failed: number
+  /** Couldn't reach the server (network) — left pending, will retry. Not a failure. */
+  deferred: number
   /** Items left in the queue after this run (still pending, or newly failed). */
   remaining: number
 }
@@ -65,6 +67,7 @@ export async function syncOutbox({ retryFailed = false }: { retryFailed?: boolea
 
   let synced = 0
   let failed = 0
+  let deferred = 0
 
   for (const item of pending) {
     await outbox.markStatus(item.id, "syncing")
@@ -73,6 +76,15 @@ export async function syncOutbox({ retryFailed = false }: { retryFailed?: boolea
       await outbox.remove(item.id)
       synced += 1
     } catch (err) {
+      if (err instanceof TypeError) {
+        // `fetch` rejected → the server was unreachable (offline, DNS, CORS-ish).
+        // This is NOT a rejection of the request — leave the item pending and
+        // stop; it'll retry on the next sync. Never mark it "failed" for a
+        // network blip (that's what put stale "Sync failed" rows on screen).
+        await outbox.markStatus(item.id, "pending")
+        deferred += 1
+        break
+      }
       await outbox.incrementAttempts(item.id)
       await outbox.markStatus(item.id, "failed", err instanceof Error ? err.message : String(err))
       failed += 1
@@ -81,5 +93,5 @@ export async function syncOutbox({ retryFailed = false }: { retryFailed?: boolea
   }
 
   const remaining = await offlineDB.outbox.count()
-  return { synced, failed, remaining }
+  return { synced, failed, deferred, remaining }
 }
