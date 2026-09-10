@@ -6,6 +6,7 @@ import { useConcerns } from "@/hooks/use-concerns"
 import { resolveNavArea, navFor } from "@/lib/ui/nav"
 import { OfflineSyncProvider } from "@/components/dashboard/OperationComponents/OfflineSyncContext"
 import { SessionEnforcement } from "@/components/shared/SessionEnforcement"
+import { ServiceWorkerRegistration } from "@/components/shared/ServiceWorkerRegistration"
 
 /**
  * Single dashboard shell for operations / sales / admin. The nav config is
@@ -36,6 +37,7 @@ export default function DashboardShell({ children }: { children: React.ReactNode
       showOfflineBanner={area === "operations"}
     >
       <SessionEnforcement />
+      <ServiceWorkerRegistration prewarm={area === "operations"} />
       {area === "operations" ? <OfflineSyncProvider>{children}</OfflineSyncProvider> : children}
     </AppShell>
   )
