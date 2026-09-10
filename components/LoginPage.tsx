@@ -29,6 +29,20 @@ export default function LoginPage() {
   const toastRef = useRef(toast)
   toastRef.current = toast
 
+  // Redirected here after being signed out for a newer login elsewhere
+  // (proxy.ts — single active session per account). Reads the query param
+  // directly via window.location rather than useSearchParams() so this
+  // doesn't need a Suspense boundary.
+  useEffect(() => {
+    const reason = new URLSearchParams(window.location.search).get("reason")
+    if (reason === "signed_in_elsewhere") {
+      toastRef.current.error("You were signed out because your account signed in on another device.")
+      const url = new URL(window.location.href)
+      url.searchParams.delete("reason")
+      router.replace(url.pathname + url.search)
+    }
+  }, [router])
+
   // Rehydrate lockout from localStorage on mount
   useEffect(() => {
     try {
