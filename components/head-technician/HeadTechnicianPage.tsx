@@ -10,6 +10,7 @@ import { Tabs } from "@/components/ui/Tabs"
 import { Popover } from "@/components/ui/Popover"
 import { FilterTrigger } from "@/components/ui/FilterTrigger"
 import type { TechnicianJob } from "@/lib/head-technician/jobs-data"
+import { useTechnicianJobs } from "@/hooks/use-technician-jobs"
 
 const STATUS_OPTIONS: Status[] = [
   "Pending",
@@ -20,13 +21,19 @@ const STATUS_OPTIONS: Status[] = [
 
 export default function HeadTechnicianPage({
   initialJobs,
+  initialUserRole,
   displayName,
 }: {
   initialJobs: TechnicianJob[]
+  initialUserRole: string
   displayName: string
 }) {
-  const [jobs] = useState<TechnicianJob[]>(initialJobs)
-  const loading = false
+  // Cached (react-query, 30s staleTime) and realtime-refetched — see
+  // hooks/use-technician-jobs.ts. Stays live without navigating away and
+  // back; initialData means this never shows a loading state on first paint.
+  const { data, isPending } = useTechnicianJobs({ jobs: initialJobs, userRole: initialUserRole })
+  const jobs = data?.jobs ?? []
+  const loading = isPending
   const [searchQuery, setSearchQuery] = useState("")
   const [statusFilter, setStatusFilter] = useState("all")
 

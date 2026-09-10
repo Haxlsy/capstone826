@@ -45,7 +45,7 @@ export default function SecurityView({ initialLogs }: { initialLogs: any[] }) {
                         Auth events · {loading ? "…" : `${filteredAuth.length} entries`}
                     </p>
                     </div>
-                    <button type="button" onClick={reload} disabled={loading} title="Refresh"
+                    <button type="button" onClick={() => reload()} disabled={loading} title="Refresh"
                     className="p-1.5 rounded-sm text-muted hover:text-body hover:bg-surface-muted transition-colors disabled:opacity-40"
                     >
                     <RefreshCw className={`w-3.5 h-3.5 ${loading ? "animate-spin" : ""}`} />

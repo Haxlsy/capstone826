@@ -21,6 +21,7 @@ import StatusConfirmDialog from "./StatusConfirmDialog"
 import { fmtDate } from "@/lib/time-display"
 import { useRealtimeRefetch } from "@/hooks/useRealtimeRefetch"
 import { displayJobStatus } from "@/lib/job-delay"
+import type { JobOrdersData } from "@/lib/operations/job-orders-data"
 
 interface JobOrder {
   id: string
@@ -37,16 +38,37 @@ interface JobOrder {
   is_overdue: boolean
 }
 
+type RawJobOrder = JobOrdersData["job_orders"][number]
+
+function mapJobOrder(r: RawJobOrder): JobOrder {
+  return {
+    id: r.id,
+    displayId: r.job_order_code,
+    customer: r.customer_name ?? "—",
+    plate: r.plate_number ?? "—",
+    vehicle: r.vehicle_unit ?? "—",
+    service: r.service ?? "—",
+    headDetailer: r.head_detailer ?? "Unassigned",
+    headInstaller: r.head_installer ?? "Unassigned",
+    scheduled: fmtDate(r.scheduled_at),
+    scheduledRaw: r.scheduled_at ?? "",
+    status: (r.status as JobStatus) ?? "Pending",
+    is_overdue: r.is_overdue ?? false,
+  }
+}
+
 type TabType = "All" | "Pending" | "Ongoing" | "For Rework" | "For Inspection" | "For Release" | "Delayed"
 const TABS: TabType[] = ["All", "Pending", "Ongoing", "For Rework", "For Inspection", "For Release", "Delayed"]
 
-export default function JobManagementTable() {
+export default function JobManagementTable({ initialJobOrders }: { initialJobOrders?: RawJobOrder[] }) {
   const router = useRouter()
   const toast = useToast()
   const [activeTab, setActiveTab] = useState<TabType>("All")
   const [searchQuery, setSearchQuery] = useState("")
-  const [jobOrders, setJobOrders] = useState<JobOrder[]>([])
-  const [loading, setLoading] = useState(true)
+  const [jobOrders, setJobOrders] = useState<JobOrder[]>(() => (initialJobOrders ?? []).map(mapJobOrder))
+  // initialJobOrders means there's already something to show — skip the
+  // skeleton and silently revalidate in the background instead (below).
+  const [loading, setLoading] = useState(!initialJobOrders)
   const [fetchError, setFetchError] = useState<string | null>(null)
   const [currentPage, setCurrentPage] = useState(1)
   const [pageSize, setPageSize] = useState(15)
@@ -79,20 +101,7 @@ export default function JobManagementTable() {
       const json = await res.json()
       if (!res.ok) throw new Error(json?.error ?? "Failed to fetch job orders")
 
-      const mapped: JobOrder[] = (json.job_orders ?? []).map((r: any) => ({
-        id: r.id,
-        displayId: r.job_order_code,
-        customer: r.customer_name ?? "—",
-        plate: r.plate_number ?? "—",
-        vehicle: r.vehicle_unit ?? "—",
-        service: r.service ?? "—",
-        headDetailer: r.head_detailer ?? "Unassigned",
-        headInstaller: r.head_installer ?? "Unassigned",
-        scheduled: fmtDate(r.scheduled_at),
-        scheduledRaw: r.scheduled_at ?? "",
-        status: (r.status as JobStatus) ?? "Pending",
-        is_overdue: r.is_overdue ?? false,
-      }))
+      const mapped: JobOrder[] = (json.job_orders ?? []).map(mapJobOrder)
 
       setJobOrders(mapped)
     } catch (err: unknown) {
@@ -103,18 +112,22 @@ export default function JobManagementTable() {
   }, [])
 
   useEffect(() => {
-    load()
-  }, [load])
+    // Already have initialJobOrders from the server — revalidate silently
+    // in the background instead of flashing the skeleton again.
+    load({ silent: !!initialJobOrders })
+  }, [load, initialJobOrders])
 
   useEffect(() => {
-    const onFocus = () => load()
+    const onFocus = () => load({ silent: true })
     window.addEventListener("focus", onFocus)
     return () => window.removeEventListener("focus", onFocus)
   }, [load])
 
-  // A technician marking a stage done should reflect here without waiting for
-  // window focus or a manual reload — silent so it doesn't flash the skeleton.
-  useRealtimeRefetch("job_stage_progress", useCallback(() => load({ silent: true }), [load]))
+  // A job-level change (new job, status set without touching a stage, team
+  // reassignment) or a technician marking a stage done should both reflect
+  // here without waiting for window focus or a manual reload — silent so it
+  // doesn't flash the skeleton.
+  useRealtimeRefetch(["job_order", "job_stage_progress"], useCallback(() => load({ silent: true }), [load]))
 
   const uniqueServices = useMemo(
     () => [...new Set(jobOrders.map((j) => j.service).filter((s) => s !== "—"))].sort(),

@@ -1,9 +1,12 @@
 import JobManagementTable from "@/components/dashboard/OperationComponents/JobManagementTable"
+import { getJobOrdersData } from "@/lib/operations/job-orders-data"
 
-export default function JobManagementPage() {
+export default async function JobManagementPage() {
+  const { job_orders } = await getJobOrdersData()
+
   return (
     <div className="p-6">
-      <JobManagementTable />
+      <JobManagementTable initialJobOrders={job_orders} />
     </div>
   )
 }

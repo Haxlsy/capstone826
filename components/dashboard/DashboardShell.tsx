@@ -5,6 +5,7 @@ import { AppShell } from "@/components/ui/AppShell"
 import { useConcerns } from "@/hooks/use-concerns"
 import { resolveNavArea, navFor } from "@/lib/ui/nav"
 import { OfflineSyncProvider } from "@/components/dashboard/OperationComponents/OfflineSyncContext"
+import { SessionEnforcement } from "@/components/shared/SessionEnforcement"
 
 /**
  * Single dashboard shell for operations / sales / admin. The nav config is
@@ -34,6 +35,7 @@ export default function DashboardShell({ children }: { children: React.ReactNode
       showBell={showBell}
       showOfflineBanner={area === "operations"}
     >
+      <SessionEnforcement />
       {area === "operations" ? <OfflineSyncProvider>{children}</OfflineSyncProvider> : children}
     </AppShell>
   )

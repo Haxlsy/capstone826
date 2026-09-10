@@ -12,6 +12,7 @@ import { Modal, ConfirmModal } from "@/components/ui/Modal"
 import { StatusBadge } from "@/components/ui/Badge"
 import { useToast } from "@/components/ui/Toast"
 import { initials } from "@/lib/ui/avatar"
+import { useRealtimeRefetch } from "@/hooks/useRealtimeRefetch"
 
 interface AdminAccount {
   id: string
@@ -58,6 +59,10 @@ export default function AdminAccountTable() {
   useEffect(() => {
     fetchAccounts()
   }, [fetchAccounts])
+
+  // Another super admin creating/archiving/editing an admin account should
+  // show up here without a manual reload.
+  useRealtimeRefetch("user_account", fetchAccounts)
 
   async function handleArchiveToggle(account: AdminAccount) {
     setArchiveTarget(null)

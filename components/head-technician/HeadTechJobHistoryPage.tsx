@@ -166,8 +166,10 @@ export default function HeadTechJobHistoryPage({ jobId }: { jobId: string }) {
   useEffect(() => { load(); }, [load]);
 
   // An Operations rework flag (or any other stage change) should show up here
-  // immediately without the technician needing to back out and reopen the job.
-  useRealtimeRefetch("job_stage_progress", useCallback(() => load({ silent: true }), [load]));
+  // immediately without the technician needing to back out and reopen the job
+  // — job_order too, so a job-level change (status, schedule) that doesn't
+  // touch a stage row still refreshes this page live.
+  useRealtimeRefetch(["job_stage_progress", "job_order"], useCallback(() => load({ silent: true }), [load]));
 
   // ── Derived ───────────────────────────────────────────────────────────────
 
