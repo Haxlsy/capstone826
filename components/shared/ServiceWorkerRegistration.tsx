@@ -6,16 +6,17 @@ import { useEffect } from "react"
 // so Operations can navigate to them (and use the Add Job Order form) offline
 // before ever visiting them. See public/sw.js and
 // docs/plan/operations-offline-testing-guide.md.
+//
+// Only the pages that stay navigable offline are here — Dashboard, Job Order,
+// Add Job Order, Concerns. Job Records and Technician Availability are locked
+// while offline (AppSidebar), so there's no reason to pre-warm them.
 const PREWARM_URLS = [
   "/dashboard/operations",
   "/dashboard/job-management",
   "/dashboard/job-management/add",
-  "/dashboard/job-order-records",
-  "/dashboard/technician-availability",
   "/dashboard/concerns",
   "/offline",
   "/api/operations/dashboard",
-  "/api/operations/technician-availability?status=all",
   "/api/operations/job-management/list-customers",
   "/api/operations/job-management/list-services",
   "/api/operations/job-management/list-technicians",

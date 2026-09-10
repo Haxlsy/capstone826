@@ -23,8 +23,13 @@ export const OPERATIONS_NAV: NavItem[] = [
     icon: Briefcase,
     children: [
       { label: "Job Order", href: "/dashboard/job-management", icon: ClipboardList },
-      { label: "Job Records", href: "/dashboard/job-order-records", icon: Archive },
-      { label: "Technician Availability", href: "/dashboard/technician-availability", icon: UserCheck },
+      { label: "Job Records", href: "/dashboard/job-order-records", icon: Archive, disabledOffline: true },
+      {
+        label: "Technician Availability",
+        href: "/dashboard/technician-availability",
+        icon: UserCheck,
+        disabledOffline: true,
+      },
     ],
   },
   { label: "Concerns", href: "/dashboard/concerns", icon: AlertTriangle },

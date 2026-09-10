@@ -244,9 +244,9 @@ export default function LoginPage() {
     <div className="relative flex min-h-screen flex-col bg-surface-subtle md:overflow-hidden md:bg-surface">
     {/* Desktop background art — 826 car illustration */}
       <picture className="pointer-events-none absolute inset-0 hidden md:block">
-        <source srcSet="/assets/car.png" type="image/png" />
+        <source srcSet="/assets/826_car_asset.png" type="image/png" />
         <img
-          src="/assets/car.png"
+          src="/assets/826_car_asset.png"
           alt=""
           aria-hidden="true"
           fetchPriority="high" 

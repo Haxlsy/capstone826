@@ -2,7 +2,7 @@
 // dashboard so Operations can navigate to Add Job Order / Concerns and queue
 // work while offline (see docs/plan/operations-offline-testing-guide.md).
 
-const SW_VERSION = "v2";
+const SW_VERSION = "v3";
 const PAGES_CACHE  = `pages-${SW_VERSION}`;
 const RSC_CACHE    = `rsc-${SW_VERSION}`;
 const STATIC_CACHE = `static-${SW_VERSION}`;
@@ -71,15 +71,13 @@ self.addEventListener("message", (event) => {
 // ── Fetch / caching ──────────────────────────────────────────────────────────
 
 async function networkFirst(request, cacheName) {
+  const cache = await caches.open(cacheName);
   try {
     const res = await fetch(request);
-    if (res.ok) {
-      const cache = await caches.open(cacheName);
-      cache.put(request, res.clone());
-    }
+    if (res.ok) cache.put(request, res.clone());
     return res;
   } catch (err) {
-    const cached = await caches.match(request);
+    const cached = await cache.match(request);
     if (cached) return cached;
     throw err;
   }
@@ -116,31 +114,35 @@ self.addEventListener("fetch", (event) => {
     const rsc = isRscRequest(request, url);
     event.respondWith(
       (async () => {
+        // HTML docs and RSC/flight payloads for the same route share one key
+        // (bareKey — the pathname, since ?_rsc= is volatile), so they MUST live
+        // in separate caches and be matched cache-scoped. A global
+        // caches.match() would hand an RSC navigation the HTML document, and
+        // the Next.js router silently drops it — "clicking a link does nothing".
+        const cache = await caches.open(rsc ? RSC_CACHE : PAGES_CACHE);
         try {
           const res = await fetch(request);
           if (res.ok) {
             if (rsc) {
-              (await caches.open(RSC_CACHE)).put(bareKey(url), res.clone());
+              cache.put(bareKey(url), res.clone());
             } else {
               const ct = res.headers.get("content-type") || "";
-              if (ct.includes("text/html")) {
-                (await caches.open(PAGES_CACHE)).put(bareKey(url), res.clone());
-              }
+              if (ct.includes("text/html")) cache.put(bareKey(url), res.clone());
             }
           }
           return res;
         } catch (err) {
+          const cached = await cache.match(bareKey(url));
+          if (cached) return cached;
           if (rsc) {
-            const cached = await caches.match(bareKey(url));
-            if (cached) return cached;
             // No cached flight payload — let it fail so the Next.js router
-            // falls back to a full-document navigation, which the branch
-            // below can satisfy from PAGES_CACHE / the offline page.
+            // falls back to a full-document navigation, which a `navigate`
+            // request (handled above, rsc=false) satisfies from PAGES_CACHE
+            // or the offline page.
             throw err;
           }
-          const cachedPage = await caches.match(bareKey(url));
-          if (cachedPage) return cachedPage;
-          const offline = await caches.match(OFFLINE_PAGE);
+          const offlineCache = await caches.open(PAGES_CACHE);
+          const offline = await offlineCache.match(OFFLINE_PAGE);
           if (offline) return offline;
           throw err;
         }

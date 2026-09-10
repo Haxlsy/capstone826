@@ -66,6 +66,11 @@ export default function OfflineSyncSettings() {
                 <Minus className="w-3.5 h-3.5 shrink-0 mt-0.5" />
                 Adding, editing, or archiving technicians
               </li>
+              <li className="flex gap-1.5">
+                <Minus className="w-3.5 h-3.5 shrink-0 mt-0.5" />
+                Opening Job Records or Technician Availability — only Dashboard, Job Order, and
+                Concerns open offline
+              </li>
             </ul>
             <p className="text-xs text-muted pt-0.5">
               Buttons for these are disabled with a hint until you&apos;re back online.
