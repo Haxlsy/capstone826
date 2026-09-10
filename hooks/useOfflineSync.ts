@@ -22,6 +22,15 @@ export function useOfflineSync() {
   const [syncing, setSyncing] = useState(false)
   const wasOnline = useRef(isOnline)
 
+  // Read the hook's combined online state (navigator.onLine AND a real
+  // /api/health ping) inside runSync without churning its useCallback identity.
+  // Chrome DevTools "Network: Offline" leaves navigator.onLine === true, so we
+  // must NOT trust navigator.onLine directly for sync decisions.
+  const isOnlineRef = useRef(isOnline)
+  useEffect(() => {
+    isOnlineRef.current = isOnline
+  }, [isOnline])
+
   // One read of the whole (small) outbox — the Job Order list renders the
   // queued rows, and the counts are derived from the same snapshot.
   const refreshOutbox = useCallback(async () => {
@@ -33,7 +42,7 @@ export function useOfflineSync() {
 
   const runSync = useCallback(
     async (opts?: { retryFailed?: boolean; silent?: boolean }) => {
-      if (!navigator.onLine) return
+      if (!isOnlineRef.current) return
       setSyncing(true)
       try {
         const result = await syncOutbox({ retryFailed: opts?.retryFailed })
@@ -45,6 +54,12 @@ export function useOfflineSync() {
             toast.error("Some offline changes couldn't sync — check Settings for details.")
           }
         }
+      } catch (err) {
+        // syncOutbox itself threw (Dexie / unexpected) — never leave it as an
+        // unhandled rejection.
+        console.error("[offline] sync failed unexpectedly", err)
+        await refreshOutbox().catch(() => {})
+        if (!opts?.silent) toast.error("Offline sync hit an unexpected error — it'll retry.")
       } finally {
         setSyncing(false)
       }
@@ -67,10 +82,11 @@ export function useOfflineSync() {
     return () => window.removeEventListener(outbox.OUTBOX_CHANGED_EVENT, onChange)
   }, [refreshOutbox])
 
-  // Reconnect — sync loudly so the user sees the outcome.
+  // Reconnect — sync loudly, and retry anything that failed (including items
+  // marked failed prematurely while the connection was flaky).
   useEffect(() => {
     if (isOnline && !wasOnline.current) {
-      runSync()
+      runSync({ retryFailed: true })
     }
     wasOnline.current = isOnline
   }, [isOnline, runSync])
