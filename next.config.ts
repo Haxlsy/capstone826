@@ -12,6 +12,16 @@ const nextConfig: NextConfig = {
     // already-mounted client components' realtime subscriptions at all.
     staleTimes: { dynamic: 30 },
   },
+  async headers() {
+    return [
+      {
+        // The service worker file must be re-checked on every load so a new
+        // deploy's SW is picked up promptly (see public/sw.js).
+        source: "/sw.js",
+        headers: [{ key: "Cache-Control", value: "no-cache" }],
+      },
+    ];
+  },
 };
 
 export default nextConfig;

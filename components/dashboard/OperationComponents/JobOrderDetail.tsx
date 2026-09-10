@@ -626,13 +626,13 @@ export default function JobOrderDetail({
             )}
             {job.status !== "Released" && (
               <div className="col-span-2 flex flex-wrap gap-2 pt-1 md:col-span-4">
-                <Button variant="secondary" size="sm" onClick={openSubModal}>
-                  <UserPlus className="h-3.5 w-3.5" />
-                  Add Substitute Technician
-                </Button>
                 <Button variant="secondary" size="sm" onClick={openHeadSubModal}>
                   <UserPlus className="h-3.5 w-3.5" />
                   Add Substitute Head Technician
+                </Button>
+                <Button variant="secondary" size="sm" onClick={openSubModal}>
+                  <UserPlus className="h-3.5 w-3.5" />
+                  Add Substitute Technician
                 </Button>
               </div>
             )}

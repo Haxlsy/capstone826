@@ -20,6 +20,14 @@ export function useLogout() {
     } catch {
       /* ignore */
     }
+    try {
+      // Drop cached pages / list-endpoint responses (customer PII) so they
+      // don't linger for the next person on a shared machine. Static build
+      // assets are kept. See public/sw.js.
+      navigator.serviceWorker?.controller?.postMessage({ type: "CLEAR_APP_CACHES" })
+    } catch {
+      /* ignore */
+    }
     router.push("/")
   }, [router])
 }
