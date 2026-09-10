@@ -2,13 +2,15 @@
 // dashboard so Operations can navigate to Add Job Order / Concerns and queue
 // work while offline (see docs/plan/operations-offline-testing-guide.md).
 
-const SW_VERSION = "v1";
+const SW_VERSION = "v2";
 const PAGES_CACHE  = `pages-${SW_VERSION}`;
 const RSC_CACHE    = `rsc-${SW_VERSION}`;
 const STATIC_CACHE = `static-${SW_VERSION}`;
 const API_CACHE    = `api-${SW_VERSION}`;
 const APP_CACHES   = [PAGES_CACHE, RSC_CACHE, API_CACHE]; // cleared on logout; STATIC kept
 const ALL_CACHES   = [...APP_CACHES, STATIC_CACHE];
+
+const OFFLINE_PAGE = "/offline";
 
 // Any Operations read endpoint is cached (network-first) so the pages that
 // fetch their data client-side — dashboard, technician availability, the
@@ -19,11 +21,26 @@ function isCacheableApi(pathname) {
   return pathname.startsWith("/api/operations/");
 }
 
-const OFFLINE_FALLBACK = "/dashboard/operations";
+// A Next.js RSC/flight request for a soft <Link> navigation. Its URL carries
+// a volatile ?_rsc=<hash>, so it's cached/matched under the bare pathname.
+function isRscRequest(request, url) {
+  return (
+    request.headers.get("RSC") === "1" ||
+    (request.headers.get("Accept") || "").includes("text/x-component") ||
+    url.searchParams.has("_rsc")
+  );
+}
+
+function bareKey(url) {
+  return url.origin + url.pathname;
+}
 
 // ── Lifecycle ────────────────────────────────────────────────────────────────
 
-self.addEventListener("install", () => {
+self.addEventListener("install", (event) => {
+  event.waitUntil(
+    caches.open(PAGES_CACHE).then((c) => c.add(OFFLINE_PAGE).catch(() => {}))
+  );
   self.skipWaiting();
 });
 
@@ -33,7 +50,11 @@ self.addEventListener("activate", (event) => {
       const names = await caches.keys();
       await Promise.all(
         names
-          .filter((n) => !ALL_CACHES.includes(n) && (n.startsWith("pages-") || n.startsWith("rsc-") || n.startsWith("static-") || n.startsWith("api-")))
+          .filter(
+            (n) =>
+              !ALL_CACHES.includes(n) &&
+              (n.startsWith("pages-") || n.startsWith("rsc-") || n.startsWith("static-") || n.startsWith("api-"))
+          )
           .map((n) => caches.delete(n))
       );
       await self.clients.claim();
@@ -73,9 +94,8 @@ self.addEventListener("fetch", (event) => {
   const url = new URL(request.url);
   if (url.origin !== self.location.origin) return;
 
-  // Build assets. network-first (not cache-first) so a new deploy — or a
-  // dev-mode rebuild — never gets pinned to a stale chunk; the cache is only
-  // the offline fallback.
+  // Build assets — network-first so a new deploy never gets pinned to a stale
+  // chunk; the cache is only the offline fallback.
   if (url.pathname.startsWith("/_next/static/")) {
     event.respondWith(networkFirst(request, STATIC_CACHE));
     return;
@@ -87,30 +107,41 @@ self.addEventListener("fetch", (event) => {
     return;
   }
 
-  // Dashboard / head-technician pages + their RSC payloads. Route by the
-  // response content-type so a page and its RSC don't collide on one URL key.
-  const isAppRoute = url.pathname.startsWith("/dashboard") || url.pathname.startsWith("/head-technician");
-  if (isAppRoute) {
+  const isAppRoute =
+    url.pathname.startsWith("/dashboard") ||
+    url.pathname.startsWith("/head-technician") ||
+    url.pathname === OFFLINE_PAGE;
+
+  if (isAppRoute || request.mode === "navigate") {
+    const rsc = isRscRequest(request, url);
     event.respondWith(
       (async () => {
         try {
           const res = await fetch(request);
           if (res.ok) {
-            const ct = res.headers.get("content-type") || "";
-            if (ct.includes("text/x-component")) {
-              (await caches.open(RSC_CACHE)).put(request, res.clone());
-            } else if (ct.includes("text/html")) {
-              (await caches.open(PAGES_CACHE)).put(request, res.clone());
+            if (rsc) {
+              (await caches.open(RSC_CACHE)).put(bareKey(url), res.clone());
+            } else {
+              const ct = res.headers.get("content-type") || "";
+              if (ct.includes("text/html")) {
+                (await caches.open(PAGES_CACHE)).put(bareKey(url), res.clone());
+              }
             }
           }
           return res;
         } catch (err) {
-          const cached = await caches.match(request);
-          if (cached) return cached;
-          if (request.mode === "navigate") {
-            const fallback = await caches.match(OFFLINE_FALLBACK);
-            if (fallback) return fallback;
+          if (rsc) {
+            const cached = await caches.match(bareKey(url));
+            if (cached) return cached;
+            // No cached flight payload — let it fail so the Next.js router
+            // falls back to a full-document navigation, which the branch
+            // below can satisfy from PAGES_CACHE / the offline page.
+            throw err;
           }
+          const cachedPage = await caches.match(bareKey(url));
+          if (cachedPage) return cachedPage;
+          const offline = await caches.match(OFFLINE_PAGE);
+          if (offline) return offline;
           throw err;
         }
       })()

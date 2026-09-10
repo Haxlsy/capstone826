@@ -22,6 +22,7 @@ import { displayJobStatus } from "@/lib/job-delay"
 import { categorySwatch } from "@/lib/ui/category-colors"
 import { fmtDateTime } from "@/lib/time-display"
 import { useRealtimeRefetch } from "@/hooks/useRealtimeRefetch"
+import { useOfflineLock, OfflinePausedNote, OFFLINE_ACTION_HINT } from "@/hooks/useOfflineLock"
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -115,6 +116,7 @@ export default function JobOrderDetail({
 }) {
   const router = useRouter()
   const toast = useToast()
+  const { isOnline, lockProps } = useOfflineLock()
 
   const [job, setJob] = useState<JobDetail | null>(initialJob ?? null)
   // initialJob means there's already something to show — skip the skeleton
@@ -537,7 +539,7 @@ export default function JobOrderDetail({
             </Button>
           )}
           {job.status === "Pending" && (
-            <Button variant="danger" onClick={() => setCancelConfirm(true)}>
+            <Button variant="danger" onClick={() => setCancelConfirm(true)} {...lockProps}>
               <Trash2 className="h-4 w-4" />
               Cancel Job
             </Button>
@@ -545,13 +547,15 @@ export default function JobOrderDetail({
           {showForReleased && (
             <Button
               onClick={canForReleased ? setForRelease : undefined}
-              disabled={settingForRelease || !canForReleased}
+              disabled={settingForRelease || !canForReleased || !isOnline}
               title={
-                !canForReleased
-                  ? hasReworkStages
-                    ? "All stages flagged for rework must be resolved by the technician first."
-                    : "Waiting for the Head Detailer to complete finishing stages and pass to Operations."
-                  : undefined
+                !isOnline
+                  ? OFFLINE_ACTION_HINT
+                  : !canForReleased
+                    ? hasReworkStages
+                      ? "All stages flagged for rework must be resolved by the technician first."
+                      : "Waiting for the Head Detailer to complete finishing stages and pass to Operations."
+                    : undefined
               }
             >
               <PackageCheck className="h-4 w-4" />
@@ -559,13 +563,14 @@ export default function JobOrderDetail({
             </Button>
           )}
           {canRelease && (
-            <Button onClick={() => setCompleteConfirm(true)} disabled={releasing}>
+            <Button onClick={() => setCompleteConfirm(true)} disabled={releasing} {...lockProps}>
               <PackageCheck className="h-4 w-4" />
               {releasing ? "Completing…" : "Mark as Completed"}
             </Button>
           )}
         </div>
       </div>
+      {!isOnline && <OfflinePausedNote className="-mt-2" />}
 
       {/* Job Info Card */}
       <Card>
@@ -588,8 +593,9 @@ export default function JobOrderDetail({
               <button
                 type="button"
                 onClick={openScheduleModal}
-                className="group text-left"
-                title="Edit scheduled start"
+                className="group text-left disabled:cursor-not-allowed disabled:opacity-60"
+                title={isOnline ? "Edit scheduled start" : OFFLINE_ACTION_HINT}
+                {...lockProps}
               >
                 <p className="mb-0.5 text-xs uppercase tracking-wide text-muted">Scheduled Start</p>
                 <p className="flex items-center gap-1 font-medium text-body group-hover:text-primary">
@@ -625,15 +631,18 @@ export default function JobOrderDetail({
               </div>
             )}
             {job.status !== "Released" && (
-              <div className="col-span-2 flex flex-wrap gap-2 pt-1 md:col-span-4">
-                <Button variant="secondary" size="sm" onClick={openHeadSubModal}>
-                  <UserPlus className="h-3.5 w-3.5" />
-                  Add Substitute Head Technician
-                </Button>
-                <Button variant="secondary" size="sm" onClick={openSubModal}>
-                  <UserPlus className="h-3.5 w-3.5" />
-                  Add Substitute Technician
-                </Button>
+              <div className="col-span-2 flex flex-col gap-2 pt-1 md:col-span-4">
+                <div className="flex flex-wrap gap-2">
+                  <Button variant="secondary" size="sm" onClick={openHeadSubModal} {...lockProps}>
+                    <UserPlus className="h-3.5 w-3.5" />
+                    Add Substitute Head Technician
+                  </Button>
+                  <Button variant="secondary" size="sm" onClick={openSubModal} {...lockProps}>
+                    <UserPlus className="h-3.5 w-3.5" />
+                    Add Substitute Technician
+                  </Button>
+                </div>
+                {!isOnline && <OfflinePausedNote />}
               </div>
             )}
           </div>
@@ -722,7 +731,8 @@ export default function JobOrderDetail({
                                 setReworkNotes("")
                                 setReworkError(null)
                               }}
-                              className="flex shrink-0 items-center gap-1 rounded-sm bg-status-rework/12 px-2 py-1 text-xs font-medium text-status-rework hover:brightness-95"
+                              className="flex shrink-0 items-center gap-1 rounded-sm bg-status-rework/12 px-2 py-1 text-xs font-medium text-status-rework hover:brightness-95 disabled:cursor-not-allowed disabled:opacity-50"
+                              {...lockProps}
                             >
                               <RotateCcw className="h-3 w-3" />
                               For Rework
@@ -750,10 +760,10 @@ export default function JobOrderDetail({
                               : stage.messenger_sent) !== true && (
                               <button
                                 type="button"
-                                title="Resend stage update to customer via Messenger"
+                                title={isOnline ? "Resend stage update to customer via Messenger" : OFFLINE_ACTION_HINT}
                                 onClick={() => resendStage(stage.id)}
-                                disabled={resendingId === stage.id}
-                                className="flex items-center gap-1 text-xs font-medium text-primary transition-colors hover:text-primary-hover disabled:opacity-50"
+                                disabled={resendingId === stage.id || !isOnline}
+                                className="flex items-center gap-1 text-xs font-medium text-primary transition-colors hover:text-primary-hover disabled:cursor-not-allowed disabled:opacity-50"
                               >
                                 <RefreshCw className={cn("h-3 w-3", resendingId === stage.id && "animate-spin")} />
                                 {resendingId === stage.id ? "Resending…" : "Resend stage update"}
