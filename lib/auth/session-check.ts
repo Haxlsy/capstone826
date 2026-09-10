@@ -14,11 +14,23 @@ export async function isSessionCurrent(
 ): Promise<boolean> {
   if (!sessionToken) return false
 
-  const { data } = await supabase
+  const { data, error } = await supabase
     .from("user_active_session")
     .select("session_token")
     .eq("user_id", userId)
     .maybeSingle()
+
+  // Fail OPEN on an unexpected query error (missing table/migration not yet
+  // applied, network blip, RLS misconfiguration) — this check runs on every
+  // navigation and on every Realtime event for every role, so a fail-closed
+  // default here would force-logout the entire app the moment this query
+  // can't run at all, not just when it successfully finds a real mismatch.
+  // A genuine "logged in elsewhere" case still reads and compares
+  // correctly below; only the "couldn't even check" case changes.
+  if (error) {
+    console.error("[isSessionCurrent] query failed — not enforcing single-session for this check:", error.message)
+    return true
+  }
 
   return data?.session_token === sessionToken
 }
