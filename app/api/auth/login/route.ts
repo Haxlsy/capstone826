@@ -64,10 +64,19 @@ export async function POST(request: Request) {
       await admin.auth.admin.signOut(authData.session.access_token, "others")
     }
     const sessionToken = crypto.randomUUID()
-    await admin.from("user_active_session").upsert({
+    const { error: sessionTokenErr } = await admin.from("user_active_session").upsert({
       user_id:       authData.user.id,
       session_token: sessionToken,
     })
+    if (sessionTokenErr) {
+      // Login still proceeds — see lib/auth/session-check.ts's isSessionCurrent,
+      // which fails open when this row can't be read, so a failure here
+      // doesn't lock the user out; it just means single-session enforcement
+      // silently isn't active for this login until the underlying issue
+      // (e.g. a migration not yet applied) is fixed. Logged so it's
+      // diagnosable instead of silent.
+      console.error("[login] user_active_session upsert failed:", sessionTokenErr.message)
+    }
 
     // 5. Log Event (Awaited for reliability in Serverless)
     await createAuditLog(admin, authData.user.id, profile, "Logged in")
