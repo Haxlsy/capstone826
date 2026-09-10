@@ -9,7 +9,8 @@ import JobOrderConfirmDialog, { type JobOrderSummary } from "./JobOrderConfirmDi
 import { fmtDateTime } from "@/lib/time-display"
 import { normalizePhone } from "@/lib/phone"
 import { useOnlineStatus } from "@/hooks/useOnlineStatus"
-import { enqueue } from "@/lib/offline/outbox"
+import { enqueue, get as getQueued } from "@/lib/offline/outbox"
+import { useToast } from "@/components/ui/Toast"
 
 interface CustomerRecord {
   id:             string
@@ -145,6 +146,7 @@ function CrewCheckboxList({
 
 export default function AddJobOrderForm() {
   const router        = useRouter()
+  const toast         = useToast()
   const redirectTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const plateTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
@@ -546,9 +548,44 @@ export default function AddJobOrderForm() {
       // docs/plan/operations-offline-mode-plan.md.
       if (!isOnline) {
         const jobOrderId = crypto.randomUUID()
-        await enqueue("add_job_order", { id: jobOrderId, ...payload }, jobOrderId)
+        // `_display` is a UI-only snapshot so the Job Order list can render this
+        // queued row (the raw payload has ids, not names). Stripped before the
+        // real POST — see lib/offline/sync-engine.ts.
+        try {
+          const saved = await enqueue(
+            "add_job_order",
+            {
+              id: jobOrderId,
+              ...payload,
+              _display: {
+                customer_name:  confirmSummary?.customerName  ?? "",
+                plate_number:   confirmSummary?.plateNumber   ?? "",
+                vehicle_unit:   confirmSummary?.vehicleUnit   ?? "",
+                service:        confirmSummary?.serviceName   ?? "—",
+                head_detailer:  confirmSummary?.headDetailer  ?? "Unassigned",
+                head_installer: confirmSummary?.headInstaller ?? "Unassigned",
+                scheduled_at:   payload.scheduled_at,
+              },
+            },
+            jobOrderId,
+          )
+          // Read it straight back — proves it actually landed in IndexedDB
+          // (private-mode / blocked-storage browsers fail the write silently).
+          const check = await getQueued(saved.id)
+          if (!check) throw new Error("The job order didn't persist to this device's storage.")
+        } catch (err) {
+          console.error("[offline] enqueue add_job_order failed", err)
+          setShowConfirm(false)
+          setApiError(
+            "Couldn't save this job order offline — your browser may be blocking local storage " +
+            "(private/incognito window, or storage disabled). Try a normal window, or reconnect " +
+            "and submit again.",
+          )
+          return
+        }
         setShowConfirm(false)
         setQueued(true)
+        toast.success("Job order saved on this device — it'll sync automatically when you're back online.")
         redirectTimer.current = setTimeout(() => router.push("/dashboard/job-management"), 1200)
         return
       }

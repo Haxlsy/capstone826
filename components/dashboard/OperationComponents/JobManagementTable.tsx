@@ -1,9 +1,9 @@
 "use client"
 
-import { useState, useEffect, useCallback, useMemo } from "react"
+import { useState, useEffect, useCallback, useMemo, useRef } from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
-import { Plus, ArrowRight } from "lucide-react"
+import { Plus, ArrowRight, CloudOff, WifiOff } from "lucide-react"
 import { JobManagementSkeleton } from "@/app/dashboard/job-management/loading"
 import { PageHeader } from "@/components/ui/PageHeader"
 import { Button } from "@/components/ui/Button"
@@ -13,15 +13,17 @@ import { FilterTrigger } from "@/components/ui/FilterTrigger"
 import { Tabs } from "@/components/ui/Tabs"
 import { DataTable, RowActionHint, type Column } from "@/components/ui/DataTable"
 import { Pagination } from "@/components/ui/Pagination"
-import { StatusBadge } from "@/components/ui/Badge"
+import { StatusBadge, Badge } from "@/components/ui/Badge"
 import { Select, FieldLabel } from "@/components/ui/Field"
 import { useToast } from "@/components/ui/Toast"
+import { useOfflineSyncContext } from "@/components/dashboard/OperationComponents/OfflineSyncContext"
 import StatusPickerModal, { type JobStatus, type StatusOption } from "./StatusPickerModal"
 import StatusConfirmDialog from "./StatusConfirmDialog"
 import { fmtDate } from "@/lib/time-display"
 import { useRealtimeRefetch } from "@/hooks/useRealtimeRefetch"
 import { displayJobStatus } from "@/lib/job-delay"
 import type { JobOrdersData } from "@/lib/operations/job-orders-data"
+import type { OutboxItem } from "@/lib/offline/db"
 
 interface JobOrder {
   id: string
@@ -36,6 +38,9 @@ interface JobOrder {
   scheduledRaw: string
   status: JobStatus
   is_overdue: boolean
+  /** Rows that only exist in the offline outbox (not yet synced to the server). */
+  isQueued?: boolean
+  queueStatus?: OutboxItem["status"]
 }
 
 type RawJobOrder = JobOrdersData["job_orders"][number]
@@ -57,12 +62,36 @@ function mapJobOrder(r: RawJobOrder): JobOrder {
   }
 }
 
+// An offline-queued Add Job Order → a table row, from the UI-only `_display`
+// snapshot captured at queue time (AddJobOrderForm). No real job_order_code
+// or detail page exists yet.
+function mapQueuedRow(item: OutboxItem): JobOrder {
+  const d = ((item.payload as { _display?: Record<string, string> })._display) ?? {}
+  return {
+    id: item.id,
+    displayId: "—",
+    customer: d.customer_name || "New customer",
+    plate: d.plate_number || "—",
+    vehicle: d.vehicle_unit || "—",
+    service: d.service || "—",
+    headDetailer: d.head_detailer || "Unassigned",
+    headInstaller: d.head_installer || "Unassigned",
+    scheduled: d.scheduled_at ? fmtDate(d.scheduled_at) : "—",
+    scheduledRaw: d.scheduled_at || "",
+    status: "Pending",
+    is_overdue: false,
+    isQueued: true,
+    queueStatus: item.status,
+  }
+}
+
 type TabType = "All" | "Pending" | "Ongoing" | "For Rework" | "For Inspection" | "For Release" | "Delayed"
 const TABS: TabType[] = ["All", "Pending", "Ongoing", "For Rework", "For Inspection", "For Release", "Delayed"]
 
 export default function JobManagementTable({ initialJobOrders }: { initialJobOrders?: RawJobOrder[] }) {
   const router = useRouter()
   const toast = useToast()
+  const { isOnline, queuedItems } = useOfflineSyncContext()
   const [activeTab, setActiveTab] = useState<TabType>("All")
   const [searchQuery, setSearchQuery] = useState("")
   const [jobOrders, setJobOrders] = useState<JobOrder[]>(() => (initialJobOrders ?? []).map(mapJobOrder))
@@ -105,7 +134,14 @@ export default function JobManagementTable({ initialJobOrders }: { initialJobOrd
 
       setJobOrders(mapped)
     } catch (err: unknown) {
-      setFetchError(err instanceof Error ? err.message : String(err))
+      // Offline: the fetch just failed because there's no connection — keep the
+      // last-known rows and let the offline note + queued rows carry the view.
+      // Only surface an error when we actually have a connection.
+      if (navigator.onLine) {
+        setFetchError(err instanceof Error ? err.message : String(err))
+      } else {
+        setFetchError(null)
+      }
     } finally {
       if (!opts?.silent) setLoading(false)
     }
@@ -116,6 +152,14 @@ export default function JobManagementTable({ initialJobOrders }: { initialJobOrd
     // in the background instead of flashing the skeleton again.
     load({ silent: !!initialJobOrders })
   }, [load, initialJobOrders])
+
+  // Refetch the authoritative list once the connection comes back, so queued
+  // rows get replaced by the real job orders.
+  const prevOnline = useRef(isOnline)
+  useEffect(() => {
+    if (isOnline && !prevOnline.current) load({ silent: true })
+    prevOnline.current = isOnline
+  }, [isOnline, load])
 
   useEffect(() => {
     const onFocus = () => load({ silent: true })
@@ -128,6 +172,18 @@ export default function JobManagementTable({ initialJobOrders }: { initialJobOrd
   // here without waiting for window focus or a manual reload — silent so it
   // doesn't flash the skeleton.
   useRealtimeRefetch(["job_order", "job_stage_progress"], useCallback(() => load({ silent: true }), [load]))
+
+  const queuedRows = useMemo(
+    () => queuedItems.filter((i) => i.type === "add_job_order").map(mapQueuedRow),
+    [queuedItems],
+  )
+
+  // Offline → only what's saved on this device (per the user's ask). Online →
+  // the real list plus any queued rows that haven't synced away yet.
+  const displayRows = useMemo(
+    () => (isOnline ? [...queuedRows, ...jobOrders] : queuedRows),
+    [isOnline, queuedRows, jobOrders],
+  )
 
   const uniqueServices = useMemo(
     () => [...new Set(jobOrders.map((j) => j.service).filter((s) => s !== "—"))].sort(),
@@ -142,7 +198,7 @@ export default function JobManagementTable({ initialJobOrders }: { initialJobOrd
 
   const filtered = useMemo(
     () =>
-      jobOrders.filter((job) => {
+      displayRows.filter((job) => {
         const isDelayed = displayJobStatus(job.status, job.is_overdue) === "Delayed"
         const matchesTab =
           activeTab === "All" || (activeTab === "Delayed" ? isDelayed : job.status === activeTab)
@@ -173,7 +229,7 @@ export default function JobManagementTable({ initialJobOrders }: { initialJobOrd
           matchesDateTo
         )
       }),
-    [jobOrders, activeTab, searchQuery, filterService, filterTechnician, filterDateFrom, filterDateTo],
+    [displayRows, activeTab, searchQuery, filterService, filterTechnician, filterDateFrom, filterDateTo],
   )
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize))
@@ -214,15 +270,18 @@ export default function JobManagementTable({ initialJobOrders }: { initialJobOrd
     {
       key: "id",
       header: "Job Order ID",
-      cell: (job) => (
-        <Link
-          href={`/dashboard/job-management/${job.id}`}
-          onClick={(e) => e.stopPropagation()}
-          className="font-mono text-xs text-primary hover:underline"
-        >
-          {job.displayId}
-        </Link>
-      ),
+      cell: (job) =>
+        job.isQueued ? (
+          <span className="font-mono text-xs italic text-muted">Not synced</span>
+        ) : (
+          <Link
+            href={`/dashboard/job-management/${job.id}`}
+            onClick={(e) => e.stopPropagation()}
+            className="font-mono text-xs text-primary hover:underline"
+          >
+            {job.displayId}
+          </Link>
+        ),
     },
     { key: "customer", header: "Customer", cell: (job) => <span className="font-semibold text-heading">{job.customer}</span> },
     {
@@ -258,9 +317,15 @@ export default function JobManagementTable({ initialJobOrders }: { initialJobOrd
     {
       key: "status",
       header: "Status",
-      cell: (job) => {
-        return <StatusBadge status={displayJobStatus(job.status, job.is_overdue)} />
-      },
+      cell: (job) =>
+        job.isQueued ? (
+          <Badge className="border border-status-delayed/30 bg-status-delayed/10 text-status-delayed">
+            <WifiOff className="h-3 w-3" />
+            {job.queueStatus === "failed" ? "Sync failed" : "Pending sync"}
+          </Badge>
+        ) : (
+          <StatusBadge status={displayJobStatus(job.status, job.is_overdue)} />
+        ),
     },
     {
       key: "go",
@@ -284,6 +349,21 @@ export default function JobManagementTable({ initialJobOrders }: { initialJobOrd
             </Button>
           }
         />
+
+        {(queuedRows.length > 0 || !isOnline) && (
+          <div className="flex items-center gap-2 rounded-card border border-primary/30 bg-primary/10 px-4 py-3 text-sm font-medium text-primary">
+            <CloudOff className="h-4 w-4 shrink-0" />
+            <span>
+              {queuedRows.length > 0
+                ? `${queuedRows.length} job order${queuedRows.length === 1 ? "" : "s"} saved on this device — ${
+                    isOnline
+                      ? "syncing now…"
+                      : "they'll sync automatically when you're back online."
+                  }`
+                : "You're offline — showing job orders saved on this device. The full list loads when you reconnect."}
+            </span>
+          </div>
+        )}
 
         <div className="space-y-3">
           <div className="flex flex-wrap items-start gap-3">
@@ -374,9 +454,12 @@ export default function JobManagementTable({ initialJobOrders }: { initialJobOrd
           columns={columns}
           rows={paginated}
           rowKey={(job) => job.id}
-          onRowClick={(job) => router.push(`/dashboard/job-management/${job.id}`)}
+          onRowClick={(job) => {
+            if (job.isQueued) return
+            router.push(`/dashboard/job-management/${job.id}`)
+          }}
           error={fetchError}
-          emptyLabel="No job orders found."
+          emptyLabel={isOnline ? "No job orders found." : "You're offline — no job orders saved on this device yet."}
           footer={
             <Pagination
               page={page}

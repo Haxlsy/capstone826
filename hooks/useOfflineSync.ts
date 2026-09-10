@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react"
 import { useOnlineStatus } from "@/hooks/useOnlineStatus"
 import { syncOutbox } from "@/lib/offline/sync-engine"
 import * as outbox from "@/lib/offline/outbox"
+import type { OutboxItem } from "@/lib/offline/db"
 import { useToast } from "@/components/ui/Toast"
 
 // Foreground-only guarantee — there is no reliable web-platform equivalent of
@@ -17,12 +18,17 @@ export function useOfflineSync() {
   const toast = useToast()
   const [pendingCount, setPendingCount] = useState(0)
   const [failedCount, setFailedCount] = useState(0)
+  const [queuedItems, setQueuedItems] = useState<OutboxItem[]>([])
   const [syncing, setSyncing] = useState(false)
   const wasOnline = useRef(isOnline)
 
-  const refreshCounts = useCallback(async () => {
-    setPendingCount(await outbox.pendingCount())
-    setFailedCount(await outbox.failedCount())
+  // One read of the whole (small) outbox — the Job Order list renders the
+  // queued rows, and the counts are derived from the same snapshot.
+  const refreshOutbox = useCallback(async () => {
+    const all = await outbox.list()
+    setQueuedItems(all)
+    setPendingCount(all.filter((i) => i.status === "pending").length)
+    setFailedCount(all.filter((i) => i.status === "failed").length)
   }, [])
 
   const runSync = useCallback(
@@ -31,7 +37,7 @@ export function useOfflineSync() {
       setSyncing(true)
       try {
         const result = await syncOutbox({ retryFailed: opts?.retryFailed })
-        await refreshCounts()
+        await refreshOutbox()
         if (!opts?.silent) {
           if (result.synced > 0 && result.failed === 0) {
             toast.success(`Synced ${result.synced} offline change${result.synced === 1 ? "" : "s"}.`)
@@ -43,15 +49,23 @@ export function useOfflineSync() {
         setSyncing(false)
       }
     },
-    [refreshCounts, toast],
+    [refreshOutbox, toast],
   )
 
-  // Pick up counts and attempt a silent catch-up sync on mount (covers a
-  // page refresh with items still queued from before).
+  // On mount: load the queue and attempt a catch-up sync. Not silent — a page
+  // load that finds queued items and syncs them should tell the user.
   useEffect(() => {
-    refreshCounts()
-    runSync({ silent: true })
-  }, [refreshCounts, runSync])
+    refreshOutbox()
+    runSync()
+  }, [refreshOutbox, runSync])
+
+  // Any component that enqueues/removes/marks an item broadcasts this — refresh
+  // the queue view without waiting for the next sync tick.
+  useEffect(() => {
+    const onChange = () => refreshOutbox()
+    window.addEventListener(outbox.OUTBOX_CHANGED_EVENT, onChange)
+    return () => window.removeEventListener(outbox.OUTBOX_CHANGED_EVENT, onChange)
+  }, [refreshOutbox])
 
   // Reconnect — sync loudly so the user sees the outcome.
   useEffect(() => {
@@ -61,7 +75,7 @@ export function useOfflineSync() {
     wasOnline.current = isOnline
   }, [isOnline, runSync])
 
-  // 5-minute foreground backup sync.
+  // 5-minute foreground backup sync (silent — background housekeeping).
   useEffect(() => {
     const interval = setInterval(() => runSync({ silent: true }), SYNC_INTERVAL_MS)
     return () => clearInterval(interval)
@@ -69,5 +83,5 @@ export function useOfflineSync() {
 
   const syncNow = useCallback(() => runSync({ retryFailed: true }), [runSync])
 
-  return { pendingCount, failedCount, syncing, isOnline, syncNow }
+  return { pendingCount, failedCount, queuedItems, syncing, isOnline, syncNow }
 }
