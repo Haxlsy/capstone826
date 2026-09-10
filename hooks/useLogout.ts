@@ -1,7 +1,7 @@
 "use client"
 
 import { useRouter } from "next/navigation"
-import { useCallback } from "react"
+import { useCallback, useState } from "react"
 
 /**
  * The single logout routine — previously copy-pasted into every sidebar and
@@ -22,4 +22,29 @@ export function useLogout() {
     }
     router.push("/")
   }, [router])
+}
+
+/**
+ * Logout gated behind a confirmation. The button `onClick`s `requestLogout`;
+ * render a <ConfirmModal> wired to `{ confirming, loading, cancel, confirm }`.
+ * Not used for the automatic post-password-change sign-out — that stays
+ * immediate (see components/shared/ChangePasswordSettings.tsx).
+ */
+export function useLogoutConfirm() {
+  const logout = useLogout()
+  const [confirming, setConfirming] = useState(false)
+  const [loading, setLoading] = useState(false)
+
+  const requestLogout = useCallback(() => setConfirming(true), [])
+  const cancel = useCallback(() => setConfirming(false), [])
+  const confirm = useCallback(async () => {
+    setLoading(true)
+    await logout()
+    // logout() navigates away; if it somehow doesn't, don't leave the
+    // button stuck disabled.
+    setLoading(false)
+    setConfirming(false)
+  }, [logout])
+
+  return { confirming, loading, requestLogout, cancel, confirm }
 }

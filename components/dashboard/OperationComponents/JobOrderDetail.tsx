@@ -77,6 +77,8 @@ interface JobDetail {
   service: string
   head_detailer: TeamMember | null
   head_installer: TeamMember | null
+  head_detailer_substitutes: TeamMember[]
+  head_installer_substitutes: TeamMember[]
   detailers: CrewMember[]
   installers: CrewMember[]
   status: string
@@ -146,6 +148,14 @@ export default function JobOrderDetail({
   const [selectedSubId, setSelectedSubId] = useState<string | null>(null)
   const [addingSub, setAddingSub] = useState(false)
   const [subError, setSubError] = useState<string | null>(null)
+
+  const [headSubModal, setHeadSubModal] = useState(false)
+  const [headSubRole, setHeadSubRole] = useState<"head_detailer" | "head_installer">("head_detailer")
+  const [headSubs, setHeadSubs] = useState<{ id: string; name: string; role: string; active_jobs: number }[]>([])
+  const [headSubsLoading, setHeadSubsLoading] = useState(false)
+  const [selectedHeadSubId, setSelectedHeadSubId] = useState<string | null>(null)
+  const [addingHeadSub, setAddingHeadSub] = useState(false)
+  const [headSubError, setHeadSubError] = useState<string | null>(null)
 
   const [scheduleModal, setScheduleModal] = useState(false)
   const [scheduleValue, setScheduleValue] = useState("")
@@ -307,7 +317,7 @@ export default function JobOrderDetail({
       const res = await fetch(`/api/operations/job-orders/${jobId}/add-substitute`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ technician_id: selectedSubId, role: subRole }),
+        body: JSON.stringify({ person_id: selectedSubId, role: subRole }),
       })
       const json = await res.json()
       if (!res.ok) throw new Error(json?.error ?? "Failed to add substitute")
@@ -319,6 +329,53 @@ export default function JobOrderDetail({
       setSubError(err instanceof Error ? err.message : String(err))
     } finally {
       setAddingSub(false)
+    }
+  }
+
+  async function openHeadSubModal() {
+    setHeadSubModal(true)
+    setHeadSubRole("head_detailer")
+    setSelectedHeadSubId(null)
+    setHeadSubError(null)
+    setHeadSubsLoading(true)
+    try {
+      const res = await fetch("/api/operations/job-management/list-technicians")
+      const json = await res.json()
+      setHeadSubs(
+        (json.technicians ?? []).map((t: { id: string; full_name: string; role: string; active_jobs?: number }) => ({
+          id: t.id,
+          name: t.full_name,
+          role: t.role,
+          active_jobs: t.active_jobs ?? 0,
+        })),
+      )
+    } catch {
+      setHeadSubError("Failed to load head technicians.")
+    } finally {
+      setHeadSubsLoading(false)
+    }
+  }
+
+  async function addHeadSubstitute() {
+    if (!selectedHeadSubId) return
+    setAddingHeadSub(true)
+    setHeadSubError(null)
+    try {
+      const res = await fetch(`/api/operations/job-orders/${jobId}/add-substitute`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ person_id: selectedHeadSubId, role: headSubRole }),
+      })
+      const json = await res.json()
+      if (!res.ok) throw new Error(json?.error ?? "Failed to add substitute head technician")
+      setHeadSubModal(false)
+      setSelectedHeadSubId(null)
+      await load()
+      toast.success("Substitute head technician added.")
+    } catch (err: unknown) {
+      setHeadSubError(err instanceof Error ? err.message : String(err))
+    } finally {
+      setAddingHeadSub(false)
     }
   }
 
@@ -543,8 +600,22 @@ export default function JobOrderDetail({
             ) : (
               <InfoCell label="Scheduled Start" value={fmtDateTime(job.scheduled_at)} />
             )}
-            <CrewCell label="Head Detailer" lead={job.head_detailer?.full_name ?? "Unassigned"} crew={job.detailers} />
-            <CrewCell label="Head Installer" lead={job.head_installer?.full_name ?? "Unassigned"} crew={job.installers} />
+            <CrewCell
+              label="Head Detailer"
+              lead={job.head_detailer?.full_name ?? "Unassigned"}
+              crew={[
+                ...job.head_detailer_substitutes.map((s) => ({ id: s.id, name: `${s.full_name} (substitute)` })),
+                ...job.detailers,
+              ]}
+            />
+            <CrewCell
+              label="Head Installer"
+              lead={job.head_installer?.full_name ?? "Unassigned"}
+              crew={[
+                ...job.head_installer_substitutes.map((s) => ({ id: s.id, name: `${s.full_name} (substitute)` })),
+                ...job.installers,
+              ]}
+            />
             <InfoCell label="Started" value={fmtDateTime(job.actual_start_at)} />
             <InfoCell label="Est. Completion" value={fmtDateTime(job.expected_completion_at)} />
             {updatedEst && (
@@ -554,10 +625,14 @@ export default function JobOrderDetail({
               </div>
             )}
             {job.status !== "Released" && (
-              <div className="col-span-2 pt-1 md:col-span-4">
+              <div className="col-span-2 flex flex-wrap gap-2 pt-1 md:col-span-4">
                 <Button variant="secondary" size="sm" onClick={openSubModal}>
                   <UserPlus className="h-3.5 w-3.5" />
                   Add Substitute Technician
+                </Button>
+                <Button variant="secondary" size="sm" onClick={openHeadSubModal}>
+                  <UserPlus className="h-3.5 w-3.5" />
+                  Add Substitute Head Technician
                 </Button>
               </div>
             )}
@@ -858,6 +933,80 @@ export default function JobOrderDetail({
         </div>
 
         {subError && <p className="mt-3 text-xs text-status-delayed">{subError}</p>}
+      </Modal>
+
+      {/* Substitute Head Technician Modal */}
+      <Modal
+        open={headSubModal}
+        onClose={() => {
+          setHeadSubModal(false)
+          setHeadSubError(null)
+        }}
+        title="Add Substitute Head Technician"
+        description="The substitute is added alongside the existing team — no one is removed. They can work the job on their own Head Technician screen."
+        size="sm"
+        footer={
+          <>
+            <Button variant="ghost" onClick={() => setHeadSubModal(false)} disabled={addingHeadSub}>
+              Cancel
+            </Button>
+            <Button onClick={addHeadSubstitute} disabled={!selectedHeadSubId || addingHeadSub}>
+              {addingHeadSub ? <Loader2 className="h-4 w-4 animate-spin" /> : "Add Substitute"}
+            </Button>
+          </>
+        }
+      >
+        <div className="mb-4 flex gap-2">
+          {(["head_detailer", "head_installer"] as const).map((r) => (
+            <button
+              key={r}
+              type="button"
+              onClick={() => {
+                setHeadSubRole(r)
+                setSelectedHeadSubId(null)
+              }}
+              className={cn(
+                "flex-1 rounded-sm py-1.5 text-xs font-semibold transition-colors",
+                headSubRole === r ? "bg-primary text-white" : "bg-surface-muted text-body hover:text-heading",
+              )}
+            >
+              {r === "head_detailer" ? "Head Detailer" : "Head Installer"}
+            </button>
+          ))}
+        </div>
+
+        <div className="max-h-52 space-y-1 overflow-y-auto">
+          {headSubsLoading ? (
+            <div className="flex items-center justify-center py-6 text-muted">
+              <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Loading…
+            </div>
+          ) : headSubs.filter((t) => t.role === headSubRole).length === 0 ? (
+            <p className="py-6 text-center text-xs text-muted">No head technicians of this role.</p>
+          ) : (
+            headSubs
+              .filter((t) => t.role === headSubRole)
+              .map((t) => (
+                <button
+                  key={t.id}
+                  type="button"
+                  onClick={() => setSelectedHeadSubId(t.id)}
+                  className={cn(
+                    "flex w-full items-center justify-between rounded-sm border px-3 py-2 text-sm transition-colors",
+                    selectedHeadSubId === t.id
+                      ? "border-primary bg-primary-soft text-primary"
+                      : "border-border-subtle text-body hover:bg-surface-muted",
+                  )}
+                >
+                  <span className="font-medium">{t.name}</span>
+                  <span className="text-[10px] text-muted">
+                    {t.active_jobs} active job{t.active_jobs === 1 ? "" : "s"}
+                  </span>
+                </button>
+              ))
+          )}
+        </div>
+
+        {headSubError && <p className="mt-3 text-xs text-status-delayed">{headSubError}</p>}
       </Modal>
 
       {/* Edit Scheduled Start Modal */}
