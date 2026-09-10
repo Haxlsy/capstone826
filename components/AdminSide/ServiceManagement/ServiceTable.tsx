@@ -16,6 +16,7 @@ import { FilterTrigger } from "@/components/ui/FilterTrigger"
 import { Badge, StatusBadge } from "@/components/ui/Badge"
 import { useToast } from "@/components/ui/Toast"
 import { cn } from "@/lib/utils"
+import { useRealtimeRefetch } from "@/hooks/useRealtimeRefetch"
 
 interface Service {
   id: string
@@ -102,6 +103,10 @@ export default function ServiceTable({ canWrite = true }: { canWrite?: boolean }
   useEffect(() => {
     fetchServices()
   }, [fetchServices])
+
+  // Another admin adding/editing/archiving a service should show up here
+  // without a manual reload.
+  useRealtimeRefetch("service", fetchServices)
 
   async function handleArchiveToggle(service: Service) {
     try {

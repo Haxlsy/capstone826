@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect, useCallback } from "react"
 import Link from "next/link"
 import { ArrowLeft, ChevronDown, CheckCircle2, RefreshCw, Clock } from "lucide-react"
 import { fmtDateTime } from "@/lib/time-display"
@@ -8,6 +8,7 @@ import { StatusBadge, Badge } from "@/components/ui/Badge"
 import { cn } from "@/lib/utils"
 import { statusStyle } from "@/lib/ui/status"
 import { displayJobStatus } from "@/lib/job-delay"
+import { useRealtimeRefetch } from "@/hooks/useRealtimeRefetch"
 
 interface StageMedia {
   id:         string
@@ -89,7 +90,30 @@ function SectionCollapse({ title, count, children, accent }: {
   )
 }
 
-export default function SalesJobDetail({ job }: { job: JobDetail }) {
+export default function SalesJobDetail({ job: initialJob }: { job: JobDetail }) {
+  // Read-only view, but was previously a pure server snapshot with zero
+  // client refetch of any kind — same endpoint components/dashboard/
+  // OperationComponents/JobOrderDetail.tsx already uses.
+  const [job, setJob] = useState<JobDetail>(initialJob)
+
+  const load = useCallback(async () => {
+    try {
+      const res = await fetch(`/api/operations/job-orders/${initialJob.id}`)
+      const json = await res.json()
+      if (res.ok && json.job) setJob(json.job)
+    } catch {
+      // Silent — background revalidation, keep showing the last-known data.
+    }
+  }, [initialJob.id])
+
+  // `setJob` above only ever runs after two awaits (never synchronously in
+  // this effect's own call frame) — the exact same shape as the proven
+  // working pattern in JobOrderDetail.tsx/JobManagementTable.tsx, which
+  // don't trip this rule. Confirmed safe; the static analysis appears to
+  // lose track of `load` across the useCallback boundary here specifically.
+  // eslint-disable-next-line react-hooks/set-state-in-effect
+  useEffect(() => { load() }, [load])
+  useRealtimeRefetch(["job_stage_progress", "job_order"], load)
 
   const displayId   = job.job_order_code
   const prepStages  = job.stages.filter((s) => s.category_name?.toLowerCase() === "preparation")

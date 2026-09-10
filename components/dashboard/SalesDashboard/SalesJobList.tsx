@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useMemo } from "react"
+import { useState, useMemo, useEffect, useCallback } from "react"
 import { useRouter } from "next/navigation"
 import { useRealtimeRefetch } from "@/hooks/useRealtimeRefetch"
 import { ArrowRight } from "lucide-react"
@@ -15,6 +15,9 @@ import { DataTable, RowActionHint, type Column } from "@/components/ui/DataTable
 import { Pagination } from "@/components/ui/Pagination"
 import { StatusBadge } from "@/components/ui/Badge"
 import { FieldLabel } from "@/components/ui/Field"
+import type { JobOrdersData } from "@/lib/operations/job-orders-data"
+
+type RawJobOrder = JobOrdersData["job_orders"][number]
 
 interface JobOrder {
   id: string
@@ -35,16 +38,32 @@ const TABS: TabType[] = ["All", "Pending", "Ongoing", "For Rework", "For Release
 
 const PAGE_SIZE = 15
 
-export default function SalesJobList({ jobOrders: rawOrders }: { jobOrders: any[] }) {
+export default function SalesJobList({ jobOrders: initialJobOrders }: { jobOrders: RawJobOrder[] }) {
   const router = useRouter()
 
-  // Job orders are server-fetched into props, so a status change from
-  // Operations or a technician re-runs the server component instead of being
-  // refetched here.
-  useRealtimeRefetch(["job_order", "job_stage_progress"], () => router.refresh())
+  // Self-managed + realtime-refetched, same endpoint Operations' Job
+  // Management uses (read-only here — no write actions) — a light client
+  // refetch instead of router.refresh() re-running the whole server fetch
+  // on every change event.
+  const [rawOrders, setRawOrders] = useState<RawJobOrder[]>(initialJobOrders)
+
+  const load = useCallback(async () => {
+    try {
+      const res = await fetch("/api/operations/job-management/list-job-orders")
+      const json = await res.json()
+      if (!res.ok) throw new Error(json?.error ?? "Failed to fetch job orders")
+      setRawOrders(json.job_orders ?? [])
+    } catch {
+      // Silent — this is a background revalidation; the last-known list stays shown.
+    }
+  }, [])
+
+  useEffect(() => { load() }, [load])
+  useRealtimeRefetch(["job_order", "job_stage_progress"], load)
+
   const jobOrders = useMemo(
     () =>
-      rawOrders.map((r: any): JobOrder => ({
+      rawOrders.map((r): JobOrder => ({
         id: r.id,
         displayId: r.job_order_code,
         customer: r.customer_name ?? "—",

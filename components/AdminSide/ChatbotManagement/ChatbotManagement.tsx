@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useEffect } from "react"
+import { useRealtimeRefetch } from "@/hooks/useRealtimeRefetch"
 import {
   Bot, BookOpen, Save, Plus, Pencil, Trash2, X, Check,
   ChevronDown, ChevronUp, MessageSquare, Settings, AlertTriangle,
@@ -109,6 +110,11 @@ export default function ChatbotManagement() {
   useEffect(() => {
     fetchKnowledge()
   }, [])
+
+  // Another admin adding/editing/removing a knowledge base entry should
+  // show up here without a manual reload. Safe to pass fetchKnowledge
+  // unmemoized — useRealtimeRefetch holds it in a ref, not an effect dep.
+  useRealtimeRefetch("chatbot_knowledge", fetchKnowledge)
 
   async function fetchKnowledge() {
     setKbLoading(true)
