@@ -8,6 +8,8 @@ import ServiceOverridePanel, { type Stage } from "./ServiceOverridePanel"
 import JobOrderConfirmDialog, { type JobOrderSummary } from "./JobOrderConfirmDialog"
 import { fmtDateTime } from "@/lib/time-display"
 import { normalizePhone } from "@/lib/phone"
+import { useOnlineStatus } from "@/hooks/useOnlineStatus"
+import { enqueue } from "@/lib/offline/outbox"
 
 interface CustomerRecord {
   id:             string
@@ -179,6 +181,8 @@ export default function AddJobOrderForm() {
   const [fieldErrors,    setFieldErrors]    = useState<FieldErrors>({})
   const [apiError,       setApiError]       = useState<string | null>(null)
   const [success,        setSuccess]        = useState(false)
+  const [queued,         setQueued]         = useState(false)
+  const isOnline = useOnlineStatus()
   const [showConfirm,    setShowConfirm]    = useState(false)
   const [confirmSummary, setConfirmSummary] = useState<JobOrderSummary | null>(null)
 
@@ -536,6 +540,19 @@ export default function AddJobOrderForm() {
         payload.vehicle_unit   = manualVehicleUnit.trim() || null
       }
 
+      // Offline — queue it instead of creating it now. The actual creation
+      // (and its server-side guards, e.g. "customer already has an active
+      // job") only happens for real once this syncs — see
+      // docs/plan/operations-offline-mode-plan.md.
+      if (!isOnline) {
+        const jobOrderId = crypto.randomUUID()
+        await enqueue("add_job_order", { id: jobOrderId, ...payload }, jobOrderId)
+        setShowConfirm(false)
+        setQueued(true)
+        redirectTimer.current = setTimeout(() => router.push("/dashboard/job-management"), 1200)
+        return
+      }
+
       const res  = await fetch("/api/operations/job-management/add-job-order", {
         method:  "POST",
         headers: { "Content-Type": "application/json" },
@@ -614,6 +631,13 @@ export default function AddJobOrderForm() {
         <div className="flex items-center gap-2 bg-status-inspection/10 border border-status-inspection/30 rounded-card px-4 py-3 text-status-inspection text-sm font-medium">
           <CheckCircle2 className="w-4 h-4 shrink-0" />
           Job order created! Redirecting…
+        </div>
+      )}
+
+      {queued && (
+        <div className="flex items-center gap-2 bg-primary/10 border border-primary/30 rounded-card px-4 py-3 text-primary text-sm font-medium">
+          <CheckCircle2 className="w-4 h-4 shrink-0" />
+          You&apos;re offline — job order queued. It&apos;ll be created once you&apos;re back online.
         </div>
       )}
 
@@ -1018,12 +1042,12 @@ export default function AddJobOrderForm() {
             <button
               type="button"
               onClick={handleConfirmClick}
-              disabled={loading || success}
+              disabled={loading || success || queued}
               className={`flex-1 py-3 text-sm font-semibold text-white rounded-card transition-colors ${
-                loading || success ? "bg-muted cursor-not-allowed" : "bg-primary hover:bg-primary-hover"
+                loading || success || queued ? "bg-muted cursor-not-allowed" : "bg-primary hover:bg-primary-hover"
               }`}
             >
-              {loading ? "Creating…" : success ? "Created!" : "Create Job Order"}
+              {loading ? "Creating…" : success ? "Created!" : queued ? "Queued" : "Create Job Order"}
             </button>
           </div>
         </div>

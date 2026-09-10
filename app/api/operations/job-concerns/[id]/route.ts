@@ -57,14 +57,20 @@ export async function PATCH(
     let submitterId: string | null = null
     let concernJobId: string | null = null
     let concernCustomerName: string | null = null
+    // A queued offline resolution can replay against a concern someone else
+    // already resolved online in the meantime — treat that as an idempotent
+    // no-op (see docs/plan/operations-offline-mode-plan.md) rather than
+    // overwriting who actually resolved it or re-notifying the submitter.
+    let alreadyResolved = false
     if (status === "Resolved") {
       const { data: concernRow } = await admin
         .from("concern")
-        .select("submitted_by_id, job_order_id")
+        .select("status, submitted_by_id, job_order_id")
         .eq("id", id)
-        .single()
-      submitterId = (concernRow as any)?.submitted_by_id ?? null
-      concernJobId = (concernRow as any)?.job_order_id ?? null
+        .single<{ status: string; submitted_by_id: string | null; job_order_id: string | null }>()
+      alreadyResolved = concernRow?.status === "Resolved"
+      submitterId = concernRow?.submitted_by_id ?? null
+      concernJobId = concernRow?.job_order_id ?? null
       if (concernJobId) {
         const { data: jobRow } = await admin
           .from("job_order")
@@ -76,7 +82,7 @@ export async function PATCH(
     }
 
     const updates: Record<string, any> = { status }
-    if (status === "Resolved") {
+    if (status === "Resolved" && !alreadyResolved) {
       updates.resolved_by_id = user.id
       updates.resolved_at    = new Date().toISOString()
       updates.response_note  = response_note ?? null
@@ -99,7 +105,7 @@ export async function PATCH(
     }
 
     // ── Notify submitting head tech ─────────────────────────────────────────
-    if (status === "Resolved" && submitterId) {
+    if (status === "Resolved" && !alreadyResolved && submitterId) {
       try {
         await admin.from("notification").insert({
           user_id:      submitterId,

@@ -7,6 +7,8 @@ import { Button } from "@/components/ui/Button"
 import { Badge } from "@/components/ui/Badge"
 import { Textarea } from "@/components/ui/Field"
 import { useToast } from "@/components/ui/Toast"
+import { useOnlineStatus } from "@/hooks/useOnlineStatus"
+import { enqueue } from "@/lib/offline/outbox"
 import type { ConcernRecord } from "@/lib/operations/concern-record"
 
 interface ConcernDetailsDrawerProps {
@@ -17,6 +19,7 @@ interface ConcernDetailsDrawerProps {
 
 export default function ConcernDetailsDrawer({ record, onClose, onResolve }: ConcernDetailsDrawerProps) {
   const toast = useToast()
+  const isOnline = useOnlineStatus()
   const [responseNote, setResponseNote] = useState("")
   const [resolving, setResolving] = useState(false)
   const [resolveError, setResolveError] = useState<string | null>(null)
@@ -28,6 +31,20 @@ export default function ConcernDetailsDrawer({ record, onClose, onResolve }: Con
     setResolving(true)
     setResolveError(null)
     try {
+      // Offline — queue the resolution instead of writing it now; it lands
+      // for real once this syncs. See docs/plan/operations-offline-mode-plan.md.
+      if (!isOnline) {
+        await enqueue("resolve_concern", {
+          concernId: record.id,
+          status: "Resolved",
+          response_note: responseNote,
+        })
+        onResolve(record.id, responseNote)
+        setResponseNote("")
+        toast.info("You're offline — resolution queued. It'll sync when you're back online.")
+        return
+      }
+
       const res = await fetch(`/api/operations/job-concerns/${record.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
