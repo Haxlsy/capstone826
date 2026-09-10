@@ -10,10 +10,12 @@ import {
   ChevronsRight,
   LogOut,
   Settings,
+  WifiOff,
   type LucideIcon,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { useLogoutConfirm } from "@/hooks/useLogout"
+import { useOnlineStatus } from "@/hooks/useOnlineStatus"
 import { ConfirmModal } from "@/components/ui/Modal"
 
 export interface NavChild {
@@ -21,6 +23,8 @@ export interface NavChild {
   href: string
   icon: LucideIcon
   exact?: boolean
+  /** Not navigable while offline (data-only page that would show stale info). */
+  disabledOffline?: boolean
 }
 
 export interface NavItem {
@@ -30,7 +34,12 @@ export interface NavItem {
   exact?: boolean
   badge?: number
   children?: NavChild[]
+  /** Not navigable while offline (data-only page that would show stale info). */
+  disabledOffline?: boolean
 }
+
+/** Whether the sidebar's links can navigate — false while offline. */
+const SidebarOnlineContext = React.createContext(true)
 
 const STORAGE_KEY = "826_sidebar_collapsed"
 
@@ -73,6 +82,7 @@ export function AppSidebar({
 }) {
   const pathname = usePathname()
   const [collapsed, toggle] = useCollapsed()
+  const isOnline = useOnlineStatus()
   const { confirming, loading, requestLogout, cancel, confirm } = useLogoutConfirm()
 
   return (
@@ -111,11 +121,13 @@ export function AppSidebar({
       </div>
 
       {/* Nav */}
-      <nav className="flex-1 space-y-1 overflow-y-auto px-3 py-4 scroll-track">
-        {nav.map((item) => (
-          <NavNode key={item.label} item={item} pathname={pathname} collapsed={collapsed} />
-        ))}
-      </nav>
+      <SidebarOnlineContext.Provider value={isOnline}>
+        <nav className="flex-1 space-y-1 overflow-y-auto px-3 py-4 scroll-track">
+          {nav.map((item) => (
+            <NavNode key={item.label} item={item} pathname={pathname} collapsed={collapsed} />
+          ))}
+        </nav>
+      </SidebarOnlineContext.Provider>
 
       {/* Footer */}
       <div className="space-y-1 border-t border-shell-border px-3 py-4">
@@ -179,6 +191,7 @@ function NavNode({
         badge={item.badge}
         active={isActive(pathname, item.href!, item.exact)}
         collapsed={collapsed}
+        disabledOffline={item.disabledOffline}
       />
     )
   }
@@ -212,6 +225,7 @@ function NavNode({
               label={c.label}
               active={isActive(pathname, c.href, c.exact)}
               collapsed={false}
+              disabledOffline={c.disabledOffline}
               nested
             />
           ))}
@@ -284,6 +298,7 @@ function CollapsedGroup({
               label={c.label}
               active={isActive(pathname, c.href, c.exact)}
               collapsed={false}
+              disabledOffline={c.disabledOffline}
             />
           ))}
         </div>
@@ -300,6 +315,7 @@ function SidebarLink({
   active,
   collapsed,
   nested,
+  disabledOffline,
 }: {
   href: string
   icon: LucideIcon
@@ -308,7 +324,36 @@ function SidebarLink({
   active: boolean
   collapsed: boolean
   nested?: boolean
+  disabledOffline?: boolean
 }) {
+  const isOnline = React.useContext(SidebarOnlineContext)
+  // Lock data-only pages while offline — unless you're already on one (it was
+  // cached), where re-navigating to yourself is harmless.
+  const locked = !!disabledOffline && !isOnline && !active
+
+  if (locked) {
+    return (
+      <div
+        aria-disabled="true"
+        title={collapsed ? `${label} — available when you're back online` : "Available when you're back online"}
+        className={cn(
+          "group relative flex items-center gap-3 rounded-sm px-3 text-sm font-medium",
+          nested ? "py-2" : "py-2.5",
+          collapsed ? "justify-center px-0" : "",
+          "cursor-not-allowed text-white/30",
+        )}
+      >
+        <Icon className="h-4 w-4 shrink-0" />
+        {!collapsed && <span className="flex-1 truncate">{label}</span>}
+        {!collapsed ? (
+          <WifiOff className="h-3.5 w-3.5 shrink-0" />
+        ) : (
+          <WifiOff className="absolute right-1 top-1 h-2.5 w-2.5" />
+        )}
+      </div>
+    )
+  }
+
   return (
     <Link
       href={href}
