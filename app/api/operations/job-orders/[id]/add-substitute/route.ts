@@ -6,13 +6,16 @@ import { logAudit } from "@/hooks/audit-helpers"
 import { z } from "zod"
 
 const BodySchema = z.object({
-  technician_id: z.string().uuid(),
-  role:          z.enum(["detailer", "installer"]),
+  person_id: z.string().uuid(),
+  role:      z.enum(["detailer", "installer", "head_detailer", "head_installer"]),
 })
 
+const HEAD_ROLES = ["head_detailer", "head_installer"] as const
+
 // POST /api/operations/job-orders/[id]/add-substitute
-// Body: { technician_id: string, role: "detailer" | "installer" }
-// Adds a substitute crew member to the job team without touching existing assignments.
+// Body: { person_id: string, role: "detailer" | "installer" | "head_detailer" | "head_installer" }
+// Adds a substitute team member to the job without touching existing assignments.
+// Crew roles resolve `person_id` against `technician`; head roles against `user_account`.
 export async function POST(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
@@ -24,7 +27,8 @@ export async function POST(
     if (!parsed.success) {
       return NextResponse.json({ error: parsed.error.issues[0].message }, { status: 400 })
     }
-    const { technician_id, role } = parsed.data
+    const { person_id, role } = parsed.data
+    const isHead = (HEAD_ROLES as readonly string[]).includes(role)
 
     const cookieStore = await cookies()
     const supabase    = createClient(cookieStore)
@@ -38,23 +42,52 @@ export async function POST(
       .from("job_order")
       .select("id, status, customer_name")
       .eq("id", jobId)
-      .single()
+      .single<{ id: string; status: string; customer_name: string | null }>()
     if (!job) return NextResponse.json({ error: "Job order not found." }, { status: 404 })
 
-    // Verify technician exists and is available
-    const { data: tech } = await admin
-      .from("technician")
-      .select("id, full_name, role, is_available, is_archived")
-      .eq("id", technician_id)
-      .single()
-    if (!tech) return NextResponse.json({ error: "Technician not found." }, { status: 404 })
-    if (tech.is_archived) return NextResponse.json({ error: "Technician is archived." }, { status: 400 })
+    // Resolve + verify the person, and the job_order_team column to write.
+    let personName: string
+    let teamRow: Record<string, unknown>
 
-    await admin.from("job_order_team").insert({
-      job_order_id:  jobId,
-      technician_id,
-      role_in_job:   role,
-    })
+    if (isHead) {
+      const { data: head } = await admin
+        .from("user_account")
+        .select("id, full_name, role, is_archived")
+        .eq("id", person_id)
+        .single()
+      if (!head) return NextResponse.json({ error: "Head technician not found." }, { status: 404 })
+      if (head.is_archived) return NextResponse.json({ error: "Head technician is archived." }, { status: 400 })
+      if (head.role !== role) {
+        return NextResponse.json({ error: `That account is not a ${role.replace("_", " ")}.` }, { status: 400 })
+      }
+      personName = head.full_name
+      teamRow = { job_order_id: jobId, user_account_id: person_id, role_in_job: role }
+    } else {
+      const { data: tech } = await admin
+        .from("technician")
+        .select("id, full_name, role, is_available, is_archived")
+        .eq("id", person_id)
+        .single()
+      if (!tech) return NextResponse.json({ error: "Technician not found." }, { status: 404 })
+      if (tech.is_archived) return NextResponse.json({ error: "Technician is archived." }, { status: 400 })
+      personName = tech.full_name
+      teamRow = { job_order_id: jobId, technician_id: person_id, role_in_job: role }
+    }
+
+    // Don't stack duplicates — same person, same role, same job.
+    const idColumn = isHead ? "user_account_id" : "technician_id"
+    const { data: existing } = await admin
+      .from("job_order_team")
+      .select("id")
+      .eq("job_order_id", jobId)
+      .eq("role_in_job", role)
+      .eq(idColumn, person_id)
+      .maybeSingle()
+    if (existing) {
+      return NextResponse.json({ error: `${personName} is already on this job as a ${role.replace("_", " ")}.` }, { status: 400 })
+    }
+
+    await admin.from("job_order_team").insert(teamRow)
 
     const { data: profile } = await admin
       .from("user_account")
@@ -68,8 +101,8 @@ export async function POST(
         user_name: profile.full_name,
         role:      profile.role,
         category:  "update",
-        action:    `Added substitute ${role} "${tech.full_name}" to job`,
-        target:    (job as any).customer_name ?? jobId,
+        action:    `Added substitute ${role.replace("_", " ")} "${personName}" to job`,
+        target:    job.customer_name ?? jobId,
       })
     }
 

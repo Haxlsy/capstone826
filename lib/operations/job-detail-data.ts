@@ -82,8 +82,17 @@ export async function getJobDetailData(id: string) {
   const expectedCompletionAt: string | null = expected ?? (j.expected_completion_at ?? null)
   const updatedEstAt: string | null = updated
 
-  const headDetailer  = (team ?? []).find((t: any) => t.role_in_job === "head_detailer")
-  const headInstaller = (team ?? []).find((t: any) => t.role_in_job === "head_installer")
+  // First row of each head role is the primary; any additional rows are
+  // substitutes added from Operations' Job Order Detail. `(t: any)` matches
+  // this file's existing convention — Supabase infers embedded to-one
+  // relations as arrays, which every mapping below already casts around.
+  const headDetailerRows  = (team ?? []).filter((t: any) => t.role_in_job === "head_detailer")
+  const headInstallerRows = (team ?? []).filter((t: any) => t.role_in_job === "head_installer")
+  const headDetailer  = headDetailerRows[0]
+  const headInstaller = headInstallerRows[0]
+  const toSub = (t: any) => ({ id: (t.user_account as any)?.id ?? "", full_name: (t.user_account as any)?.full_name ?? "Unknown" })
+  const headDetailerSubs  = headDetailerRows.slice(1).map(toSub)
+  const headInstallerSubs = headInstallerRows.slice(1).map(toSub)
   const detailers     = (team ?? [])
     .filter((t: any) => t.role_in_job === "detailer")
     .map((t: any) => ({ id: (t.technician as any)?.id ?? "", name: (t.technician as any)?.full_name ?? "Unknown" }))
@@ -153,6 +162,8 @@ export async function getJobDetailData(id: string) {
       service: j.service?.name ?? "—",
       head_detailer: (headDetailer?.user_account as any) ?? null,
       head_installer: (headInstaller?.user_account as any) ?? null,
+      head_detailer_substitutes: headDetailerSubs,
+      head_installer_substitutes: headInstallerSubs,
       detailers,
       installers,
       status: j.status,
