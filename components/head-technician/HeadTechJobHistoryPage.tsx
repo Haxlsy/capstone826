@@ -171,6 +171,18 @@ export default function HeadTechJobHistoryPage({ jobId }: { jobId: string }) {
   // touch a stage row still refreshes this page live.
   useRealtimeRefetch(["job_stage_progress", "job_order"], useCallback(() => load({ silent: true }), [load]));
 
+  // Realtime has no replay — an event that fires while a phone's screen is
+  // locked or the app is backgrounded is missed, not just delayed. A
+  // deterministic catch-up check on regaining foreground closes that gap
+  // regardless of whether the realtime connection stayed alive.
+  useEffect(() => {
+    function onVisible() {
+      if (document.visibilityState === "visible") load({ silent: true });
+    }
+    document.addEventListener("visibilitychange", onVisible);
+    return () => document.removeEventListener("visibilitychange", onVisible);
+  }, [load]);
+
   // ── Derived ───────────────────────────────────────────────────────────────
 
   const isInstaller = userRole === "head_installer";

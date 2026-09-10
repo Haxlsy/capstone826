@@ -63,7 +63,7 @@ interface FieldErrors {
 
 function inputCls(hasError?: boolean, locked?: boolean) {
   if (locked) return "w-full border border-border rounded-sm px-3 py-2 text-sm text-body bg-surface-muted cursor-not-allowed focus:outline-none"
-  return `w-full border ${hasError ? "border-status-delayed focus:ring-status-delayed/30 bg-status-delayed" : "border-border focus:ring-primary/30 bg-surface"} rounded-sm px-3 py-2 text-sm text-body focus:outline-none focus:ring-2`
+  return `w-full border ${hasError ? "border-status-delayed focus:ring-status-delayed/30 bg-status-delayed/10" : "border-border focus:ring-primary/30 bg-surface"} rounded-sm px-3 py-2 text-sm text-body focus:outline-none focus:ring-2`
 }
 
 function selectCls(hasError?: boolean) {
@@ -106,7 +106,7 @@ function CrewCheckboxList({
       ) : members.length === 0 ? (
         <p className="text-xs text-muted py-2">No available {label.toLowerCase()} at the moment.</p>
       ) : (
-        <div className={`border rounded-sm divide-y divide-border-subtle max-h-40 overflow-y-auto ${error ? "border-status-delayed bg-status-delayed" : "border-border"}`}>
+        <div className={`border rounded-sm divide-y divide-border-subtle max-h-40 overflow-y-auto ${error ? "border-status-delayed bg-status-delayed/10" : "border-border"}`}>
           {members.map((c) => {
             const disabled = c.on_job || !c.is_available
             return (

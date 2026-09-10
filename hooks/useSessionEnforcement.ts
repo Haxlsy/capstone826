@@ -21,10 +21,16 @@ export function useSessionEnforcement() {
       const json = await res.json()
       if (json?.valid === false) {
         loggingOutRef.current = true
-        // Hard redirect, not router.push — tears down open realtime
+        // "no_session" is just as much the normal shape of a deliberate
+        // logout (this check can fire mid-logout, before that flow's own
+        // redirect completes) as it is a naturally-expired session — only a
+        // confirmed "mismatch" (a session that IS still valid, just not the
+        // current one) means another device actually signed in. Hard
+        // redirect either way, not router.push — tears down open realtime
         // channels/client state instead of a soft client-side transition
         // leaving stale connections behind.
-        window.location.href = "/login?reason=signed_in_elsewhere"
+        const reason = json?.reason === "mismatch" ? "?reason=signed_in_elsewhere" : ""
+        window.location.href = `/login${reason}`
       }
     } catch {
       // Network blip — same reasoning, don't force a logout on ambiguity.
