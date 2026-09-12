@@ -21,15 +21,20 @@ const PREWARM_URLS = [
   "/api/operations/job-management/list-customers",
   "/api/operations/job-management/list-services",
   "/api/operations/job-management/list-technicians",
+  "/api/operations/job-management/all-service-stages",
 ]
 
 function prewarm() {
   for (const u of PREWARM_URLS) {
     // The document response (hard navigation / reload fallback).
     fetch(u).catch(() => {})
-    // The RSC/flight payload (soft <Link> navigation) — pages only.
+    // The RSC/flight payload (soft <Link> navigation) — pages only. Deliberately
+    // NOT sending Next-Router-Prefetch here: every route here is dynamic with
+    // its own loading.tsx, so a prefetch-flavored request only gets a loading
+    // skeleton back — useless (worse than useless — actively wrong) for
+    // offline use. See public/sw.js's isPrefetchRequest().
     if (!u.startsWith("/api/")) {
-      fetch(u, { headers: { RSC: "1", "Next-Router-Prefetch": "1" } }).catch(() => {})
+      fetch(u, { headers: { RSC: "1" } }).catch(() => {})
     }
   }
 }

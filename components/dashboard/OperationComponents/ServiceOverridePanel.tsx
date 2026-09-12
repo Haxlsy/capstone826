@@ -27,6 +27,9 @@ interface Props {
   availableServices:  ServiceInfo[]
   originalStages:     Stage[]
   stagesLoading:      boolean
+  /** True when stages couldn't be loaded (offline + not in the bulk snapshot)
+   *  — distinct from a service that genuinely has zero stages defined. */
+  stagesUnavailable?: boolean
   customName:         string
   customDescription:  string
   customDurationMins: number | null
@@ -185,6 +188,7 @@ export default function ServiceOverridePanel({
   availableServices,
   originalStages,
   stagesLoading,
+  stagesUnavailable = false,
   customName,
   customDescription,
   customDurationMins,
@@ -450,6 +454,10 @@ export default function ServiceOverridePanel({
 
           {stagesLoading ? (
             <p className="text-xs text-muted">Loading stages…</p>
+          ) : stageSections.length === 0 && stagesUnavailable ? (
+            <p className="text-xs text-status-delayed italic">
+              Stages unavailable offline for this service — reconnect to load them.
+            </p>
           ) : stageSections.length === 0 ? (
             <p className="text-xs text-muted italic">No stages defined for this service.</p>
           ) : (

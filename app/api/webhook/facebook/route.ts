@@ -85,6 +85,7 @@ import {
   existingBookingHandoff,
   violationWarning as violationWarningCopy,
   offTopicRedirect,
+  complaintClarify,
   resolveTemplate,
   pickCopy,
   detectMessageLanguage,
@@ -262,13 +263,19 @@ async function handleInboundMessage(
   const profile = await fetchMessengerProfile(senderId)
 
   // Get or create the conversation and capture its current status + flow flags.
-  const { conversation_id, status, is_vehicle_inquiry, is_booking_flow, awaiting_confirmation, active_booking_offered, booking_duplicate_notified, conflict_pending, awaiting_link_verification, link_attempts, link_conflict_pending, offtopic_streak, policy_streak, booking_draft } =
+  const { conversation_id, status, is_vehicle_inquiry, is_booking_flow, awaiting_confirmation, active_booking_offered, booking_duplicate_notified, conflict_pending, awaiting_link_verification, link_attempts, link_conflict_pending, offtopic_streak, policy_streak, complaint_streak, booking_draft } =
     await getOrCreateConversationByPsid(senderId, profile.name)
 
   // Best-effort flag persistence: a failure here must not abort the reply.
   const safe = async (fn: () => Promise<unknown>) => {
     try { await fn() } catch (err) { console.error("[webhook/facebook] state persist failed:", err) }
   }
+
+  // Tracks this turn's complaint_streak value across the several
+  // setViolationStreaks() call sites below, so a fresh write earlier in the
+  // turn (the first-complaint-classification branch) never gets clobbered
+  // back to the stale value read above by a later, unrelated call.
+  let complaintStreakNext = complaint_streak
   const auditActor = { user_id: null, user_name: profile.name || "Messenger user", role: "customer" as const }
 
   // Build AI history BEFORE inserting the current message.
@@ -711,14 +718,28 @@ async function handleInboundMessage(
     // explicit report wording, or an existing-booking operation).
     const violationHandled = !humanRequested && !reportIntent && !existingBookingIntent
     if (aiViolation === "complaint" && violationHandled) {
-      // A complaint is a real concern — escalate immediately, filed as a
-      // Report rather than a generic Human Response. Reusing `reportIntent`
-      // (already a `let`) gets that routing and the "report" ack for free
-      // from the existing logic just above and the inquiry_type resolution
-      // further down — no other changes needed there.
-      escalate = true
-      reportIntent = true
-      escalateReason = "report"
+      if (complaint_streak < 1) {
+        // First complaint signal this conversation — clarify instead of an
+        // instant full mute (an ambiguous/mildly-worded message is easy for
+        // the model to misread). A direct "Report a Concern" tap or report
+        // keyword bypasses this branch entirely (violationHandled is false
+        // then) and still escalates immediately, so a customer who does want
+        // a human right away isn't slowed down.
+        escalate = false
+        escalateReason = null
+        reply = complaintClarify(effectiveLang)
+        complaintStreakNext = 1
+        await safe(() => setViolationStreaks(conversation_id, offtopic_streak, policy_streak, complaintStreakNext))
+      } else {
+        // Second consecutive complaint-classified message — a real concern,
+        // escalate immediately, filed as a Report rather than a generic Human
+        // Response. Reusing `reportIntent` (already a `let`) gets that
+        // routing and the "report" ack for free from the existing logic just
+        // above and the inquiry_type resolution further down.
+        escalate = true
+        reportIntent = true
+        escalateReason = "report"
+      }
     } else if (aiViolation === "policy" && violationHandled) {
       // A threat, jailbreak attempt, or abusive/harassing message is also a
       // real concern — escalate immediately rather than warning first. The
@@ -781,7 +802,12 @@ async function handleInboundMessage(
       // off-topic/policy streak ladder and must not affect it.
       aiViolation === "complaint" ? "none" : aiViolation
     )
-    await safe(() => setViolationStreaks(conversation_id, vs.offtopic, vs.policy))
+    // Pass the tracked complaint streak through unchanged — this ladder call
+    // has nothing to do with it (it's set directly, above, when a complaint
+    // classification actually fires this turn); using complaintStreakNext
+    // (not the stale complaint_streak read at the top of the request) avoids
+    // clobbering a fresh same-turn write back to its old value.
+    await safe(() => setViolationStreaks(conversation_id, vs.offtopic, vs.policy, complaintStreakNext))
     // Repeated off-topic/policy messages are the other "AI cannot help here"
     // case. The warnings still fire either way — they keep the conversation on
     // track without involving staff.
@@ -1318,10 +1344,16 @@ async function handleInboundMessage(
     if (inquiryErr) console.error("[webhook/facebook] inquiry insert failed:", inquiryErr.message)
 
     // ── Notify Sales users — always, for these inquiry types (mandatory) ────
-    if (inquiry_type === "Booking" || inquiry_type === "Human Response") {
+    // Report is included: it's the genuine-complaint path (a real concern
+    // reached this branch, whether by explicit request or two consecutive
+    // "complaint" classifications), and the bot's own escalation message
+    // promises a staff member will personally follow up — this notification
+    // is what makes that true.
+    if (inquiry_type === "Booking" || inquiry_type === "Human Response" || inquiry_type === "Report") {
+      const label = inquiry_type === "Report" ? "⚠️ New Report (concern) inquiry" : `New ${inquiry_type} inquiry`
       await notifyRole(admin, "sales", {
         type:    "inquiry",
-        message: `New ${inquiry_type} inquiry from ${profile.name}`,
+        message: `${label} from ${profile.name}`,
       })
     }
 
@@ -1389,7 +1421,7 @@ async function handleInboundMessage(
     await safe(() => setAwaitingLinkVerification(conversation_id, false))
     await safe(() => setLinkAttempts(conversation_id, 0))
     await safe(() => setLinkConflictPending(conversation_id, false))
-    await safe(() => setViolationStreaks(conversation_id, 0, 0))
+    await safe(() => setViolationStreaks(conversation_id, 0, 0, 0))
     await safe(() => setBookingDraft(conversation_id, null))
     return
   }
