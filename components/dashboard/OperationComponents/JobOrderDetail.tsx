@@ -141,6 +141,8 @@ export default function JobOrderDetail({
 
   const [completeConfirm, setCompleteConfirm] = useState(false)
 
+  const [exportConfirm, setExportConfirm] = useState(false)
+
   const [subModal, setSubModal] = useState(false)
   const [subRole, setSubRole] = useState<"detailer" | "installer">("detailer")
   const [subTechs, setSubTechs] = useState<
@@ -533,7 +535,7 @@ export default function JobOrderDetail({
         </Link>
         <div className="flex flex-wrap items-center gap-2">
           {job.status !== "Released" && (
-            <Button variant="secondary" onClick={exportPDF}>
+            <Button variant="secondary" onClick={() => setExportConfirm(true)}>
               <FileText className="h-4 w-4" />
               Export PDF
             </Button>
@@ -835,6 +837,22 @@ export default function JobOrderDetail({
           </div>
         </CardBody>
       </Card>
+
+      {/* Export PDF Confirmation */}
+      <ConfirmModal
+        open={exportConfirm}
+        onClose={() => setExportConfirm(false)}
+        onConfirm={() => {
+          setExportConfirm(false)
+          exportPDF()
+        }}
+        title="Export Job Order as PDF"
+        message={`Export ${job.customer_name}'s job order? This opens a print preview in a new tab.`}
+        confirmLabel="Export"
+        cancelLabel="Cancel"
+        tone="primary"
+        icon={FileText}
+      />
 
       {/* Mark as Completed Confirmation */}
       <ConfirmModal

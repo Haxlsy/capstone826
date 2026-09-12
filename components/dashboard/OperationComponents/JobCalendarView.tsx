@@ -20,7 +20,7 @@ const MONTH_NAMES = [
 const legendItems = [
   { status: "Pending", label: "Pending" },
   { status: "Ongoing", label: "Ongoing" },
-  { status: "For Release", label: "For Release / Released" },
+  { status: "For Inspection", label: "For Inspection" },
   { status: "For Rework", label: "For Rework" },
   { status: "Delayed", label: "Delayed" },
 ]
