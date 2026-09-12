@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation"
 import { FileText, FileSpreadsheet } from "lucide-react"
 import { PageHeader } from "@/components/ui/PageHeader"
 import { Button } from "@/components/ui/Button"
+import { ConfirmModal } from "@/components/ui/Modal"
 import { SearchBar } from "@/components/ui/SearchBar"
 import { Card } from "@/components/ui/Card"
 import { DataTable, type Column } from "@/components/ui/DataTable"
@@ -63,6 +64,8 @@ export default function JobOrderRecords({ jobOrders: rawOrders }: { jobOrders: a
   const [pendingService, setPendingService] = useState("All")
   const [pendingStart, setPendingStart] = useState("")
   const [pendingEnd, setPendingEnd] = useState("")
+
+  const [exportConfirm, setExportConfirm] = useState<"pdf" | "excel" | null>(null)
 
   const serviceOptions = [...new Set(records.map((r) => r.service).filter((s) => s !== "—"))]
 
@@ -246,10 +249,10 @@ export default function JobOrderRecords({ jobOrders: rawOrders }: { jobOrders: a
           containerClassName="max-w-sm flex-1"
         />
         <div className="flex items-center gap-2">
-          <Button variant="secondary" onClick={exportPDF}>
+          <Button variant="secondary" onClick={() => setExportConfirm("pdf")}>
             <FileText className="h-4 w-4" /> Export PDF
           </Button>
-          <Button variant="secondary" onClick={exportCSV}>
+          <Button variant="secondary" onClick={() => setExportConfirm("excel")}>
             <FileSpreadsheet className="h-4 w-4" /> Export Excel
           </Button>
         </div>
@@ -275,6 +278,27 @@ export default function JobOrderRecords({ jobOrders: rawOrders }: { jobOrders: a
             totalLabel={`${filtered.length} record${filtered.length !== 1 ? "s" : ""}`}
           />
         }
+      />
+
+      <ConfirmModal
+        open={exportConfirm !== null}
+        onClose={() => setExportConfirm(null)}
+        onConfirm={() => {
+          const type = exportConfirm
+          setExportConfirm(null)
+          if (type === "pdf") exportPDF()
+          else if (type === "excel") exportCSV()
+        }}
+        title={exportConfirm === "excel" ? "Export as Excel" : "Export as PDF"}
+        message={
+          exportConfirm === "excel"
+            ? `Export ${filtered.length} record${filtered.length !== 1 ? "s" : ""} to a CSV file?`
+            : `Export ${filtered.length} record${filtered.length !== 1 ? "s" : ""}? This opens a print preview in a new tab.`
+        }
+        confirmLabel="Export"
+        cancelLabel="Cancel"
+        tone="primary"
+        icon={exportConfirm === "excel" ? FileSpreadsheet : FileText}
       />
     </div>
   )
