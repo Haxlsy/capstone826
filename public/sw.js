@@ -2,7 +2,7 @@
 // dashboard so Operations can navigate to Add Job Order / Concerns and queue
 // work while offline (see docs/plan/operations-offline-testing-guide.md).
 
-const SW_VERSION = "v4";
+const SW_VERSION = "v5";
 const PAGES_CACHE  = `pages-${SW_VERSION}`;
 const RSC_CACHE    = `rsc-${SW_VERSION}`;
 const STATIC_CACHE = `static-${SW_VERSION}`;
@@ -33,6 +33,27 @@ function isRscRequest(request, url) {
 
 function bareKey(url) {
   return url.origin + url.pathname;
+}
+
+// True last resort for a real document navigation: neither the route itself
+// nor the precached /offline page was available. Should be rare (pre-warm
+// keeps retrying until it succeeds — see ServiceWorkerRegistration.tsx), but
+// this makes it structurally impossible for an app-route navigation to ever
+// fall through to the browser's own bare "this page couldn't load" error.
+const INLINE_FALLBACK = `<!doctype html><html><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1"><title>Offline</title>
+<style>body{font-family:system-ui,sans-serif;display:flex;min-height:100vh;margin:0;
+align-items:center;justify-content:center;background:#f7f7f7;color:#111}
+.box{text-align:center;padding:24px}button{margin-top:16px;padding:10px 20px;border:0;
+border-radius:999px;background:#0f766e;color:#fff;font-weight:600}</style></head>
+<body><div class="box"><h1>You're offline</h1>
+<p>This page hasn't been saved for offline use yet. Reconnect and open it once first.</p>
+<button onclick="location.reload()">Try again</button></div></body></html>`;
+
+function inlineOfflineResponse() {
+  return new Response(INLINE_FALLBACK, {
+    headers: { "Content-Type": "text/html; charset=utf-8" },
+  });
 }
 
 // After caching an HTML document or an RSC/flight payload, make sure the JS/CSS
@@ -178,7 +199,7 @@ self.addEventListener("fetch", (event) => {
           const offlineCache = await caches.open(PAGES_CACHE);
           const offline = await offlineCache.match(OFFLINE_PAGE);
           if (offline) return offline;
-          throw err;
+          return inlineOfflineResponse();
         }
       })()
     );

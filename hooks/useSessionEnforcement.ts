@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useCallback, useRef } from "react"
 import { createClient } from "@/lib/supabase/client"
+import { useOnlineStatus } from "@/hooks/useOnlineStatus"
 
 // Single active session per account. proxy.ts already catches a stale
 // session on every page navigation, but an idle tab that never navigates
@@ -12,6 +13,7 @@ import { createClient } from "@/lib/supabase/client"
 export function useSessionEnforcement() {
   const [userId, setUserId] = useState<string | null>(null)
   const loggingOutRef = useRef(false)
+  const isOnline = useOnlineStatus()
 
   const checkStatus = useCallback(async () => {
     if (loggingOutRef.current) return
@@ -38,14 +40,20 @@ export function useSessionEnforcement() {
   }, [])
 
   // Get the current user id, and run one check on mount — covers a tab
-  // that was already stale before this hook even mounted.
+  // that was already stale before this hook even mounted. getUser() calls
+  // Supabase directly (cross-origin — the service worker can't cache it, and
+  // it always rejects offline), so only attempt it once we're confirmed
+  // online — this re-runs on reconnect too — and never let it become an
+  // unhandled rejection.
   useEffect(() => {
-    const supabase = createClient()
-    supabase.auth.getUser().then(({ data: { user } }) => {
-      if (user) setUserId(user.id)
-    })
+    if (isOnline) {
+      const supabase = createClient()
+      supabase.auth.getUser().then(({ data: { user } }) => {
+        if (user) setUserId(user.id)
+      }).catch(() => {})
+    }
     checkStatus()
-  }, [checkStatus])
+  }, [isOnline, checkStatus])
 
   // Realtime subscription — fires the instant a login (this account, any
   // browser) writes a new session_token.
