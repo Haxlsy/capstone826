@@ -21,6 +21,7 @@ export async function getOrCreateConversationByPsid(
   link_conflict_pending: boolean
   offtopic_streak: number
   policy_streak: number
+  complaint_streak: number
   booking_draft: CustomerDetails
 }> {
   const supabase = createAdminClient()
@@ -28,7 +29,7 @@ export async function getOrCreateConversationByPsid(
   const { data: existing } = await supabase
     .from("messenger_conversation")
     .select(
-      "conversation_id, status, is_vehicle_inquiry, is_booking_flow, awaiting_confirmation, active_booking_offered, booking_duplicate_notified, conflict_pending, awaiting_link_verification, link_attempts, link_conflict_pending, offtopic_streak, policy_streak, draft_name, draft_contact, draft_plate, draft_vehicle, draft_email"
+      "conversation_id, status, is_vehicle_inquiry, is_booking_flow, awaiting_confirmation, active_booking_offered, booking_duplicate_notified, conflict_pending, awaiting_link_verification, link_attempts, link_conflict_pending, offtopic_streak, policy_streak, complaint_streak, draft_name, draft_contact, draft_plate, draft_vehicle, draft_email"
     )
     .eq("psid", psid)
     .maybeSingle()
@@ -55,6 +56,7 @@ export async function getOrCreateConversationByPsid(
       link_conflict_pending: Boolean(existing.link_conflict_pending),
       offtopic_streak: Number(existing.offtopic_streak ?? 0),
       policy_streak: Number(existing.policy_streak ?? 0),
+      complaint_streak: Number(existing.complaint_streak ?? 0),
       booking_draft: {
         full_name:      existing.draft_name    ?? null,
         contact_number: existing.draft_contact ?? null,
@@ -82,7 +84,7 @@ export async function getOrCreateConversationByPsid(
     throw new Error(error?.message ?? "Failed to create conversation")
   }
 
-  return { conversation_id: data.conversation_id, status: "open", is_vehicle_inquiry: false, is_booking_flow: false, awaiting_confirmation: false, active_booking_offered: false, booking_duplicate_notified: false, conflict_pending: false, awaiting_link_verification: false, link_attempts: 0, link_conflict_pending: false, offtopic_streak: 0, policy_streak: 0, booking_draft: { full_name: null, contact_number: null, plate_number: null, vehicle_unit: null, email: null } }
+  return { conversation_id: data.conversation_id, status: "open", is_vehicle_inquiry: false, is_booking_flow: false, awaiting_confirmation: false, active_booking_offered: false, booking_duplicate_notified: false, conflict_pending: false, awaiting_link_verification: false, link_attempts: 0, link_conflict_pending: false, offtopic_streak: 0, policy_streak: 0, complaint_streak: 0, booking_draft: { full_name: null, contact_number: null, plate_number: null, vehicle_unit: null, email: null } }
 }
 
 /**
@@ -110,17 +112,24 @@ export async function setBookingDraft(
   if (error) throw new Error(error.message)
 }
 
-/** Sets the consecutive off-topic / policy-violation streak counters for a conversation. */
+/**
+ * Sets the consecutive off-topic / policy-violation / complaint streak
+ * counters for a conversation. `complaint` is independent of the other two —
+ * it isn't part of the off-topic/policy graduated ladder (a "complaint" is a
+ * real concern, given only one grace reply, not four) — see
+ * app/api/webhook/facebook/route.ts.
+ */
 export async function setViolationStreaks(
   conversation_id: number,
   offtopic: number,
-  policy: number
+  policy: number,
+  complaint: number
 ) {
   const supabase = createAdminClient()
 
   const { error } = await supabase
     .from("messenger_conversation")
-    .update({ offtopic_streak: offtopic, policy_streak: policy })
+    .update({ offtopic_streak: offtopic, policy_streak: policy, complaint_streak: complaint })
     .eq("conversation_id", conversation_id)
 
   if (error) throw new Error(error.message)
