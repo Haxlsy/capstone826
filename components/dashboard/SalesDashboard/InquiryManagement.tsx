@@ -391,7 +391,7 @@ export default function InquiryManagement() {
                   )}
                 >
                   <div className="w-9 h-9 rounded-full bg-surface-muted flex items-center justify-center text-xs font-bold shrink-0 text-body">
-                    {inq.extractedName ? getInitials(inq.extractedName) : "?"}
+                    {inq.extractedName ? getInitials(inq.extractedName) : <User className="w-4 h-4 text-muted" />}
                   </div>
                   <div className="flex-1 min-w-0">
                     <div className="flex items-start justify-between gap-1">
@@ -419,7 +419,7 @@ export default function InquiryManagement() {
             <div className="flex items-start justify-between gap-3">
               <div className="flex items-center gap-3">
                 <div className="w-12 h-12 rounded-full bg-surface-muted flex items-center justify-center text-sm font-bold text-body">
-                  {selected.extractedName ? getInitials(selected.extractedName) : "?"}
+                  {selected.extractedName ? getInitials(selected.extractedName) : <User className="w-5 h-5 text-muted" />}
                 </div>
                 <div>
                   <p className="text-base font-bold text-heading">{selected.messengerName}</p>
