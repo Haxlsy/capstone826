@@ -173,6 +173,12 @@ export default function AddJobOrderForm() {
   const [originalStages,          setOriginalStages]          = useState<Stage[]>([])
   const [customStages,            setCustomStages]            = useState<Stage[]>([])
   const [stagesLoading,           setStagesLoading]           = useState(false)
+  const [stagesUnavailable,       setStagesUnavailable]       = useState(false)
+  // Every non-archived service's stages, bulk-fetched once on mount (see
+  // /api/operations/job-management/all-service-stages) — pre-warmed by the
+  // service worker so switching services works instantly, online or offline,
+  // instead of relying on whichever specific services were clicked before.
+  const [allServiceStages,        setAllServiceStages]        = useState<Record<string, Stage[]>>({})
   const [selectedHeadDetailerId,  setSelectedHeadDetailerId]  = useState<string | null>(null)
   const [selectedHeadInstallerId, setSelectedHeadInstallerId] = useState<string | null>(null)
   const [selectedDetailerIds,     setSelectedDetailerIds]     = useState<Set<string>>(new Set())
@@ -199,7 +205,7 @@ export default function AddJobOrderForm() {
     async function loadRefs() {
       setLoadingRefs(true)
       try {
-        const [cRes, sRes, tRes] = await Promise.all([
+        const [cRes, sRes, tRes, stagesRes] = await Promise.all([
           fetch("/api/operations/job-management/list-customers").then((r) =>
             r.ok ? r.json() : { customers: [] }
           ),
@@ -209,11 +215,15 @@ export default function AddJobOrderForm() {
           fetch("/api/operations/job-management/list-technicians").then((r) =>
             r.ok ? r.json() : { technicians: [], crew_members: [] }
           ),
+          fetch("/api/operations/job-management/all-service-stages").then((r) =>
+            r.ok ? r.json() : { stagesByService: {} }
+          ),
         ])
         setCustomers(cRes.customers ?? [])
         setServices(sRes.services ?? [])
         setHeadTechs(tRes.technicians ?? [])
         setCrewMembers(tRes.crew_members ?? [])
+        setAllServiceStages(stagesRes.stagesByService ?? {})
       } catch {
         setApiError("Failed to load form data. Please refresh.")
       } finally {
@@ -243,8 +253,11 @@ export default function AddJobOrderForm() {
     setFieldErrors((prev) => { const next = { ...prev }; delete next[key]; return next })
   }
 
+  // Fallback for a service not in the bulk all-service-stages snapshot (e.g.
+  // created after the last online pre-warm) — a live, single-service fetch.
   async function fetchStages(serviceId: string) {
     setStagesLoading(true)
+    setStagesUnavailable(false)
     try {
       const res  = await fetch(`/api/operations/job-management/service-stages?serviceId=${serviceId}`)
       const json = await res.json()
@@ -252,7 +265,11 @@ export default function AddJobOrderForm() {
       setOriginalStages(stages)
       setCustomStages(stages)
     } catch {
-      // non-fatal — panel will show empty stage list
+      // Couldn't reach the server and this service wasn't in the bulk
+      // snapshot either — genuinely unknown, not "zero stages". Flag it so
+      // ServiceOverridePanel shows an honest message instead of the same
+      // text a real zero-stage service gets.
+      setStagesUnavailable(true)
     } finally {
       setStagesLoading(false)
     }
@@ -282,6 +299,7 @@ export default function AddJobOrderForm() {
     setCustomDurationMins(null)
     setOriginalStages([])
     setCustomStages([])
+    setStagesUnavailable(false)
     clearField("service")
   }
 
@@ -291,6 +309,7 @@ export default function AddJobOrderForm() {
     setCustomDurationMins(null)
     setOriginalStages([])
     setCustomStages([])
+    setStagesUnavailable(false)
   }
 
   function handleServiceSelect(svc: Service) {
@@ -298,9 +317,22 @@ export default function AddJobOrderForm() {
     setCustomServiceName(svc.name)
     setCustomDescription(svc.description ?? "")
     setCustomDurationMins(null)
-    setOriginalStages([])
-    setCustomStages([])
-    fetchStages(svc.id)
+    setStagesUnavailable(false)
+
+    // Bulk snapshot (see all-service-stages, fetched once on mount) covers
+    // this service — use it directly, no network round-trip, works offline.
+    // A present key (even []) means this is a known, genuinely-empty service;
+    // only an absent key (unknown to the snapshot) falls back to a live fetch.
+    const known = allServiceStages[svc.id]
+    if (known) {
+      setOriginalStages(known)
+      setCustomStages(known)
+      setStagesLoading(false)
+    } else {
+      setOriginalStages([])
+      setCustomStages([])
+      fetchStages(svc.id)
+    }
   }
 
   function handleResetOverrides() {
@@ -1097,6 +1129,7 @@ export default function AddJobOrderForm() {
           availableServices={availableServices}
           originalStages={originalStages}
           stagesLoading={stagesLoading}
+          stagesUnavailable={stagesUnavailable}
           customName={customServiceName}
           customDescription={customDescription}
           customDurationMins={customDurationMins}

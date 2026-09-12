@@ -2,7 +2,7 @@
 // dashboard so Operations can navigate to Add Job Order / Concerns and queue
 // work while offline (see docs/plan/operations-offline-testing-guide.md).
 
-const SW_VERSION = "v5";
+const SW_VERSION = "v6";
 const PAGES_CACHE  = `pages-${SW_VERSION}`;
 const RSC_CACHE    = `rsc-${SW_VERSION}`;
 const STATIC_CACHE = `static-${SW_VERSION}`;
@@ -33,6 +33,19 @@ function isRscRequest(request, url) {
 
 function bareKey(url) {
   return url.origin + url.pathname;
+}
+
+// A Next.js viewport/hover prefetch (Next-Router-Prefetch: 1) — sent by every
+// mounted <Link>'s ambient auto-prefetch, and by our own pre-warm before this
+// fix. For a dynamic route with a loading.tsx (every route in this app —
+// app/dashboard/layout.tsx calls cookies()), Next only renders down to the
+// loading boundary for a prefetch request: a skeleton, not the real page.
+// Caching that under the same key a real navigation uses poisons offline
+// navigation with a payload the router can't reconcile ("click does
+// nothing" — see the RSC/HTML mismatch comment below; this is the same
+// failure mode, triggered by a prefetch/full mismatch instead).
+function isPrefetchRequest(request) {
+  return request.headers.get("Next-Router-Prefetch") === "1";
 }
 
 // True last resort for a real document navigation: neither the route itself
@@ -171,7 +184,11 @@ self.addEventListener("fetch", (event) => {
           if (res.ok) {
             let store = false;
             if (rsc) {
-              store = true;
+              // Only a real navigation's RSC fetch is trustworthy for offline
+              // use — a prefetch-flavored one is a loading skeleton for these
+              // dynamic routes. Still returned to the page normally either
+              // way; this only decides whether it's worth caching.
+              store = !isPrefetchRequest(request);
             } else {
               const ct = res.headers.get("content-type") || "";
               store = ct.includes("text/html");
