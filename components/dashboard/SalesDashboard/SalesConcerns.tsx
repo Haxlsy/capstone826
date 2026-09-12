@@ -156,7 +156,6 @@ export default function SalesConcerns({ initialRecords }: { initialRecords: Conc
         </div>
       ),
     },
-    { key: "job", header: "Job Order", cell: (r) => <span className="font-mono text-xs font-semibold text-body">{r.jobId}</span> },
     { key: "title", header: "Title", cell: (r) => <span className="block max-w-32 truncate text-sm font-medium text-heading">{r.title}</span> },
     { key: "desc", header: "Description", cell: (r) => <span className="block max-w-xs truncate text-sm text-body">{r.description}</span> },
     {
