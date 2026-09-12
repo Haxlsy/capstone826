@@ -95,8 +95,12 @@ export async function PATCH(
 
     if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
+    // Gated the same as the field writes/notification below — a replayed or
+    // duplicate "Resolved" request against an already-resolved concern (an
+    // offline queue can produce this) must not log a second, phantom
+    // "Resolved concern" entry for what was really one action.
     const caller = await getAuditCaller()
-    if (caller && status === "Resolved") {
+    if (caller && status === "Resolved" && !alreadyResolved) {
       logAuditCall(caller, {
         category: "approve",
         action:   "Resolved concern",
