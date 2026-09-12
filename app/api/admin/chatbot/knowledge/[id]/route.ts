@@ -23,6 +23,39 @@ export async function PATCH(
 
   const supabase = createAdminClient()
 
+  // Only relevant when the edit touches topic and/or category — a content-only
+  // edit can't collide with anything. Partial updates mean either field may be
+  // omitted, so resolve the *effective* topic/category against the current row
+  // first, and exclude this entry's own id from the duplicate search.
+  if (parsed.data.topic !== undefined || parsed.data.category !== undefined) {
+    const { data: current, error: currentErr } = await supabase
+      .from("chatbot_knowledge")
+      .select("topic, category")
+      .eq("id", id)
+      .single()
+    if (currentErr || !current) {
+      return NextResponse.json({ error: currentErr?.message ?? "Entry not found." }, { status: 404 })
+    }
+
+    const effectiveTopic    = parsed.data.topic    ?? current.topic
+    const effectiveCategory = parsed.data.category ?? current.category
+
+    const { data: candidates, error: candErr } = await supabase
+      .from("chatbot_knowledge")
+      .select("topic")
+      .eq("category", effectiveCategory)
+      .neq("id", id)
+    if (candErr) return NextResponse.json({ error: candErr.message }, { status: 500 })
+
+    const normalized = effectiveTopic.toLowerCase()
+    if ((candidates ?? []).some((e) => e.topic.toLowerCase() === normalized)) {
+      return NextResponse.json(
+        { error: `"${effectiveTopic}" already exists in the ${effectiveCategory} category. Use a different name, or edit the existing entry.` },
+        { status: 409 },
+      )
+    }
+  }
+
   const { error } = await supabase
     .from("chatbot_knowledge")
     .update(parsed.data)

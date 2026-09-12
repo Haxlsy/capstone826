@@ -35,6 +35,23 @@ export async function POST(request: Request) {
   const { topic, content, category } = parsed.data
   const supabase = createAdminClient()
 
+  // Same name is fine across categories (e.g. "PPF" under Service and "PPF"
+  // under Pricing are two different entries) — but not twice within one.
+  const { data: existing, error: existingErr } = await supabase
+    .from("chatbot_knowledge")
+    .select("topic")
+    .eq("category", category)
+
+  if (existingErr) return NextResponse.json({ error: existingErr.message }, { status: 500 })
+
+  const normalized = topic.toLowerCase()
+  if ((existing ?? []).some((e) => e.topic.toLowerCase() === normalized)) {
+    return NextResponse.json(
+      { error: `"${topic}" already exists in the ${category} category. Use a different name, or edit the existing entry.` },
+      { status: 409 },
+    )
+  }
+
   // Get the config row id to link the entry
   const { data: config } = await supabase
     .from("chatbot_config")
