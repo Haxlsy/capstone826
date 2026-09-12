@@ -15,6 +15,7 @@ import { EmptyState } from "@/components/ui/EmptyState"
 import { useToast } from "@/components/ui/Toast"
 import { cn } from "@/lib/utils"
 import { LinkAccountModal } from "./LinkAccountModal"
+import { CustomerRecordsListSkeleton } from "@/app/dashboard/sales/customer-records/loading"
 
 interface CustomerRecord {
   id: string
@@ -215,12 +216,13 @@ export default function CustomerRecords() {
         containerClassName="max-w-sm"
       />
 
-      {loading && <p className="text-sm text-muted">Loading…</p>}
-      {fetchErr && <p className="text-sm text-status-delayed">{fetchErr}</p>}
-      {!loading && !fetchErr && groups.length === 0 && (
+      {loading ? (
+        <CustomerRecordsListSkeleton />
+      ) : fetchErr ? (
+        <p className="text-sm text-status-delayed">{fetchErr}</p>
+      ) : groups.length === 0 ? (
         <EmptyState title="No records found." />
-      )}
-
+      ) : (
       <div className="flex flex-col gap-3">
         {groups.map((group) => {
           const isMulti = group.vehicles.length > 1
@@ -360,6 +362,7 @@ export default function CustomerRecords() {
           )
         })}
       </div>
+      )}
 
       {/* Lazy-load sentinel — scrolling this into view fetches the next page. */}
       {hasMore && (
