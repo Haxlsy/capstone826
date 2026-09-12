@@ -242,6 +242,26 @@ export function violationWarning(kind: "policy" | "offtopic", lang?: BotLanguage
   )
 }
 
+/**
+ * First "complaint" classification in a conversation: ask, don't freeze. A
+ * direct "Report a Concern" tap or report keyword still bypasses this
+ * entirely and escalates immediately (see `violationHandled` in
+ * app/api/webhook/facebook/route.ts) — this is only for an AI classification
+ * of ambiguous/mild wording, which gets one clarifying reply before a second
+ * consecutive complaint-classified message escalates for real.
+ */
+export function complaintClarify(lang?: BotLanguage): string {
+  return pickCopy(
+    lang,
+    "I'm sorry to hear that. Just so this reaches the right person — could you tell me a bit " +
+      "more about what happened? Or tap \"Report a Concern\" below and I'll connect you with " +
+      "our team right away.",
+    "Pasensya na po sa naranasan ninyo. Para masiguradong maabot nito ang tamang tao — " +
+      "maaari ba ninyong ikuwento nang kaunti ang nangyari? O pindutin ang \"Mag-report ng " +
+      "Concern\" sa baba at ikokonekta ko kayo agad sa aming team.",
+  )
+}
+
 /** Quick-reply button labels. Menus are short, so `both` picks one language. */
 export const QUICK_REPLY_LABELS: Record<string, { english: string; filipino: string }> = {
   services: { english: "Services & Prices", filipino: "Serbisyo at Presyo" },
