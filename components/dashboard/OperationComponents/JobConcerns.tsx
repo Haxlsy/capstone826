@@ -30,6 +30,14 @@ export default function JobConcerns({ initialRecords }: { initialRecords: Concer
   const [selected, setSelected] = useState<ConcernRecord | null>(null)
 
   function handleResolve(id: string, note: string) {
+    // Patch the list itself, not just the open drawer's local copy — while
+    // offline the invalidate below is a no-op (its background refetch just
+    // fails), so without this the table row keeps showing "Pending" and
+    // reopening it offers an active "Mark as Resolved" button again, with no
+    // memory that a resolution is already queued.
+    queryClient.setQueryData<ConcernRecord[]>(["concerns"], (old) =>
+      old?.map((r) => (r.id === id ? { ...r, status: "Resolved", response_note: note } : r)),
+    )
     queryClient.invalidateQueries({ queryKey: ["concerns"] })
     setSelected((prev) => (prev?.id === id ? { ...prev, status: "Resolved", response_note: note } : prev))
   }

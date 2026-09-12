@@ -8,7 +8,7 @@ import { Badge } from "@/components/ui/Badge"
 import { Textarea } from "@/components/ui/Field"
 import { useToast } from "@/components/ui/Toast"
 import { useOnlineStatus } from "@/hooks/useOnlineStatus"
-import { enqueue } from "@/lib/offline/outbox"
+import { enqueue, list as listQueued } from "@/lib/offline/outbox"
 import type { ConcernRecord } from "@/lib/operations/concern-record"
 
 interface ConcernDetailsDrawerProps {
@@ -34,6 +34,23 @@ export default function ConcernDetailsDrawer({ record, onClose, onResolve }: Con
       // Offline — queue the resolution instead of writing it now; it lands
       // for real once this syncs. See docs/plan/operations-offline-mode-plan.md.
       if (!isOnline) {
+        // Safety net against a duplicate submission (e.g. a stale reopened
+        // drawer, a second tab) — the list itself now updates immediately on
+        // resolve (see JobConcerns.tsx's handleResolve), but this is what
+        // stops a real duplicate outbox entry — and the audit-log entry it
+        // would otherwise cause — from ever being created.
+        const alreadyQueued = (await listQueued()).some(
+          (item) =>
+            item.type === "resolve_concern" &&
+            (item.payload as { concernId?: string }).concernId === record.id &&
+            item.status !== "failed",
+        )
+        if (alreadyQueued) {
+          toast.info("This concern is already queued to resolve — it'll sync when you're back online.")
+          onResolve(record.id, responseNote)
+          setResponseNote("")
+          return
+        }
         await enqueue("resolve_concern", {
           concernId: record.id,
           status: "Resolved",
