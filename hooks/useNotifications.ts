@@ -3,6 +3,7 @@
 import { useEffect, useCallback, useRef, useState } from "react"
 import { createClient } from "@/lib/supabase/client"
 import { useRealtimeRefetch } from "@/hooks/useRealtimeRefetch"
+import { useOnlineStatus } from "@/hooks/useOnlineStatus"
 
 export interface Notification {
   id: string
@@ -52,6 +53,7 @@ export function useNotifications() {
   const [unreadCount, setUnreadCount] = useState(0)
   const [delayedJobCount, setDelayedJobCount] = useState(0)
   const [userId, setUserId] = useState<string | null>(null)
+  const isOnline = useOnlineStatus()
   const channelRef = useRef<ReturnType<ReturnType<typeof createClient>["channel"]> | null>(null)
 
   const fetchNotifications = useCallback(async () => {
@@ -93,15 +95,20 @@ export function useNotifications() {
     } catch {}
   }, [])
 
-  // Initial fetch + get userId for realtime
+  // Initial fetch + get userId for realtime. getUser() calls Supabase
+  // directly (cross-origin — the service worker can't cache it, and it
+  // always rejects offline), so only attempt it once we're confirmed online
+  // — this re-runs on reconnect too — and never let it become an unhandled
+  // rejection.
   useEffect(() => {
     fetchNotifications()
 
+    if (!isOnline) return
     const supabase = createClient()
     supabase.auth.getUser().then(({ data: { user } }) => {
       if (user) setUserId(user.id)
-    })
-  }, [fetchNotifications])
+    }).catch(() => {})
+  }, [fetchNotifications, isOnline])
 
   // Realtime subscription
   useEffect(() => {

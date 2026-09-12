@@ -1,6 +1,7 @@
 "use client"
 
-import { useEffect } from "react"
+import { useEffect, useRef } from "react"
+import { useOnlineStatus } from "@/hooks/useOnlineStatus"
 
 // Pages + endpoints to pre-warm into the service worker's cache while online,
 // so Operations can navigate to them (and use the Add Job Order form) offline
@@ -38,31 +39,47 @@ function prewarm() {
  * Operations, pre-warms the routes/endpoints the offline flow needs — but
  * only once the SW is actually controlling this page, otherwise the
  * pre-warm fetches aren't intercepted and nothing gets cached.
+ *
+ * Uses useOnlineStatus() (not raw navigator.onLine) and re-runs whenever the
+ * connection is confirmed, not just once at mount — a device that opens the
+ * app for the first time while offline/flaky must not be permanently stuck
+ * un-prewarmed for the rest of the session; the moment it's actually online,
+ * this fills the cache so offline routes work from then on.
  * Renders nothing.
  */
 export function ServiceWorkerRegistration({ prewarm: shouldPrewarm = false }: { prewarm?: boolean }) {
+  const isOnline = useOnlineStatus()
+  const warmedRef = useRef(false)
+
   useEffect(() => {
     if (typeof navigator === "undefined" || !("serviceWorker" in navigator)) return
 
     navigator.serviceWorker.register("/sw.js").catch(() => {
       // Registration failing shouldn't break the app — offline is additive.
     })
+  }, [])
 
-    if (!shouldPrewarm || !navigator.onLine) return
+  useEffect(() => {
+    if (typeof navigator === "undefined" || !("serviceWorker" in navigator)) return
+    if (!shouldPrewarm || !isOnline || warmedRef.current) return
 
     if (navigator.serviceWorker.controller) {
+      warmedRef.current = true
       prewarm()
     } else {
       // Fresh install: wait until the new SW (skipWaiting + clients.claim)
       // takes control, then pre-warm through it.
       const onControllerChange = () => {
         navigator.serviceWorker.removeEventListener("controllerchange", onControllerChange)
-        if (navigator.onLine) prewarm()
+        if (navigator.onLine) {
+          warmedRef.current = true
+          prewarm()
+        }
       }
       navigator.serviceWorker.addEventListener("controllerchange", onControllerChange)
       return () => navigator.serviceWorker.removeEventListener("controllerchange", onControllerChange)
     }
-  }, [shouldPrewarm])
+  }, [shouldPrewarm, isOnline])
 
   return null
 }
