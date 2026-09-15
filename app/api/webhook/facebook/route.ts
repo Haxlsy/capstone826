@@ -393,49 +393,118 @@ async function handleInboundMessage(
   // why that's safe here. Only a genuine conflict (the code's record already
   // belongs to a different Messenger account) or a code that never resolves
   // goes to Sales, and only after the customer insists past a short retry cap.
+  //
+  // A code can also be claimed OPPORTUNISTICALLY, outside this "awaiting" flow
+  // — see the block right after this one — for a customer whose account is
+  // already linked to a job-less record (e.g. a repeat customer between jobs).
+  // `clearLink`, `countFailedAttempt`, and `tryClaimJobOrderCode` below are
+  // declared here (not nested inside the `if`) so both trigger sites share the
+  // exact same verification logic.
   const JOB_ORDER_LINK_ATTEMPT_CAP = 2
   let linkedVehicleContext: string | null = null
-  let linkEscalation: { reason: string; note: string | null; impersonation?: boolean } | null = null
+  // A plain object property (not a bare `let`) — TS's flow-narrowing for a `let`
+  // reassigned only inside nested closures (tryClaimJobOrderCode / countFailedAttempt
+  // below) loses track of those writes across the several call sites further down,
+  // narrowing later reads to `never`. A mutable object sidesteps that.
+  const linkState: { escalation: { reason: string; note: string | null; impersonation?: boolean } | null } = { escalation: null }
+
+  const clearLink = async () => {
+    await safe(() => setAwaitingLinkVerification(conversation_id, false))
+    await safe(() => setLinkAttempts(conversation_id, 0))
+    await safe(() => setLinkConflictPending(conversation_id, false))
+  }
+
+  // Sales-facing note for a claim on a record owned by another Messenger
+  // account. Nothing here is ever shown to the customer.
+  const impersonationEscalation = (code: string, attempt: "repeat" | "capped") => ({
+    impersonation: true,
+    reason: "possible impersonation — link attempt on a record owned by another Messenger account",
+    note:
+      `POSSIBLE IMPERSONATION. Messenger PSID ${senderId} (FB name "${profile.name}") tried to claim Job Order ID ${code}, ` +
+      `which is already linked to a different Messenger account. ` +
+      (attempt === "repeat"
+        ? "They were given a neutral re-ask and claimed it again. "
+        : "They hit the attempt cap while claiming it. ") +
+      "Do NOT re-link without confirming with the current owner.",
+  })
+
+  // One more failed link attempt. Under the attempt cap the customer is asked
+  // again (deterministically — the model must never own this turn, or it
+  // invents a lookup it never ran); at the cap the claim goes to Sales.
+  const countFailedAttempt = async (note: string, code: string | null): Promise<boolean> => {
+    const attempts = link_attempts + 1
+    if (attempts >= JOB_ORDER_LINK_ATTEMPT_CAP) {
+      await clearLink()
+      logAudit({ ...auditActor, category: "flag", action: `messenger: link verification failed ${JOB_ORDER_LINK_ATTEMPT_CAP}x`, target: `psid=${senderId} last_code=${code || "none"}` })
+      linkState.escalation = { reason: `account link — ${JOB_ORDER_LINK_ATTEMPT_CAP} unverified attempts`, note }
+      return false
+    }
+    await safe(() => setLinkAttempts(conversation_id, attempts))
+    const askAgain = buildLinkVerificationPrompt({ retry: "unrecognized", lang: effectiveLang, linkVerificationTemplate })
+    const mid = await sendMessengerText(senderId, askAgain)
+    await insertMessage({ conversation_id, sender_type: "agent", message_body: askAgain, sent_at: new Date().toISOString(), fb_message_id: mid })
+    return true
+  }
+
+  // Verifies a Job Order Code claim, shared by the "awaiting" flow below and
+  // the opportunistic trigger after it. Returns "handled" when a reply was
+  // already sent this turn and the caller must return immediately; "continue"
+  // otherwise (linkedVehicleContext or linkEscalation is set as a side effect
+  // and the normal turn keeps processing).
+  const tryClaimJobOrderCode = async (code: string): Promise<"handled" | "continue"> => {
+    const claim = await assessJobOrderLinkClaim({ psid: senderId, code })
+
+    if (claim.kind === "owned_by_requester") {
+      // Defensive — resolveOwnVehicleStatus should already have found this.
+      await clearLink()
+      linkedVehicleContext = formatOwnVehicleStatus(claim.outcome)
+      return "continue"
+    } else if (claim.kind === "linked") {
+      // Auto-linked just now — no Sales step. Show status this same turn.
+      await clearLink()
+      logAudit({ ...auditActor, category: "flag", action: "messenger: auto-linked account via Job Order ID", target: `psid=${senderId} code=${code}` })
+      linkedVehicleContext = formatOwnVehicleStatus(claim.outcome)
+      return "continue"
+    } else if (claim.kind === "owned_by_other") {
+      // The code belongs to a DIFFERENT Messenger account. The customer is
+      // never told that — a reply that differed from the "no such record"
+      // case would let anyone enumerate which codes are registered. They get
+      // the identical neutral re-ask once; a second claim is escalated.
+      //
+      // The first attempt is audit-logged even though nothing is escalated,
+      // so a probe that stops after one try still leaves a security trail.
+      logAudit({ ...auditActor, category: "flag", action: `messenger: link attempt on a record owned by another account (${link_conflict_pending ? "repeat — escalated" : "first — warned"})`, target: `psid=${senderId} code=${code}` })
+
+      if (link_conflict_pending) {
+        await clearLink()
+        linkState.escalation = impersonationEscalation(code, "repeat")
+        return "continue"
+      } else if (link_attempts + 1 >= JOB_ORDER_LINK_ATTEMPT_CAP) {
+        // Already at the attempt cap — no room for a warning turn.
+        await clearLink()
+        linkState.escalation = impersonationEscalation(code, "capped")
+        return "continue"
+      } else {
+        await safe(() => setLinkConflictPending(conversation_id, true))
+        await safe(() => setLinkAttempts(conversation_id, link_attempts + 1))
+        const askAgain = buildLinkVerificationPrompt({ retry: "conflict", lang: effectiveLang, linkVerificationTemplate })
+        const mid = await sendMessengerText(senderId, askAgain)
+        await insertMessage({ conversation_id, sender_type: "agent", message_body: askAgain, sent_at: new Date().toISOString(), fb_message_id: mid })
+        return "handled"
+      }
+    } else {
+      // no_record — let the customer self-correct, then escalate. Same
+      // message as the owned-by-another case above, deliberately.
+      const handled = await countFailedAttempt(
+        `Account link attempt failed verification ${JOB_ORDER_LINK_ATTEMPT_CAP} times. Last claim: Job Order ID ${code}, no matching linkable record.`,
+        code
+      )
+      return handled ? "handled" : "continue"
+    }
+  }
+
   if (awaiting_link_verification) {
     const code = extractJobOrderCode(messageBody)
-
-    const clearLink = async () => {
-      await safe(() => setAwaitingLinkVerification(conversation_id, false))
-      await safe(() => setLinkAttempts(conversation_id, 0))
-      await safe(() => setLinkConflictPending(conversation_id, false))
-    }
-
-    // Sales-facing note for a claim on a record owned by another Messenger
-    // account. Nothing here is ever shown to the customer.
-    const impersonationEscalation = (attempt: "repeat" | "capped") => ({
-      impersonation: true,
-      reason: "possible impersonation — link attempt on a record owned by another Messenger account",
-      note:
-        `POSSIBLE IMPERSONATION. Messenger PSID ${senderId} (FB name "${profile.name}") tried to claim Job Order ID ${code}, ` +
-        `which is already linked to a different Messenger account. ` +
-        (attempt === "repeat"
-          ? "They were given a neutral re-ask and claimed it again. "
-          : "They hit the attempt cap while claiming it. ") +
-        "Do NOT re-link without confirming with the current owner.",
-    })
-
-    // One more failed link attempt. Under the attempt cap the customer is asked
-    // again (deterministically — the model must never own this turn, or it
-    // invents a lookup it never ran); at the cap the claim goes to Sales.
-    const countFailedAttempt = async (note: string): Promise<boolean> => {
-      const attempts = link_attempts + 1
-      if (attempts >= JOB_ORDER_LINK_ATTEMPT_CAP) {
-        await clearLink()
-        logAudit({ ...auditActor, category: "flag", action: `messenger: link verification failed ${JOB_ORDER_LINK_ATTEMPT_CAP}x`, target: `psid=${senderId} last_code=${code || "none"}` })
-        linkEscalation = { reason: `account link — ${JOB_ORDER_LINK_ATTEMPT_CAP} unverified attempts`, note }
-        return false
-      }
-      await safe(() => setLinkAttempts(conversation_id, attempts))
-      const askAgain = buildLinkVerificationPrompt({ retry: "unrecognized", lang: effectiveLang, linkVerificationTemplate })
-      const mid = await sendMessengerText(senderId, askAgain)
-      await insertMessage({ conversation_id, sender_type: "agent", message_body: askAgain, sent_at: new Date().toISOString(), fb_message_id: mid })
-      return true
-    }
 
     // A different, clear intent means the customer deliberately changed the
     // subject — let them out of the linking step rather than looping the ask.
@@ -448,62 +517,48 @@ async function handleInboundMessage(
 
     if (!code) {
       if (changedSubject) {
-        // The customer wandered off the linking step on purpose.
-        await safe(() => setAwaitingLinkVerification(conversation_id, false))
+        // The customer wandered off the linking step on purpose. Reset fully
+        // (not just the "awaiting" flag) so a later, genuinely fresh attempt
+        // doesn't inherit a stale attempt count and hit the cap prematurely.
+        await clearLink()
       } else {
         // Still trying to link, but the message carries no readable Job Order
         // Code. Re-ask with a format example instead of dropping them into the
         // AI, which would answer as though a lookup had happened.
         const handled = await countFailedAttempt(
           `Account link attempt failed ${JOB_ORDER_LINK_ATTEMPT_CAP} times. The customer never sent a recognizable Job Order ID. ` +
-          `Last message: "${messageBody}".`
+          `Last message: "${messageBody}".`,
+          null
         )
         if (handled) return
       }
     } else {
-      const claim = await assessJobOrderLinkClaim({ psid: senderId, code })
-
-      if (claim.kind === "owned_by_requester") {
-        // Defensive — resolveOwnVehicleStatus should already have found this.
-        await clearLink()
-        linkedVehicleContext = formatOwnVehicleStatus(claim.outcome)
-      } else if (claim.kind === "linked") {
-        // Auto-linked just now — no Sales step. Show status this same turn.
-        await clearLink()
-        logAudit({ ...auditActor, category: "flag", action: "messenger: auto-linked account via Job Order ID", target: `psid=${senderId} code=${code}` })
-        linkedVehicleContext = formatOwnVehicleStatus(claim.outcome)
-      } else if (claim.kind === "owned_by_other") {
-        // The code belongs to a DIFFERENT Messenger account. The customer is
-        // never told that — a reply that differed from the "no such record"
-        // case would let anyone enumerate which codes are registered. They get
-        // the identical neutral re-ask once; a second claim is escalated.
-        //
-        // The first attempt is audit-logged even though nothing is escalated,
-        // so a probe that stops after one try still leaves a security trail.
-        logAudit({ ...auditActor, category: "flag", action: `messenger: link attempt on a record owned by another account (${link_conflict_pending ? "repeat — escalated" : "first — warned"})`, target: `psid=${senderId} code=${code}` })
-
-        if (link_conflict_pending) {
-          await clearLink()
-          linkEscalation = impersonationEscalation("repeat")
-        } else if (link_attempts + 1 >= JOB_ORDER_LINK_ATTEMPT_CAP) {
-          // Already at the attempt cap — no room for a warning turn.
-          await clearLink()
-          linkEscalation = impersonationEscalation("capped")
-        } else {
-          await safe(() => setLinkConflictPending(conversation_id, true))
-          await safe(() => setLinkAttempts(conversation_id, link_attempts + 1))
-          const askAgain = buildLinkVerificationPrompt({ retry: "conflict", lang: effectiveLang, linkVerificationTemplate })
-          const mid = await sendMessengerText(senderId, askAgain)
-          await insertMessage({ conversation_id, sender_type: "agent", message_body: askAgain, sent_at: new Date().toISOString(), fb_message_id: mid })
-          return
-        }
-      } else {
-        // no_record — let the customer self-correct, then escalate. Same
-        // message as the owned-by-another case above, deliberately.
-        const handled = await countFailedAttempt(
-          `Account link attempt failed verification ${JOB_ORDER_LINK_ATTEMPT_CAP} times. Last claim: Job Order ID ${code}, no matching linkable record.`
-        )
-        if (handled) return
+      const result = await tryClaimJobOrderCode(code)
+      if (result === "handled") return
+    }
+  } else if (!linkedVehicleContext && !linkState.escalation) {
+    // Opportunistic claim: the bot never asked for a code this turn, but the
+    // customer sent one anyway. This is the path for a customer whose account
+    // is already linked to a job-less record (a repeat customer between jobs,
+    // or a duplicate customer_record from a manual Operations entry) — the
+    // "awaiting" flow above is never entered for them since resolveOwnVehicleStatus
+    // doesn't return "not_linked" in that case, so without this they'd never
+    // get a chance to link a new job order's code at all.
+    const opportunisticCode = extractJobOrderCode(messageBody)
+    if (opportunisticCode) {
+      let currentOutcome: OwnVehicleOutcome | null = null
+      try {
+        currentOutcome = await resolveOwnVehicleStatus(senderId)
+      } catch (err) {
+        console.error("[webhook/facebook] opportunistic status resolution failed:", err)
+      }
+      const jobless = currentOutcome !== null && (
+        (currentOutcome.kind === "ok" && currentOutcome.jobs.length === 0) ||
+        currentOutcome.kind === "booked_no_active_job"
+      )
+      if (jobless) {
+        const result = await tryClaimJobOrderCode(opportunisticCode)
+        if (result === "handled") return
       }
     }
   }
@@ -573,7 +628,7 @@ async function handleInboundMessage(
   // (e.g. just a plate + phone after the status template, or a vehicle type
   // that completes a booking) stays on the same track without needing the
   // keyword repeated.
-  if (!awaiting_link_verification && !linkEscalation) {
+  if (!awaiting_link_verification && !linkState.escalation) {
     try {
       if (cancelIntent) {
         await setVehicleInquiry(conversation_id, false)
@@ -619,7 +674,7 @@ async function handleInboundMessage(
 
   if (linkedVehicleContext) {
     vehicleContext = linkedVehicleContext
-  } else if (statusIntent && !bookingIntent && !linkEscalation) {
+  } else if (statusIntent && !bookingIntent && !linkState.escalation) {
     let outcome: OwnVehicleOutcome
     try {
       outcome = await resolveOwnVehicleStatus(senderId)
@@ -846,7 +901,7 @@ async function handleInboundMessage(
     signal,
     statusIntent,
     awaitingLinkVerification: Boolean(awaiting_link_verification),
-    linkEscalation: Boolean(linkEscalation),
+    linkEscalation: Boolean(linkState.escalation),
     isBookingFlow: Boolean(is_booking_flow),
     awaitingConfirmation: Boolean(awaiting_confirmation),
     cancelIntent,
@@ -880,12 +935,13 @@ async function handleInboundMessage(
   }
 
   // Every account-link claim is routed to Sales for out-of-band verification.
-  if (linkEscalation) {
+  const linkEscalationInfo = linkState.escalation
+  if (linkEscalationInfo) {
     escalate = true
     // A conflict flagged as possible impersonation must never be surfaced to
     // the customer — only a genuinely unrecognized code is safe to mention.
-    escalateReason = linkEscalation.impersonation ? null : "job_order_unrecognized"
-    if (linkEscalation.note) conflictNote = linkEscalation.note
+    escalateReason = linkEscalationInfo.impersonation ? null : "job_order_unrecognized"
+    if (linkEscalationInfo.note) conflictNote = linkEscalationInfo.note
   }
 
   // Best-effort flag persistence: a failure here should not abort the reply.
@@ -1359,7 +1415,7 @@ async function handleInboundMessage(
 
     // A suspected impersonation attempt always notifies Sales too, so it is
     // seen in real time, not just in the log.
-    if (linkEscalation?.impersonation) {
+    if (linkState.escalation?.impersonation) {
       await notifyRole(admin, "sales", {
         type:    "inquiry",
         message: `⚠️ Possible impersonation attempt from ${profile.name}`,
