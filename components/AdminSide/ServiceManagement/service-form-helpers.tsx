@@ -214,7 +214,7 @@ export function StageList({
             onDragStart={() => onDragStart(index)}
             onDragOver={(e) => onDragOver(e, index)}
             onDragEnd={onDragEnd}
-            className="flex flex-col gap-1 group"
+            className="flex flex-col gap-1 group pb-3"
           >
             <div className="flex items-center gap-2">
               <div className="cursor-grab active:cursor-grabbing text-muted hover:text-muted shrink-0">

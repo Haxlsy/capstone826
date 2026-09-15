@@ -384,7 +384,7 @@ export default function CategoryPresetsPanel({
                   {fStages.map((stage, idx) => {
                     const stageErr = stageErrors[stage.key]
                     return (
-                      <div key={stage.key} className="space-y-1">
+                      <div key={stage.key} className="space-y-1 pb-3">
                         <div className="flex items-center gap-2">
                           <span className="text-xs text-muted w-5 shrink-0 text-right">{idx + 1}.</span>
                           <input

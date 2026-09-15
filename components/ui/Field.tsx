@@ -140,8 +140,21 @@ export function HourMinuteInput({
 }) {
   const s = HOUR_MINUTE_SIZES[size]
   const labelPrefix = ariaLabelPrefix ? `${ariaLabelPrefix} ` : ""
+
+  // Plain-number <input type="number"> strips a value like "05" down to "5"
+  // on render, which is why this used to show "0 : 0" instead of "00 : 00".
+  // A text input with numeric keyboard/validation keeps full control over
+  // the padded display while still only ever calling onChange with digits.
+  const digitsOnly = (raw: string) => raw.replace(/\D/g, "").slice(-2)
+
   return (
-    <div className={cn("flex shrink-0 flex-col items-center gap-0.5", className)}>
+    // `relative` so the "HH : MM" caption below can be taken out of flow
+    // (absolute) instead of adding its own height to this flex item — left
+    // in normal flow, it made this component taller than the single-line
+    // sibling inputs/buttons next to it, so `items-center` on the row
+    // centered against that extra height and visually pushed the number
+    // box up above the row's true center.
+    <div className={cn("relative flex shrink-0 flex-col items-center", className)}>
       <div
         className={cn(
           "flex items-center overflow-hidden rounded-sm border transition-colors",
@@ -149,27 +162,33 @@ export function HourMinuteInput({
         )}
       >
         <input
-          type="number"
-          min={0}
-          value={hours}
-          onChange={(e) => onChange(Math.max(0, parseInt(e.target.value, 10) || 0), minutes)}
+          type="text"
+          inputMode="numeric"
+          pattern="[0-9]*"
+          value={String(hours).padStart(2, "0")}
+          onChange={(e) => onChange(Math.max(0, parseInt(digitsOnly(e.target.value), 10) || 0), minutes)}
           aria-label={`${labelPrefix}hours`}
-          placeholder="00"
           className={cn("bg-transparent text-center focus:outline-none", s.box)}
         />
         <span className={cn("text-muted", s.colon)}>:</span>
         <input
-          type="number"
-          min={0}
-          max={59}
-          value={minutes}
-          onChange={(e) => onChange(hours, Math.min(59, Math.max(0, parseInt(e.target.value, 10) || 0)))}
+          type="text"
+          inputMode="numeric"
+          pattern="[0-9]*"
+          value={String(minutes).padStart(2, "0")}
+          onChange={(e) => onChange(hours, Math.min(59, Math.max(0, parseInt(digitsOnly(e.target.value), 10) || 0)))}
           aria-label={`${labelPrefix}minutes`}
-          placeholder="00"
           className={cn("bg-transparent text-center focus:outline-none", s.box)}
         />
       </div>
-      <span className={cn("leading-none text-muted", s.caption)}>HH : MM</span>
+      <span
+        className={cn(
+          "absolute top-full mt-0.5 whitespace-nowrap leading-none text-muted",
+          s.caption,
+        )}
+      >
+        HH : MM
+      </span>
     </div>
   )
 }
