@@ -335,6 +335,6 @@ export const STATUS_COPY = {
     ),
   jobLabels: {
     english:  { plate: "Plate", status: "Status", service: "Service", progress: "Progress", stagesDone: "stages done", currently: "currently", eta: "Estimated Completion" },
-    filipino: { plate: "Plate", status: "Status", service: "Serbisyo", progress: "Progreso", stagesDone: "yugto ang tapos", currently: "kasalukuyan", eta: "Tinatayang Matatapos" },
+    filipino: { plate: "Plate", status: "Status", service: "Serbisyo", progress: "Progreso", stagesDone: "natapos na stages", currently: "kasalukuyan", eta: "Tinatayang Matatapos" },
   },
 } as const
