@@ -87,7 +87,7 @@ function StageList({
 }) {
   return (
     <div
-      className="flex flex-col gap-1"
+      className="flex flex-col gap-3"
       onDragOver={(e) => e.preventDefault()}
       onDrop={() => onDrop(categoryId)}
     >
