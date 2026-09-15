@@ -3,6 +3,7 @@ import { cookies } from "next/headers"
 import { createClient } from "@/lib/supabase/server"
 import { createAdminClient } from "@/lib/supabase/admin"
 import { logAudit } from "@/hooks/audit-helpers"
+import { getLiveJobOrdersForService } from "@/lib/operations/service-usage"
 
 
 // GET /api/operations/services/[id]
@@ -85,8 +86,21 @@ export async function PATCH(
       return NextResponse.json({ error: "Forbidden. Admin access required." }, { status: 403 })
     }
 
-    // Archive toggle
+    // Archive toggle — restoring (is_archived: false) is always safe; only
+    // archiving is blocked while the service has live job orders.
     if (typeof body.is_archived === "boolean") {
+      if (body.is_archived) {
+        const liveJobs = await getLiveJobOrdersForService(supabase, id)
+        if (liveJobs.length > 0) {
+          return NextResponse.json(
+            {
+              error: `Cannot archive — ${liveJobs.length} job order${liveJobs.length === 1 ? "" : "s"} currently using this service must finish first.`,
+              liveJobs: liveJobs.map((j) => `${j.job_order_code} (${j.customer_name ?? "—"}) — ${j.status}`),
+            },
+            { status: 409 },
+          )
+        }
+      }
       const { data: svc, error } = await supabase
         .from("service")
         .update({ is_archived: body.is_archived })
@@ -113,6 +127,20 @@ export async function PATCH(
     }
     if (!serviceType?.trim()) {
       return NextResponse.json({ error: "Service type is required." }, { status: 400 })
+    }
+
+    // Edits are blocked wholesale while the service has live job orders — a
+    // renamed stage is a live FK (job_stage_progress.service_stage_id), so it
+    // would change what an in-progress job order shows right away.
+    const liveJobsForEdit = await getLiveJobOrdersForService(supabase, id)
+    if (liveJobsForEdit.length > 0) {
+      return NextResponse.json(
+        {
+          error: `Cannot edit — ${liveJobsForEdit.length} job order${liveJobsForEdit.length === 1 ? "" : "s"} currently using this service must finish first.`,
+          liveJobs: liveJobsForEdit.map((j) => `${j.job_order_code} (${j.customer_name ?? "—"}) — ${j.status}`),
+        },
+        { status: 409 },
+      )
     }
 
     // ── Smart stage update (avoid FK violations on job_stage_progress) ──

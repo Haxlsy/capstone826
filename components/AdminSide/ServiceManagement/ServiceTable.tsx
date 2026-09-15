@@ -26,6 +26,7 @@ interface Service {
   estimated_duration_mins: number | null
   is_archived: boolean
   stage_count: number
+  job_order_count: number
 }
 
 const PAGE_SIZE_OPTIONS = [10, 15, 20, 30]
@@ -38,10 +39,16 @@ function truncate(text: string | null, max = 48) {
 function formatDuration(mins: number | null) {
   if (!mins) return "—"
   if (mins < 60) return `${mins} min`
-  const hours = Math.round(mins / 60)
-  if (hours < 24) return hours === 1 ? "1 hr" : `${hours} hrs`
-  const days = Math.round(hours / 24)
-  return days === 1 ? "1 day" : `${days} days`
+  const hours = Math.floor(mins / 60)
+  const rem = mins % 60
+  if (hours < 24) {
+    const hrsLabel = hours === 1 ? "1 hr" : `${hours} hrs`
+    return rem === 0 ? hrsLabel : `${hrsLabel} ${rem} min`
+  }
+  const days = Math.floor(hours / 24)
+  const remHours = hours % 24
+  const daysLabel = days === 1 ? "1 day" : `${days} days`
+  return remHours === 0 ? daysLabel : `${daysLabel} ${remHours} hrs`
 }
 
 export default function ServiceTable({ canWrite = true }: { canWrite?: boolean }) {
@@ -115,8 +122,9 @@ export default function ServiceTable({ canWrite = true }: { canWrite?: boolean }
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ is_archived: !service.is_archived }),
       })
+      const json = await res.json().catch(() => ({}))
       if (res.ok) toast.success(service.is_archived ? "Service restored." : "Service archived.")
-      else toast.error("Failed to update service.")
+      else toast.error(json?.error ?? "Failed to update service.")
       fetchServices()
     } catch {
       toast.error("Failed to update service.")
@@ -152,7 +160,18 @@ export default function ServiceTable({ canWrite = true }: { canWrite?: boolean }
           <span className="text-xs text-muted">No stages</span>
         ),
     },
-    { key: "status", header: "Status", cell: (s) => <StatusBadge status={s.is_archived ? "archived" : "active"} /> },
+    {
+      key: "status",
+      header: "Status",
+      cell: (s) => (
+        <div className="flex flex-col items-start gap-1">
+          <StatusBadge status={s.is_archived ? "archived" : "active"} />
+          {s.job_order_count > 0 && (
+            <StatusBadge status="in_use" label={`In Use (${s.job_order_count})`} />
+          )}
+        </div>
+      ),
+    },
     ...(canWrite
       ? [
           {
@@ -173,27 +192,35 @@ export default function ServiceTable({ canWrite = true }: { canWrite?: boolean }
                   </button>
                 )}
               >
-                {(close) => (
-                  <>
-                    <MenuItem
-                      onClick={() => {
-                        close()
-                        setEditServiceId(s.id)
-                      }}
-                    >
-                      Edit Service
-                    </MenuItem>
-                    <MenuItem
-                      danger={!s.is_archived}
-                      onClick={() => {
-                        close()
-                        handleArchiveToggle(s)
-                      }}
-                    >
-                      {s.is_archived ? "Unarchive" : "Archive"}
-                    </MenuItem>
-                  </>
-                )}
+                {(close) => {
+                  const inUse = s.job_order_count > 0
+                  const lockedHint = `${s.job_order_count} job order${s.job_order_count === 1 ? "" : "s"} currently using this service must finish first.`
+                  return (
+                    <>
+                      <MenuItem
+                        disabled={inUse}
+                        title={inUse ? lockedHint : undefined}
+                        onClick={() => {
+                          close()
+                          setEditServiceId(s.id)
+                        }}
+                      >
+                        Edit Service
+                      </MenuItem>
+                      <MenuItem
+                        danger={!s.is_archived}
+                        disabled={!s.is_archived && inUse}
+                        title={!s.is_archived && inUse ? lockedHint : undefined}
+                        onClick={() => {
+                          close()
+                          handleArchiveToggle(s)
+                        }}
+                      >
+                        {s.is_archived ? "Unarchive" : "Archive"}
+                      </MenuItem>
+                    </>
+                  )
+                }}
               </Popover>
             ),
           },

@@ -140,6 +140,7 @@ const TABLE: Record<string, StatusStyle> = {
 
   available: make("inspection", "Available"),
   "on job": make("onjob", "On Job"),
+  in_use: make("onjob", "In Use"),
   "not available": make("delayed", "Not Available"),
   unavailable: make("delayed", "Unavailable"),
 

@@ -2,6 +2,7 @@
 
 import { useMemo, useRef, useState } from "react"
 import { Layers, RotateCcw, GripVertical, Plus, X, ChevronDown } from "lucide-react"
+import { HourMinuteInput } from "@/components/ui/Field"
 
 export interface Stage {
   id:                  string
@@ -129,33 +130,13 @@ function StageList({
               className={`flex-1 min-w-0 bg-transparent text-xs text-body focus:outline-none border-b border-transparent ${accentFocus} py-0.5 placeholder:text-muted`}
             />
 
-            {/* Per-stage HH:MM duration */}
-            <div className="flex items-center border border-border rounded overflow-hidden shrink-0">
-              <input
-                type="number"
-                min={0}
-                value={durHH}
-                onChange={(e) => {
-                  const hh = Math.max(0, parseInt(e.target.value, 10) || 0)
-                  onUpdateDuration(stage.id, hh * 60 + durMM)
-                }}
-                aria-label={`Stage ${localIdx + 1} hours`}
-                className="w-11 px-1 py-0.5 text-[10px] text-center bg-surface focus:outline-none text-body"
-              />
-              <span className="text-[10px] text-muted">:</span>
-              <input
-                type="number"
-                min={0}
-                max={59}
-                value={durMM}
-                onChange={(e) => {
-                  const mm = Math.min(59, Math.max(0, parseInt(e.target.value, 10) || 0))
-                  onUpdateDuration(stage.id, durHH * 60 + mm)
-                }}
-                aria-label={`Stage ${localIdx + 1} minutes`}
-                className="w-11 px-1 py-0.5 text-[10px] text-center bg-surface focus:outline-none text-body"
-              />
-            </div>
+            <HourMinuteInput
+              hours={durHH}
+              minutes={durMM}
+              onChange={(hh, mm) => onUpdateDuration(stage.id, hh * 60 + mm)}
+              ariaLabelPrefix={`Stage ${localIdx + 1}`}
+              size="sm"
+            />
 
             {stage.isNew && (
               <button
