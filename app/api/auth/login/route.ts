@@ -60,26 +60,33 @@ export async function POST(request: Request) {
     // proxy.ts can recognize (and reject) a stale browser immediately rather
     // than waiting on Supabase's own revocation to be noticed. See
     // docs/plan and supabase/migrations/20260910000002_user_active_session.sql.
-    if (authData.session) {
-      await admin.auth.admin.signOut(authData.session.access_token, "others")
-    }
+    //
+    // 5. Log Event (Awaited for reliability in Serverless)
+    //
+    // These three only depend on authData.user/session, resolved above — none
+    // depend on EACH OTHER — so they run concurrently instead of one after
+    // another (each is a full network/DB round trip; sequentially awaiting all
+    // three was pure added latency on every login).
     const sessionToken = crypto.randomUUID()
-    const { error: sessionTokenErr } = await admin.from("user_active_session").upsert({
-      user_id:       authData.user.id,
-      session_token: sessionToken,
-    })
-    if (sessionTokenErr) {
+    const [, sessionUpsertResult] = await Promise.all([
+      authData.session
+        ? admin.auth.admin.signOut(authData.session.access_token, "others")
+        : Promise.resolve(null),
+      admin.from("user_active_session").upsert({
+        user_id:       authData.user.id,
+        session_token: sessionToken,
+      }),
+      createAuditLog(admin, authData.user.id, profile, "Logged in"),
+    ])
+    if (sessionUpsertResult.error) {
       // Login still proceeds — see lib/auth/session-check.ts's isSessionCurrent,
       // which fails open when this row can't be read, so a failure here
       // doesn't lock the user out; it just means single-session enforcement
       // silently isn't active for this login until the underlying issue
       // (e.g. a migration not yet applied) is fixed. Logged so it's
       // diagnosable instead of silent.
-      console.error("[login] user_active_session upsert failed:", sessionTokenErr.message)
+      console.error("[login] user_active_session upsert failed:", sessionUpsertResult.error.message)
     }
-
-    // 5. Log Event (Awaited for reliability in Serverless)
-    await createAuditLog(admin, authData.user.id, profile, "Logged in")
 
     const response = NextResponse.json({ user: profile })
     response.cookies.set("826_role", profile.role, {
