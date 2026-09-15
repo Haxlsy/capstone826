@@ -13,6 +13,12 @@ const ROLE_HOMES: Record<string, string> = {
 };
 
 export async function proxy(request: NextRequest) {
+  // A request can never be allowed to set this itself — only this function,
+  // after a verified getUser() call below, may add it back. Without this
+  // strip, a request that simply included the header would be trusted as
+  // whichever user id it named (see lib/auth/guard.ts's getCurrentUser()).
+  request.headers.delete("x-verified-user-id");
+
   const { supabase, supabaseResponse } = createClient(request);
 
   const { data: { user } } = await supabase.auth.getUser();
@@ -50,6 +56,23 @@ export async function proxy(request: NextRequest) {
   if (user && isAuthPage) {
     const destination = ROLE_HOMES[role] ?? "/dashboard";
     return NextResponse.redirect(new URL(destination, request.url));
+  }
+
+  if (user) {
+    // getUser() above already did the one network-verified check this request
+    // needs. Forward that result to the page render via a request header so
+    // lib/auth/guard.ts's getCurrentUser() doesn't pay for the exact same
+    // Supabase Auth round trip again a moment later — it can't share this
+    // function's result directly since middleware and the page render are
+    // separate phases of the Next.js request lifecycle.
+    request.headers.set("x-verified-user-id", user.id);
+    const finalResponse = NextResponse.next({ request });
+    // Carry forward any cookies Supabase attached to supabaseResponse (e.g. a
+    // refreshed access/refresh token) — constructing a fresh NextResponse.next()
+    // here does NOT inherit them automatically. Dropping this would silently
+    // break session refresh.
+    supabaseResponse.cookies.getAll().forEach((c) => finalResponse.cookies.set(c));
+    return finalResponse;
   }
 
   return supabaseResponse;
