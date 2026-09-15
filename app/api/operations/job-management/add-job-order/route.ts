@@ -146,6 +146,22 @@ export async function POST(request: Request) {
         if (existing) resolvedCustomerRecordId = existing.id
       }
 
+      // Plate didn't match (or wasn't given) — fall back to phone. A customer already
+      // known to the system (e.g. a Messenger-linked record from an earlier Sales
+      // inquiry, with no job order and no plate on file yet) should be reused rather
+      // than duplicated. contact_number has no uniqueness constraint (two vehicles can
+      // share a phone), so this takes the first match rather than .maybeSingle(), which
+      // would throw on more than one row.
+      if (!resolvedCustomerRecordId && normContact) {
+        const { data: byPhone } = await admin
+          .from("customer_record")
+          .select("id")
+          .eq("contact_number", normContact)
+          .limit(1)
+
+        if (byPhone && byPhone.length > 0) resolvedCustomerRecordId = byPhone[0].id
+      }
+
       if (!resolvedCustomerRecordId) {
         const { data: newCustomer, error: custErr } = await admin
           .from("customer_record")
