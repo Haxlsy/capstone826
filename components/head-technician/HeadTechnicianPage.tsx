@@ -1,7 +1,7 @@
 "use client"
 
 import { useState } from "react"
-import { Wrench, X, Search, Layers, RefreshCw } from "lucide-react"
+import { Wrench, X, Search, Layers, RefreshCw, AlertCircle } from "lucide-react"
 import { Status } from "./components/types"
 import { HeadTechJobCard } from "./components/HeadTechJobCard"
 import { BottomNav } from "./components/BottomNav"
@@ -54,6 +54,11 @@ export default function HeadTechnicianPage({
 
   const ongoingCount = jobs.filter((j) => j.status === "Ongoing").length
   const reworkCount  = jobs.filter((j) => j.status === "For Rework").length
+  // Same stage-level signal HeadTechJobCard's "Stage Delayed" badge uses
+  // (lib/job-delay.ts's per-stage check) — the job's own `status` field
+  // almost never literally reads "Delayed" itself, so counting on that
+  // would miss nearly every overdue job.
+  const delayedCount = jobs.filter((j) => j.has_delayed_stage).length
   const isFiltered   = statusFilter !== "all" || searchQuery.trim() !== ""
 
   return (
@@ -121,10 +126,11 @@ export default function HeadTechnicianPage({
 
         {/* ── Stat cards ──────────────────────────────────────────── */}
         {!loading && jobs.length > 0 && (
-          <div className="grid grid-cols-3 gap-2">
+          <div className="grid grid-cols-2 gap-2">
             <StatCard label="Total" value={jobs.length} icon={Layers} tone="total" />
             <StatCard label="Ongoing" value={ongoingCount} icon={Wrench} tone="ongoing" />
             <StatCard label="Rework" value={reworkCount} icon={RefreshCw} tone="rework" />
+            <StatCard label="Delayed" value={delayedCount} icon={AlertCircle} tone="delayed" />
           </div>
         )}
 
