@@ -5,6 +5,7 @@ import { ArrowLeft, Pencil, Trash2, Plus } from "lucide-react"
 import { COLOR_OPTIONS, colorStyles, minsToHHMM, hhmmToMins } from "./service-form-helpers"
 import { Drawer } from "@/components/ui/Drawer"
 import { Button, IconButton } from "@/components/ui/Button"
+import { HourMinuteInput } from "@/components/ui/Field"
 import { useToast } from "@/components/ui/Toast"
 
 interface PresetStage {
@@ -395,27 +396,17 @@ export default function CategoryPresetsPanel({
                               stageErr?.name ? "border-status-delayed bg-status-delayed/10" : "border-border"
                             }`}
                           />
-                          <div className={`flex items-center gap-1 shrink-0 border rounded-sm overflow-hidden transition-colors ${
-                            stageErr?.dur ? "border-status-delayed bg-status-delayed/10" : "border-border"
-                          }`}>
-                            <input
-                              type="number"
-                              min="0"
-                              max="99"
-                              value={stage.hh}
-                              onChange={(e) => updateStage(stage.key, "hh", e.target.value.padStart(2, "0").slice(-2))}
-                              className="w-16 px-2 py-2 text-sm text-center bg-transparent focus:outline-none"
-                            />
-                            <span className="text-muted text-sm font-medium">:</span>
-                            <input
-                              type="number"
-                              min="0"
-                              max="59"
-                              value={stage.mm}
-                              onChange={(e) => updateStage(stage.key, "mm", e.target.value.padStart(2, "0").slice(-2))}
-                              className="w-16 px-2 py-2 text-sm text-center bg-transparent focus:outline-none"
-                            />
-                          </div>
+                          <HourMinuteInput
+                            hours={parseInt(stage.hh, 10) || 0}
+                            minutes={parseInt(stage.mm, 10) || 0}
+                            onChange={(hh, mm) => {
+                              updateStage(stage.key, "hh", String(hh).padStart(2, "0").slice(-2))
+                              updateStage(stage.key, "mm", String(mm).padStart(2, "0").slice(-2))
+                            }}
+                            ariaLabelPrefix={`Stage ${idx + 1}`}
+                            invalid={!!stageErr?.dur}
+                            size="md"
+                          />
                           <button
                             onClick={() => removeStage(stage.key)}
                             disabled={fStages.length === 1}

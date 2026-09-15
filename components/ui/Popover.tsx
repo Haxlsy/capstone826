@@ -166,6 +166,7 @@ export function MenuItem({
       type="button"
       className={cn(
         "flex w-full items-center gap-2.5 rounded-sm px-2.5 py-2 text-left text-sm transition-colors",
+        "disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:bg-transparent",
         danger
           ? "text-status-delayed hover:bg-status-delayed/10"
           : "text-body hover:bg-surface-muted hover:text-heading",

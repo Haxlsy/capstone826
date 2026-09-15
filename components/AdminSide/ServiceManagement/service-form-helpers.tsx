@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react"
 import { GripVertical, Trash2, Pencil, Plus, ChevronDown, ChevronUp, Check, X } from "lucide-react"
+import { HourMinuteInput } from "@/components/ui/Field"
 
 export type ServiceType = string
 
@@ -253,31 +254,14 @@ export function StageList({
                 )}
               </div>
 
-              {/* HH:MM duration input */}
-              <div className={`flex items-center border rounded-sm overflow-hidden shrink-0 transition-colors ${
-                durError ? "border-status-delayed bg-status-delayed/10" : "border-border"
-              }`}>
-                <input
-                  type="number"
-                  min={0}
-                  value={durHH}
-                  onChange={(e) => commitDuration(parseInt(e.target.value, 10) || 0, durMM)}
-                  aria-label={`Stage ${index + 1} hours`}
-                  className="w-14 px-1.5 py-2 text-xs text-center bg-transparent focus:outline-none"
-                  placeholder="00"
-                />
-                <span className="text-muted text-xs font-medium">:</span>
-                <input
-                  type="number"
-                  min={0}
-                  max={59}
-                  value={durMM}
-                  onChange={(e) => commitDuration(durHH, parseInt(e.target.value, 10) || 0)}
-                  aria-label={`Stage ${index + 1} minutes`}
-                  className="w-14 px-1.5 py-2 text-xs text-center bg-transparent focus:outline-none"
-                  placeholder="00"
-                />
-              </div>
+              <HourMinuteInput
+                hours={durHH}
+                minutes={durMM}
+                onChange={commitDuration}
+                ariaLabelPrefix={`Stage ${index + 1}`}
+                invalid={!!durError}
+                size="md"
+              />
 
               <button
                 type="button"
