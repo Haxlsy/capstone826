@@ -121,6 +121,7 @@ export default function LoginPage() {
           const left = 3 - next
           toastRef.current.error(`Invalid credentials. ${left} attempt${left === 1 ? "" : "s"} remaining.`)
         }
+        setIsLoading(false)
         return
       }
 
@@ -133,6 +134,13 @@ export default function LoginPage() {
         /* ignore */
       }
 
+      // Deliberately leave isLoading TRUE here — router.push() only SCHEDULES
+      // the navigation, it doesn't wait for it. Resetting the button now would
+      // flash it back to idle "Login" while the page is still transitioning,
+      // making a real (if brief) navigation look like it silently failed and
+      // reset. The button keeps showing "Signing in…" until this component is
+      // replaced by the destination page; there is nothing to reset it back
+      // to on the success path since this form is on its way out.
       if (data.user?.must_change_password) {
         router.push("/change-password-required")
       } else {
@@ -140,7 +148,6 @@ export default function LoginPage() {
       }
     } catch {
       toastRef.current.error("Network error. Please try again.")
-    } finally {
       setIsLoading(false)
     }
   }
