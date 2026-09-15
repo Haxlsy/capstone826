@@ -103,6 +103,25 @@ interface CategoryGroup {
   minOrder: number;
 }
 
+// A pending media item is a client-only placeholder (a synthetic "tmp-<ts>"
+// id set in uploadOneFile) — it can never appear in a server response, by
+// construction, until the upload that owns it resolves (uploadOneFile's own
+// success/failure handling swaps or removes it then). A full refresh from
+// load() must not discard it just because the GET that produced this data
+// happened to run before that upload finished — see load()'s own comment.
+function mergeInPendingMedia(prev: JobDetail | null, fresh: JobDetail): JobDetail {
+  if (!prev) return fresh;
+  return {
+    ...fresh,
+    stages: fresh.stages.map((freshStage) => {
+      const prevStage = prev.stages.find((s) => s.id === freshStage.id);
+      const stillPending = prevStage?.media.filter((m) => m.pending) ?? [];
+      return stillPending.length > 0
+        ? { ...freshStage, media: [...freshStage.media, ...stillPending] }
+        : freshStage;
+    }),
+  };
+}
 
 // ── Component ────────────────────────────────────────────────────────────────
 
@@ -163,7 +182,18 @@ export default function HeadTechJobHistoryPage({ jobId }: { jobId: string }) {
       const json = await res.json();
       if (seq !== loadSeqRef.current) return; // superseded by a newer load()
       if (!res.ok) { setLoadError(json?.error ?? `HTTP ${res.status}`); return; }
-      if (json.job) setJob(json.job);
+      // Merge, don't replace: on mobile, opening the native camera/gallery
+      // picker backgrounds the page, and returning from it fires
+      // `visibilitychange` (see below) at essentially the same instant the
+      // picked file starts uploading. This silent load() is one fast GET; the
+      // upload is a slower multi-step chain (compress → AI validation → the
+      // actual upload), so this GET routinely wins the race and runs while
+      // the server genuinely has no row for that photo yet — its response
+      // isn't stale, it's accurately "no photo yet." A blind replace here
+      // would erase the upload's own optimistic pending placeholder before
+      // that upload ever gets a chance to swap it for the real thing, so the
+      // photo would never appear client-side despite saving successfully.
+      if (json.job) setJob((prev) => mergeInPendingMedia(prev, json.job));
       else setLoadError("No job data returned.");
     } catch (err: unknown) {
       if (seq !== loadSeqRef.current) return;
