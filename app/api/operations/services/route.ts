@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server"
 import { createAdminClient } from "@/lib/supabase/admin"
+import { LIVE_JOB_STATUSES } from "@/lib/operations/service-usage"
 
 // GET /api/operations/services
 // Returns paginated service list with stage counts, supporting search and status filter.
@@ -23,6 +24,18 @@ export async function GET(request: Request) {
     const countMap: Record<string, number> = {}
     for (const row of stageCounts ?? []) {
       countMap[row.service_id] = (countMap[row.service_id] ?? 0) + 1
+    }
+
+    // Live job order counts per service — drives the "In Use" badge and the
+    // Edit/Archive lock in ServiceTable.tsx.
+    const { data: liveJobRows } = await supabase
+      .from("job_order")
+      .select("service_id")
+      .in("status", LIVE_JOB_STATUSES)
+
+    const jobCountMap: Record<string, number> = {}
+    for (const row of liveJobRows ?? []) {
+      jobCountMap[row.service_id] = (jobCountMap[row.service_id] ?? 0) + 1
     }
 
     // Base query
@@ -51,6 +64,7 @@ export async function GET(request: Request) {
       estimated_duration_mins: s.estimated_duration_mins ?? null,
       is_archived:             s.is_archived,
       stage_count:             countMap[s.id] ?? 0,
+      job_order_count:         jobCountMap[s.id] ?? 0,
     }))
 
     return NextResponse.json({ services, total: count ?? 0 })
