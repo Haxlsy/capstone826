@@ -40,7 +40,7 @@ export default function AccountTable() {
 
   const [search, setSearch] = useState("")
   const [roleFilter, setRoleFilter] = useState<UserRole | "all">("all")
-  const [statusFilter, setStatusFilter] = useState<"all" | "active" | "archived">("all")
+  const [statusFilter, setStatusFilter] = useState<"all" | "active" | "archived">("active")
 
   const [page, setPage] = useState(1)
   const [pageSize, setPageSize] = useState(15)
@@ -139,7 +139,7 @@ export default function AccountTable() {
   }
 
   const totalPages = Math.max(1, Math.ceil(totalCount / pageSize))
-  const hasFilter = roleFilter !== "all" || statusFilter !== "all"
+  const hasFilter = roleFilter !== "all" || statusFilter !== "active"
 
   const columns: Column<Account>[] = [
     {
@@ -241,7 +241,7 @@ export default function AccountTable() {
               open={open}
               onClick={toggle}
               active={hasFilter}
-              count={(roleFilter !== "all" ? 1 : 0) + (statusFilter !== "all" ? 1 : 0)}
+              count={(roleFilter !== "all" ? 1 : 0) + (statusFilter !== "active" ? 1 : 0)}
             />
           )}
           panelClassName="w-[min(90vw,26rem)] p-4"
@@ -285,7 +285,7 @@ export default function AccountTable() {
               <button
                 onClick={() => {
                   setRoleFilter("all")
-                  setStatusFilter("all")
+                  setStatusFilter("active")
                 }}
                 className="text-left text-xs text-muted transition-colors hover:text-status-delayed sm:col-span-2"
               >

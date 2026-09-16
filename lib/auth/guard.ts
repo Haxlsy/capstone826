@@ -38,16 +38,25 @@ export const getCurrentUser = cache(async (): Promise<{ id: string } | null> => 
   return user ? { id: user.id } : null
 })
 
-export async function requireRole(allowedRoles: string[]) {
-  const user = await getCurrentUser()
-  if (!user) redirect("/login")
-
+// Memoized per-request (like getCurrentUser above) — requireRole() is called
+// once per nested layout (e.g. the generic /dashboard layout AND the strict
+// per-area layout under it), and without this the identical user_account
+// query ran twice on every single navigation for no benefit.
+const getCurrentUserProfile = cache(async (userId: string) => {
   const admin = createAdminClient()
   const { data: profile } = await admin
     .from("user_account")
     .select("role, must_change_password")
-    .eq("id", user.id)
+    .eq("id", userId)
     .single()
+  return profile
+})
+
+export async function requireRole(allowedRoles: string[]) {
+  const user = await getCurrentUser()
+  if (!user) redirect("/login")
+
+  const profile = await getCurrentUserProfile(user.id)
 
   const role = profile?.role as string | undefined
   if (!role || !allowedRoles.includes(role)) {

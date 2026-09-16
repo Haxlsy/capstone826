@@ -4,16 +4,34 @@ import { ACTIVE_JOB_STATUSES, isJobDelayed, computeStageDelays, hasAnyStageDelay
 export async function getDashboardData(){
        const supabase = createAdminClient()
 
-    // All job orders with schedule fields
-    const { data: jobs} = await supabase
-      .from("job_order")
-      .select(
-        `id, status, scheduled_at, actual_start_at, expected_completion_at, created_at, updated_at, job_order_code,
-         customer:customer_record_id(full_name),
-         service:service_id(name)`
-      )
-      .order("created_at", { ascending: false })
+    // Bounded to a rolling 12 months — this used to fetch every job order the
+    // shop has ever created, on every single page load, getting slower
+    // forever as history accumulates. Stat cards and "recent jobs" only ever
+    // cared about recent/active work anyway; the Job Calendar's Year view
+    // (which wanted the full history) has been removed to match.
+    const twelveMonthsAgo = new Date()
+    twelveMonthsAgo.setMonth(twelveMonthsAgo.getMonth() - 12)
 
+    // The concern count has no dependency on job_order data — run it
+    // alongside the job_order fetch instead of after it, since nothing about
+    // it needs jobIds. Removes one full round-trip from the critical path
+    // this whole page is gated behind.
+    const [{ data: jobs }, concernResult] = await Promise.all([
+      supabase
+        .from("job_order")
+        .select(
+          `id, status, scheduled_at, actual_start_at, expected_completion_at, created_at, updated_at, job_order_code,
+           customer:customer_record_id(full_name),
+           service:service_id(name)`
+        )
+        .gte("created_at", twelveMonthsAgo.toISOString())
+        .order("created_at", { ascending: false }),
+
+      supabase
+        .from("concern")
+        .select("id", { count: "exact", head: true })
+        .eq("status", "Pending"),
+    ])
 
     const rows   = jobs ?? []
     const jobIds = rows.map((j: any) => j.id)
@@ -21,8 +39,8 @@ export async function getDashboardData(){
     const activeJobs    = rows.filter((r: any) => (ACTIVE_JOB_STATUSES as readonly string[]).includes(r.status) && r.actual_start_at)
     const activeJobIds  = activeJobs.map((r: any) => r.id as string)
 
-    // Run remaining queries in parallel
-    const [teamResult, stageResult, concernResult] = await Promise.all([
+    // Run remaining (genuinely jobIds-dependent) queries in parallel
+    const [teamResult, stageResult] = await Promise.all([
       supabase
         .from("job_order_team")
         .select("job_order_id, role_in_job, user_account:user_account_id(full_name)")
@@ -35,11 +53,6 @@ export async function getDashboardData(){
             .select("job_order_id, status, stage_duration_mins, service_stage:service_stage_id(stage_duration_mins, sequence_order)")
             .in("job_order_id", activeJobIds)
         : Promise.resolve({ data: [] }),
-
-      supabase
-        .from("concern")
-        .select("id", { count: "exact", head: true })
-        .eq("status", "Pending"),
     ])
 
     const teamRows = teamResult.data ?? []
