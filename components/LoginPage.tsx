@@ -118,6 +118,21 @@ export default function LoginPage() {
       const data = await res.json()
 
       if (!res.ok) {
+        // Server is authoritative for lockout (see app/api/auth/login/route.ts) —
+        // sync to its state instead of trusting local count, so this still
+        // locks correctly even if localStorage was cleared or another
+        // device already tripped the counter.
+        if (res.status === 423) {
+          const secs = data.retryAfterSeconds ?? 60
+          const until = Date.now() + secs * 1000
+          setAttempts(3)
+          setLockUntil(until)
+          localStorage.setItem("826_login_attempts", JSON.stringify({ attempts: 3, lockUntil: until }))
+          toastRef.current.error(data.error ?? "Too many failed attempts. Please wait 1 minute.")
+          setIsLoading(false)
+          return
+        }
+
         const next = attempts + 1
         setAttempts(next)
         if (next >= 3) {
