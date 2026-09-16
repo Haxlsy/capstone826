@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react"
 import { MoreHorizontal } from "lucide-react"
 import AddServiceModal from "./AddServiceModal"
 import EditServiceModal from "./EditServiceModal"
+import ViewServiceDrawer from "./ViewServiceDrawer"
 import AddServiceTypeModal from "./AddServiceTypeModal"
 import CategoryPresetsPanel from "./CategoryPresetsPanel"
 import { PageHeader } from "@/components/ui/PageHeader"
@@ -71,6 +72,7 @@ export default function ServiceTable({ canWrite = true }: { canWrite?: boolean }
   const [addTypeModalOpen, setAddTypeModalOpen] = useState(false)
   const [presetsOpen, setPresetsOpen] = useState(false)
   const [editServiceId, setEditServiceId] = useState<string | null>(null)
+  const [viewingService, setViewingService] = useState<Service | null>(null)
 
   useEffect(() => {
     const t = setTimeout(() => setSearch(searchInput), 300)
@@ -198,7 +200,7 @@ export default function ServiceTable({ canWrite = true }: { canWrite?: boolean }
                   <button
                     type="button"
                     aria-label="Service options"
-                    onClick={toggle}
+                    onClick={(e) => { e.stopPropagation(); toggle() }}
                     className="rounded-sm p-1 text-muted transition-colors hover:bg-surface-muted hover:text-body"
                   >
                     <MoreHorizontal className="h-4 w-4" />
@@ -353,10 +355,17 @@ export default function ServiceTable({ canWrite = true }: { canWrite?: boolean }
         </>
       )}
 
+      <ViewServiceDrawer
+        service={viewingService}
+        open={viewingService !== null}
+        onClose={() => setViewingService(null)}
+      />
+
       <DataTable
         columns={columns}
         rows={services}
         rowKey={(s) => s.id}
+        onRowClick={setViewingService}
         loading={loading}
         error={fetchError}
         emptyLabel="No services found."
