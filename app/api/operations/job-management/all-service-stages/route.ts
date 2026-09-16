@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server"
 import { createAdminClient } from "@/lib/supabase/admin"
+import { getRoleCaller } from "@/lib/auth/caller"
 
 // GET /api/operations/job-management/all-service-stages
 // Bulk variant of service-stages/route.ts — every non-archived service's
@@ -15,6 +16,9 @@ import { createAdminClient } from "@/lib/supabase/admin"
 // can't distinguish.
 export async function GET() {
   try {
+    const auth = await getRoleCaller(["operations"])
+    if ("error" in auth) return auth.error
+
     const admin = createAdminClient()
 
     const [{ data: services, error: servicesErr }, { data: rows, error: stagesErr }] = await Promise.all([

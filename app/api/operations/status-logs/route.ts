@@ -2,11 +2,14 @@ import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { createClient } from "@/lib/supabase/server";
 import { createClient as createAdminClient } from "@supabase/supabase-js";
-import { getAuditCaller } from "@/lib/auth/caller";
+import { getAuditCaller, getRoleCaller } from "@/lib/auth/caller";
 import { logAuditCall } from "@/hooks/audit-helpers";
 
 export async function GET(request: Request) {
   try {
+    const auth = await getRoleCaller(["operations"]);
+    if ("error" in auth) return auth.error;
+
     const url = new URL(request.url);
     const jobId = url.searchParams.get("jobId");
 
@@ -48,6 +51,9 @@ export async function GET(request: Request) {
 
 export async function POST(request: Request) {
   try {
+    const auth = await getRoleCaller(["operations"]);
+    if ("error" in auth) return auth.error;
+
     const body = await request.json();
     const {
       job_order_id,

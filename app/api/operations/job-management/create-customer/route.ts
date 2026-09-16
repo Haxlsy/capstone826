@@ -2,7 +2,7 @@ import { NextResponse } from "next/server"
 import { cookies } from "next/headers"
 import { createClient } from "@/lib/supabase/server"
 import { z } from "zod"
-import { getAuditCaller } from "@/lib/auth/caller"
+import { getAuditCaller, getRoleCaller } from "@/lib/auth/caller"
 import { logAuditCall } from "@/hooks/audit-helpers"
 
 const CreateCustomerSchema = z.object({
@@ -13,6 +13,9 @@ const CreateCustomerSchema = z.object({
 
 export async function POST(request: Request) {
   try {
+    const auth = await getRoleCaller(["operations"])
+    if ("error" in auth) return auth.error
+
     const body = await request.json()
 
     // Validate input

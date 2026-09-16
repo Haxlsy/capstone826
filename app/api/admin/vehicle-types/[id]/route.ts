@@ -3,8 +3,12 @@ import { cookies } from "next/headers"
 import { createClient } from "@/lib/supabase/server"
 import { createAdminClient } from "@/lib/supabase/admin"
 import { logAudit } from "@/hooks/audit-helpers"
+import { getRoleCaller } from "@/lib/auth/caller"
 
 export async function PATCH(request: Request, { params }: { params: Promise<{ id: string }> }) {
+  const auth = await getRoleCaller(["admin", "super_admin"])
+  if ("error" in auth) return auth.error
+
   const { id: rawId } = await params
   const id = Number(rawId)
   if (!id) return NextResponse.json({ error: "Invalid id." }, { status: 400 })

@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server"
 import { createAdminClient } from "@/lib/supabase/admin"
+import { getRoleCaller } from "@/lib/auth/caller"
 
 type Period = "today" | "week" | "month" | "overall"
 
@@ -25,6 +26,9 @@ function periodStart(period: Period): string | null {
 // GET /api/admin/dashboard/service-breakdown?period=today|week|month|overall
 export async function GET(request: Request) {
   try {
+    const auth = await getRoleCaller(["admin", "super_admin"])
+    if ("error" in auth) return auth.error
+
     const url    = new URL(request.url)
     const period = (url.searchParams.get("period") ?? "overall") as Period
 

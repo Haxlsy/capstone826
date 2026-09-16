@@ -7,6 +7,9 @@ import { logAuditCall } from "@/hooks/audit-helpers"
 // GET /api/admin/category-presets
 export async function GET() {
   try {
+    const auth = await getAdminCaller()
+    if ("error" in auth) return auth.error
+
     const admin = createAdminClient()
     const { data, error } = await admin
       .from("category_preset")

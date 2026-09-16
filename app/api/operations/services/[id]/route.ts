@@ -4,15 +4,21 @@ import { createClient } from "@/lib/supabase/server"
 import { createAdminClient } from "@/lib/supabase/admin"
 import { logAudit } from "@/hooks/audit-helpers"
 import { getLiveJobOrdersForService } from "@/lib/operations/service-usage"
-
+import { getRoleCaller } from "@/lib/auth/caller"
 
 // GET /api/operations/services/[id]
 // Returns a single service with its stages (including category info) for editing.
+// Despite the /api/operations/ prefix, this is Admin's own Service
+// Management CRUD (components/AdminSide/ServiceManagement/*) — the only
+// callers found in the codebase — not an Operations-facing endpoint.
 export async function GET(
   _request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const auth = await getRoleCaller(["admin", "super_admin"])
+    if ("error" in auth) return auth.error
+
     const { id } = await params
     const supabase = createAdminClient()
 
@@ -67,6 +73,9 @@ export async function PATCH(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const auth = await getRoleCaller(["admin", "super_admin"])
+    if ("error" in auth) return auth.error
+
     const cookieStore = await cookies()
     const supabaseAuth = createClient(cookieStore)
     const { data: { user } } = await supabaseAuth.auth.getUser()

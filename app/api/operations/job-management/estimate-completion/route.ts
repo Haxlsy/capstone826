@@ -3,12 +3,16 @@ import { cookies } from "next/headers"
 import { createClient } from "@/lib/supabase/server"
 import { addWorkingMins } from "@/hooks/time-utils"
 import { fmtDateTime } from "@/lib/time-display"
+import { getRoleCaller } from "@/lib/auth/caller"
 
 // Computes the expected completion for a prospective job order so the
 // confirm-dialog preview is produced server-side (same engine that persists
 // the estimate), never re-implemented in the browser.
 export async function POST(request: Request) {
   try {
+    const auth = await getRoleCaller(["operations"])
+    if ("error" in auth) return auth.error
+
     const cookieStore = await cookies()
     const supabase = createClient(cookieStore)
     const { data: { user } } = await supabase.auth.getUser()

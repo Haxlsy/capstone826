@@ -5,6 +5,7 @@ import { createClient } from "@/lib/supabase/server"
 import { createAdminClient } from "@/lib/supabase/admin"
 import { logAudit } from "@/hooks/audit-helpers"
 import { validateName } from "@/lib/name"
+import { getRoleCaller } from "@/lib/auth/caller"
 
 const ALLOWED_ROLES = [
   "admin",
@@ -30,6 +31,9 @@ const CreateAccountSchema = z.object({
 })
 
 export async function POST(request: Request) {
+  const auth = await getRoleCaller(["admin", "super_admin"])
+  if ("error" in auth) return auth.error
+
   const body = await request.json()
   const parsed = CreateAccountSchema.safeParse(body)
   if (!parsed.success) {

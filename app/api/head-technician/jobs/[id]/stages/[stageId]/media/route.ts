@@ -5,6 +5,7 @@ import { createAdminClient } from "@/lib/supabase/admin"
 import { extractVideoFrame, stripAudio } from "@/lib/media/video"
 import { validateAutomotiveImage, isMediaValidationEnabled } from "@/lib/ai/media-validation"
 import { MAX_PHOTO_MB, MAX_VIDEO_MB, MAX_PHOTO_BYTES, MAX_VIDEO_BYTES } from "@/lib/media/limits"
+import { getRoleCaller } from "@/lib/auth/caller"
 
 // POST /api/head-technician/jobs/[id]/stages/[stageId]/media
 // Accepts a multipart form with file field "file".
@@ -14,6 +15,9 @@ export async function POST(
   { params }: { params: Promise<{ id: string; stageId: string }> }
 ) {
   try {
+    const auth = await getRoleCaller(["head_detailer", "head_installer"])
+    if ("error" in auth) return auth.error
+
     const { id: jobId, stageId } = await params
 
     const cookieStore = await cookies()
@@ -121,6 +125,9 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string; stageId: string }> }
 ) {
   try {
+    const auth = await getRoleCaller(["head_detailer", "head_installer"])
+    if ("error" in auth) return auth.error
+
     const { stageId } = await params
     const { media_id } = await request.json()
     if (!media_id) return NextResponse.json({ error: "media_id is required." }, { status: 400 })

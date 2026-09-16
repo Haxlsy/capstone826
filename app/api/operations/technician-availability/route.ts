@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server"
 import { createAdminClient } from "@/lib/supabase/admin"
-import { getAuditCaller } from "@/lib/auth/caller"
+import { getAuditCaller, getRoleCaller } from "@/lib/auth/caller"
 import { logAuditCall } from "@/hooks/audit-helpers"
 import { normalizeName, validateName } from "@/lib/name"
 import { manilaToday } from "@/lib/technician-availability"
@@ -21,6 +21,12 @@ function validateWorkHours(start: string, end: string): string | null {
 // never deleted, since job_order_team rows reference them.
 export async function GET(request: Request) {
   try {
+    // Also read by the Admin Dashboard's oversight widget
+    // (components/AdminSide/dashboard/TechnicianAvailability.tsx) — a
+    // deliberate, narrow read-only exception, not a blanket cross-role grant.
+    const auth = await getRoleCaller(["operations", "admin", "super_admin"])
+    if ("error" in auth) return auth.error
+
     const supabase = createAdminClient()
     const status = new URL(request.url).searchParams.get("status") ?? "active"
 
@@ -100,6 +106,9 @@ export async function GET(request: Request) {
 // PATCH — update a technician's details
 export async function PATCH(request: Request) {
   try {
+    const auth = await getRoleCaller(["operations"])
+    if ("error" in auth) return auth.error
+
     const { id, is_available, first_name, last_name, role, is_archived, available_days, work_start_time, work_end_time } = await request.json()
 
     if (!id) {
@@ -178,6 +187,9 @@ export async function PATCH(request: Request) {
 // POST — create a new technician (detailer or installer)
 export async function POST(request: Request) {
   try {
+    const auth = await getRoleCaller(["operations"])
+    if ("error" in auth) return auth.error
+
     const { first_name, last_name, role, available_days, work_start_time, work_end_time } = await request.json()
 
     const firstName = normalizeName(first_name)
