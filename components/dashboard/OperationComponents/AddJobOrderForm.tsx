@@ -11,6 +11,7 @@ import { normalizePhone } from "@/lib/phone"
 import { useOnlineStatus } from "@/hooks/useOnlineStatus"
 import { enqueue, get as getQueued } from "@/lib/offline/outbox"
 import { useToast } from "@/components/ui/Toast"
+import { isTechnicianAvailableToday } from "@/lib/technician-availability"
 
 interface CustomerRecord {
   id:             string
@@ -46,6 +47,7 @@ interface CrewMember {
   available_days:   string[]
   work_start_time:  string
   work_end_time:    string
+  availability_override_date: string | null
 }
 
 interface FieldErrors {
@@ -430,8 +432,16 @@ export default function AddJobOrderForm() {
   }, [scheduledAt, isPPF])
 
   function crewAvailable(c: CrewMember): boolean {
-    if (c.on_job || !c.is_available) return false
-    if (scheduledDayLabel && !(c.available_days ?? []).includes(scheduledDayLabel)) return false
+    if (c.on_job) return false
+    if (scheduledDayLabel) {
+      // A specific date is picked — the recurring weekly schedule governs.
+      // Today's one-off override (is_available) only ever applies to today,
+      // so it must not block/allow a crew member for a different date.
+      if (!(c.available_days ?? []).includes(scheduledDayLabel)) return false
+    } else if (!isTechnicianAvailableToday(c)) {
+      // No date picked yet — fall back to current real-time availability.
+      return false
+    }
     if (scheduledTimeMins !== null) {
       const toMins = (t: string) => { const [h, m] = t.split(":").map(Number); return h * 60 + (m || 0) }
       const start = toMins(c.work_start_time ?? "08:00")

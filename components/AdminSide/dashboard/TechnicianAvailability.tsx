@@ -6,6 +6,7 @@ import { useRealtimeRefetch } from "@/hooks/useRealtimeRefetch"
 import { Card } from "@/components/ui/Card"
 import { StatusBadge } from "@/components/ui/Badge"
 import { cn } from "@/lib/utils"
+import { isTechnicianAvailableToday, manilaToday } from "@/lib/technician-availability"
 
 interface Technician {
   id:             string
@@ -13,12 +14,13 @@ interface Technician {
   role:           string
   is_available:   boolean
   available_days: string[]
+  availability_override_date: string | null
   active_job:     { job_id: string; customer: string; service: string } | null
 }
 
 const DETAILER_ROLES  = ["head_detailer", "detailer"]
 const INSTALLER_ROLES = ["head_installer", "installer"]
-const TODAY = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"][new Date().getDay()]
+const TODAY = manilaToday().dayName
 
 function roleLabel(role: string): string {
   return role.replace("_", " ").replace(/\b\w/g, (c) => c.toUpperCase())
@@ -26,7 +28,7 @@ function roleLabel(role: string): string {
 
 function TechList({ title, techs, loading }: { title: string; techs: Technician[]; loading: boolean }) {
   const availableToday = techs.filter(
-    (t) => !t.active_job && t.is_available && t.available_days.includes(TODAY)
+    (t) => !t.active_job && isTechnicianAvailableToday(t)
   ).length
 
   return (
@@ -51,7 +53,7 @@ function TechList({ title, techs, loading }: { title: string; techs: Technician[
           {techs.map((t) => {
             const onJob      = t.active_job !== null
             const worksToday = t.available_days.includes(TODAY)
-            const available  = !onJob && t.is_available && worksToday
+            const available  = !onJob && isTechnicianAvailableToday(t)
 
             const dotColor = onJob ? "bg-status-onjob" : available ? "bg-status-inspection" : "bg-border"
             const badgeLabel = onJob ? "On Job" : available ? "Available" : "Not Available"
