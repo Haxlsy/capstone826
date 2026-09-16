@@ -145,7 +145,27 @@ export default function ServiceTable({ canWrite = true }: { canWrite?: boolean }
           <span className="text-xs text-muted">—</span>
         ),
     },
-    { key: "name", header: "Service Name", cell: (s) => <span className="font-medium text-heading">{s.name}</span> },
+    {
+      key: "name",
+      header: "Service Name",
+      cell: (s) => (
+        <span className="inline-flex items-center gap-2 font-medium text-heading">
+          {s.name}
+          {s.job_order_count > 0 && (
+            // Inline label, not a second line of text — hover for the exact
+            // count. Keeps every row the same height instead of some growing
+            // taller than others.
+            <span
+              className="inline-flex shrink-0 items-center gap-1 rounded-pill bg-status-onjob/12 px-2 py-0.5 text-[11px] font-medium text-status-onjob"
+              title={`${s.job_order_count} job order${s.job_order_count === 1 ? "" : "s"} currently using this service`}
+            >
+              <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-status-onjob" />
+              In Use
+            </span>
+          )}
+        </span>
+      ),
+    },
     { key: "desc", header: "Description", cell: (s) => <span className="block max-w-xs text-muted">{truncate(s.description)}</span> },
     { key: "dur", header: "Est. Duration", cell: (s) => <span className="text-body">{formatDuration(s.estimated_duration_mins)}</span> },
     {
@@ -163,14 +183,7 @@ export default function ServiceTable({ canWrite = true }: { canWrite?: boolean }
     {
       key: "status",
       header: "Status",
-      cell: (s) => (
-        <div className="flex flex-col items-start gap-1">
-          <StatusBadge status={s.is_archived ? "archived" : "active"} />
-          {s.job_order_count > 0 && (
-            <StatusBadge status="in_use" label={`In Use (${s.job_order_count})`} />
-          )}
-        </div>
-      ),
+      cell: (s) => <StatusBadge status={s.is_archived ? "archived" : "active"} />,
     },
     ...(canWrite
       ? [

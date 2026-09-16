@@ -78,8 +78,15 @@ export async function getDashboardData(){
     // every other surface (Admin, Head Detailer/Installer) also uses.
     const overdueJobIds = new Set<string>()
 
-    // Signal 1: job-level expected_completion_at (isJobDelayed).
-    for (const row of activeJobs) {
+    // Signal 1: job-level expected_completion_at (isJobDelayed) — checked
+    // against every active-status row, NOT just `activeJobs` (which also
+    // requires actual_start_at, a condition isJobDelayed itself never asks
+    // for). A job that was scheduled but never started (still "Pending", no
+    // actual_start_at) can still blow its expected_completion_at — that case
+    // must count here too, matching Admin's getDelayedJobs() and this same
+    // file's recent_jobs/calendar_jobs below, which already check every row.
+    const activeStatusRows = rows.filter((r: any) => (ACTIVE_JOB_STATUSES as readonly string[]).includes(r.status))
+    for (const row of activeStatusRows) {
       if (isJobDelayed(row as { status: string; expected_completion_at: string | null })) {
         overdueJobIds.add(row.id as string)
       }
