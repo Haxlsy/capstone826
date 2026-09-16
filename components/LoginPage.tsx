@@ -27,7 +27,9 @@ export default function LoginPage() {
   const [lockUntil, setLockUntil] = useState<number | null>(null)
   const [remaining, setRemaining] = useState(0)
   const toastRef = useRef(toast)
-  toastRef.current = toast
+  useEffect(() => {
+    toastRef.current = toast
+  })
 
   // Redirected here after being signed out for a newer login elsewhere
   // (proxy.ts — single active session per account). Reads the query param
@@ -45,19 +47,22 @@ export default function LoginPage() {
 
   // Rehydrate lockout from localStorage on mount
   useEffect(() => {
-    try {
-      const raw = localStorage.getItem("826_login_attempts")
-      if (!raw) return
-      const saved = JSON.parse(raw) as { attempts: number; lockUntil: number | null }
-      if (saved.lockUntil && Date.now() < saved.lockUntil) {
-        setAttempts(saved.attempts)
-        setLockUntil(saved.lockUntil)
-      } else {
-        localStorage.removeItem("826_login_attempts")
+    function rehydrate() {
+      try {
+        const raw = localStorage.getItem("826_login_attempts")
+        if (!raw) return
+        const saved = JSON.parse(raw) as { attempts: number; lockUntil: number | null }
+        if (saved.lockUntil && Date.now() < saved.lockUntil) {
+          setAttempts(saved.attempts)
+          setLockUntil(saved.lockUntil)
+        } else {
+          localStorage.removeItem("826_login_attempts")
+        }
+      } catch {
+        /* ignore */
       }
-    } catch {
-      /* ignore */
     }
+    rehydrate()
   }, [])
 
   // Countdown ticker while locked
@@ -79,7 +84,11 @@ export default function LoginPage() {
     return () => clearInterval(id)
   }, [lockUntil])
 
-  const locked = lockUntil !== null && Date.now() < lockUntil
+  // lockUntil is cleared back to null by the ticking effect above the instant
+  // it expires (tick() runs synchronously on mount/whenever lockUntil
+  // changes, before the 1s interval even starts) — so this doesn't need its
+  // own Date.now() comparison, which isn't safe to call during render.
+  const locked = lockUntil !== null
 
   function validate() {
     const e: { username?: string; password?: string } = {}
@@ -121,6 +130,7 @@ export default function LoginPage() {
           const left = 3 - next
           toastRef.current.error(`Invalid credentials. ${left} attempt${left === 1 ? "" : "s"} remaining.`)
         }
+        setIsLoading(false)
         return
       }
 
@@ -133,6 +143,12 @@ export default function LoginPage() {
         /* ignore */
       }
 
+      // Intentionally leave isLoading=true here — router.push() only starts
+      // the navigation (the destination's auth/layout/data chain still has to
+      // resolve after this call returns), so resetting it now made the
+      // button flicker "Signing in…" -> "Login" -> (actual page) instead of
+      // reading as one continuous wait. This page is being replaced either
+      // way, so there's nothing to re-enable the button for.
       if (data.user?.must_change_password) {
         router.push("/change-password-required")
       } else {
@@ -140,7 +156,6 @@ export default function LoginPage() {
       }
     } catch {
       toastRef.current.error("Network error. Please try again.")
-    } finally {
       setIsLoading(false)
     }
   }

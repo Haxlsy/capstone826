@@ -148,7 +148,6 @@ export default function AddAccountModal({
           body: JSON.stringify({
             userId:   editAccount!.id,
             fullName: form.fullName.trim(),
-            role:     form.role,
           }),
         })
       } else {
@@ -288,10 +287,11 @@ export default function AddAccountModal({
           <div className="space-y-1.5">
             <label className="block text-sm font-medium text-body">
               Role <span className="text-status-delayed">*</span>
+              {isEdit && <span className="text-muted font-normal"> (cannot be changed)</span>}
             </label>
-            {mode === "admin" ? (
+            {mode === "admin" || isEdit ? (
               <div className="w-full px-3 py-2.5 text-sm border border-border rounded-sm bg-surface-subtle text-body cursor-not-allowed">
-                Admin
+                {roleOptions.find((o) => o.value === form.role)?.label ?? form.role}
               </div>
             ) : (
               <select

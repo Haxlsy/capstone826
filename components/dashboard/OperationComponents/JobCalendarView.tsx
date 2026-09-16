@@ -30,10 +30,9 @@ const VIEW_OPTIONS: { key: ViewMode; label: string }[] = [
   { key: "today", label: "Today" },
   { key: "week", label: "Week" },
   { key: "month", label: "Month" },
-  { key: "year", label: "Year" },
 ]
 
-type ViewMode = "today" | "week" | "month" | "year"
+type ViewMode = "today" | "week" | "month"
 
 interface CalendarJob {
   id: string
@@ -145,21 +144,6 @@ function JobDetailBlock({ job }: { job: CalendarJob }) {
   )
 }
 
-/** Up to 3 distinct statuses present in a set of jobs, for a compact tile summary. */
-function uniqueStatusDots(jobs: CalendarJob[]) {
-  const seen = new Set<string>()
-  const statuses: string[] = []
-  for (const job of jobs) {
-    const status = displayJobStatus(job.status, job.is_overdue)
-    if (!seen.has(status)) {
-      seen.add(status)
-      statuses.push(status)
-      if (statuses.length === 3) break
-    }
-  }
-  return statuses
-}
-
 interface Props {
   loading: boolean
   calendarJobs: CalendarJob[]
@@ -183,7 +167,6 @@ export default function JobCalendarView({ loading, calendarJobs }: Props) {
     setAnchorDate((d) => {
       const next = new Date(d)
       if (viewMode === "week") next.setDate(next.getDate() - 7)
-      else if (viewMode === "year") next.setFullYear(next.getFullYear() - 1)
       else next.setMonth(next.getMonth() - 1)
       return next
     })
@@ -192,7 +175,6 @@ export default function JobCalendarView({ loading, calendarJobs }: Props) {
     setAnchorDate((d) => {
       const next = new Date(d)
       if (viewMode === "week") next.setDate(next.getDate() + 7)
-      else if (viewMode === "year") next.setFullYear(next.getFullYear() + 1)
       else next.setMonth(next.getMonth() + 1)
       return next
     })
@@ -230,18 +212,6 @@ export default function JobCalendarView({ loading, calendarJobs }: Props) {
     return cells
   }, [anchorDate])
 
-  const yearMonths = useMemo(() => {
-    const year = anchorDate.getFullYear()
-    return Array.from({ length: 12 }, (_, m) => {
-      const monthDate = new Date(year, m, 1)
-      const jobs = calendarJobs.filter((j) => {
-        const d = new Date(j.scheduled_at)
-        return d.getFullYear() === year && d.getMonth() === m
-      })
-      return { monthDate, jobs }
-    })
-  }, [anchorDate, calendarJobs])
-
   const todaysJobs = jobsByDate[dateKey(anchorDate)] ?? []
   const selectedJobs = selectedDate ? jobsByDate[dateKey(selectedDate)] ?? [] : []
   const selectedLabel = selectedDate
@@ -262,7 +232,6 @@ export default function JobCalendarView({ loading, calendarJobs }: Props) {
         : end.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })
       return `${startStr} – ${endStr}`
     }
-    if (viewMode === "year") return String(anchorDate.getFullYear())
     return `${MONTH_NAMES[anchorDate.getMonth()]} ${anchorDate.getFullYear()}`
   }, [viewMode, anchorDate, weekStart])
 
@@ -454,33 +423,6 @@ export default function JobCalendarView({ loading, calendarJobs }: Props) {
               )}
             </div>
           </>
-        )}
-
-        {viewMode === "year" && (
-          <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4">
-            {yearMonths.map(({ monthDate, jobs }) => {
-              const dots = uniqueStatusDots(jobs)
-              return (
-                <button
-                  key={monthDate.getMonth()}
-                  onClick={() => { setViewMode("month"); setAnchorDate(monthDate) }}
-                  className="flex flex-col items-start gap-2 rounded-card border border-border-subtle p-3 text-left transition-colors hover:border-primary/40 hover:bg-surface-subtle"
-                >
-                  <span className="text-sm font-semibold text-heading">{MONTH_NAMES[monthDate.getMonth()]}</span>
-                  <span className="text-xs text-muted">
-                    {jobs.length} job{jobs.length !== 1 ? "s" : ""}
-                  </span>
-                  {dots.length > 0 && (
-                    <div className="flex gap-1">
-                      {dots.map((status) => (
-                        <span key={status} className={cn("h-1.5 w-1.5 rounded-full", statusStyle(status).dot)} />
-                      ))}
-                    </div>
-                  )}
-                </button>
-              )
-            })}
-          </div>
         )}
 
         <div className="flex flex-wrap items-center gap-x-4 gap-y-1 border-t border-border-subtle pt-2">
