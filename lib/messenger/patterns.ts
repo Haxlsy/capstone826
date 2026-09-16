@@ -79,6 +79,34 @@ export function extractJobOrderCode(text: string): string {
 }
 
 /**
+ * Common English/Filipino filler replies — "ano po?", "ok", "noted" — that
+ * carry no attempted Job Order Code at all. Used during account-link
+ * verification so a normal reaction to the bot's own previous message isn't
+ * counted as a failed code attempt against the retry cap (a real report: a
+ * customer's "ano po?" tipped the 2-strike cap and triggered a full
+ * escalation on its own).
+ */
+const LOW_CONTENT_ACK_PATTERNS = [
+  /^(ano|ha|huh|what|hm+|eh|bakit|why)\s*(po|nga)?\??!?$/i,
+  /^(ok(ay)?|sige|opo|oo|noted|alright|got it|understood|okay lang)\s*(po|lang)?\.?!?$/i,
+  /^(san|saan|where)\s*(po)?\??$/i,
+  /^(thanks|thank\s*you|salamat)\s*(po)?!?$/i,
+]
+
+/**
+ * True for a short reply with no digits — a code always has a distinctive
+ * "JO-" prefix, so a filler reply can never accidentally look like an
+ * attempted (if garbled) code and get treated as an ack by mistake.
+ */
+export function isLowContentAck(text: string): boolean {
+  const normalized = text.trim().toLowerCase()
+  if (!normalized) return false
+  if (LOW_CONTENT_ACK_PATTERNS.some((re) => re.test(normalized))) return true
+  const words = normalized.split(/\s+/)
+  return words.length <= 2 && normalized.length <= 12 && !/\d/.test(normalized)
+}
+
+/**
  * Pulls the plate + phone pair out of an account-link reply. Customers send the
  * two glued together in either order, so the phone is matched FIRST and removed
  * before the plate is matched: on "XYZ-123409171234567" a direct plate match
