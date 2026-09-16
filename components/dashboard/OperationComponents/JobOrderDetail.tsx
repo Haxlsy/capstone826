@@ -19,6 +19,7 @@ import { useToast } from "@/components/ui/Toast"
 import { cn } from "@/lib/utils"
 import { statusStyle } from "@/lib/ui/status"
 import { displayJobStatus } from "@/lib/job-delay"
+import { isTechnicianAvailableToday } from "@/lib/technician-availability"
 import { categorySwatch } from "@/lib/ui/category-colors"
 import { fmtDateTime } from "@/lib/time-display"
 import { useRealtimeRefetch } from "@/hooks/useRealtimeRefetch"
@@ -146,7 +147,15 @@ export default function JobOrderDetail({
   const [subModal, setSubModal] = useState(false)
   const [subRole, setSubRole] = useState<"detailer" | "installer">("detailer")
   const [subTechs, setSubTechs] = useState<
-    { id: string; name: string; role: string; on_job: boolean; is_available: boolean }[]
+    {
+      id: string
+      name: string
+      role: string
+      on_job: boolean
+      is_available: boolean
+      available_days: string[]
+      availability_override_date: string | null
+    }[]
   >([])
   const [subTechsLoading, setSubTechsLoading] = useState(false)
   const [selectedSubId, setSelectedSubId] = useState<string | null>(null)
@@ -304,6 +313,8 @@ export default function JobOrderDetail({
           role: t.role as string,
           on_job: t.on_job as boolean,
           is_available: t.is_available as boolean,
+          available_days: (t.available_days as string[]) ?? [],
+          availability_override_date: (t.availability_override_date as string | null) ?? null,
         })),
       )
     } catch {
@@ -936,11 +947,11 @@ export default function JobOrderDetail({
             <div className="flex items-center justify-center py-6 text-muted">
               <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Loading…
             </div>
-          ) : subTechs.filter((t) => t.role === subRole && t.is_available && !t.on_job).length === 0 ? (
+          ) : subTechs.filter((t) => t.role === subRole && isTechnicianAvailableToday(t) && !t.on_job).length === 0 ? (
             <p className="py-6 text-center text-xs text-muted">No available technicians.</p>
           ) : (
             subTechs
-              .filter((t) => t.role === subRole && t.is_available && !t.on_job)
+              .filter((t) => t.role === subRole && isTechnicianAvailableToday(t) && !t.on_job)
               .map((t) => (
                 <button
                   key={t.id}
@@ -954,7 +965,7 @@ export default function JobOrderDetail({
                   )}
                 >
                   <span className="font-medium">{t.name}</span>
-                  <StatusBadge status={t.on_job ? "On Job" : t.is_available ? "Available" : "Unavailable"} />
+                  <StatusBadge status={t.on_job ? "On Job" : isTechnicianAvailableToday(t) ? "Available" : "Unavailable"} />
                 </button>
               ))
           )}

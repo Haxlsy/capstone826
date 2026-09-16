@@ -16,6 +16,8 @@ import {
   setViolationStreaks,
   setBookingDraft,
   getConversationHistory,
+  setLastQuickReplyPayload,
+  messageAlreadyProcessed,
 } from "@/lib/messenger/messenger-data"
 import {
   loadChatbotConfig,
@@ -263,8 +265,13 @@ async function handleInboundMessage(
   const profile = await fetchMessengerProfile(senderId)
 
   // Get or create the conversation and capture its current status + flow flags.
-  const { conversation_id, status, is_vehicle_inquiry, is_booking_flow, awaiting_confirmation, active_booking_offered, booking_duplicate_notified, conflict_pending, awaiting_link_verification, link_attempts, link_conflict_pending, offtopic_streak, policy_streak, complaint_streak, booking_draft } =
+  const { conversation_id, status, is_vehicle_inquiry, is_booking_flow, awaiting_confirmation, active_booking_offered, booking_duplicate_notified, conflict_pending, awaiting_link_verification, link_attempts, link_conflict_pending, offtopic_streak, policy_streak, complaint_streak, booking_draft, last_message_at, last_quick_reply_payload } =
     await getOrCreateConversationByPsid(senderId, profile.name)
+
+  // Meta can redeliver the same webhook event (observed directly: two
+  // messenger_message rows with the identical mid and millisecond timestamp
+  // in a live test). Bail out before recording or replying a second time.
+  if (await messageAlreadyProcessed(conversation_id, msg.mid ?? null)) return
 
   // Best-effort flag persistence: a failure here must not abort the reply.
   const safe = async (fn: () => Promise<unknown>) => {
@@ -371,6 +378,27 @@ async function handleInboundMessage(
   }
 
   const quickReplyPayload = msg.quick_reply?.payload ?? null
+
+  // Rate-limits predefined quick-reply buttons (Vehicle Status, Booking,
+  // Report, ...): a rapid repeat tap of the SAME button within this window is
+  // recorded (insertMessage above) but not answered again. Anchored to
+  // `last_message_at`, which getOrCreateConversationByPsid updates
+  // synchronously at the very top of every call — before any slow AI/DB
+  // work — so a burst of taps is always measured against the immediately
+  // preceding one, not a stale first-tap timestamp.
+  const QUICK_REPLY_COOLDOWN_MS = 3000
+  const isRepeatQuickReplyTap =
+    Boolean(quickReplyPayload) &&
+    quickReplyPayload === last_quick_reply_payload &&
+    Boolean(last_message_at) &&
+    new Date(timestamp).getTime() - new Date(last_message_at as string).getTime() < QUICK_REPLY_COOLDOWN_MS
+
+  // Always persisted (including `null` for a typed message) so an unrelated
+  // reply in between two taps of the same button correctly resets the
+  // comparison instead of leaving a stale payload to match against later.
+  await safe(() => setLastQuickReplyPayload(conversation_id, quickReplyPayload))
+
+  if (isRepeatQuickReplyTap) return
 
   // Resolved before the link-verification block below, which needs them to tell a
   // deliberate subject change ("I want to book", "let me talk to someone") from a

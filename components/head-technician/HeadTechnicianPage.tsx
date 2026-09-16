@@ -11,6 +11,7 @@ import { Popover } from "@/components/ui/Popover"
 import { FilterTrigger } from "@/components/ui/FilterTrigger"
 import type { TechnicianJob } from "@/lib/head-technician/jobs-data"
 import { useTechnicianJobs } from "@/hooks/use-technician-jobs"
+import { displayJobStatus } from "@/lib/job-delay"
 
 const STATUS_OPTIONS: Status[] = [
   "Pending",
@@ -38,7 +39,11 @@ export default function HeadTechnicianPage({
   const [statusFilter, setStatusFilter] = useState("all")
 
   const filteredJobs = jobs.filter((job) => {
-    if (statusFilter !== "all" && job.status !== (statusFilter as Status)) return false
+    // Compares against the DISPLAY status (job.status re-resolved through
+    // displayJobStatus), not the raw one — the raw status is almost never
+    // literally "Delayed" (see lib/job-delay.ts), so filtering on it
+    // directly would make the "Delayed" tab match nothing.
+    if (statusFilter !== "all" && displayJobStatus(job.status, job.is_overdue) !== (statusFilter as Status)) return false
     if (searchQuery.trim()) {
       const q = searchQuery.toLowerCase()
       const matches =
@@ -54,11 +59,12 @@ export default function HeadTechnicianPage({
 
   const ongoingCount = jobs.filter((j) => j.status === "Ongoing").length
   const reworkCount  = jobs.filter((j) => j.status === "For Rework").length
-  // Same stage-level signal HeadTechJobCard's "Stage Delayed" badge uses
-  // (lib/job-delay.ts's per-stage check) — the job's own `status` field
-  // almost never literally reads "Delayed" itself, so counting on that
-  // would miss nearly every overdue job.
-  const delayedCount = jobs.filter((j) => j.has_delayed_stage).length
+  // is_overdue merges BOTH delay signals from lib/job-delay.ts: job-level
+  // (isJobDelayed — catches a job that missed its scheduled window without
+  // ever starting, still shown as "Pending") and stage-level (has_delayed_stage,
+  // HeadTechJobCard's "Stage Delayed" pill). Counting only has_delayed_stage
+  // here used to miss every never-started overdue job.
+  const delayedCount = jobs.filter((j) => j.is_overdue).length
   const isFiltered   = statusFilter !== "all" || searchQuery.trim() !== ""
 
   return (
