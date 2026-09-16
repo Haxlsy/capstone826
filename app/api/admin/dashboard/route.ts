@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server"
 import { createAdminClient } from "@/lib/supabase/admin"
 import { ACTIVE_JOB_STATUSES } from "@/lib/job-delay"
+import { getRoleCaller } from "@/lib/auth/caller"
 
 const ACTIVE_STATUSES: readonly string[] = ACTIVE_JOB_STATUSES
 
@@ -8,6 +9,9 @@ const ACTIVE_STATUSES: readonly string[] = ACTIVE_JOB_STATUSES
 // Returns aggregated stats for the admin dashboard.
 export async function GET() {
   try {
+    const auth = await getRoleCaller(["admin", "super_admin"])
+    if ("error" in auth) return auth.error
+
     const admin = createAdminClient()
 
     const [

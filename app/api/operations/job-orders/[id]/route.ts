@@ -8,12 +8,19 @@ import { totalStageDurationMins, computeExpectedCompletion } from "@/lib/job-est
 import { sendPushToUser } from "@/lib/push/send"
 import { sendMessengerText } from "@/lib/messenger/graph"
 import { buildReleaseMessage, buildCompletionMessage, getOperatingHoursText } from "@/lib/messenger/status-update"
+import { getRoleCaller } from "@/lib/auth/caller"
 
 export async function GET(
   _request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    // Also read by Sales' own job order detail view
+    // (components/dashboard/SalesDashboard/SalesJobDetail.tsx) — a
+    // deliberate, narrow read-only exception, not a blanket cross-role grant.
+    const auth = await getRoleCaller(["operations", "sales"])
+    if ("error" in auth) return auth.error
+
     const { id } = await params
     const data = await getJobDetailData(id)
     return NextResponse.json({ job: data.job })
@@ -32,6 +39,9 @@ export async function PATCH(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const auth = await getRoleCaller(["operations"])
+    if ("error" in auth) return auth.error
+
     const { id } = await params
 
     const body = await request.json()
@@ -294,6 +304,9 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const auth = await getRoleCaller(["operations"])
+    if ("error" in auth) return auth.error
+
     const { id } = await params
 
     const cookieStore = await cookies()

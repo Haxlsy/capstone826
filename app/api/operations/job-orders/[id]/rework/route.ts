@@ -4,6 +4,7 @@ import { createClient } from "@/lib/supabase/server"
 import { createAdminClient } from "@/lib/supabase/admin"
 import { logAudit } from "@/hooks/audit-helpers"
 import { sendPushToUser } from "@/lib/push/send"
+import { getRoleCaller } from "@/lib/auth/caller"
 
 // POST /api/operations/job-orders/[id]/rework
 // Body: { stage_ids: string[], rework_instructions: string }
@@ -13,6 +14,9 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const auth = await getRoleCaller(["operations"])
+    if ("error" in auth) return auth.error
+
     const { id: jobId } = await params
     const body = await request.json()
     const { stage_ids, rework_instructions } = body as {

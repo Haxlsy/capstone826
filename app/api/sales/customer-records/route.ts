@@ -1,12 +1,15 @@
 import { NextResponse } from "next/server"
 import { createAdminClient } from "@/lib/supabase/admin"
-import { requireAuditCaller } from "@/lib/auth/caller"
+import { requireAuditCaller, getRoleCaller } from "@/lib/auth/caller"
 import { logAuditCall } from "@/hooks/audit-helpers"
 import { normalizePhone } from "@/lib/phone"
 import { CreateCustomerRecordSchema } from "./schema"
 
 export async function GET(request: Request) {
   try {
+    const authCheck = await getRoleCaller(["sales"])
+    if ("error" in authCheck) return authCheck.error
+
     const { searchParams } = new URL(request.url)
     const search = searchParams.get("search") ?? ""
     const limit  = Math.min(Math.max(parseInt(searchParams.get("limit")  ?? "20", 10) || 20, 1), 100)
@@ -53,6 +56,9 @@ export async function GET(request: Request) {
 
 export async function POST(request: Request) {
   try {
+    const roleAuth = await getRoleCaller(["sales"])
+    if ("error" in roleAuth) return roleAuth.error
+
     const auth = await requireAuditCaller()
     if ("error" in auth) return auth.error
     const { caller } = auth

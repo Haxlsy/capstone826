@@ -2,9 +2,13 @@ import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { createClient } from "@/lib/supabase/server";
 import { createClient as createAdminClient } from "@supabase/supabase-js";
+import { getRoleCaller } from "@/lib/auth/caller";
 
 export async function GET() {
   try {
+    const auth = await getRoleCaller(["operations"]);
+    if ("error" in auth) return auth.error;
+
     const cookieStore = await cookies();
     const supabase = createClient(cookieStore);
 

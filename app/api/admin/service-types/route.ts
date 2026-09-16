@@ -9,6 +9,9 @@ import { logAuditCall } from "@/hooks/audit-helpers"
 // Returns all service types sorted alphabetically.
 export async function GET() {
   try {
+    const auth = await getAdminCaller()
+    if ("error" in auth) return auth.error
+
     const admin = createAdminClient()
     const { data, error } = await admin
       .from("service_type")

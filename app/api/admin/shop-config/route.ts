@@ -8,6 +8,9 @@ import { logAuditCall } from "@/hooks/audit-helpers"
 // GET /api/admin/shop-config
 export async function GET() {
   try {
+    const auth = await getAdminCaller()
+    if ("error" in auth) return auth.error
+
     const admin = createAdminClient()
     const { data, error } = await admin
       .from("shop_config")

@@ -2,6 +2,7 @@ import { NextResponse } from "next/server"
 import { randomBytes } from "crypto"
 import { createAdminClient } from "@/lib/supabase/admin"
 import { logAudit } from "@/hooks/audit-helpers"
+import { getRoleCaller } from "@/lib/auth/caller"
 
 function generatePassword(): string {
   // 12 chars from an unambiguous alphabet (no 0/O, 1/l/I)
@@ -14,6 +15,9 @@ function generatePassword(): string {
 
 export async function POST(request: Request) {
   try {
+    const auth = await getRoleCaller(["admin", "super_admin"])
+    if ("error" in auth) return auth.error
+
     const { userId } = await request.json()
 
     if (!userId || typeof userId !== "string") {

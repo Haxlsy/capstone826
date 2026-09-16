@@ -1,11 +1,18 @@
 import { NextResponse } from "next/server"
 import { createAdminClient } from "@/lib/supabase/admin"
 import { LIVE_JOB_STATUSES } from "@/lib/operations/service-usage"
+import { getRoleCaller } from "@/lib/auth/caller"
 
 // GET /api/operations/services
 // Returns paginated service list with stage counts, supporting search and status filter.
+// Despite the /api/operations/ prefix, this is Admin's own Service
+// Management list (components/AdminSide/ServiceManagement/ServiceTable.tsx)
+// — the only caller found in the codebase.
 export async function GET(request: Request) {
   try {
+    const auth = await getRoleCaller(["admin", "super_admin"])
+    if ("error" in auth) return auth.error
+
     const { searchParams } = new URL(request.url)
     const search      = searchParams.get("search")?.trim() ?? ""
     const status      = searchParams.get("status") ?? "all"

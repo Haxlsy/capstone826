@@ -6,10 +6,14 @@ import { fmtDateTime } from "@/lib/time-display"
 import { getAuditCaller } from "@/lib/auth/caller"
 import { logAuditCall } from "@/hooks/audit-helpers"
 import { sendPushToUser } from "@/lib/push/send"
+import { getRoleCaller } from "@/lib/auth/caller"
 
 // ── GET — fetch own submitted concerns ───────────────────────────────────────
 export async function GET() {
   try {
+    const auth = await getRoleCaller(["head_detailer", "head_installer"])
+    if ("error" in auth) return auth.error
+
     const cookieStore = await cookies()
     const supabase = createClient(cookieStore)
     const { data: { user } } = await supabase.auth.getUser()
@@ -90,6 +94,9 @@ export async function GET() {
 // ── POST — submit a new concern ───────────────────────────────────────────────
 export async function POST(request: Request) {
   try {
+    const auth = await getRoleCaller(["head_detailer", "head_installer"])
+    if ("error" in auth) return auth.error
+
     const cookieStore = await cookies()
     const supabase = createClient(cookieStore)
     const { data: { user } } = await supabase.auth.getUser()

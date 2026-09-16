@@ -11,12 +11,16 @@ import { notifyRole } from "@/lib/notify-role"
 import { sendMessengerText, sendMessengerImage, sendMessengerVideo } from "@/lib/messenger/graph"
 import { buildStageUpdateMessage } from "@/lib/messenger/stage-update"
 import { sendPushToUser } from "@/lib/push/send"
+import { getRoleCaller } from "@/lib/auth/caller"
 
 export async function GET(
   _request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const auth = await getRoleCaller(["head_detailer", "head_installer"])
+    if ("error" in auth) return auth.error
+
     const { id } = await params
 
     const cookieStore = await cookies()
@@ -281,6 +285,9 @@ export async function PATCH(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const auth = await getRoleCaller(["head_detailer", "head_installer"])
+    if ("error" in auth) return auth.error
+
     const { id: jobId } = await params
     const body          = await request.json()
     const { action, stage_id, handoff_notes, completion_notes, media_url, media_type, stage_ids, rework_instructions } = body

@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { createClient } from "@/lib/supabase/server";
 import { createClient as createAdminClient } from "@supabase/supabase-js";
+import { getRoleCaller } from "@/lib/auth/caller";
 
 interface MessageQuery {
   conversationId?: string;
@@ -10,6 +11,9 @@ interface MessageQuery {
 
 export async function GET(request: Request) {
   try {
+    const auth = await getRoleCaller(["operations"]);
+    if ("error" in auth) return auth.error;
+
     const url = new URL(request.url);
     const conversationId = url.searchParams.get("conversationId");
     const limit = url.searchParams.get("limit") || "50";
@@ -52,6 +56,9 @@ export async function GET(request: Request) {
 
 export async function POST(request: Request) {
   try {
+    const auth = await getRoleCaller(["operations"]);
+    if ("error" in auth) return auth.error;
+
     const body = await request.json();
     const {
       conversation_id,

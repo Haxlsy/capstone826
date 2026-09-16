@@ -3,6 +3,7 @@ import { cookies } from "next/headers"
 import { createClient } from "@/lib/supabase/server"
 import { createAdminClient } from "@/lib/supabase/admin"
 import { logAudit } from "@/hooks/audit-helpers"
+import { getRoleCaller } from "@/lib/auth/caller"
 
 // DELETE /api/admin/service-types/[type]
 // Rejects if any service (including archived) still uses this type.
@@ -12,6 +13,9 @@ export async function DELETE(
   { params }: { params: Promise<{ type: string }> }
 ) {
   try {
+    const auth = await getRoleCaller(["admin", "super_admin"])
+    if ("error" in auth) return auth.error
+
     const { type } = await params
     const decoded  = decodeURIComponent(type)
 

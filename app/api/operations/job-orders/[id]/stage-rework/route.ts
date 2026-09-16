@@ -5,6 +5,7 @@ import { createAdminClient } from "@/lib/supabase/admin"
 import { logAudit } from "@/hooks/audit-helpers"
 import { sendPushToUser } from "@/lib/push/send"
 import { z } from "zod"
+import { getRoleCaller } from "@/lib/auth/caller"
 
 const BodySchema = z.object({
   stage_id:     z.string().uuid(),
@@ -20,6 +21,9 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const auth = await getRoleCaller(["operations"])
+    if ("error" in auth) return auth.error
+
     const { id: jobId } = await params
     const body   = await request.json()
     const parsed = BodySchema.safeParse(body)

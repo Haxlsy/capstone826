@@ -1,12 +1,16 @@
 import { NextResponse } from "next/server"
 import { createAdminClient } from "@/lib/supabase/admin"
 import { isJobDelayed } from "@/lib/job-delay"
+import { getRoleCaller } from "@/lib/auth/caller"
 
 // GET /api/operations/job-management/list-job-orders
 // ?released=1  → only Released jobs  (Job Order Records)
 // (default)    → all non-Released jobs (Job Management)
 export async function GET(request: Request) {
   try {
+    const auth = await getRoleCaller(["operations"])
+    if ("error" in auth) return auth.error
+
     const supabase = createAdminClient()
     const { searchParams } = new URL(request.url)
     const releasedOnly = searchParams.get("released") === "1"

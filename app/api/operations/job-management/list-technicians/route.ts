@@ -1,8 +1,12 @@
 import { NextResponse } from "next/server"
 import { createAdminClient } from "@/lib/supabase/admin"
+import { getRoleCaller } from "@/lib/auth/caller"
 
 export async function GET() {
   try {
+    const auth = await getRoleCaller(["operations"])
+    if ("error" in auth) return auth.error
+
     const supabase = createAdminClient()
 
     // Head detailers and head installers from user_account

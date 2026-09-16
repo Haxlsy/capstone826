@@ -1,10 +1,14 @@
 import { NextResponse } from "next/server"
 import { createAdminClient } from "@/lib/supabase/admin"
+import { getRoleCaller } from "@/lib/auth/caller"
 
 const ACTIVE_STATUSES = ["Pending", "Ongoing", "For Rework", "Delayed"]
 
 export async function GET(request: Request) {
   try {
+    const auth = await getRoleCaller(["operations"])
+    if ("error" in auth) return auth.error
+
     const { searchParams } = new URL(request.url)
     const search = searchParams.get("search") ?? ""
 

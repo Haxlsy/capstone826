@@ -1,11 +1,15 @@
 import { NextResponse } from "next/server"
 import { createAdminClient } from "@/lib/supabase/admin"
+import { getRoleCaller } from "@/lib/auth/caller"
 
 // GET /api/operations/team-schedule
 // Returns Pending + Ongoing jobs with their full assigned team and schedule times.
 // Used by the Operations Dashboard TeamSchedulePanel.
 export async function GET() {
   try {
+    const auth = await getRoleCaller(["operations"])
+    if ("error" in auth) return auth.error
+
     const supabase = createAdminClient()
 
     // 1. Fetch Pending + Ongoing jobs with schedule fields
