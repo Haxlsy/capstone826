@@ -124,6 +124,16 @@ export function VideoRecorderModal({ open, onClose, onCapture }: VideoRecorderMo
     chunksRef.current = [];
     recorder.ondataavailable = (e) => { if (e.data.size > 0) chunksRef.current.push(e.data); };
     recorder.onstop = () => {
+      // Clear the live camera's srcObject BEFORE switching to the recorded
+      // preview. Both the live and preview <video> tags render at the same
+      // spot with no distinguishing `key`, so React reuses the same DOM node
+      // across the swap rather than creating a fresh one. srcObject is set
+      // imperatively via the ref (it isn't — can't be — a React prop), so
+      // React's re-render never clears it on its own; and per spec, a
+      // <video>'s srcObject always wins over its src attribute when both are
+      // set. Left uncleared, the "preview" element would keep silently
+      // playing the live camera feed instead of ever showing the recording.
+      if (videoRef.current) videoRef.current.srcObject = null;
       const blob = new Blob(chunksRef.current, { type: mimeType || "video/webm" });
       setPreviewBlob(blob);
       setPreviewUrl(URL.createObjectURL(blob));
@@ -151,6 +161,11 @@ export function VideoRecorderModal({ open, onClose, onCapture }: VideoRecorderMo
   }
 
   function retake() {
+    // Re-attach the still-running camera stream (never stopped after
+    // recording — see stopRecording()) to the same <video> node the onstop
+    // handler above cleared srcObject on, or the live view would go black
+    // instead of showing the camera again.
+    if (videoRef.current && streamRef.current) videoRef.current.srcObject = streamRef.current;
     setPreviewUrl((prev) => { if (prev) URL.revokeObjectURL(prev); return null; });
     setPreviewBlob(null);
     setSeconds(0);
