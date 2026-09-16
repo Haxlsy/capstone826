@@ -3,11 +3,15 @@ import { cookies } from "next/headers"
 import { z } from "zod"
 import { createClient } from "@/lib/supabase/server"
 import { createAdminClient } from "@/lib/supabase/admin"
+import { logAudit } from "@/hooks/audit-helpers"
 
 const LoginSchema = z.object({
   username: z.string().trim().min(1, "Username required").max(100),
   password: z.string().min(1, "Password required").max(128),
 })
+
+const LOCKOUT_THRESHOLD = 3
+const LOCKOUT_MS = 60_000
 
 export async function POST(request: Request) {
   try {
@@ -23,12 +27,35 @@ export async function POST(request: Request) {
     const supabase = createClient(cookieStore)
     const admin = createAdminClient()
 
-    // 1. Resolve email via RPC
-    const { data: email, error: lookupError } = await admin
-      .rpc("get_user_email_by_username", { p_username: username })
+    // 1. Resolve email via RPC, alongside the account row this lockout logic
+    // needs (id/role/name + the failed-attempt counters) — both keyed off
+    // username, run in parallel so this doesn't add a round-trip.
+    const [{ data: email, error: lookupError }, { data: account, error: acctError }] = await Promise.all([
+      admin.rpc("get_user_email_by_username", { p_username: username }),
+      admin
+        .from("user_account")
+        .select("id, full_name, role, must_change_password, failed_login_count, failed_login_at")
+        .eq("username", username)
+        .eq("is_archived", false)
+        .single(),
+    ])
 
-    if (lookupError || !email) {
+    if (lookupError || !email || acctError || !account) {
       return NextResponse.json({ error: "Invalid credentials" }, { status: 401 })
+    }
+
+    // Server-authoritative lockout check — independent of whatever the
+    // client's own (bypassable) counter thinks, so this holds even against a
+    // direct API call. See supabase/migrations/20260917000003_user_account_failed_login_tracking.sql.
+    const failedAt = account.failed_login_at ? new Date(account.failed_login_at).getTime() : null
+    const stillLocked = account.failed_login_count >= LOCKOUT_THRESHOLD
+      && failedAt !== null && Date.now() - failedAt < LOCKOUT_MS
+
+    if (stillLocked) {
+      return NextResponse.json(
+        { error: "Too many failed attempts. Please wait 1 minute.", retryAfterSeconds: 60 },
+        { status: 423 }
+      )
     }
 
     // 2. Sign in
@@ -38,6 +65,33 @@ export async function POST(request: Request) {
     })
 
     if (signInError || !authData.user) {
+      // A lock that already expired (>60s since the last failure) starts a
+      // fresh window instead of counting up indefinitely — matches the
+      // client's own reset-after-cooldown behavior.
+      const expiredWindow = account.failed_login_count >= LOCKOUT_THRESHOLD
+        && failedAt !== null && Date.now() - failedAt >= LOCKOUT_MS
+      const nextCount = expiredWindow ? 1 : account.failed_login_count + 1
+
+      await admin.from("user_account").update({
+        failed_login_count: nextCount,
+        failed_login_at:    new Date().toISOString(),
+      }).eq("id", account.id)
+
+      if (nextCount >= LOCKOUT_THRESHOLD) {
+        logAudit({
+          user_id:   account.id,
+          user_name: account.full_name,
+          role:      account.role,
+          category:  "flag",
+          action:    "Account locked out after 3 failed login attempts",
+          target:    username,
+        })
+        return NextResponse.json(
+          { error: "Too many failed attempts. Please wait 1 minute.", retryAfterSeconds: 60 },
+          { status: 423 }
+        )
+      }
+
       return NextResponse.json({ error: "Invalid credentials" }, { status: 401 })
     }
 
@@ -55,31 +109,49 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Access denied" }, { status: 403 })
     }
 
-    // 4. Single active session per account — revoke every other session this
+    // 4-7. Four independent writes — none needs another's result (all only
+    // need authData.user.id / authData.session.access_token / profile, all
+    // already available) — so they run concurrently instead of one after
+    // another. Still gated behind the profile check above: a rejected login
+    // must never revoke the user's other sessions or record a bogus active
+    // session, so this batch must not move earlier than it already is.
+    //
+    // Single active session per account — revoke every other session this
     // user has anywhere else, then record this one as the current session so
     // proxy.ts can recognize (and reject) a stale browser immediately rather
     // than waiting on Supabase's own revocation to be noticed. See
     // docs/plan and supabase/migrations/20260910000002_user_active_session.sql.
-    if (authData.session) {
-      await admin.auth.admin.signOut(authData.session.access_token, "others")
-    }
     const sessionToken = crypto.randomUUID()
-    const { error: sessionTokenErr } = await admin.from("user_active_session").upsert({
-      user_id:       authData.user.id,
-      session_token: sessionToken,
-    })
-    if (sessionTokenErr) {
+
+    const [, sessionUpsertResult] = await Promise.all([
+      authData.session
+        ? admin.auth.admin.signOut(authData.session.access_token, "others")
+        : Promise.resolve(),
+      admin.from("user_active_session").upsert({
+        user_id:       authData.user.id,
+        session_token: sessionToken,
+      }),
+      // A successful login clears the failed-attempt counter (fresh 3-strike
+      // window next time), matching the client's own reset-on-success behavior.
+      admin.from("user_account").update({
+        failed_login_count: 0,
+        failed_login_at:    null,
+      }).eq("id", authData.user.id),
+      // Log Event (awaited alongside the others for reliability in
+      // Serverless — a fire-and-forget write here was previously observed
+      // getting dropped once the function returned).
+      createAuditLog(admin, authData.user.id, profile, "Logged in"),
+    ])
+
+    if (sessionUpsertResult.error) {
       // Login still proceeds — see lib/auth/session-check.ts's isSessionCurrent,
       // which fails open when this row can't be read, so a failure here
       // doesn't lock the user out; it just means single-session enforcement
       // silently isn't active for this login until the underlying issue
       // (e.g. a migration not yet applied) is fixed. Logged so it's
       // diagnosable instead of silent.
-      console.error("[login] user_active_session upsert failed:", sessionTokenErr.message)
+      console.error("[login] user_active_session upsert failed:", sessionUpsertResult.error.message)
     }
-
-    // 5. Log Event (Awaited for reliability in Serverless)
-    await createAuditLog(admin, authData.user.id, profile, "Logged in")
 
     const response = NextResponse.json({ user: profile })
     response.cookies.set("826_role", profile.role, {
