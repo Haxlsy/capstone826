@@ -68,7 +68,7 @@ import {
   normalizePlate,
   type OwnVehicleOutcome,
 } from "@/lib/messenger/vehicle"
-import { PLATE_PATTERN, PHONE_PATTERN, EMAIL_PATTERN, extractJobOrderCode } from "@/lib/messenger/patterns"
+import { PLATE_PATTERN, PHONE_PATTERN, EMAIL_PATTERN, extractJobOrderCode, isLowContentAck } from "@/lib/messenger/patterns"
 import {
   DEFAULT_AI_DISABLED_MESSAGE,
   DEFAULT_VEHICLE_STATUS_MESSAGE_EN,
@@ -402,6 +402,13 @@ async function handleInboundMessage(
   // exact same verification logic.
   const JOB_ORDER_LINK_ATTEMPT_CAP = 2
   let linkedVehicleContext: string | null = null
+  // Deterministic customer-facing status text for a JUST-auto-linked account —
+  // see the `statusReply` short-circuit further down. Without this, a freshly
+  // linked account's status was handed to Gemini as free-form context instead
+  // of sent verbatim, and the model was observed inventing an "I still cannot
+  // verify the Job Order Code" refusal even though the link had already
+  // succeeded and been audit-logged.
+  let linkedStatusReply: string | null = null
   // A plain object property (not a bare `let`) — TS's flow-narrowing for a `let`
   // reassigned only inside nested closures (tryClaimJobOrderCode / countFailedAttempt
   // below) loses track of those writes across the several call sites further down,
@@ -458,12 +465,14 @@ async function handleInboundMessage(
       // Defensive — resolveOwnVehicleStatus should already have found this.
       await clearLink()
       linkedVehicleContext = formatOwnVehicleStatus(claim.outcome)
+      linkedStatusReply = formatVehicleStatusForCustomer(claim.outcome, { vehicleStatusTemplate, lang: effectiveLang })
       return "continue"
     } else if (claim.kind === "linked") {
       // Auto-linked just now — no Sales step. Show status this same turn.
       await clearLink()
       logAudit({ ...auditActor, category: "flag", action: "messenger: auto-linked account via Job Order ID", target: `psid=${senderId} code=${code}` })
       linkedVehicleContext = formatOwnVehicleStatus(claim.outcome)
+      linkedStatusReply = formatVehicleStatusForCustomer(claim.outcome, { vehicleStatusTemplate, lang: effectiveLang })
       return "continue"
     } else if (claim.kind === "owned_by_other") {
       // The code belongs to a DIFFERENT Messenger account. The customer is
@@ -521,6 +530,16 @@ async function handleInboundMessage(
         // (not just the "awaiting" flag) so a later, genuinely fresh attempt
         // doesn't inherit a stale attempt count and hit the cap prematurely.
         await clearLink()
+      } else if (isLowContentAck(messageBody)) {
+        // A filler/acknowledgment reply to the bot's own previous message
+        // ("ano po?", "ok", "noted") — not a real attempt at a code. Re-ask
+        // without spending one of the customer's two retries; deterministic,
+        // same as countFailedAttempt's own re-ask, for the same reason (the
+        // model must never own this turn).
+        const askAgain = buildLinkVerificationPrompt({ retry: "unrecognized", lang: effectiveLang, linkVerificationTemplate })
+        const mid = await sendMessengerText(senderId, askAgain)
+        await insertMessage({ conversation_id, sender_type: "agent", message_body: askAgain, sent_at: new Date().toISOString(), fb_message_id: mid })
+        return
       } else {
         // Still trying to link, but the message carries no readable Job Order
         // Code. Re-ask with a format example instead of dropping them into the
@@ -674,6 +693,10 @@ async function handleInboundMessage(
 
   if (linkedVehicleContext) {
     vehicleContext = linkedVehicleContext
+    // Same reasoning as the deterministic `statusReply` comment above — a
+    // customer whose account was JUST auto-linked this turn must get their
+    // status relayed verbatim, not handed to the model to compose.
+    statusReply = linkedStatusReply
   } else if (statusIntent && !bookingIntent && !linkState.escalation) {
     let outcome: OwnVehicleOutcome
     try {

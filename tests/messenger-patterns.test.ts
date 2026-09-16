@@ -5,6 +5,7 @@ import {
   EMAIL_PATTERN,
   parseLinkClaim,
   extractJobOrderCode,
+  isLowContentAck,
 } from "@/lib/messenger/patterns"
 import { buildLinkVerificationPrompt } from "@/lib/messenger/vehicle"
 import { resolveTemplate, detectMessageLanguage, quickReplyLabel, offTopicRedirect } from "@/lib/messenger/copy"
@@ -135,6 +136,34 @@ describe("JOB_ORDER_CODE_PATTERN / extractJobOrderCode", () => {
   it("returns empty string when no code is present", () => {
     expect(extractJobOrderCode("hello there")).toBe("")
     expect(extractJobOrderCode("ABC-1234, 0917 555 0101")).toBe("")
+  })
+})
+
+describe("isLowContentAck", () => {
+  it("recognizes the reported filler reply ('ano po?') and common variants", () => {
+    // Real reported case: this reply tipped the 2-strike link-attempt cap and
+    // triggered a full escalation, even though it carries no code attempt.
+    expect(isLowContentAck("ano po?")).toBe(true)
+    expect(isLowContentAck("Ano po?")).toBe(true)
+    expect(isLowContentAck("ok")).toBe(true)
+    expect(isLowContentAck("opo")).toBe(true)
+    expect(isLowContentAck("noted")).toBe(true)
+    expect(isLowContentAck("san po?")).toBe(true)
+    expect(isLowContentAck("thank you po")).toBe(true)
+    expect(isLowContentAck("huh")).toBe(true)
+  })
+
+  it("does not mistake a mistyped code attempt for a filler reply", () => {
+    // "J0-UCD296" (digit zero typo) genuinely was a failed code attempt and
+    // must still count against the cap — it has digits and isn't a listed
+    // filler phrase.
+    expect(isLowContentAck("J0-UCD296")).toBe(false)
+    expect(isLowContentAck("JO-8X2K9F")).toBe(false)
+  })
+
+  it("does not treat ordinary sentences as filler", () => {
+    expect(isLowContentAck("I can't find my receipt anywhere")).toBe(false)
+    expect(isLowContentAck("")).toBe(false)
   })
 })
 
