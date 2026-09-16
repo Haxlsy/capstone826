@@ -3,9 +3,13 @@ import { cookies } from "next/headers"
 import { createClient } from "@/lib/supabase/server"
 import { createAdminClient } from "@/lib/supabase/admin"
 import { logAudit } from "@/hooks/audit-helpers"
+import { getRoleCaller } from "@/lib/auth/caller"
 
 export async function GET(request: Request) {
   try {
+    const auth = await getRoleCaller(["operations"])
+    if ("error" in auth) return auth.error
+
     const url = new URL(request.url)
     const jobOrderId = url.searchParams.get("jobOrderId")
 
@@ -39,6 +43,9 @@ export async function GET(request: Request) {
 
 export async function PATCH(request: Request) {
   try {
+    const auth = await getRoleCaller(["operations"])
+    if ("error" in auth) return auth.error
+
     const body = await request.json()
     const { id, status, rework_instructions, handoff_notes } = body
 

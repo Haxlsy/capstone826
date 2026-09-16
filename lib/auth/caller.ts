@@ -13,6 +13,9 @@ export interface AuditCaller {
 const unauthorized = () =>
   NextResponse.json({ error: "Unauthorized." }, { status: 401 })
 
+const forbidden = () =>
+  NextResponse.json({ error: "Forbidden." }, { status: 403 })
+
 /**
  * Resolves the currently authenticated user together with their
  * `user_account` profile (full_name + role) for ANY signed-in role.
@@ -50,6 +53,24 @@ export async function requireAuditCaller(): Promise<
 > {
   const caller = await getAuditCaller()
   if (!caller) return { error: unauthorized() }
+  return { caller }
+}
+
+/**
+ * Resolves the currently authenticated caller AND verifies their role is one
+ * of `allowedRoles` — 401 when not signed in, 403 when signed in with the
+ * wrong role. This is the single source of truth for API-route role gating;
+ * every /api/sales, /api/operations, and /api/head-technician route (plus
+ * any /api/admin route not already using getAdminCaller) calls this before
+ * touching the database, instead of each route re-deriving its own check
+ * (or, as most did before, having none at all).
+ */
+export async function getRoleCaller(allowedRoles: string[]): Promise<
+  { caller: AuditCaller } | { error: NextResponse }
+> {
+  const caller = await getAuditCaller()
+  if (!caller) return { error: unauthorized() }
+  if (!allowedRoles.includes(caller.role)) return { error: forbidden() }
   return { caller }
 }
 

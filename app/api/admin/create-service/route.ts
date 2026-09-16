@@ -3,6 +3,7 @@ import { cookies } from "next/headers"
 import { createClient } from "@/lib/supabase/server"
 import { createAdminClient } from "@/lib/supabase/admin"
 import { logAudit } from "@/hooks/audit-helpers"
+import { getRoleCaller } from "@/lib/auth/caller"
 
 interface Stage {
   name:               string
@@ -12,6 +13,9 @@ interface Stage {
 }
 
 export async function POST(request: Request) {
+  const auth = await getRoleCaller(["admin", "super_admin"])
+  if ("error" in auth) return auth.error
+
   const cookieStore = await cookies()
   const supabase    = createClient(cookieStore)
   const { data: { user } } = await supabase.auth.getUser()

@@ -4,8 +4,12 @@ import { createClient } from "@/lib/supabase/server"
 import { createAdminClient } from "@/lib/supabase/admin"
 import { logAudit } from "@/hooks/audit-helpers"
 import { normalizeName, validateName } from "@/lib/name"
+import { getRoleCaller } from "@/lib/auth/caller"
 
 export async function POST(request: Request) {
+  const auth = await getRoleCaller(["admin", "super_admin"])
+  if ("error" in auth) return auth.error
+
   const body = await request.json()
   const { userId, fullName, role, password } = body
 

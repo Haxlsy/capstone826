@@ -2,11 +2,14 @@ import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { createClient } from "@/lib/supabase/server";
 import { createClient as createAdminClient } from "@supabase/supabase-js";
-import { getAuditCaller } from "@/lib/auth/caller";
+import { getAuditCaller, getRoleCaller } from "@/lib/auth/caller";
 import { logAuditCall } from "@/hooks/audit-helpers";
 
 export async function GET() {
   try {
+    const auth = await getRoleCaller(["operations"]);
+    if ("error" in auth) return auth.error;
+
     const cookieStore = await cookies();
     const supabase = createClient(cookieStore);
 
@@ -36,6 +39,9 @@ export async function GET() {
 
 export async function POST(request: Request) {
   try {
+    const auth = await getRoleCaller(["operations"]);
+    if ("error" in auth) return auth.error;
+
     const body = await request.json();
     const {
       template_name,

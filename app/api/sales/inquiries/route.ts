@@ -1,8 +1,12 @@
 import { NextResponse } from "next/server"
 import { createAdminClient } from "@/lib/supabase/admin"
+import { getRoleCaller } from "@/lib/auth/caller"
 
 export async function GET(request: Request) {
   try {
+    const auth = await getRoleCaller(["sales"])
+    if ("error" in auth) return auth.error
+
     const { searchParams } = new URL(request.url)
     const type   = searchParams.get("type")   ?? "all"
     const status = searchParams.get("status") ?? "all"

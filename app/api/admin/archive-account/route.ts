@@ -3,8 +3,12 @@ import { cookies } from "next/headers"
 import { createClient } from "@/lib/supabase/server"
 import { createAdminClient } from "@/lib/supabase/admin"
 import { logAudit } from "@/hooks/audit-helpers"
+import { getRoleCaller } from "@/lib/auth/caller"
 
 export async function POST(request: Request) {
+  const auth = await getRoleCaller(["admin", "super_admin"])
+  if ("error" in auth) return auth.error
+
   const { userId, isArchived } = await request.json()
 
   if (!userId || typeof isArchived !== "boolean") {

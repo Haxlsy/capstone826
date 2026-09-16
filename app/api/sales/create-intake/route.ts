@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { createClient as createAdminClient } from "@supabase/supabase-js";
 import { z } from "zod";
-import { getAuditCaller } from "@/lib/auth/caller";
+import { getAuditCaller, getRoleCaller } from "@/lib/auth/caller";
 import { logAuditCall } from "@/hooks/audit-helpers";
 
 
@@ -68,6 +68,9 @@ const INTAKE_SELECT = `
 
 export async function POST(request: Request) {
   try {
+    const auth = await getRoleCaller(["sales"]);
+    if ("error" in auth) return auth.error;
+
     const body = await request.json();
 
     const parsed = CreateIntakeSchema.safeParse(body);

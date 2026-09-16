@@ -4,6 +4,7 @@ import { createClient } from "@/lib/supabase/server"
 import { createAdminClient } from "@/lib/supabase/admin"
 import { sendMessengerText, sendMessengerImage, sendMessengerVideo } from "@/lib/messenger/graph"
 import { buildStageUpdateMessage } from "@/lib/messenger/stage-update"
+import { getRoleCaller } from "@/lib/auth/caller"
 
 // POST /api/operations/job-orders/[id]/resend-stage
 // Body: { stage_id: string }
@@ -14,6 +15,9 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const auth = await getRoleCaller(["operations"])
+    if ("error" in auth) return auth.error
+
     const { id: jobId } = await params
     const body = await request.json()
     const { stage_id } = body as { stage_id?: string }

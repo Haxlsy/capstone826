@@ -2,7 +2,7 @@ import { NextResponse } from "next/server"
 import { cookies } from "next/headers"
 import { createClient } from "@/lib/supabase/server"
 import { createAdminClient } from "@/lib/supabase/admin"
-import { getAuditCaller } from "@/lib/auth/caller"
+import { getAuditCaller, getRoleCaller } from "@/lib/auth/caller"
 import { logAuditCall } from "@/hooks/audit-helpers"
 
 // POST /api/head-technician/concerns/[id]/media
@@ -13,6 +13,9 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const auth = await getRoleCaller(["head_detailer", "head_installer"])
+    if ("error" in auth) return auth.error
+
     const { id: concernId } = await params
 
     const cookieStore = await cookies()

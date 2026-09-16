@@ -6,6 +6,7 @@ import { logAudit } from "@/hooks/audit-helpers"
 import { addWorkingMins } from "@/hooks/time-utils"
 import { normalizePhone } from "@/lib/phone"
 import { sendPushToUser } from "@/lib/push/send"
+import { getRoleCaller } from "@/lib/auth/caller"
 
 interface CustomStage {
   service_stage_id:      string | null   // null for stages added only for this job
@@ -18,6 +19,9 @@ interface CustomStage {
 
 export async function POST(request: Request) {
   try {
+    const auth = await getRoleCaller(["operations"])
+    if ("error" in auth) return auth.error
+
     const body = await request.json()
     const {
       // Client-generated UUID (offline outbox sync only — see

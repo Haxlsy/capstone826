@@ -1,10 +1,14 @@
 import { NextResponse } from "next/server"
 import { createAdminClient } from "@/lib/supabase/admin"
+import { getRoleCaller } from "@/lib/auth/caller"
 
 // GET /api/operations/job-management/service-stages?serviceId=<uuid>
 // Returns service_stage rows for a given service, ordered by sequence_order,
 // with category info joined from workflow_category.
 export async function GET(request: Request) {
+  const auth = await getRoleCaller(["operations"])
+  if ("error" in auth) return auth.error
+
   const { searchParams } = new URL(request.url)
   const serviceId = searchParams.get("serviceId")?.trim()
 

@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server"
 import { createAdminClient } from "@/lib/supabase/admin"
-import { requireAuditCaller } from "@/lib/auth/caller"
+import { requireAuditCaller, getRoleCaller } from "@/lib/auth/caller"
 import { logAuditCall } from "@/hooks/audit-helpers"
 import { normalizePhone } from "@/lib/phone"
 import { UpdateCustomerRecordSchema } from "../schema"
@@ -11,6 +11,9 @@ export async function PATCH(
 ) {
   try {
     const { id } = await params
+
+    const roleAuth = await getRoleCaller(["sales"])
+    if ("error" in roleAuth) return roleAuth.error
 
     const auth = await requireAuditCaller()
     if ("error" in auth) return auth.error

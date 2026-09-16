@@ -2,7 +2,7 @@ import { NextResponse } from "next/server"
 import { cookies } from "next/headers"
 import { createClient } from "@/lib/supabase/server"
 import { createAdminClient } from "@/lib/supabase/admin"
-import { getAuditCaller } from "@/lib/auth/caller"
+import { getAuditCaller, getRoleCaller } from "@/lib/auth/caller"
 import { logAuditCall } from "@/hooks/audit-helpers"
 import { resumeBotAfterHandoff } from "@/lib/messenger/handoff"
 
@@ -12,6 +12,9 @@ export async function PATCH(
 ) {
   try {
     const { id } = await params
+
+    const roleAuth = await getRoleCaller(["sales"])
+    if ("error" in roleAuth) return roleAuth.error
 
     const body = await request.json()
     const { status } = body

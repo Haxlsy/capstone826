@@ -1,11 +1,15 @@
 import { NextResponse } from "next/server"
 import { createAdminClient } from "@/lib/supabase/admin"
+import { getRoleCaller } from "@/lib/auth/caller"
 
 // ── GET /api/admin/audit-log ──────────────────────────────────────────────────
 // Query params: role, category, limit (default 200)
 // Used by the admin AuditLog dashboard component.
 export async function GET(request: Request) {
   try {
+    const auth = await getRoleCaller(["admin", "super_admin"])
+    if ("error" in auth) return auth.error
+
     const url      = new URL(request.url)
     const role     = url.searchParams.get("role")     ?? null
     const category = url.searchParams.get("category") ?? null
