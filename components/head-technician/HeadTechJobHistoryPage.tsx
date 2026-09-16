@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback, useMemo } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { useRouter } from "next/navigation";
 import {
   ChevronLeft, CheckCircle2, Circle, ImagePlus, Video,
@@ -103,6 +103,25 @@ interface CategoryGroup {
   minOrder: number;
 }
 
+// A pending media item is a client-only placeholder (a synthetic "tmp-<ts>"
+// id set in uploadOneFile) — it can never appear in a server response, by
+// construction, until the upload that owns it resolves (uploadOneFile's own
+// success/failure handling swaps or removes it then). A full refresh from
+// load() must not discard it just because the GET that produced this data
+// happened to run before that upload finished — see load()'s own comment.
+function mergeInPendingMedia(prev: JobDetail | null, fresh: JobDetail): JobDetail {
+  if (!prev) return fresh;
+  return {
+    ...fresh,
+    stages: fresh.stages.map((freshStage) => {
+      const prevStage = prev.stages.find((s) => s.id === freshStage.id);
+      const stillPending = prevStage?.media.filter((m) => m.pending) ?? [];
+      return stillPending.length > 0
+        ? { ...freshStage, media: [...freshStage.media, ...stillPending] }
+        : freshStage;
+    }),
+  };
+}
 
 // ── Component ────────────────────────────────────────────────────────────────
 
@@ -147,19 +166,40 @@ export default function HeadTechJobHistoryPage({ jobId }: { jobId: string }) {
     } catch {}
   }, []);
 
+  // Guards against an out-of-order response: load() can fire concurrently from
+  // several sources (realtime events on job_stage_progress/job_order, tab
+  // visibility regain, the initial mount) — if two overlap, a slower
+  // EARLIER-dispatched request landing after a faster LATER one must not
+  // overwrite the fresher state it already applied with what it read before.
+  const loadSeqRef = useRef(0);
+
   const load = useCallback(async (opts?: { silent?: boolean }) => {
+    const seq = ++loadSeqRef.current;
     if (!opts?.silent) setLoading(true);
     setLoadError(null);
     try {
       const res  = await fetch(`/api/head-technician/jobs/${jobId}`);
       const json = await res.json();
+      if (seq !== loadSeqRef.current) return; // superseded by a newer load()
       if (!res.ok) { setLoadError(json?.error ?? `HTTP ${res.status}`); return; }
-      if (json.job) setJob(json.job);
+      // Merge, don't replace: on mobile, opening the native camera/gallery
+      // picker backgrounds the page, and returning from it fires
+      // `visibilitychange` (see below) at essentially the same instant the
+      // picked file starts uploading. This silent load() is one fast GET; the
+      // upload is a slower multi-step chain (compress → AI validation → the
+      // actual upload), so this GET routinely wins the race and runs while
+      // the server genuinely has no row for that photo yet — its response
+      // isn't stale, it's accurately "no photo yet." A blind replace here
+      // would erase the upload's own optimistic pending placeholder before
+      // that upload ever gets a chance to swap it for the real thing, so the
+      // photo would never appear client-side despite saving successfully.
+      if (json.job) setJob((prev) => mergeInPendingMedia(prev, json.job));
       else setLoadError("No job data returned.");
     } catch (err: unknown) {
+      if (seq !== loadSeqRef.current) return;
       setLoadError(err instanceof Error ? err.message : "Network error");
     } finally {
-      if (!opts?.silent) setLoading(false);
+      if (!opts?.silent && seq === loadSeqRef.current) setLoading(false);
     }
   }, [jobId]);
 
@@ -1001,6 +1041,54 @@ function fmtDuration(mins: number): string {
   return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
 }
 
+// A freshly-uploaded Storage URL can very occasionally 404 for a brief moment
+// right after the write completes (CDN/edge propagation lag) — with no retry,
+// that one missed request meant the thumbnail was just gone, permanently,
+// until something else (a manual refresh, navigating away and back) remounted
+// the <img> and tried loading it again, by which time it worked. Retry a few
+// times with a short, growing delay — and a cache-busting query param, in case
+// an intermediate cache layer negatively cached the failed attempt — before
+// giving up and showing a fallback glyph.
+const THUMBNAIL_MAX_RETRIES = 3;
+const THUMBNAIL_RETRY_BASE_MS = 700;
+
+function MediaThumbnail({ url }: { url: string }) {
+  const [attempt, setAttempt] = useState(0);
+  const [failed, setFailed]   = useState(false);
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    setAttempt(0);
+    setFailed(false);
+    return () => { if (timerRef.current) clearTimeout(timerRef.current); };
+  }, [url]);
+
+  if (failed) {
+    return (
+      <div className="w-full h-full bg-surface-muted flex items-center justify-center">
+        <AlertTriangle size={16} className="text-muted" />
+      </div>
+    );
+  }
+
+  const src = attempt === 0 ? url : `${url}${url.includes("?") ? "&" : "?"}retry=${attempt}`;
+
+  return (
+    <img
+      src={src}
+      alt=""
+      className="w-full h-full object-cover bg-surface-muted"
+      onError={() => {
+        if (attempt >= THUMBNAIL_MAX_RETRIES) { setFailed(true); return; }
+        timerRef.current = setTimeout(
+          () => setAttempt((a) => a + 1),
+          THUMBNAIL_RETRY_BASE_MS * (attempt + 1)
+        );
+      }}
+    />
+  );
+}
+
 function StageCard({
   stage, readOnly, isMarking, isUploading, removingId, uploadError,
   onMarkDone, onFileChange, onRecordVideo, onRemoveMedia, onPreview,
@@ -1091,7 +1179,7 @@ function StageCard({
                 {m.type === "video" ? (
                   <div className="w-full h-full bg-surface-muted flex items-center justify-center text-body"><Play size={20} /></div>
                 ) : (
-                  <img src={m.url} alt="" className="w-full h-full object-cover bg-surface-muted" onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = "none"; }} />
+                  <MediaThumbnail url={m.url} />
                 )}
               </button>
               {m.pending && (

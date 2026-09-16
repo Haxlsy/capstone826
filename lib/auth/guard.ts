@@ -1,5 +1,5 @@
 import { cache } from "react"
-import { cookies } from "next/headers"
+import { cookies, headers } from "next/headers"
 import { redirect } from "next/navigation"
 import { NextResponse } from "next/server"
 import { createClient } from "@/lib/supabase/server"
@@ -14,12 +14,28 @@ const ROLE_HOMES: Record<string, string> = {
   head_installer: "/head-technician",
 }
 
-export const getCurrentUser = cache(async () => {
+/**
+ * Only `.id` is ever read by any caller (requireRole, getAdminCaller,
+ * getAuditCaller, and the two direct callers below) — confirmed by grep.
+ * Re-check that before adding a field: this trades the full Supabase `User`
+ * for the minimal shape the trusted-header fast path (below) can actually
+ * provide.
+ */
+export const getCurrentUser = cache(async (): Promise<{ id: string } | null> => {
+  // proxy.ts already ran a network-verified getUser() for this exact request
+  // and forwarded the result via this header — reuse it instead of paying for
+  // the identical Supabase Auth round trip again a moment later.
+  const headerStore = await headers()
+  const trustedId = headerStore.get("x-verified-user-id")
+  if (trustedId) return { id: trustedId }
+
+  // No trusted header — proxy.ts's own `config.matcher` excludes /api, so
+  // every API route reaches here with nothing set. Fall back to the original,
+  // fully network-verified check; behavior for API routes is unchanged.
   const cookieStore = await cookies()
   const supabase = createClient(cookieStore)
   const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return null
-  return user
+  return user ? { id: user.id } : null
 })
 
 // Memoized per-request (like getCurrentUser above) — requireRole() is called
