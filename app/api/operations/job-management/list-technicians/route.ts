@@ -37,7 +37,7 @@ export async function GET() {
       // Crew roster
       supabase
         .from("technician")
-        .select("id, full_name, role, is_available, available_days, work_start_time, work_end_time")
+        .select("id, full_name, role, is_available, available_days, work_start_time, work_end_time, availability_override_date")
         .in("role", ["detailer", "installer"])
         .eq("is_archived", false)
         .order("role")
@@ -95,6 +95,7 @@ export async function GET() {
       available_days:   (c.available_days as string[]) ?? ["Mon","Tue","Wed","Thu","Fri","Sat","Sun"],
       work_start_time:  (c.work_start_time as string) ?? "08:00:00",
       work_end_time:    (c.work_end_time   as string) ?? "20:00:00",
+      availability_override_date: (c.availability_override_date as string | null) ?? null,
       on_job:           onJobCrewIds.has(c.id),
     }))
 

@@ -28,6 +28,7 @@ export type HeadTechJob = {
   progress: number;
   stage_groups: StageGroup[];
   has_delayed_stage: boolean;
+  is_overdue: boolean;
 };
 
 // Status colour is now centralised in `lib/ui/status.ts` — use `<StatusBadge>`.

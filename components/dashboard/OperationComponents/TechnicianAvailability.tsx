@@ -22,6 +22,7 @@ import { cn } from "@/lib/utils"
 import { avatarColor, initials } from "@/lib/ui/avatar"
 import { roleStyle } from "@/lib/ui/roles"
 import { normalizeName, validateName } from "@/lib/name"
+import { isTechnicianAvailableToday, manilaToday } from "@/lib/technician-availability"
 
 interface ActiveJob {
   job_id: string
@@ -40,6 +41,7 @@ interface Technician {
   available_days: string[]
   work_start_time: string
   work_end_time: string
+  availability_override_date: string | null
   active_job: ActiveJob | null
 }
 
@@ -115,8 +117,16 @@ export default function TechnicianAvailability() {
   }, [load])
 
   async function toggle(tech: Technician) {
-    const next = !tech.is_available
-    setTechnicians((prev) => prev.map((t) => (t.id === tech.id ? { ...t, is_available: next } : t)))
+    // Flips availability for TODAY only — see lib/technician-availability.ts.
+    // Toggling from the currently-DISPLAYED (schedule-aware) state, not the
+    // raw is_available column, so a technician shown "Not Available" because
+    // it's their day off actually flips to available on the first click.
+    const next = !isTechnicianAvailableToday(tech)
+    const { dateKey } = manilaToday()
+    const prevSnapshot = { is_available: tech.is_available, availability_override_date: tech.availability_override_date }
+    setTechnicians((prev) =>
+      prev.map((t) => (t.id === tech.id ? { ...t, is_available: next, availability_override_date: dateKey } : t)),
+    )
     try {
       const res = await fetch("/api/operations/technician-availability", {
         method: "PATCH",
@@ -124,11 +134,11 @@ export default function TechnicianAvailability() {
         body: JSON.stringify({ id: tech.id, is_available: next }),
       })
       if (!res.ok) {
-        setTechnicians((prev) => prev.map((t) => (t.id === tech.id ? { ...t, is_available: !next } : t)))
+        setTechnicians((prev) => prev.map((t) => (t.id === tech.id ? { ...t, ...prevSnapshot } : t)))
         toast.error("Could not update availability.")
       }
     } catch {
-      setTechnicians((prev) => prev.map((t) => (t.id === tech.id ? { ...t, is_available: !next } : t)))
+      setTechnicians((prev) => prev.map((t) => (t.id === tech.id ? { ...t, ...prevSnapshot } : t)))
       toast.error("Could not update availability.")
     }
   }
@@ -276,7 +286,7 @@ export default function TechnicianAvailability() {
   // Stats always describe the active roster, never the archived view.
   const activeTechs = technicians.filter((t) => !t.is_archived)
   const onJobCount = activeTechs.filter((t) => !!t.active_job).length
-  const availableCount = activeTechs.filter((t) => t.is_available && !t.active_job).length
+  const availableCount = activeTechs.filter((t) => isTechnicianAvailableToday(t) && !t.active_job).length
   const unavailableCount = activeTechs.length - availableCount - onJobCount
 
   const filtered = technicians.filter((t) => {
@@ -376,7 +386,7 @@ export default function TechnicianAvailability() {
           {Object.entries(grouped).map(([role, members]) => {
             const activeMembers = members.filter((m) => !m.is_archived)
             const onJobN = activeMembers.filter((m) => m.active_job).length
-            const availN = activeMembers.filter((m) => m.is_available && !m.active_job).length
+            const availN = activeMembers.filter((m) => isTechnicianAvailableToday(m) && !m.active_job).length
             return (
               <div key={role} className="overflow-hidden rounded-card border border-border-subtle bg-surface">
                 <div className="flex items-center justify-between border-b border-border-subtle bg-surface-subtle px-5 py-3">
@@ -426,11 +436,11 @@ export default function TechnicianAvailability() {
                               <span
                                 className={cn(
                                   "h-1.5 w-1.5 shrink-0 rounded-full",
-                                  tech.is_available ? "bg-status-inspection" : "bg-border",
+                                  isTechnicianAvailableToday(tech) ? "bg-status-inspection" : "bg-border",
                                 )}
                               />
                               <span className="text-xs text-muted">
-                                {tech.is_available ? "Available" : "Not Available"}
+                                {isTechnicianAvailableToday(tech) ? "Available" : "Not Available"}
                               </span>
                             </div>
                           )}
@@ -501,7 +511,7 @@ export default function TechnicianAvailability() {
 
                         <span className="inline-flex" title={!isOnline ? OFFLINE_ACTION_HINT : undefined}>
                           <Toggle
-                            checked={onJob ? true : tech.is_available}
+                            checked={onJob ? true : isTechnicianAvailableToday(tech)}
                             onChange={() => toggle(tech)}
                             disabled={onJob || tech.is_archived || !isOnline}
                             label={`Toggle availability for ${tech.full_name}`}

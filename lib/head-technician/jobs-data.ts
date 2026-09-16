@@ -1,5 +1,5 @@
 import { createAdminClient } from "@/lib/supabase/admin"
-import { computeStageDelays, hasAnyStageDelayed, type StageForDelay } from "@/lib/job-delay"
+import { isJobDelayed, computeStageDelays, hasAnyStageDelayed, type StageForDelay } from "@/lib/job-delay"
 import { fmtDate } from "@/lib/time-display"
 
 export type TechnicianJob = {
@@ -15,7 +15,16 @@ export type TechnicianJob = {
   status: string
   progress: number
   stage_groups: { label: string; color: string; done: number; total: number }[]
+  /** Stage-specific: a started job has an incomplete stage past its own
+   *  checkpoint. Powers the "Stage Delayed" pill only — see is_overdue for
+   *  the overall delayed signal (job-level OR stage-level). */
   has_delayed_stage: boolean
+  /** THE overall "is this job delayed" signal — job-level (isJobDelayed,
+   *  catches a job that never even started past its scheduled window) OR
+   *  stage-level (has_delayed_stage). Feeds displayJobStatus so the status
+   *  badge reads "Delayed" instead of "Pending"/"Ongoing", matching every
+   *  other surface (Admin, Operations, Sales, the Job Calendar). */
+  is_overdue: boolean
 }
 
 type StageGroup = { label: string; color: string; done: number; total: number }
@@ -54,7 +63,7 @@ export async function getHeadTechnicianJobs(userId: string) {
     admin
       .from("job_order")
       .select(`
-        id, status, scheduled_at, actual_start_at, created_at, job_order_code,
+        id, status, scheduled_at, actual_start_at, expected_completion_at, created_at, job_order_code,
         customer:customer_record_id(full_name, plate_number, vehicle_unit),
         service:service_id(name),
         customer_name, plate_number, vehicle_unit
@@ -162,6 +171,9 @@ export async function getHeadTechnicianJobs(userId: string) {
       progress: totalAll > 0 ? Math.round((totalDone / totalAll) * 100) : 0,
       stage_groups: stageGroups,
       has_delayed_stage: delayedJobIds.has(j.id as string),
+      is_overdue:
+        isJobDelayed({ status: j.status, expected_completion_at: j.expected_completion_at }) ||
+        delayedJobIds.has(j.id as string),
     }
   })
 

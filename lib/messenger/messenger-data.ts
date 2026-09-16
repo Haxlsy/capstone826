@@ -23,13 +23,21 @@ export async function getOrCreateConversationByPsid(
   policy_streak: number
   complaint_streak: number
   booking_draft: CustomerDetails
+  /** Pre-update value — the timestamp of the customer's PREVIOUS message, not
+   *  this one (this call already writes `now` as the new `last_message_at`
+   *  below). Used by the webhook's quick-reply cooldown to measure how long
+   *  ago the previous message arrived. */
+  last_message_at: string | null
+  /** Pre-update value — the quick-reply payload (if any) from the customer's
+   *  previous message. See setLastQuickReplyPayload. */
+  last_quick_reply_payload: string | null
 }> {
   const supabase = createAdminClient()
 
   const { data: existing } = await supabase
     .from("messenger_conversation")
     .select(
-      "conversation_id, status, is_vehicle_inquiry, is_booking_flow, awaiting_confirmation, active_booking_offered, booking_duplicate_notified, conflict_pending, awaiting_link_verification, link_attempts, link_conflict_pending, offtopic_streak, policy_streak, complaint_streak, draft_name, draft_contact, draft_plate, draft_vehicle, draft_email"
+      "conversation_id, status, is_vehicle_inquiry, is_booking_flow, awaiting_confirmation, active_booking_offered, booking_duplicate_notified, conflict_pending, awaiting_link_verification, link_attempts, link_conflict_pending, offtopic_streak, policy_streak, complaint_streak, draft_name, draft_contact, draft_plate, draft_vehicle, draft_email, last_message_at, last_quick_reply_payload"
     )
     .eq("psid", psid)
     .maybeSingle()
@@ -64,6 +72,8 @@ export async function getOrCreateConversationByPsid(
         vehicle_unit:   existing.draft_vehicle ?? null,
         email:          existing.draft_email   ?? null,
       },
+      last_message_at: existing.last_message_at ?? null,
+      last_quick_reply_payload: existing.last_quick_reply_payload ?? null,
     }
   }
 
@@ -84,7 +94,41 @@ export async function getOrCreateConversationByPsid(
     throw new Error(error?.message ?? "Failed to create conversation")
   }
 
-  return { conversation_id: data.conversation_id, status: "open", is_vehicle_inquiry: false, is_booking_flow: false, awaiting_confirmation: false, active_booking_offered: false, booking_duplicate_notified: false, conflict_pending: false, awaiting_link_verification: false, link_attempts: 0, link_conflict_pending: false, offtopic_streak: 0, policy_streak: 0, complaint_streak: 0, booking_draft: { full_name: null, contact_number: null, plate_number: null, vehicle_unit: null, email: null } }
+  return { conversation_id: data.conversation_id, status: "open", is_vehicle_inquiry: false, is_booking_flow: false, awaiting_confirmation: false, active_booking_offered: false, booking_duplicate_notified: false, conflict_pending: false, awaiting_link_verification: false, link_attempts: 0, link_conflict_pending: false, offtopic_streak: 0, policy_streak: 0, complaint_streak: 0, booking_draft: { full_name: null, contact_number: null, plate_number: null, vehicle_unit: null, email: null }, last_message_at: null, last_quick_reply_payload: null }
+}
+
+/** Marks the payload of the most recent predefined quick-reply button the
+ *  customer tapped — read back (pre-update) by the next call to
+ *  getOrCreateConversationByPsid so the webhook can detect a rapid repeat tap
+ *  of the same button. Pass `null` for a typed (non-quick-reply) message so a
+ *  later quick reply doesn't get compared against a stale earlier tap. */
+export async function setLastQuickReplyPayload(conversation_id: number, payload: string | null) {
+  const supabase = createAdminClient()
+
+  const { error } = await supabase
+    .from("messenger_conversation")
+    .update({ last_quick_reply_payload: payload })
+    .eq("conversation_id", conversation_id)
+
+  if (error) throw new Error(error.message)
+}
+
+/** True when a message with this exact Facebook message ID was already
+ *  recorded for this conversation — Meta can redeliver the same webhook
+ *  event, and this catches that before it triggers a second reply. */
+export async function messageAlreadyProcessed(conversation_id: number, fb_message_id: string | null) {
+  if (!fb_message_id) return false
+  const supabase = createAdminClient()
+
+  const { data } = await supabase
+    .from("messenger_message")
+    .select("message_id")
+    .eq("conversation_id", conversation_id)
+    .eq("fb_message_id", fb_message_id)
+    .limit(1)
+    .maybeSingle()
+
+  return Boolean(data)
 }
 
 /**

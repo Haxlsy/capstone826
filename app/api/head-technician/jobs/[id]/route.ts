@@ -294,9 +294,12 @@ export async function PATCH(
     const caller = await getAuditCaller()
 
     // Job identity for human-readable audit targets (and Workstream B auto-send).
+    // expected_completion_at is read here too — see start_job below, which
+    // must never overwrite an existing value (that's the promised deadline
+    // delay detection relies on; only a job that never had one gets backfilled).
     const { data: job } = await admin
       .from("job_order")
-      .select("customer_name, plate_number")
+      .select("customer_name, plate_number, expected_completion_at")
       .eq("id", jobId)
       .single()
     const jobLabel = (job as any)?.customer_name ?? jobId
@@ -317,20 +320,26 @@ export async function PATCH(
         .update({ status: "Ongoing", actual_start_at: new Date().toISOString() })
         .eq("id", jobId)
 
-      // Recompute expected_completion_at from the actual start + full stage duration
-      // so an early/late start is reflected immediately.
-      const { data: jobStages } = await admin
-        .from("job_stage_progress")
-        .select("stage_duration_mins, service_stage:service_stage_id(stage_duration_mins)")
-        .eq("job_order_id", jobId)
-      const totalMins = (jobStages ?? []).reduce((acc: number, s: any) => {
-        const override = s.stage_duration_mins as number | null
-        const base     = (s.service_stage as any)?.stage_duration_mins ?? 0
-        return acc + (override != null ? override : base)
-      }, 0)
-      if (totalMins > 0) {
-        const newCompletion = addWorkingMins(new Date(), totalMins)
-        await admin.from("job_order").update({ expected_completion_at: newCompletion.toISOString() }).eq("id", jobId)
+      // Only backfill expected_completion_at if the job never had one at all
+      // (e.g. a walk-in entry with no scheduled_at) — an existing value is the
+      // promised deadline isJobDelayed() checks against everywhere (Admin,
+      // Operations, Head Technician, Job Calendar). Overwriting it to
+      // "now + duration" on every start used to silently clear the Delayed
+      // flag on a job that had sat overdue the whole time it was Pending.
+      if ((job as any)?.expected_completion_at == null) {
+        const { data: jobStages } = await admin
+          .from("job_stage_progress")
+          .select("stage_duration_mins, service_stage:service_stage_id(stage_duration_mins)")
+          .eq("job_order_id", jobId)
+        const totalMins = (jobStages ?? []).reduce((acc: number, s: any) => {
+          const override = s.stage_duration_mins as number | null
+          const base     = (s.service_stage as any)?.stage_duration_mins ?? 0
+          return acc + (override != null ? override : base)
+        }, 0)
+        if (totalMins > 0) {
+          const newCompletion = addWorkingMins(new Date(), totalMins)
+          await admin.from("job_order").update({ expected_completion_at: newCompletion.toISOString() }).eq("id", jobId)
+        }
       }
 
       await admin.from("job_order_history").insert({
@@ -386,24 +395,21 @@ export async function PATCH(
         })
       }
 
-      // Recalculate expected_completion_at from remaining stage durations (prefer per-job override over template)
+      // expected_completion_at is intentionally NOT recalculated here anymore —
+      // it's the promised deadline isJobDelayed() checks against everywhere
+      // (Admin, Operations, Head Technician, Job Calendar), set once at
+      // creation (or an explicit Operations reschedule, or start_job's
+      // null-only backfill above). Overwriting it to "now + remaining" on
+      // every stage completion used to silently clear the Delayed flag
+      // mid-job. Per-stage lateness during the job is already independently
+      // tracked by computeStageDelays/hasAnyStageDelayed, unaffected by this.
       const { data: remainingStages } = await admin
         .from("job_stage_progress")
-        .select("stage_duration_mins, service_stage:service_stage_id(stage_duration_mins)")
+        .select("id")
         .eq("job_order_id", jobId)
         .neq("status", "done")
 
-      if ((remainingStages ?? []).length > 0) {
-        const remainingMins = (remainingStages ?? []).reduce((acc: number, s: any) => {
-          const override = s.stage_duration_mins as number | null
-          const base     = (s.service_stage as any)?.stage_duration_mins ?? 0
-          return acc + (override != null ? override : base)
-        }, 0)
-        if (remainingMins > 0) {
-          const newCompletion = addWorkingMins(new Date(), remainingMins)
-          await admin.from("job_order").update({ expected_completion_at: newCompletion.toISOString() }).eq("id", jobId)
-        }
-      } else {
+      if ((remainingStages ?? []).length === 0) {
         // All stages done — check current job status before updating
         const { data: jobRow } = await admin
           .from("job_order")
@@ -412,11 +418,13 @@ export async function PATCH(
           .single()
         const currentStatus = (jobRow as any)?.status as string | undefined
 
-        const jobUpdate: Record<string, unknown> = { expected_completion_at: new Date().toISOString() }
+        const jobUpdate: Record<string, unknown> = {}
         if (currentStatus === "For Rework") {
           jobUpdate.status = "For Inspection"
         }
-        await admin.from("job_order").update(jobUpdate).eq("id", jobId)
+        if (Object.keys(jobUpdate).length > 0) {
+          await admin.from("job_order").update(jobUpdate).eq("id", jobId)
+        }
 
         if (currentStatus === "For Rework") {
           await admin.from("job_order_history").insert({
