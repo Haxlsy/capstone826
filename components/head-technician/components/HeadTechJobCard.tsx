@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation"
 import { Car, User, ChevronRight, Clock, AlertCircle } from "lucide-react"
 import { HeadTechJob } from "./types"
 import { StatusBadge } from "@/components/ui/Badge"
+import { displayJobStatus } from "@/lib/job-delay"
 
 type HeadTechJobCardProps = {
   job: HeadTechJob
@@ -36,7 +37,7 @@ export function HeadTechJobCard({ job }: HeadTechJobCardProps) {
               Stage Delayed
             </span>
           )}
-          <StatusBadge status={job.status} className="text-[11px]" />
+          <StatusBadge status={displayJobStatus(job.status, job.is_overdue)} className="text-[11px]" />
           <ChevronRight size={14} className="text-muted" />
         </div>
       </div>
