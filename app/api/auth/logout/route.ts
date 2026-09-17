@@ -11,20 +11,27 @@ export async function POST() {
     // Capture identity before signing out
     const { data: { user } } = await supabase.auth.getUser()
 
-    await supabase.auth.signOut()
-
     const response = NextResponse.json({ success: true })
     response.cookies.set("826_role", "", { maxAge: 0, path: "/" })
     response.cookies.set("826_session_token", "", { maxAge: 0, path: "/" })
 
-    // Log the logout event after sign-out (fire-and-forget)
     if (user) {
+      // signOut(), the session-marker delete, and the audit log write are
+      // all independent (none needs another's result) — only getUser() had
+      // to come first, since everything here needs user.id. Still awaited,
+      // not fire-and-forget: a background write here was previously observed
+      // getting dropped once the function returns on serverless.
       const admin = createAdminClient()
-      await createAuditLogEntry(admin, user.id);
-      // Not strictly required for security (the next login overwrites this
-      // row regardless), but avoids a stale marker lingering after a clean
-      // logout.
-      await admin.from("user_active_session").delete().eq("user_id", user.id);
+      await Promise.all([
+        supabase.auth.signOut(),
+        // Not strictly required for security (the next login overwrites this
+        // row regardless), but avoids a stale marker lingering after a clean
+        // logout.
+        admin.from("user_active_session").delete().eq("user_id", user.id),
+        createAuditLogEntry(admin, user.id),
+      ])
+    } else {
+      await supabase.auth.signOut()
     }
 
     return response
