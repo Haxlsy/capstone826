@@ -31,6 +31,7 @@ interface StageMedia {
   id: string
   file_url: string
   media_type: "photo" | "video"
+  rework_round?: number
 }
 
 interface Stage {
@@ -47,7 +48,12 @@ interface Stage {
   completed_at: string | null
   messenger_sent: boolean | null
   messenger_sent_at: string | null
+  /** Round 0 — the original, customer-facing upload. */
   media: StageMedia[]
+  /** Round 1+ — every rework resubmission, operations-only, never sent to
+   *  the customer. Each item keeps its own rework_round for labeling. */
+  rework_media: StageMedia[]
+  current_rework_round: number
   is_delayed: boolean
   expected_end_at: string | null
 }
@@ -97,6 +103,35 @@ interface JobDetail {
   finishing_approved_at: string | null
   history: HistoryEntry[]
   stages: Stage[]
+}
+
+function MediaThumbs({ items }: { items: StageMedia[] }) {
+  return (
+    <div className="flex flex-wrap gap-2">
+      {items.map((m) =>
+        m.media_type === "photo" ? (
+          <a key={m.id} href={m.file_url} target="_blank" rel="noopener noreferrer">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={m.file_url}
+              alt="stage media"
+              className="h-16 w-16 rounded-sm border border-border object-cover transition-opacity hover:opacity-80"
+            />
+          </a>
+        ) : (
+          <a
+            key={m.id}
+            href={m.file_url}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex items-center gap-1 text-xs text-primary hover:underline"
+          >
+            ▶ Video
+          </a>
+        ),
+      )}
+    </div>
+  )
 }
 
 const STAGE_PILL: Record<string, string> = {
@@ -799,29 +834,39 @@ export default function JobOrderDetail({
                           <p className="mt-1 text-xs italic text-body">Notes: {stage.completion_notes}</p>
                         )}
 
-                        {stage.media.length > 0 && (
-                          <div className="mt-2 flex flex-wrap gap-2">
-                            {stage.media.map((m) =>
-                              m.media_type === "photo" ? (
-                                <a key={m.id} href={m.file_url} target="_blank" rel="noopener noreferrer">
-                                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                                  <img
-                                    src={m.file_url}
-                                    alt="stage media"
-                                    className="h-16 w-16 rounded-sm border border-border object-cover transition-opacity hover:opacity-80"
-                                  />
-                                </a>
-                              ) : (
-                                <a
-                                  key={m.id}
-                                  href={m.file_url}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  className="flex items-center gap-1 text-xs text-primary hover:underline"
-                                >
-                                  ▶ Video
-                                </a>
-                              ),
+                        {(stage.media.length > 0 || stage.rework_media.length > 0) && (
+                          <div className="mt-2 flex flex-wrap gap-6">
+                            {stage.media.length > 0 && (
+                              <div>
+                                <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-wide text-muted">
+                                  Initial Upload
+                                </p>
+                                <MediaThumbs items={stage.media} />
+                              </div>
+                            )}
+                            {stage.rework_media.length > 0 && (
+                              <div>
+                                <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-wide text-status-rework">
+                                  Rework Upload
+                                </p>
+                                {stage.current_rework_round > 1 ? (
+                                  // More than one round exists — label each so
+                                  // history stays legible without a growing
+                                  // number of columns.
+                                  Array.from(
+                                    new Set(stage.rework_media.map((m) => m.rework_round ?? 0)),
+                                  )
+                                    .sort((a, b) => a - b)
+                                    .map((round) => (
+                                      <div key={round} className="mb-2 last:mb-0">
+                                        <p className="mb-1 text-[10px] text-muted">Round {round}</p>
+                                        <MediaThumbs items={stage.rework_media.filter((m) => (m.rework_round ?? 0) === round)} />
+                                      </div>
+                                    ))
+                                ) : (
+                                  <MediaThumbs items={stage.rework_media} />
+                                )}
+                              </div>
                             )}
                           </div>
                         )}
