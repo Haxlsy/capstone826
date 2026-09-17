@@ -131,13 +131,13 @@ function ReworkUploadSection({
         className="flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wide text-status-rework"
       >
         <ChevronDown className={cn("h-3 w-3 transition-transform", open && "rotate-180")} />
-        Rework Upload ({rounds.length} round{rounds.length !== 1 ? "s" : ""})
+        Rework Upload ({rounds.length} rework{rounds.length !== 1 ? "s" : ""})
       </button>
       {open && (
         <div className="mt-1.5 space-y-2.5">
           {rounds.map((round) => (
             <div key={round}>
-              {rounds.length > 1 && <p className="mb-1 text-[10px] text-muted">Round {round}</p>}
+              {rounds.length > 1 && <p className="mb-1 text-[10px] text-muted">Rework {round}</p>}
               {notesByRound.get(round) && (
                 <p className="mb-1 text-xs italic text-body">Notes: {notesByRound.get(round)!.notes}</p>
               )}

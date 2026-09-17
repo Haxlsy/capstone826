@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useEffect, useCallback, useRef } from "react"
+import { useRouter } from "next/navigation"
 import { createClient } from "@/lib/supabase/client"
 import {
   ArrowRightLeft, Clock,
@@ -67,6 +68,7 @@ function getInitials(name: string) {
 
 export default function InquiryManagement() {
   const toast = useToast()
+  const router = useRouter()
   const tabBarRef = useRef<HTMLDivElement>(null)
   const [inquiries, setInquiries]   = useState<Inquiry[]>([])
   const [loading, setLoading]       = useState(true)
@@ -187,6 +189,21 @@ export default function InquiryManagement() {
   }, [])
 
   useEffect(() => { load() }, [load])
+
+  // Deep-link from a notification click (NotificationBell.tsx builds
+  // /dashboard/sales?inquiry={id}). Reads via window.location.search rather
+  // than useSearchParams() so this doesn't need a Suspense boundary — same
+  // pattern components/LoginPage.tsx uses for its own one-time query param.
+  // resolveSelectedId (above) keeps this selection once `load()` completes,
+  // as long as the inquiry is still in the list.
+  useEffect(() => {
+    const requested = new URLSearchParams(window.location.search).get("inquiry")
+    if (!requested) return
+    setSelectedId(requested)
+    const url = new URL(window.location.href)
+    url.searchParams.delete("inquiry")
+    router.replace(url.pathname + url.search)
+  }, [router])
 
   // Realtime: new escalations and status changes made by other staff.
   //

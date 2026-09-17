@@ -73,7 +73,7 @@ export async function PATCH(
     // Fetch current job to detect status change
     const { data: current } = await admin
       .from("job_order")
-      .select("status, actual_start_at, customer_name, plate_number")
+      .select("status, actual_start_at, customer_name, plate_number, job_order_code")
       .eq("id", id)
       .single()
 
@@ -184,7 +184,7 @@ export async function PATCH(
 
     // ── Notify newly assigned head technicians (skip if unchanged) ────────────
     try {
-      const jobLabel = current?.plate_number ?? current?.customer_name ?? id
+      const jobLabel = current?.job_order_code ?? id
       const reassignNotifs: Record<string, unknown>[] = []
       if (head_detailer_id !== undefined && head_detailer_id && head_detailer_id !== prevHeadDetailer) {
         reassignNotifs.push({

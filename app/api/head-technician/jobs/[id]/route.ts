@@ -330,10 +330,13 @@ export async function PATCH(
     // delay detection relies on; only a job that never had one gets backfilled).
     const { data: job } = await admin
       .from("job_order")
-      .select("customer_name, plate_number, expected_completion_at")
+      .select("customer_name, plate_number, expected_completion_at, job_order_code")
       .eq("id", jobId)
       .single()
-    const jobLabel = (job as any)?.customer_name ?? jobId
+    // Job order code (e.g. "JO-UYQYTA") — consistent, human-readable identifier
+    // for notifications/audit log/push bodies, instead of a mix of customer
+    // name / raw id depending on which happened to be available.
+    const jobLabel = (job as any)?.job_order_code ?? jobId
 
     if (action === "start_job") {
       const { data: profile } = await admin

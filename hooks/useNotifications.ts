@@ -11,6 +11,7 @@ export interface Notification {
   message: string
   job_order_id: string | null
   stage_id: string | null
+  inquiry_id: string | null
   plate_number: string | null
   is_read: boolean
   created_at: string

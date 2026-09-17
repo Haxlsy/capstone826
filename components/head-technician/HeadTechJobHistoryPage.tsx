@@ -1158,7 +1158,7 @@ function StageCard({
           <button
             onClick={() => onRemoveMedia(m.id)}
             disabled={removingId === m.id || locked}
-            title={locked ? "Locked — from a previous round, can't be removed" : "Remove"}
+            title={locked ? "Locked — from a previous rework, can't be removed" : "Remove"}
             className={`absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full flex items-center justify-center shadow ${
               locked ? "bg-muted/60 cursor-not-allowed" : "bg-primary"
             }`}
@@ -1244,13 +1244,13 @@ function StageCard({
             className="flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wide text-status-rework"
           >
             <ChevronDown size={11} className={reworkOpen ? "rotate-180 transition-transform" : "transition-transform"} />
-            Rework Upload ({reworkRounds.length} round{reworkRounds.length !== 1 ? "s" : ""})
+            Rework Upload ({reworkRounds.length} rework{reworkRounds.length !== 1 ? "s" : ""})
           </button>
           {reworkOpen && (
             <div className="mt-1.5 space-y-2.5">
               {reworkRounds.map((round) => (
                 <div key={round}>
-                  {reworkRounds.length > 1 && <p className="mb-1 text-[10px] text-muted">Round {round}</p>}
+                  {reworkRounds.length > 1 && <p className="mb-1 text-[10px] text-muted">Rework {round}</p>}
                   {reworkNotesByRound.get(round) && (
                     <p className="mb-1 text-[11px] italic text-body">Notes: {reworkNotesByRound.get(round)!.notes}</p>
                   )}
@@ -1315,18 +1315,18 @@ function StageCard({
               <Video size={13} />
               Video {videoFull ? `(${MAX_VIDEOS_PER_ROUND}/${MAX_VIDEOS_PER_ROUND})` : rework ? "(optional)" : ""}
             </button>
-
-            {!done && (
-              <button
-                onClick={() => onMarkDone(notes)}
-                disabled={isMarking || isUploading || photoCount === 0 || (!rework && videoCount === 0) || !notes.trim()}
-                className="flex-1 flex items-center justify-center gap-1.5 text-xs font-semibold text-white bg-primary rounded-card py-2.5 hover:bg-shell-alt active:scale-[0.98] transition-all disabled:opacity-40 disabled:cursor-not-allowed"
-              >
-                {isMarking ? <Loader2 size={12} className="animate-spin" /> : <CheckCircle2 size={12} />}
-                Done
-              </button>
-            )}
           </div>
+
+          {!done && (
+            <button
+              onClick={() => onMarkDone(notes)}
+              disabled={isMarking || isUploading || photoCount === 0 || (!rework && videoCount === 0) || !notes.trim()}
+              className="w-full flex items-center justify-center gap-1.5 text-xs font-semibold text-white bg-primary rounded-card py-2.5 hover:bg-shell-alt active:scale-[0.98] transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              {isMarking ? <Loader2 size={12} className="animate-spin" /> : <CheckCircle2 size={12} />}
+              Done
+            </button>
+          )}
         </div>
       )}
     </div>
