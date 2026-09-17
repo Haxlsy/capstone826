@@ -28,7 +28,9 @@ export function useLogout() {
     } catch {
       /* ignore */
     }
-    router.push("/")
+    // Straight to /login, not "/" — "/" is just a server redirect() to
+    // /login, so pushing there would navigate twice.
+    router.push("/login")
   }, [router])
 }
 
