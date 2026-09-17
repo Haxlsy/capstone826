@@ -313,7 +313,7 @@ export async function POST(request: Request) {
     // (user_account); plain detailer_ids/installer_ids reference `technician`
     // rows, which have no account and can't receive notifications.
     try {
-      const jobLabel = resolvedPlateNumber ?? resolvedCustomerName ?? job.id
+      const jobLabel = job.job_order_code ?? job.id
       const headNotifs: Record<string, unknown>[] = []
       if (head_detailer_id) {
         headNotifs.push({

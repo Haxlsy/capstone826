@@ -62,7 +62,7 @@ export async function PATCH(
     // Fetch concern details before update (for notification)
     let submitterId: string | null = null
     let concernJobId: string | null = null
-    let concernCustomerName: string | null = null
+    let concernJobLabel: string | null = null
     // A queued offline resolution can replay against a concern someone else
     // already resolved online in the meantime — treat that as an idempotent
     // no-op (see docs/plan/operations-offline-mode-plan.md) rather than
@@ -80,10 +80,10 @@ export async function PATCH(
       if (concernJobId) {
         const { data: jobRow } = await admin
           .from("job_order")
-          .select("customer_name")
+          .select("job_order_code")
           .eq("id", concernJobId)
           .single()
-        concernCustomerName = (jobRow as any)?.customer_name ?? null
+        concernJobLabel = (jobRow as any)?.job_order_code ?? null
       }
     }
 
@@ -110,7 +110,7 @@ export async function PATCH(
       logAuditCall(caller, {
         category: "approve",
         action:   "Resolved concern",
-        target:   concernCustomerName ?? `concern ${id}`,
+        target:   concernJobLabel ?? `concern ${id}`,
       })
     }
 

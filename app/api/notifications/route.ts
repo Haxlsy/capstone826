@@ -16,7 +16,7 @@ export async function GET() {
     const { data, error } = await supabase
       .from("notification")
       .select(`
-        id, type, message, job_order_id, stage_id, is_read, created_at,
+        id, type, message, job_order_id, stage_id, inquiry_id, is_read, created_at,
         job:job_order_id(plate_number)
       `)
       .eq("user_id", user.id)
@@ -37,6 +37,7 @@ export async function GET() {
       message: n.message,
       job_order_id: n.job_order_id,
       stage_id: n.stage_id,
+      inquiry_id: n.inquiry_id,
       plate_number: n.job?.plate_number ?? null,
       is_read: n.is_read,
       created_at: n.created_at,

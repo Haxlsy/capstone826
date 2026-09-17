@@ -141,7 +141,7 @@ async function handOffWhileDisabled(
   try {
     await setConversationStatus(conversation_id, "pending")
 
-    const { error: inquiryErr } = await admin.from("inquiry").insert({
+    const { data: newInquiry, error: inquiryErr } = await admin.from("inquiry").insert({
       messenger_name: psidName,
       psid:           senderId,
       inquiry_type:   "Human Response",
@@ -149,12 +149,13 @@ async function handOffWhileDisabled(
       escalated_at:   timestamp,
       last_message:   messageBody,
       conflict_note:  note,
-    })
+    }).select("id").single()
     if (inquiryErr) console.error("[webhook/facebook] disabled-mode inquiry insert failed:", inquiryErr.message)
 
     await notifyRole(admin, "sales", {
-      type:    "inquiry",
-      message: `New Human Response inquiry from ${psidName}`,
+      type:       "inquiry",
+      message:    `New Human Response inquiry from ${psidName}`,
+      inquiry_id: newInquiry?.id ?? null,
     })
   } catch (err) {
     console.error("[webhook/facebook] disabled-mode handoff failed:", err)
@@ -1434,7 +1435,7 @@ async function handleInboundMessage(
       inquiry_type = "Human Response"
     }
 
-    const { error: inquiryErr } = await admin.from("inquiry").insert({
+    const { data: newInquiry, error: inquiryErr } = await admin.from("inquiry").insert({
       messenger_name: profile.name,
       psid: senderId,
       inquiry_type,
@@ -1447,7 +1448,7 @@ async function handleInboundMessage(
       extracted_plate:   extracted?.plate_number   ?? null,
       extracted_vehicle: extracted?.vehicle_unit   ?? null,
       extracted_email:   extracted?.email          ?? null,
-    })
+    }).select("id").single()
     if (inquiryErr) console.error("[webhook/facebook] inquiry insert failed:", inquiryErr.message)
 
     // ── Notify Sales users — always, for these inquiry types (mandatory) ────
@@ -1459,17 +1460,19 @@ async function handleInboundMessage(
     if (inquiry_type === "Booking" || inquiry_type === "Human Response" || inquiry_type === "Report") {
       const label = inquiry_type === "Report" ? "⚠️ New Report (concern) inquiry" : `New ${inquiry_type} inquiry`
       await notifyRole(admin, "sales", {
-        type:    "inquiry",
-        message: `${label} from ${profile.name}`,
+        type:       "inquiry",
+        message:    `${label} from ${profile.name}`,
+        inquiry_id: newInquiry?.id ?? null,
       })
     }
 
     // A suspected impersonation attempt always notifies Sales too, so it is
-    // seen in real time, not just in the log.
+    // seen in real time, not just in the log. Same inquiry row created above.
     if (linkState.escalation?.impersonation) {
       await notifyRole(admin, "sales", {
-        type:    "inquiry",
-        message: `⚠️ Possible impersonation attempt from ${profile.name}`,
+        type:       "inquiry",
+        message:    `⚠️ Possible impersonation attempt from ${profile.name}`,
+        inquiry_id: newInquiry?.id ?? null,
       })
     }
 
