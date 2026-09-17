@@ -1315,18 +1315,18 @@ function StageCard({
               <Video size={13} />
               Video {videoFull ? `(${MAX_VIDEOS_PER_ROUND}/${MAX_VIDEOS_PER_ROUND})` : rework ? "(optional)" : ""}
             </button>
-
-            {!done && (
-              <button
-                onClick={() => onMarkDone(notes)}
-                disabled={isMarking || isUploading || photoCount === 0 || (!rework && videoCount === 0) || !notes.trim()}
-                className="flex-1 flex items-center justify-center gap-1.5 text-xs font-semibold text-white bg-primary rounded-card py-2.5 hover:bg-shell-alt active:scale-[0.98] transition-all disabled:opacity-40 disabled:cursor-not-allowed"
-              >
-                {isMarking ? <Loader2 size={12} className="animate-spin" /> : <CheckCircle2 size={12} />}
-                Done
-              </button>
-            )}
           </div>
+
+          {!done && (
+            <button
+              onClick={() => onMarkDone(notes)}
+              disabled={isMarking || isUploading || photoCount === 0 || (!rework && videoCount === 0) || !notes.trim()}
+              className="w-full flex items-center justify-center gap-1.5 text-xs font-semibold text-white bg-primary rounded-card py-2.5 hover:bg-shell-alt active:scale-[0.98] transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              {isMarking ? <Loader2 size={12} className="animate-spin" /> : <CheckCircle2 size={12} />}
+              Done
+            </button>
+          )}
         </div>
       )}
     </div>

@@ -11,7 +11,7 @@ import type { createAdminClient } from "@/lib/supabase/admin"
 export async function notifyRole(
   admin: ReturnType<typeof createAdminClient>,
   role: string,
-  input: { type: string; message: string; job_order_id?: string | null; stage_id?: string | null },
+  input: { type: string; message: string; job_order_id?: string | null; stage_id?: string | null; inquiry_id?: string | null },
 ): Promise<void> {
   try {
     const { data: users } = await admin
@@ -29,6 +29,7 @@ export async function notifyRole(
         message:      input.message,
         job_order_id: input.job_order_id ?? null,
         stage_id:     input.stage_id ?? null,
+        inquiry_id:   input.inquiry_id ?? null,
         is_read:      false,
       })),
     )

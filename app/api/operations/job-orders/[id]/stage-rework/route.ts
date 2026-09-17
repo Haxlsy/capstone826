@@ -42,7 +42,7 @@ export async function POST(
     // Guard: job must be For Inspection
     const { data: job } = await admin
       .from("job_order")
-      .select("status, customer_name")
+      .select("status, customer_name, job_order_code")
       .eq("id", jobId)
       .single()
 
@@ -99,7 +99,7 @@ export async function POST(
       .map((t: { user_account_id: string }) => ({
         user_id:      t.user_account_id,
         type:         "rework",
-        message:      `Operations flagged a stage for rework. Reason: ${rework_notes.trim()}`,
+        message:      `Job ${job.job_order_code ?? jobId} — Operations flagged a stage for rework. Reason: ${rework_notes.trim()}`,
         job_order_id: jobId,
       }))
 

@@ -10,7 +10,24 @@ import {
   relativeTime,
 } from "@/hooks/useNotifications"
 import type { Notification } from "@/hooks/useNotifications"
+import { useCurrentUser } from "@/hooks/useCurrentUser"
 import { cn } from "@/lib/utils"
+
+// Same job_order_id means a different route depending on who's looking.
+// "inquiry" notifications (Sales, messenger escalations) have no job order —
+// deep-link to the specific inquiry when we have its id, otherwise fall back
+// to the general Sales page (older notifications, or a failed id capture).
+function getNotificationHref(n: Notification, role: string): string | null {
+  if (n.job_order_id) {
+    if (role === "sales") return `/dashboard/sales/jobs/${n.job_order_id}`
+    if (role === "head_detailer" || role === "head_installer") return `/head-technician/${n.job_order_id}`
+    return `/dashboard/job-management/${n.job_order_id}` // operations, admin, super_admin
+  }
+  if (n.type === "inquiry") {
+    return n.inquiry_id ? `/dashboard/sales?inquiry=${n.inquiry_id}` : "/dashboard/sales"
+  }
+  return null
+}
 
 const dotStyles: Record<string, string> = {
   info: "bg-status-info",
@@ -20,6 +37,7 @@ const dotStyles: Record<string, string> = {
 
 export default function NotificationBell({ variant = "dark" }: { variant?: "dark" | "light" }) {
   const { notifications, unreadCount, delayedJobCount, markOne, markAll, refresh } = useNotifications()
+  const { role } = useCurrentUser()
   const [open, setOpen] = useState(false)
   const ref = useRef<HTMLDivElement>(null)
   const router = useRouter()
@@ -113,7 +131,11 @@ export default function NotificationBell({ variant = "dark" }: { variant?: "dark
               return (
                 <li
                   key={n.id}
-                  onClick={() => markOne(n.id)}
+                  onClick={() => {
+                    markOne(n.id)
+                    const href = getNotificationHref(n, role)
+                    if (href) { setOpen(false); router.push(href) }
+                  }}
                   className={cn(
                     "flex cursor-pointer items-start gap-3 px-4 py-3 transition-colors hover:bg-surface-muted",
                     !n.is_read && "bg-primary-soft/40",
