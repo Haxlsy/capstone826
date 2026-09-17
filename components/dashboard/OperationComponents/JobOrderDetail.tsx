@@ -497,9 +497,16 @@ export default function JobOrderDetail({
       .map(([label, value]) => `<tr><td>${esc(label)}</td><td>${esc(value)}</td></tr>`)
       .join("")
     const html = `<html><head><title>Job Order ${esc(jobData.job_order_code)}</title>
-      <style>body{font-family:sans-serif;font-size:12px}table{width:100%;border-collapse:collapse}
+      <style>body{font-family:sans-serif;font-size:12px;color:#111;margin:32px}
+      .brand{font-size:18px;font-weight:700}.branch{margin-top:2px;font-size:12px;color:#555}
+      .meta{margin-top:10px;font-size:11px;color:#777}hr{border:none;border-top:2px solid #111;margin:14px 0 20px}
+      table{width:100%;border-collapse:collapse}
       th,td{border:1px solid #dddddd;padding:6px 8px;text-align:left}td:first-child{font-weight:600;width:40%;background:#f7f8f8}</style>
-      </head><body><h2>Job Order ${esc(jobData.job_order_code)}</h2>
+      </head><body>
+      <div class="brand">826 Auto Aesthetic &amp; Protection</div>
+      <div class="branch">Ortigas Extension</div>
+      <div class="meta">Generated on ${esc(new Date().toLocaleString())}</div>
+      <hr />
       <table><tbody>${rowsHtml}</tbody></table></body></html>`
     const blob = new Blob([html], { type: "text/html;charset=utf-8;" })
     const url = URL.createObjectURL(blob)
