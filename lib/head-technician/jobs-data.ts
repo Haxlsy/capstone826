@@ -1,4 +1,5 @@
 import { createAdminClient } from "@/lib/supabase/admin"
+import { getCurrentUserProfile } from "@/lib/auth/guard"
 import { isJobDelayed, computeStageDelays, hasAnyStageDelayed, type StageForDelay } from "@/lib/job-delay"
 import { fmtDate } from "@/lib/time-display"
 
@@ -34,11 +35,10 @@ type CatRow = { id: string; name: string; display_color: string; technician_role
 export async function getHeadTechnicianJobs(userId: string) {
   const admin = createAdminClient()
 
-  const { data: profile } = await admin
-    .from("user_account")
-    .select("full_name, role")
-    .eq("id", userId)
-    .single()
+  // requireRole() (the layout, same request) already fetched this exact row
+  // via this same cache() — reusing it here costs nothing extra instead of
+  // paying for the identical user_account round trip again.
+  const profile = await getCurrentUserProfile(userId)
 
   if (!profile) throw new Error("Profile not found")
 
@@ -57,9 +57,20 @@ export async function getHeadTechnicianJobs(userId: string) {
     return { jobs: [] as TechnicianJob[], userRole: role, displayName: profile.full_name }
   }
 
-  // These three only depend on jobIds, not on each other — run concurrently
-  // instead of paying for three sequential round-trips.
-  const [{ data: jobs, error }, { data: allTeam }, { data: stageProg }] = await Promise.all([
+  // These five only depend on jobIds (or nothing at all) — none depends on
+  // another's result, so all run concurrently instead of paying for serial
+  // round-trips. service_stage/workflow_category are small, mostly-static
+  // shop-configuration tables (stage/category definitions, not per-job data),
+  // so fetching them whole here is cheap and avoids the alternative of
+  // deriving their IDs from stageProg first and querying them after —  two
+  // more sequential round-trips this page used to pay on every load.
+  const [
+    { data: jobs, error },
+    { data: allTeam },
+    { data: stageProg },
+    { data: ssData },
+    { data: catData },
+  ] = await Promise.all([
     admin
       .from("job_order")
       .select(`
@@ -79,31 +90,18 @@ export async function getHeadTechnicianJobs(userId: string) {
       .from("job_stage_progress")
       .select("job_order_id, status, service_stage_id, stage_duration_mins")
       .in("job_order_id", jobIds),
+    admin
+      .from("service_stage")
+      .select("id, category_id, stage_duration_mins, sequence_order"),
+    admin
+      .from("workflow_category")
+      .select("id, name, display_color, technician_role"),
   ])
 
   if (error) throw new Error(error.message)
 
-  const ssIds = [...new Set((stageProg ?? []).map((s: any) => s.service_stage_id as string).filter(Boolean))]
-  let ssRows: SSRow[] = []
-  if (ssIds.length > 0) {
-    const { data } = await admin
-      .from("service_stage")
-      .select("id, category_id, stage_duration_mins, sequence_order")
-      .in("id", ssIds)
-    ssRows = (data ?? []) as SSRow[]
-  }
-  const ssMap = new Map(ssRows.map((r) => [r.id, r]))
-
-  const catIds = [...new Set(ssRows.map((r) => r.category_id).filter(Boolean) as string[])]
-  let catRows: CatRow[] = []
-  if (catIds.length > 0) {
-    const { data } = await admin
-      .from("workflow_category")
-      .select("id, name, display_color, technician_role")
-      .in("id", catIds)
-    catRows = (data ?? []) as CatRow[]
-  }
-  const catMap = new Map(catRows.map((r) => [r.id, r]))
+  const ssMap = new Map(((ssData ?? []) as SSRow[]).map((r) => [r.id, r]))
+  const catMap = new Map(((catData ?? []) as CatRow[]).map((r) => [r.id, r]))
 
   const groupsMap = new Map<string, Map<string, StageGroup>>()
   const jobStagesMap = new Map<string, any[]>()
