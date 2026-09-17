@@ -1,7 +1,7 @@
 "use client"
 
 import * as React from "react"
-import Link from "next/link"
+import Link, { useLinkStatus } from "next/link"
 import Image from "next/image"
 import { usePathname } from "next/navigation"
 import {
@@ -311,6 +311,27 @@ function CollapsedGroup({
   )
 }
 
+// Middleware re-verifies auth + the single-session lock on every navigation
+// (proxy.ts), which is a couple of real network round trips — slow enough,
+// given the Supabase region, that tapping a link can otherwise look like it
+// did nothing until the destination actually loads. useLinkStatus() reports
+// this specific link's in-flight state client-side, independent of how long
+// that server round trip takes, so a tap gets instant visual feedback. Must
+// be a child of <Link>, not the Link itself — that's a Next.js requirement.
+function LinkPendingIndicator({ collapsed }: { collapsed: boolean }) {
+  const { pending } = useLinkStatus()
+  if (!pending) return null
+  return (
+    <span
+      aria-hidden="true"
+      className={cn(
+        "shrink-0 animate-spin rounded-full border-2 border-white/30 border-t-white",
+        collapsed ? "absolute right-1 top-1 h-2.5 w-2.5" : "h-3.5 w-3.5",
+      )}
+    />
+  )
+}
+
 function SidebarLink({
   href,
   icon: Icon,
@@ -382,6 +403,7 @@ function SidebarLink({
       {collapsed && typeof badge === "number" && badge > 0 && (
         <span className="absolute right-2 top-1.5 h-2 w-2 rounded-full bg-status-delayed" />
       )}
+      <LinkPendingIndicator collapsed={collapsed} />
     </Link>
   )
 }
