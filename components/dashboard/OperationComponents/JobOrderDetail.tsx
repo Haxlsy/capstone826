@@ -53,6 +53,9 @@ interface Stage {
   /** Round 1+ — every rework resubmission, operations-only, never sent to
    *  the customer. Each item keeps its own rework_round for labeling. */
   rework_media: StageMedia[]
+  /** One entry per rework round the technician confirmed, in ascending
+   *  round order. Round 0's note is completion_notes above, unaffected. */
+  rework_notes: { round: number; notes: string; created_at: string }[]
   current_rework_round: number
   is_delayed: boolean
   expected_end_at: string | null
@@ -103,6 +106,48 @@ interface JobDetail {
   finishing_approved_at: string | null
   history: HistoryEntry[]
   stages: Stage[]
+}
+
+// Collapsed by default — a stage reworked more than once otherwise pushes a
+// lot of historical thumbnails/notes into the page, crowding out everything
+// else. The header always shows the round count so it's clear there's
+// something to expand.
+function ReworkUploadSection({
+  media,
+  notes,
+}: {
+  media: StageMedia[]
+  notes: { round: number; notes: string; created_at: string }[]
+}) {
+  const [open, setOpen] = useState(false)
+  const rounds = [...new Set(media.map((m) => m.rework_round ?? 0))].sort((a, b) => a - b)
+  const notesByRound = new Map(notes.map((n) => [n.round, n]))
+
+  return (
+    <div>
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        className="flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wide text-status-rework"
+      >
+        <ChevronDown className={cn("h-3 w-3 transition-transform", open && "rotate-180")} />
+        Rework Upload ({rounds.length} round{rounds.length !== 1 ? "s" : ""})
+      </button>
+      {open && (
+        <div className="mt-1.5 space-y-2.5">
+          {rounds.map((round) => (
+            <div key={round}>
+              {rounds.length > 1 && <p className="mb-1 text-[10px] text-muted">Round {round}</p>}
+              {notesByRound.get(round) && (
+                <p className="mb-1 text-xs italic text-body">Notes: {notesByRound.get(round)!.notes}</p>
+              )}
+              <MediaThumbs items={media.filter((m) => (m.rework_round ?? 0) === round)} />
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  )
 }
 
 function MediaThumbs({ items }: { items: StageMedia[] }) {
@@ -835,7 +880,7 @@ export default function JobOrderDetail({
                         )}
 
                         {(stage.media.length > 0 || stage.rework_media.length > 0) && (
-                          <div className="mt-2 flex flex-wrap gap-6">
+                          <div className="mt-2 flex flex-wrap items-start gap-6">
                             {stage.media.length > 0 && (
                               <div>
                                 <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-wide text-muted">
@@ -845,28 +890,7 @@ export default function JobOrderDetail({
                               </div>
                             )}
                             {stage.rework_media.length > 0 && (
-                              <div>
-                                <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-wide text-status-rework">
-                                  Rework Upload
-                                </p>
-                                {stage.current_rework_round > 1 ? (
-                                  // More than one round exists — label each so
-                                  // history stays legible without a growing
-                                  // number of columns.
-                                  Array.from(
-                                    new Set(stage.rework_media.map((m) => m.rework_round ?? 0)),
-                                  )
-                                    .sort((a, b) => a - b)
-                                    .map((round) => (
-                                      <div key={round} className="mb-2 last:mb-0">
-                                        <p className="mb-1 text-[10px] text-muted">Round {round}</p>
-                                        <MediaThumbs items={stage.rework_media.filter((m) => (m.rework_round ?? 0) === round)} />
-                                      </div>
-                                    ))
-                                ) : (
-                                  <MediaThumbs items={stage.rework_media} />
-                                )}
-                              </div>
+                              <ReworkUploadSection media={stage.rework_media} notes={stage.rework_notes} />
                             )}
                           </div>
                         )}

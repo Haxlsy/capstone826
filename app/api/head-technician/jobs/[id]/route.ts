@@ -81,6 +81,23 @@ export async function GET(
       .map((s: any) => s.service_stage_id as string | null)
       .filter(Boolean) as string[]
 
+    // Per-round rework notes — one row per round the technician confirmed
+    // rework on, additive history alongside round 0's completion_notes.
+    const stageIds = (stageRows ?? []).map((s: any) => s.id as string)
+    const roundNotesMap = new Map<string, { round: number; notes: string; created_at: string }[]>()
+    if (stageIds.length > 0) {
+      const { data: roundNoteRows } = await admin
+        .from("stage_round_note")
+        .select("job_stage_progress_id, round, notes, created_at")
+        .in("job_stage_progress_id", stageIds)
+        .order("round", { ascending: true })
+      for (const r of (roundNoteRows ?? []) as any[]) {
+        const list = roundNotesMap.get(r.job_stage_progress_id) ?? []
+        list.push({ round: r.round, notes: r.notes, created_at: r.created_at })
+        roundNotesMap.set(r.job_stage_progress_id, list)
+      }
+    }
+
     type SSInfo = { name: string; sequence_order: number; category: string; category_id: string; category_role: string; category_color: string; stage_duration_mins: number }
     const ssMap: Record<string, SSInfo> = {}
     if (ssIds.length > 0) {
@@ -270,6 +287,11 @@ export async function GET(
             type:         m.media_type,
             rework_round: (m.rework_round as number | null) ?? 0,
           })),
+          rework_notes: (roundNotesMap.get(s.id as string) ?? []).map((n) => ({
+            round: n.round,
+            notes: n.notes,
+            created_at: fmtDateTime(n.created_at),
+          })),
         })),
       },
     })
@@ -384,9 +406,15 @@ export async function PATCH(
         .eq("rework_round", doneRound)
       const hasPhoto = (stageMedia ?? []).some((m) => m.media_type === "photo")
       const hasVideo = (stageMedia ?? []).some((m) => m.media_type === "video")
-      if (!hasPhoto || !hasVideo) {
+      // Rework rounds only require a photo — video stays required for the
+      // initial (round 0) upload only.
+      if (!hasPhoto || (doneRound === 0 && !hasVideo)) {
         return NextResponse.json(
-          { error: "At least one photo and one video are required before this stage can be marked done." },
+          {
+            error: doneRound === 0
+              ? "At least one photo and one video are required before this stage can be marked done."
+              : "At least one photo is required before this stage can be marked done.",
+          },
           { status: 400 },
         )
       }
@@ -394,14 +422,26 @@ export async function PATCH(
       await admin
         .from("job_stage_progress")
         .update({
-          status:           "done",
-          completed_at:     new Date().toISOString(),
-          completed_by_id:  user.id,
-          handoff_notes:    handoff_notes    ?? null,
-          completion_notes: completion_notes ?? null,
+          status:          "done",
+          completed_at:    new Date().toISOString(),
+          completed_by_id: user.id,
+          handoff_notes:   handoff_notes ?? null,
+          // Round 0's note only — a rework round's note is a separate,
+          // additive history entry (stage_round_note below), never
+          // overwriting the original.
+          ...(doneRound === 0 ? { completion_notes: completion_notes ?? null } : {}),
         })
         .eq("id", stage_id)
         .eq("job_order_id", jobId)
+
+      if (doneRound > 0) {
+        await admin.from("stage_round_note").insert({
+          job_stage_progress_id: stage_id,
+          round:                 doneRound,
+          notes:                 completion_notes.trim(),
+          created_by_id:         user.id,
+        })
+      }
 
       if (media_url && media_type) {
         await admin.from("stage_media").insert({

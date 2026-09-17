@@ -67,6 +67,9 @@ interface StageDoc {
   /** Which round is currently active for this stage's media — 0 = initial,
    *  1+ = a rework redo. Only media in this round is addable/removable. */
   current_rework_round: number;
+  /** One entry per rework round confirmed so far, ascending. Round 0's note
+   *  is completion_notes above, unaffected. */
+  rework_notes: { round: number; notes: string; created_at: string }[];
 }
 
 interface TimelineEntry {
@@ -1112,6 +1115,9 @@ function StageCard({
   onPreview:     (url: string, type: string) => void;
 }) {
   const [notes, setNotes] = useState("");
+  // Collapsed by default — a stage reworked more than once otherwise pushes
+  // a lot of historical thumbnails/notes into a small mobile card.
+  const [reworkOpen, setReworkOpen] = useState(false);
 
   const done       = stage.status === "done";
   const rework     = stage.status === "for_rework";
@@ -1122,6 +1128,47 @@ function StageCard({
   const videoCount = roundMedia.filter((m) => m.type === "video").length;
   const photoFull  = photoCount >= MAX_PHOTOS_PER_ROUND;
   const videoFull  = videoCount >= MAX_VIDEOS_PER_ROUND;
+
+  const initialMedia = stage.media.filter((m) => (m.rework_round ?? 0) === 0);
+  const reworkMedia  = stage.media.filter((m) => (m.rework_round ?? 0) > 0);
+  const reworkRounds = [...new Set(reworkMedia.map((m) => m.rework_round ?? 0))].sort((a, b) => a - b);
+  const reworkNotesByRound = new Map(stage.rework_notes.map((n) => [n.round, n]));
+
+  // Shared between the initial and rework thumbnail lists below — only the
+  // currently-active round's own items are removable; anything from a past
+  // round (including the original, once a rework round has started) is
+  // permanently locked as evidence.
+  function renderMediaItem(m: StageMedia) {
+    const locked = m.rework_round !== stage.current_rework_round;
+    return (
+      <div key={m.id} className="relative w-16 h-16">
+        <button className="w-16 h-16 rounded-card overflow-hidden block focus:outline-none" onClick={() => !m.pending && onPreview(m.url, m.type)}>
+          {m.type === "video" ? (
+            <div className="w-full h-full bg-surface-muted flex items-center justify-center text-body"><Play size={20} /></div>
+          ) : (
+            <MediaThumbnail url={m.url} />
+          )}
+        </button>
+        {m.pending && (
+          <div className="absolute inset-0 rounded-card bg-shell/50 flex items-center justify-center pointer-events-none">
+            <Loader2 size={16} className="text-white animate-spin" />
+          </div>
+        )}
+        {!m.pending && !readOnly && !done && (
+          <button
+            onClick={() => onRemoveMedia(m.id)}
+            disabled={removingId === m.id || locked}
+            title={locked ? "Locked — from a previous round, can't be removed" : "Remove"}
+            className={`absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full flex items-center justify-center shadow ${
+              locked ? "bg-muted/60 cursor-not-allowed" : "bg-primary"
+            }`}
+          >
+            {removingId === m.id ? <Loader2 size={9} className="text-white animate-spin" /> : <X size={9} className="text-white" />}
+          </button>
+        )}
+      </div>
+    );
+  }
 
   return (
     <div className={`bg-surface rounded-card border transition-colors duration-150 ${
@@ -1180,42 +1227,40 @@ function StageCard({
         </div>
       )}
 
-      {stage.media.length > 0 && (
-        <div className="flex flex-wrap gap-2 px-4 pb-3">
-          {stage.media.map((m) => {
-            // Only the currently-active round's own items are removable —
-            // anything from a past round (including the original, once a
-            // rework round has started) is permanently locked as evidence.
-            const locked = m.rework_round !== stage.current_rework_round;
-            return (
-              <div key={m.id} className="relative w-16 h-16">
-                <button className="w-16 h-16 rounded-card overflow-hidden block focus:outline-none" onClick={() => !m.pending && onPreview(m.url, m.type)}>
-                  {m.type === "video" ? (
-                    <div className="w-full h-full bg-surface-muted flex items-center justify-center text-body"><Play size={20} /></div>
-                  ) : (
-                    <MediaThumbnail url={m.url} />
+      {initialMedia.length > 0 && (
+        <div className="px-4 pb-3">
+          {reworkMedia.length > 0 && (
+            <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-wide text-muted">Initial Upload</p>
+          )}
+          <div className="flex flex-wrap gap-2">{initialMedia.map(renderMediaItem)}</div>
+        </div>
+      )}
+
+      {reworkMedia.length > 0 && (
+        <div className="px-4 pb-3">
+          <button
+            type="button"
+            onClick={() => setReworkOpen((v) => !v)}
+            className="flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wide text-status-rework"
+          >
+            <ChevronDown size={11} className={reworkOpen ? "rotate-180 transition-transform" : "transition-transform"} />
+            Rework Upload ({reworkRounds.length} round{reworkRounds.length !== 1 ? "s" : ""})
+          </button>
+          {reworkOpen && (
+            <div className="mt-1.5 space-y-2.5">
+              {reworkRounds.map((round) => (
+                <div key={round}>
+                  {reworkRounds.length > 1 && <p className="mb-1 text-[10px] text-muted">Round {round}</p>}
+                  {reworkNotesByRound.get(round) && (
+                    <p className="mb-1 text-[11px] italic text-body">Notes: {reworkNotesByRound.get(round)!.notes}</p>
                   )}
-                </button>
-                {m.pending && (
-                  <div className="absolute inset-0 rounded-card bg-shell/50 flex items-center justify-center pointer-events-none">
-                    <Loader2 size={16} className="text-white animate-spin" />
+                  <div className="flex flex-wrap gap-2">
+                    {reworkMedia.filter((m) => (m.rework_round ?? 0) === round).map(renderMediaItem)}
                   </div>
-                )}
-                {!m.pending && !readOnly && !done && (
-                  <button
-                    onClick={() => onRemoveMedia(m.id)}
-                    disabled={removingId === m.id || locked}
-                    title={locked ? "Locked — from a previous round, can't be removed" : "Remove"}
-                    className={`absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full flex items-center justify-center shadow ${
-                      locked ? "bg-muted/60 cursor-not-allowed" : "bg-primary"
-                    }`}
-                  >
-                    {removingId === m.id ? <Loader2 size={9} className="text-white animate-spin" /> : <X size={9} className="text-white" />}
-                  </button>
-                )}
-              </div>
-            );
-          })}
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       )}
 
@@ -1232,23 +1277,18 @@ function StageCard({
                 : "Upload at least 1 video before marking done."}
             </p>
           )}
-          {rework && (photoCount === 0 || videoCount === 0) && (
+          {rework && photoCount === 0 && (
             <p className="text-[11px] text-status-rework">
-              Stage flagged for rework — upload a new photo and video for this round, then mark done again to confirm.
+              Stage flagged for rework — upload at least one new photo for this round (video optional), then mark done again to confirm.
             </p>
           )}
           {!done && (
             <textarea
               value={notes}
-              onChange={rework ? undefined : (e) => setNotes(e.target.value)}
-              readOnly={rework}
-              placeholder="Add completion notes… (required)"
+              onChange={(e) => setNotes(e.target.value)}
+              placeholder={rework ? "What did you change for this rework? (required)" : "Add completion notes… (required)"}
               rows={2}
-              className={`w-full text-xs border rounded-card px-3 py-2 resize-none focus:outline-none focus:ring-2 focus:ring-gray-200 placeholder:text-muted transition ${
-                rework
-                  ? "opacity-40 cursor-not-allowed bg-surface-muted border-border text-body"
-                  : "bg-surface-subtle border-border text-heading focus:ring-gray-200"
-              }`}
+              className="w-full text-xs border rounded-card px-3 py-2 resize-none focus:outline-none focus:ring-2 focus:ring-gray-200 placeholder:text-muted transition bg-surface-subtle border-border text-heading"
             />
           )}
           <div className="flex items-center gap-2">
@@ -1273,13 +1313,13 @@ function StageCard({
               }`}
             >
               <Video size={13} />
-              Video {videoFull ? `(${MAX_VIDEOS_PER_ROUND}/${MAX_VIDEOS_PER_ROUND})` : ""}
+              Video {videoFull ? `(${MAX_VIDEOS_PER_ROUND}/${MAX_VIDEOS_PER_ROUND})` : rework ? "(optional)" : ""}
             </button>
 
             {!done && (
               <button
-                onClick={() => onMarkDone(rework ? (stage.completion_notes ?? "Rework confirmed") : notes)}
-                disabled={isMarking || isUploading || photoCount === 0 || videoCount === 0 || (!rework && !notes.trim())}
+                onClick={() => onMarkDone(notes)}
+                disabled={isMarking || isUploading || photoCount === 0 || (!rework && videoCount === 0) || !notes.trim()}
                 className="flex-1 flex items-center justify-center gap-1.5 text-xs font-semibold text-white bg-primary rounded-card py-2.5 hover:bg-shell-alt active:scale-[0.98] transition-all disabled:opacity-40 disabled:cursor-not-allowed"
               >
                 {isMarking ? <Loader2 size={12} className="animate-spin" /> : <CheckCircle2 size={12} />}
