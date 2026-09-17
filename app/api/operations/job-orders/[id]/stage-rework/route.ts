@@ -54,10 +54,20 @@ export async function POST(
       )
     }
 
+    // Bump the active round — the technician's next uploads for this stage
+    // get tagged with this round, keeping full history of every past round's
+    // media (including the original) instead of overwriting it.
+    const { data: stageBefore } = await admin
+      .from("job_stage_progress")
+      .select("current_rework_round")
+      .eq("id", stage_id)
+      .single()
+    const nextRound = ((stageBefore?.current_rework_round as number | null) ?? 0) + 1
+
     // Update the stage status and rework notes
     const { error: stageErr } = await admin
       .from("job_stage_progress")
-      .update({ status: "for_rework", rework_instructions: rework_notes.trim() })
+      .update({ status: "for_rework", rework_instructions: rework_notes.trim(), current_rework_round: nextRound })
       .eq("id", stage_id)
       .eq("job_order_id", jobId)
 

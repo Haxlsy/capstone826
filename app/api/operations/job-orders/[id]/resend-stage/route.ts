@@ -39,7 +39,7 @@ export async function POST(
       .select(
         `id, status,
          stage:service_stage_id(name, workflow_category:category_id(name)),
-         media:stage_media(shareable_link, media_type)`
+         media:stage_media(shareable_link, media_type, rework_round)`
       )
       .eq("id", stage_id)
       .eq("job_order_id", jobId)
@@ -76,11 +76,14 @@ export async function POST(
     const serviceName  = j?.service?.name ?? null
     const vehicleUnit  = j?.customer?.vehicle_unit ?? j?.vehicle_unit ?? null
     const plate        = j?.customer?.plate_number ?? j?.plate_number ?? null
+    // Only round 0 (the original, pre-rework upload) ever reaches the
+    // customer — any rework resubmission is operations-only. See
+    // supabase/migrations/20260917000004_stage_media_rework_rounds.sql.
     const photos       = (s.media ?? [])
-      .filter((m: any) => m.media_type === "photo" && m.shareable_link)
+      .filter((m: any) => m.media_type === "photo" && m.shareable_link && (m.rework_round ?? 0) === 0)
       .map((m: any) => m.shareable_link as string)
     const videos       = (s.media ?? [])
-      .filter((m: any) => m.media_type === "video" && m.shareable_link)
+      .filter((m: any) => m.media_type === "video" && m.shareable_link && (m.rework_round ?? 0) === 0)
       .map((m: any) => m.shareable_link as string)
 
     // Progress across the whole job.

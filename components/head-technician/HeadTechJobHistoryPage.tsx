@@ -17,7 +17,7 @@ import { fmtDateTime, fmtDateTimeShort } from "@/lib/time-display";
 import { HeadTechJobDetailSkeleton } from "@/app/head-technician/[jobId]/loading";
 import { useRealtimeRefetch } from "@/hooks/useRealtimeRefetch";
 import { VideoRecorderModal } from "./VideoRecorderModal";
-import { MAX_VIDEO_MB, MAX_VIDEO_BYTES } from "@/lib/media/limits";
+import { MAX_VIDEO_MB, MAX_VIDEO_BYTES, MAX_PHOTOS_PER_ROUND, MAX_VIDEOS_PER_ROUND } from "@/lib/media/limits";
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -44,7 +44,7 @@ function compressImage(file: File, maxWidth = 1920, quality = 0.82): Promise<Fil
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
-interface StageMedia { id: string; url: string; type: string; pending?: boolean }
+interface StageMedia { id: string; url: string; type: string; pending?: boolean; rework_round?: number }
 
 interface StageDoc {
   id:                  string;
@@ -64,6 +64,9 @@ interface StageDoc {
   completion_notes:    string | null;
   completed_at:        string | null;
   media:               StageMedia[];
+  /** Which round is currently active for this stage's media — 0 = initial,
+   *  1+ = a rework redo. Only media in this round is addable/removable. */
+  current_rework_round: number;
 }
 
 interface TimelineEntry {
@@ -366,7 +369,10 @@ export default function HeadTechJobHistoryPage({ jobId }: { jobId: string }) {
       ),
     } : prev);
 
-    if (isPhoto) {
+    // Rework-round uploads are operations-only evidence (never sent to the
+    // customer) — skip the automotive-content AI check that's meant to keep
+    // customer-facing photos on-topic.
+    if (isPhoto && stage.status !== "for_rework") {
       try {
         const validateForm = new FormData();
         validateForm.append("file", file);
@@ -400,7 +406,7 @@ export default function HeadTechJobHistoryPage({ jobId }: { jobId: string }) {
           stages: prev.stages.map((s) =>
             s.id === stage.id
               ? { ...s, media: s.media.map((m) => m.id === tmpId
-                  ? { id: json.media.id, url: json.media.file_url, type: json.media.media_type }
+                  ? { id: json.media.id, url: json.media.file_url, type: json.media.media_type, rework_round: json.media.rework_round }
                   : m
                 )}
               : s
@@ -1109,10 +1115,13 @@ function StageCard({
 
   const done       = stage.status === "done";
   const rework     = stage.status === "for_rework";
-  const photoCount = stage.media.filter((m) => m.type !== "video").length;
-  const videoCount = stage.media.filter((m) => m.type === "video").length;
-  const photoFull  = photoCount >= 5;
-  const videoFull  = videoCount >= 1;
+  // Scoped to the stage's currently-active round — a rework redo gets its own
+  // fresh 5-photo/1-video allowance, independent of the original round's count.
+  const roundMedia = stage.media.filter((m) => m.rework_round === stage.current_rework_round);
+  const photoCount = roundMedia.filter((m) => m.type !== "video").length;
+  const videoCount = roundMedia.filter((m) => m.type === "video").length;
+  const photoFull  = photoCount >= MAX_PHOTOS_PER_ROUND;
+  const videoFull  = videoCount >= MAX_VIDEOS_PER_ROUND;
 
   return (
     <div className={`bg-surface rounded-card border transition-colors duration-150 ${
@@ -1173,27 +1182,40 @@ function StageCard({
 
       {stage.media.length > 0 && (
         <div className="flex flex-wrap gap-2 px-4 pb-3">
-          {stage.media.map((m) => (
-            <div key={m.id} className="relative w-16 h-16">
-              <button className="w-16 h-16 rounded-card overflow-hidden block focus:outline-none" onClick={() => !m.pending && onPreview(m.url, m.type)}>
-                {m.type === "video" ? (
-                  <div className="w-full h-full bg-surface-muted flex items-center justify-center text-body"><Play size={20} /></div>
-                ) : (
-                  <MediaThumbnail url={m.url} />
-                )}
-              </button>
-              {m.pending && (
-                <div className="absolute inset-0 rounded-card bg-shell/50 flex items-center justify-center pointer-events-none">
-                  <Loader2 size={16} className="text-white animate-spin" />
-                </div>
-              )}
-              {!m.pending && !readOnly && !done && (
-                <button onClick={() => onRemoveMedia(m.id)} disabled={removingId === m.id} className="absolute -top-1.5 -right-1.5 w-5 h-5 bg-primary rounded-full flex items-center justify-center shadow">
-                  {removingId === m.id ? <Loader2 size={9} className="text-white animate-spin" /> : <X size={9} className="text-white" />}
+          {stage.media.map((m) => {
+            // Only the currently-active round's own items are removable —
+            // anything from a past round (including the original, once a
+            // rework round has started) is permanently locked as evidence.
+            const locked = m.rework_round !== stage.current_rework_round;
+            return (
+              <div key={m.id} className="relative w-16 h-16">
+                <button className="w-16 h-16 rounded-card overflow-hidden block focus:outline-none" onClick={() => !m.pending && onPreview(m.url, m.type)}>
+                  {m.type === "video" ? (
+                    <div className="w-full h-full bg-surface-muted flex items-center justify-center text-body"><Play size={20} /></div>
+                  ) : (
+                    <MediaThumbnail url={m.url} />
+                  )}
                 </button>
-              )}
-            </div>
-          ))}
+                {m.pending && (
+                  <div className="absolute inset-0 rounded-card bg-shell/50 flex items-center justify-center pointer-events-none">
+                    <Loader2 size={16} className="text-white animate-spin" />
+                  </div>
+                )}
+                {!m.pending && !readOnly && !done && (
+                  <button
+                    onClick={() => onRemoveMedia(m.id)}
+                    disabled={removingId === m.id || locked}
+                    title={locked ? "Locked — from a previous round, can't be removed" : "Remove"}
+                    className={`absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full flex items-center justify-center shadow ${
+                      locked ? "bg-muted/60 cursor-not-allowed" : "bg-primary"
+                    }`}
+                  >
+                    {removingId === m.id ? <Loader2 size={9} className="text-white animate-spin" /> : <X size={9} className="text-white" />}
+                  </button>
+                )}
+              </div>
+            );
+          })}
         </div>
       )}
 
@@ -1210,7 +1232,11 @@ function StageCard({
                 : "Upload at least 1 video before marking done."}
             </p>
           )}
-          {rework && <p className="text-[11px] text-status-rework">Stage flagged for rework — mark done again to confirm.</p>}
+          {rework && (photoCount === 0 || videoCount === 0) && (
+            <p className="text-[11px] text-status-rework">
+              Stage flagged for rework — upload a new photo and video for this round, then mark done again to confirm.
+            </p>
+          )}
           {!done && (
             <textarea
               value={notes}
@@ -1227,33 +1253,33 @@ function StageCard({
           )}
           <div className="flex items-center gap-2">
             <label className={`flex-1 flex items-center justify-center gap-1.5 text-xs font-semibold border rounded-card py-2.5 transition-colors ${
-              isUploading || photoFull || done || rework
+              isUploading || photoFull || done
                 ? "opacity-40 pointer-events-none text-muted border-border bg-surface-subtle"
                 : "text-body border-border hover:bg-surface-muted cursor-pointer bg-surface"
             }`}>
               <ImagePlus size={13} />
-              Photo {photoCount > 0 && `(${photoCount}/5)`}
-              <input type="file" accept="image/*" capture="environment" className="hidden" disabled={isUploading || photoFull || done || rework} onChange={(e) => onFileChange(e.target.files)} />
+              Photo {photoCount > 0 && `(${photoCount}/${MAX_PHOTOS_PER_ROUND})`}
+              <input type="file" accept="image/*" capture="environment" className="hidden" disabled={isUploading || photoFull || done} onChange={(e) => onFileChange(e.target.files)} />
             </label>
 
             <button
               type="button"
               onClick={onRecordVideo}
-              disabled={isUploading || videoFull || done || rework}
+              disabled={isUploading || videoFull || done}
               className={`flex-1 flex items-center justify-center gap-1.5 text-xs font-semibold border rounded-card py-2.5 transition-colors ${
-                isUploading || videoFull || done || rework
+                isUploading || videoFull || done
                   ? "opacity-40 pointer-events-none text-muted border-border bg-surface-subtle"
                   : "text-body border-border hover:bg-surface-muted cursor-pointer bg-surface"
               }`}
             >
               <Video size={13} />
-              Video {videoFull ? "(1/1)" : ""}
+              Video {videoFull ? `(${MAX_VIDEOS_PER_ROUND}/${MAX_VIDEOS_PER_ROUND})` : ""}
             </button>
 
             {!done && (
               <button
                 onClick={() => onMarkDone(rework ? (stage.completion_notes ?? "Rework confirmed") : notes)}
-                disabled={isMarking || isUploading || (!rework && (photoCount === 0 || videoCount === 0 || !notes.trim()))}
+                disabled={isMarking || isUploading || photoCount === 0 || videoCount === 0 || (!rework && !notes.trim())}
                 className="flex-1 flex items-center justify-center gap-1.5 text-xs font-semibold text-white bg-primary rounded-card py-2.5 hover:bg-shell-alt active:scale-[0.98] transition-all disabled:opacity-40 disabled:cursor-not-allowed"
               >
                 {isMarking ? <Loader2 size={12} className="animate-spin" /> : <CheckCircle2 size={12} />}
