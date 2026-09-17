@@ -82,6 +82,23 @@ export async function getJobDetailData(id: string) {
   // stray "Unknown" group.
   const catByName = new Map(catRows.map((r: any) => [r.name, r]))
 
+  // Per-round rework notes — additive history alongside round 0's
+  // completion_notes (see supabase/migrations/20260917000006_stage_round_notes.sql).
+  const stageIds = (stages ?? []).map((s: any) => s.id as string)
+  const roundNotesMap = new Map<string, { round: number; notes: string; created_at: string }[]>()
+  if (stageIds.length > 0) {
+    const { data: roundNoteRows } = await supabase
+      .from("stage_round_note")
+      .select("job_stage_progress_id, round, notes, created_at")
+      .in("job_stage_progress_id", stageIds)
+      .order("round", { ascending: true })
+    for (const r of (roundNoteRows ?? []) as any[]) {
+      const list = roundNotesMap.get(r.job_stage_progress_id) ?? []
+      list.push({ round: r.round, notes: r.notes, created_at: r.created_at })
+      roundNotesMap.set(r.job_stage_progress_id, list)
+    }
+  }
+
   const j = job as any
 
   const totalDurationMins = totalStageDurationMins(stages ?? [], ssMap)
@@ -142,6 +159,7 @@ export async function getJobDetailData(id: string) {
         // operations-only — see supabase/migrations/20260917000004_stage_media_rework_rounds.sql.
         media: (s.media ?? []).filter((m: any) => (m.rework_round ?? 0) === 0),
         rework_media: (s.media ?? []).filter((m: any) => (m.rework_round ?? 0) > 0),
+        rework_notes: roundNotesMap.get(s.id as string) ?? [],
         current_rework_round: (s.current_rework_round as number | null) ?? 0,
         is_delayed: false,
         expected_end_at: null as string | null,
