@@ -95,18 +95,15 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Invalid credentials" }, { status: 401 })
     }
 
-    // 3. Fetch Profile & Check Permissions
-    const { data: profile, error: profileError } = await admin
-      .from("user_account")
-      .select("username, full_name, role, must_change_password")
-      .eq("id", authData.user.id)
-      .eq("is_archived", false)
-      .single()
-
-    if (profileError || !profile) {
-      // Clean up the session if the profile check fails
-      await supabase.auth.signOut()
-      return NextResponse.json({ error: "Access denied" }, { status: 403 })
+    // 3. `account` (step 1) is already the exact row `authData.user.id` maps
+    // to — user_account.id is a FK straight onto auth.users.id, and sign-in
+    // can only have succeeded for the account just looked up — so build the
+    // response profile from it instead of re-querying the same row again.
+    const profile = {
+      username,
+      full_name:            account.full_name,
+      role:                 account.role,
+      must_change_password: account.must_change_password,
     }
 
     // 4-7. Four independent writes — none needs another's result (all only
