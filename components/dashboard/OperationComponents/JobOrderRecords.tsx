@@ -118,23 +118,33 @@ export default function JobOrderRecords({ jobOrders: rawOrders }: { jobOrders: a
   }
 
   function exportPDF() {
+    const esc = (v: string) =>
+      v.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
     const rows = filtered
       .map(
         (r) => `
       <tr>
-        <td>${r.displayId}</td><td>${r.customer}</td><td>${r.plate}</td>
-        <td>${r.vehicle}</td><td>${r.service}</td>
-        <td>${r.head_detailer}</td><td>${r.head_installer}</td>
-        <td>${r.scheduled_at ? fmtDateTime(r.scheduled_at) : "—"}</td>
-        <td>${fmtDateTime(r.created_at)}</td>
-        <td>${r.released_at ? fmtDateTime(r.released_at) : "—"}</td>
+        <td>${esc(r.displayId)}</td><td>${esc(r.customer)}</td><td>${esc(r.plate)}</td>
+        <td>${esc(r.vehicle)}</td><td>${esc(r.service)}</td>
+        <td>${esc(r.head_detailer)}</td><td>${esc(r.head_installer)}</td>
+        <td>${r.scheduled_at ? esc(fmtDateTime(r.scheduled_at)) : "—"}</td>
+        <td>${esc(fmtDateTime(r.created_at))}</td>
+        <td>${r.released_at ? esc(fmtDateTime(r.released_at)) : "—"}</td>
       </tr>`,
       )
       .join("")
     const html = `<html><head><title>Job Order Records</title>
-      <style>body{font-family:sans-serif;font-size:12px}table{width:100%;border-collapse:collapse}
+      <style>body{font-family:sans-serif;font-size:12px;color:#111;margin:32px}
+      .brand{font-size:18px;font-weight:700}.branch{margin-top:2px;font-size:12px;color:#555}
+      .meta{margin-top:10px;font-size:11px;color:#777}hr{border:none;border-top:2px solid #111;margin:14px 0 20px}
+      h2{margin:0 0 4px}table{width:100%;border-collapse:collapse}
       th,td{border:1px solid ${PRINT_BORDER};padding:6px 8px;text-align:left}th{background:${PRINT_HEAD_BG};font-weight:600}</style>
-      </head><body><h2>Job Order Records</h2>
+      </head><body>
+      <div class="brand">826 Auto Aesthetic &amp; Protection</div>
+      <div class="branch">Ortigas Extension</div>
+      <hr />
+      <h2>Job Order Records</h2>
+      <div class="meta">Generated on ${new Date().toLocaleString()} · ${filtered.length} record${filtered.length !== 1 ? "s" : ""}</div>
       <table><thead><tr><th>Job ID</th><th>Customer</th><th>Plate</th><th>Vehicle</th>
       <th>Service</th><th>Head Detailer</th><th>Head Installer</th><th>Scheduled Start</th><th>Created</th>
       <th>Released</th>
