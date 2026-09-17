@@ -12,7 +12,7 @@ export async function getJobDetailData(id: string) {
     { data: job, error },
     { data: team },
     { data: history },
-    { data: stages },
+    { data: stages, error: stagesError },
   ] = await Promise.all([
     supabase
       .from("job_order")
@@ -47,6 +47,11 @@ export async function getJobDetailData(id: string) {
   ])
 
   if (error || !job) throw new Error(error?.message ?? "Not found.")
+  // Previously silently swallowed — a schema mismatch here (e.g. a migration
+  // not yet applied, or a stale PostgREST schema cache right after one is)
+  // used to just render an empty "Service Stage Progress" section with no
+  // indication anything was wrong. Surface it loudly instead.
+  if (stagesError) throw new Error(`Failed to load stages: ${stagesError.message}`)
 
   const ssIds = [...new Set((stages ?? []).map((s: any) => s.service_stage_id as string).filter(Boolean))]
   let ssRows: any[] = []
