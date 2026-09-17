@@ -38,9 +38,9 @@ export async function getJobDetailData(id: string) {
       .select(
         `id, status, rework_instructions, handoff_notes, completion_notes, completed_at,
          messenger_sent, messenger_sent_at,
-         custom_name, custom_sequence_order, stage_duration_mins,
-         service_stage_id,
-         media:stage_media(id, file_url, media_type)`
+         custom_name, custom_sequence_order, custom_stage_category, stage_duration_mins,
+         service_stage_id, current_rework_round,
+         media:stage_media(id, file_url, media_type, rework_round)`
       )
       .eq("job_order_id", id)
       .order("custom_sequence_order"),
@@ -69,6 +69,13 @@ export async function getJobDetailData(id: string) {
     catRows = (data ?? []) as any[]
   }
   const catMap = new Map(catRows.map((r: any) => [r.id, r]))
+  // Custom (job-only) stages have no service_stage_id to derive a category
+  // from via ssMap/catMap — they carry the category as a name in
+  // custom_stage_category instead (see supabase/migrations/20260422000002_custom_job_stages.sql).
+  // Matched by name against the same catRows so a custom stage groups into
+  // the same section as its seeded siblings instead of falling into its own
+  // stray "Unknown" group.
+  const catByName = new Map(catRows.map((r: any) => [r.name, r]))
 
   const j = job as any
 
@@ -103,7 +110,11 @@ export async function getJobDetailData(id: string) {
   const mappedStages = (() => {
     const mapped = (stages ?? []).map((s: any) => {
       const ss  = s.service_stage_id ? ssMap.get(s.service_stage_id) : null
-      const cat = ss?.category_id ? catMap.get(ss.category_id) : null
+      const cat = ss?.category_id
+        ? catMap.get(ss.category_id)
+        : s.custom_stage_category
+          ? catByName.get(s.custom_stage_category)
+          : null
       return {
         id: s.id,
         service_stage_id: s.service_stage_id ?? null,
@@ -119,7 +130,14 @@ export async function getJobDetailData(id: string) {
         completed_at: s.completed_at,
         messenger_sent: s.messenger_sent ?? null,
         messenger_sent_at: s.messenger_sent_at ?? null,
-        media: s.media ?? [],
+        // Round 0 is the original, customer-facing upload — this stays
+        // exactly what `media` has always meant, so every existing consumer
+        // (including Sales' read-only view, which shares this loader) keeps
+        // working unchanged. Rework redos (round 1+) are additive and
+        // operations-only — see supabase/migrations/20260917000004_stage_media_rework_rounds.sql.
+        media: (s.media ?? []).filter((m: any) => (m.rework_round ?? 0) === 0),
+        rework_media: (s.media ?? []).filter((m: any) => (m.rework_round ?? 0) > 0),
+        current_rework_round: (s.current_rework_round as number | null) ?? 0,
         is_delayed: false,
         expected_end_at: null as string | null,
         _raw_duration_mins: (s.stage_duration_mins as number | null) ?? null,

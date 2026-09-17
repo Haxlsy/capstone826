@@ -4,7 +4,10 @@ import { createClient } from "@/lib/supabase/server"
 import { createAdminClient } from "@/lib/supabase/admin"
 import { extractVideoFrame, stripAudio } from "@/lib/media/video"
 import { validateAutomotiveImage, isMediaValidationEnabled } from "@/lib/ai/media-validation"
-import { MAX_PHOTO_MB, MAX_VIDEO_MB, MAX_PHOTO_BYTES, MAX_VIDEO_BYTES } from "@/lib/media/limits"
+import {
+  MAX_PHOTO_MB, MAX_VIDEO_MB, MAX_PHOTO_BYTES, MAX_VIDEO_BYTES,
+  MAX_PHOTOS_PER_ROUND, MAX_VIDEOS_PER_ROUND,
+} from "@/lib/media/limits"
 import { getRoleCaller } from "@/lib/auth/caller"
 
 // POST /api/head-technician/jobs/[id]/stages/[stageId]/media
@@ -42,6 +45,39 @@ export async function POST(
     }
 
     const admin = createAdminClient()
+
+    // Tag this upload with the stage's currently-active round (0 = initial,
+    // 1+ = a rework redo — see supabase/migrations/20260917000004_stage_media_rework_rounds.sql)
+    // and enforce the photo/video cap for that round specifically, server-side
+    // — a direct API call must not be able to skip the client's own cap check.
+    const { data: stageForUpload } = await admin
+      .from("job_stage_progress")
+      .select("current_rework_round")
+      .eq("id", stageId)
+      .single()
+    const currentRound = (stageForUpload?.current_rework_round as number | null) ?? 0
+
+    const { data: roundMedia } = await admin
+      .from("stage_media")
+      .select("media_type")
+      .eq("job_stage_progress_id", stageId)
+      .eq("rework_round", currentRound)
+    const roundPhotoCount = (roundMedia ?? []).filter((m) => m.media_type === "photo").length
+    const roundVideoCount = (roundMedia ?? []).filter((m) => m.media_type === "video").length
+
+    if (isPhoto && roundPhotoCount >= MAX_PHOTOS_PER_ROUND) {
+      return NextResponse.json(
+        { error: `Maximum ${MAX_PHOTOS_PER_ROUND} photos already uploaded for this round.` },
+        { status: 400 }
+      )
+    }
+    if (isVideo && roundVideoCount >= MAX_VIDEOS_PER_ROUND) {
+      return NextResponse.json(
+        { error: `Maximum ${MAX_VIDEOS_PER_ROUND} video already uploaded for this round.` },
+        { status: 400 }
+      )
+    }
+
     let uploadBuffer: Buffer | ArrayBuffer = await file.arrayBuffer()
     // Tracks whether `uploadBuffer` was replaced by stripAudio()'s MP4-container
     // output. That output is ALWAYS an MP4 regardless of the source format (a
@@ -54,9 +90,12 @@ export async function POST(
     if (isVideo) {
       // Videos are validated (one extracted frame, run through the same
       // Gemini check as a photo) and always muted before being stored — see
-      // lib/media/video.ts and lib/ai/media-validation.ts.
+      // lib/media/video.ts and lib/ai/media-validation.ts. Rework-round
+      // uploads are operations-only evidence (never sent to the customer),
+      // so the automotive-content check that's meant to keep customer-facing
+      // media on-topic is skipped for them.
       const original = Buffer.from(uploadBuffer)
-      if (await isMediaValidationEnabled()) {
+      if (currentRound === 0 && await isMediaValidationEnabled()) {
         try {
           const frame = await extractVideoFrame(original)
           const result = await validateAutomotiveImage(frame, "video")
@@ -105,8 +144,9 @@ export async function POST(
         shareable_link:        publicUrl,
         file_size_bytes:       uploadBuffer instanceof Buffer ? uploadBuffer.length : file.size,
         uploaded_by_id:        user.id,
+        rework_round:          currentRound,
       })
-      .select("id, file_url, media_type")
+      .select("id, file_url, media_type, rework_round")
       .single()
 
     if (dbErr) return NextResponse.json({ error: dbErr.message }, { status: 500 })
@@ -139,12 +179,32 @@ export async function DELETE(
 
     const admin = createAdminClient()
 
-    const { data: row } = await admin
-      .from("stage_media")
-      .select("file_url")
-      .eq("id", media_id)
-      .eq("job_stage_progress_id", stageId)
-      .single()
+    // A round's media is only removable while it's still the active round and
+    // the stage isn't done — once superseded by a later rework round (or the
+    // stage is marked done), it's permanently locked as historical evidence.
+    // The UI already hides/disables this, but that alone is bypassable via a
+    // direct API call, so enforce it here too.
+    const [{ data: stageRow }, { data: row }] = await Promise.all([
+      admin
+        .from("job_stage_progress")
+        .select("status, current_rework_round")
+        .eq("id", stageId)
+        .single(),
+      admin
+        .from("stage_media")
+        .select("file_url, rework_round")
+        .eq("id", media_id)
+        .eq("job_stage_progress_id", stageId)
+        .single(),
+    ])
+
+    const isCurrentRound = row?.rework_round === stageRow?.current_rework_round
+    if (!isCurrentRound || stageRow?.status === "done") {
+      return NextResponse.json(
+        { error: "This media is locked and can't be removed." },
+        { status: 403 }
+      )
+    }
 
     if (row?.file_url) {
       // Extract storage path from the public URL: everything after /stage-media/

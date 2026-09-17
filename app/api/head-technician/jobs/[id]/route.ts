@@ -64,7 +64,7 @@ export async function GET(
       // Step 1: raw job_stage_progress rows
       admin
         .from("job_stage_progress")
-        .select("id, status, rework_instructions, handoff_notes, completion_notes, completed_at, stage_duration_mins, service_stage_id, media:stage_media(id, file_url, media_type)")
+        .select("id, status, rework_instructions, handoff_notes, completion_notes, completed_at, stage_duration_mins, service_stage_id, current_rework_round, media:stage_media(id, file_url, media_type, rework_round)")
         .eq("job_order_id", id),
     ])
 
@@ -263,10 +263,12 @@ export async function GET(
           handoff_notes:        s.handoff_notes         ?? null,
           completion_notes:     s.completion_notes      ?? null,
           completed_at:         s.completed_at ? fmtDateTime(s.completed_at) : null,
+          current_rework_round: (s.current_rework_round as number | null) ?? 0,
           media:                (s.media ?? []).map((m: any) => ({
-            id:   m.id,
-            url:  m.file_url,
-            type: m.media_type,
+            id:           m.id,
+            url:          m.file_url,
+            type:         m.media_type,
+            rework_round: (m.rework_round as number | null) ?? 0,
           })),
         })),
       },
@@ -365,13 +367,21 @@ export async function PATCH(
       if (!completion_notes?.trim()) return NextResponse.json({ error: "Completion notes are required." }, { status: 400 })
 
       // Server-side backstop for the client's photo+video requirement — a
-      // direct API call must not be able to skip it. A reworked stage was
-      // already marked done once before, so its existing media already
-      // satisfies this; no separate rework case needed.
+      // direct API call must not be able to skip it. Scoped to the stage's
+      // currently-active round: a rework confirm must have its own fresh
+      // evidence for this round, not just re-use round 0's original media.
+      const { data: stageForDone } = await admin
+        .from("job_stage_progress")
+        .select("current_rework_round")
+        .eq("id", stage_id)
+        .single()
+      const doneRound = (stageForDone?.current_rework_round as number | null) ?? 0
+
       const { data: stageMedia } = await admin
         .from("stage_media")
         .select("media_type")
         .eq("job_stage_progress_id", stage_id)
+        .eq("rework_round", doneRound)
       const hasPhoto = (stageMedia ?? []).some((m) => m.media_type === "photo")
       const hasVideo = (stageMedia ?? []).some((m) => m.media_type === "video")
       if (!hasPhoto || !hasVideo) {
@@ -525,10 +535,13 @@ export async function PATCH(
               (s: any) => s.status === "done"
             ).length
 
+            // Only round 0 (the original, pre-rework upload) ever reaches the
+            // customer — any rework resubmission is operations-only.
             const { data: media } = await admin
               .from("stage_media")
               .select("shareable_link, media_type")
               .eq("job_stage_progress_id", stage_id)
+              .eq("rework_round", 0)
             const photos = ((media ?? []) as any[])
               .filter((m) => m.media_type === "photo" && m.shareable_link)
               .map((m) => m.shareable_link as string)

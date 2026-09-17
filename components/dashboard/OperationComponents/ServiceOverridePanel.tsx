@@ -98,8 +98,8 @@ function StageList({
         return (
           <div
             key={stage.id}
-            draggable={!stage.isNew}
-            onDragStart={() => !stage.isNew && onDragStart(stage.globalIndex)}
+            draggable
+            onDragStart={() => onDragStart(stage.globalIndex)}
             onDragEnter={() => onDragEnter(stage.globalIndex)}
             onDragEnd={onDragEnd}
             className={`flex items-center gap-2 rounded-sm border px-2 py-1.5 transition-colors ${
@@ -110,11 +110,7 @@ function StageList({
                   : "border-border-subtle bg-surface-subtle hover:border-border"
             }`}
           >
-            {stage.isNew ? (
-              <span className="w-3.5 shrink-0" />
-            ) : (
-              <GripVertical className="w-3.5 h-3.5 text-muted shrink-0 cursor-grab active:cursor-grabbing" />
-            )}
+            <GripVertical className="w-3.5 h-3.5 text-muted shrink-0 cursor-grab active:cursor-grabbing" />
 
             <span className="text-[10px] font-medium text-muted w-4 shrink-0">
               {localIdx + 1}.
