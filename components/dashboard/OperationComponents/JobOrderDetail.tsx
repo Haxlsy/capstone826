@@ -17,6 +17,7 @@ import { Textarea, Input } from "@/components/ui/Field"
 import { EmptyState } from "@/components/ui/EmptyState"
 import { useToast } from "@/components/ui/Toast"
 import { substituteRoleLabel } from "@/lib/substitute-label"
+import { alreadyOnJob } from "@/lib/operations/team-membership"
 import { cn } from "@/lib/utils"
 import { statusStyle } from "@/lib/ui/status"
 import { displayJobStatus } from "@/lib/job-delay"
@@ -448,6 +449,19 @@ export default function JobOrderDetail({
       setHeadSubsLoading(false)
     }
   }
+
+  // Who's already on this job in the chosen head role, so they show as such
+  // (and can't be picked) instead of being rejected by the server afterwards.
+  const headTeam = job
+    ? headSubRole === "head_detailer"
+      ? { primaryId: job.head_detailer?.id, substituteIds: job.head_detailer_substitutes.map((s) => s.id) }
+      : { primaryId: job.head_installer?.id, substituteIds: job.head_installer_substitutes.map((s) => s.id) }
+    : {}
+  const headCandidates = headSubs
+    .filter((t) => t.role === headSubRole)
+    .map((t) => ({ t, membership: alreadyOnJob(t.id, headTeam) }))
+    .sort((a, b) => Number(a.membership !== null) - Number(b.membership !== null))
+  const allHeadsOnJob = headCandidates.length > 0 && headCandidates.every((c) => c.membership !== null)
 
   async function addHeadSubstitute() {
     if (!selectedHeadSubId) return
@@ -1091,29 +1105,45 @@ export default function JobOrderDetail({
             <div className="flex items-center justify-center py-6 text-muted">
               <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Loading…
             </div>
-          ) : headSubs.filter((t) => t.role === headSubRole).length === 0 ? (
+          ) : headCandidates.length === 0 ? (
             <p className="py-6 text-center text-xs text-muted">No head technicians of this role.</p>
           ) : (
-            headSubs
-              .filter((t) => t.role === headSubRole)
-              .map((t) => (
+            <>
+              {allHeadsOnJob && (
+                <p className="pb-1 text-center text-xs text-muted">Everyone in this role is already on this job.</p>
+              )}
+              {headCandidates.map(({ t, membership }) => (
                 <button
                   key={t.id}
                   type="button"
+                  disabled={membership !== null}
                   onClick={() => setSelectedHeadSubId(t.id)}
                   className={cn(
                     "flex w-full items-center justify-between rounded-sm border px-3 py-2 text-sm transition-colors",
-                    selectedHeadSubId === t.id
-                      ? "border-primary bg-primary-soft text-primary"
-                      : "border-border-subtle text-body hover:bg-surface-muted",
+                    membership !== null
+                      ? "cursor-not-allowed border-border-subtle bg-surface-muted/60 text-muted"
+                      : selectedHeadSubId === t.id
+                        ? "border-primary bg-primary-soft text-primary"
+                        : "border-border-subtle text-body hover:bg-surface-muted",
                   )}
                 >
                   <span className="font-medium">{t.name}</span>
-                  <span className="text-[10px] text-muted">
-                    {t.active_jobs} active job{t.active_jobs === 1 ? "" : "s"}
-                  </span>
+                  {membership === "primary" ? (
+                    <span className="rounded-full bg-primary/12 px-2 py-0.5 text-[10px] font-semibold text-primary">
+                      Assigned {headSubRole === "head_detailer" ? "Head Detailer" : "Head Installer"}
+                    </span>
+                  ) : membership === "substitute" ? (
+                    <span className="rounded-full bg-status-info/15 px-2 py-0.5 text-[10px] font-semibold text-status-info">
+                      Already a substitute
+                    </span>
+                  ) : (
+                    <span className="text-[10px] text-muted">
+                      {t.active_jobs} active job{t.active_jobs === 1 ? "" : "s"}
+                    </span>
+                  )}
                 </button>
-              ))
+              ))}
+            </>
           )}
         </div>
 
