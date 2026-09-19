@@ -31,6 +31,8 @@ export async function getOrCreateConversationByPsid(
   /** Pre-update value — the quick-reply payload (if any) from the customer's
    *  previous message. See setLastQuickReplyPayload. */
   last_quick_reply_payload: string | null
+  /** True only when this call created the conversation — i.e. this PSID's very first message. */
+  is_new_conversation: boolean
 }> {
   const supabase = createAdminClient()
 
@@ -74,6 +76,7 @@ export async function getOrCreateConversationByPsid(
       },
       last_message_at: existing.last_message_at ?? null,
       last_quick_reply_payload: existing.last_quick_reply_payload ?? null,
+      is_new_conversation: false,
     }
   }
 
@@ -94,7 +97,7 @@ export async function getOrCreateConversationByPsid(
     throw new Error(error?.message ?? "Failed to create conversation")
   }
 
-  return { conversation_id: data.conversation_id, status: "open", is_vehicle_inquiry: false, is_booking_flow: false, awaiting_confirmation: false, active_booking_offered: false, booking_duplicate_notified: false, conflict_pending: false, awaiting_link_verification: false, link_attempts: 0, link_conflict_pending: false, offtopic_streak: 0, policy_streak: 0, complaint_streak: 0, booking_draft: { full_name: null, contact_number: null, plate_number: null, vehicle_unit: null, email: null }, last_message_at: null, last_quick_reply_payload: null }
+  return { conversation_id: data.conversation_id, status: "open", is_vehicle_inquiry: false, is_booking_flow: false, awaiting_confirmation: false, active_booking_offered: false, booking_duplicate_notified: false, conflict_pending: false, awaiting_link_verification: false, link_attempts: 0, link_conflict_pending: false, offtopic_streak: 0, policy_streak: 0, complaint_streak: 0, booking_draft: { full_name: null, contact_number: null, plate_number: null, vehicle_unit: null, email: null }, last_message_at: null, last_quick_reply_payload: null, is_new_conversation: true }
 }
 
 /** Marks the payload of the most recent predefined quick-reply button the

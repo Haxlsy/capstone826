@@ -5,6 +5,7 @@ import { Save, Check, Smartphone, Info, AlertTriangle } from "lucide-react"
 import type { ChatbotSettings } from "@/types/chatbot"
 
 type TemplateField =
+  | "first_time_message_en" | "first_time_message_fil"
   | "vehicle_status_message_en" | "vehicle_status_message_fil"
   | "link_verification_message_en" | "link_verification_message_fil"
   | "escalation_message_en" | "escalation_message_fil"
@@ -20,6 +21,14 @@ interface Category {
 }
 
 const CATEGORIES: Category[] = [
+  {
+    key: "first_time",
+    label: "First Time Message",
+    enField: "first_time_message_en",
+    filField: "first_time_message_fil",
+    description:
+      "Sent once, the first time someone ever messages your Facebook page — right before the AI answers their message. Existing conversations never get it again. Use {name} to insert the customer's first name.",
+  },
   {
     key: "vehicle_status",
     label: "Vehicle Status",
@@ -66,11 +75,17 @@ interface Props {
   settings: ChatbotSettings
   patch: (key: TemplateField, value: string) => void
   onSave: () => void
+  onCancel: () => void
   saved: boolean
-  saving: boolean
+  /** Unsaved edits exist. */
+  dirty: boolean
+  /** validateChatbotSettings() output for the whole settings object. */
+  errors: Record<string, string>
+  /** Last save error from the server, if any. */
+  error: string | null
 }
 
-export default function MessageTemplates({ settings, patch, onSave, saved, saving }: Props) {
+export default function MessageTemplates({ settings, patch, onSave, onCancel, saved, dirty, errors, error }: Props) {
   const [activeKey, setActiveKey] = useState(CATEGORIES[0].key)
   const [previewLang, setPreviewLang] = useState<"en" | "fil">("en")
 
@@ -78,17 +93,18 @@ export default function MessageTemplates({ settings, patch, onSave, saved, savin
   const enValue = settings[active.enField] ?? ""
   const filValue = settings[active.filField] ?? ""
 
-  const incomplete = CATEGORIES.filter(
-    (c) => !(settings[c.enField] ?? "").trim() || !(settings[c.filField] ?? "").trim(),
-  )
+  const isIncomplete = (c: Category) => !!errors[c.enField] || !!errors[c.filField]
+  const incomplete = CATEGORIES.filter(isIncomplete)
   const hasIncomplete = incomplete.length > 0
+  // Any other problem on the shared Save (e.g. AI Settings tab) also blocks it.
+  const hasErrors = Object.keys(errors).length > 0
 
   return (
     <div className="flex flex-col gap-6">
       {/* Category selector */}
       <div className="flex flex-wrap gap-2">
         {CATEGORIES.map((c) => {
-          const isMissing = !(settings[c.enField] ?? "").trim() || !(settings[c.filField] ?? "").trim()
+          const isMissing = isIncomplete(c)
           return (
             <button
               key={c.key}
@@ -132,9 +148,14 @@ export default function MessageTemplates({ settings, patch, onSave, saved, savin
               value={enValue}
               onChange={(e) => patch(active.enField, e.target.value)}
               rows={8}
-              className="w-full border border-border rounded-card px-4 py-3 text-sm text-body leading-relaxed focus:outline-none focus:ring-2 focus:ring-primary/30 resize-none"
+              aria-invalid={!!errors[active.enField]}
+              className={`w-full border rounded-card px-4 py-3 text-sm text-body leading-relaxed focus:outline-none focus:ring-2 focus:ring-primary/30 resize-none ${errors[active.enField] ? "border-status-delayed" : "border-border"}`}
             />
-            <p className="text-xs text-muted">{enValue.length} characters</p>
+            {errors[active.enField] ? (
+              <p className="text-xs text-status-delayed">{errors[active.enField]}</p>
+            ) : (
+              <p className="text-xs text-muted">{enValue.length} characters</p>
+            )}
           </div>
 
           <div className="flex flex-col gap-2">
@@ -145,9 +166,14 @@ export default function MessageTemplates({ settings, patch, onSave, saved, savin
               value={filValue}
               onChange={(e) => patch(active.filField, e.target.value)}
               rows={8}
-              className="w-full border border-border rounded-card px-4 py-3 text-sm text-body leading-relaxed focus:outline-none focus:ring-2 focus:ring-primary/30 resize-none"
+              aria-invalid={!!errors[active.filField]}
+              className={`w-full border rounded-card px-4 py-3 text-sm text-body leading-relaxed focus:outline-none focus:ring-2 focus:ring-primary/30 resize-none ${errors[active.filField] ? "border-status-delayed" : "border-border"}`}
             />
-            <p className="text-xs text-muted">{filValue.length} characters</p>
+            {errors[active.filField] ? (
+              <p className="text-xs text-status-delayed">{errors[active.filField]}</p>
+            ) : (
+              <p className="text-xs text-muted">{filValue.length} characters</p>
+            )}
           </div>
 
           {hasIncomplete && (
@@ -159,18 +185,37 @@ export default function MessageTemplates({ settings, patch, onSave, saved, savin
             </div>
           )}
 
+          {error && <p className="text-sm text-status-delayed">{error}</p>}
+          {!hasIncomplete && hasErrors && (
+            <p className="text-sm text-status-delayed">
+              Fix the highlighted problem on the AI Settings tab before saving.
+            </p>
+          )}
+
           <div className="flex items-center gap-3">
             <button
               onClick={onSave}
-              disabled={!saving || hasIncomplete}
+              disabled={!dirty || hasErrors}
               className={`flex items-center gap-2 px-5 py-2.5 rounded-card text-sm font-semibold transition-colors ${
-                saving && !hasIncomplete
+                dirty && !hasErrors
                   ? "bg-primary text-white hover:bg-primary-hover"
                   : "bg-surface-muted text-muted cursor-not-allowed"
               }`}
             >
               <Save className="w-4 h-4" />
               Save Template
+            </button>
+            <button
+              onClick={onCancel}
+              disabled={!dirty}
+              title="Discard unsaved changes"
+              className={`px-5 py-2.5 rounded-card text-sm font-semibold border transition-colors ${
+                dirty
+                  ? "border-border text-body hover:bg-surface-muted"
+                  : "border-border text-muted cursor-not-allowed opacity-60"
+              }`}
+            >
+              Cancel
             </button>
             {saved && (
               <span className="flex items-center gap-1.5 text-sm text-status-inspection">

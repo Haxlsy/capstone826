@@ -4,7 +4,7 @@ import { getAdminCaller, type AdminCaller } from "@/lib/auth/guard"
 import { auditCallerOf } from "@/lib/auth/caller"
 import { logAuditCall } from "@/hooks/audit-helpers"
 import { buildSystemPrompt } from "@/lib/messenger/chatbot"
-import { chatbotSettingsSchema, type ChatbotSettings } from "@/types/chatbot"
+import { chatbotSettingsSaveSchema, type ChatbotSettings } from "@/types/chatbot"
 
 export async function GET() {
   const auth = await getAdminCaller()
@@ -36,7 +36,7 @@ export async function POST(request: Request) {
     return saveRaw(system_prompt, null, caller)
   }
 
-  const parsed = chatbotSettingsSchema.safeParse(body.settings)
+  const parsed = chatbotSettingsSaveSchema.safeParse(body.settings)
   if (!parsed.success) {
     return NextResponse.json({ error: parsed.error.issues[0].message }, { status: 400 })
   }
