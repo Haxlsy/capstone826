@@ -1,8 +1,8 @@
 "use client"
 
-import { useEffect, useCallback, useRef, useState } from "react"
+import { useEffect, useCallback, useState } from "react"
 import { createClient } from "@/lib/supabase/client"
-import { useRealtimeRefetch } from "@/hooks/useRealtimeRefetch"
+import { useRealtimeRefetch, useRealtimeSubscription } from "@/hooks/useRealtimeRefetch"
 import { useOnlineStatus } from "@/hooks/useOnlineStatus"
 
 export interface Notification {
@@ -55,7 +55,6 @@ export function useNotifications() {
   const [delayedJobCount, setDelayedJobCount] = useState(0)
   const [userId, setUserId] = useState<string | null>(null)
   const isOnline = useOnlineStatus()
-  const channelRef = useRef<ReturnType<ReturnType<typeof createClient>["channel"]> | null>(null)
 
   const fetchNotifications = useCallback(async () => {
     try {
@@ -96,49 +95,28 @@ export function useNotifications() {
     } catch {}
   }, [])
 
-  // Initial fetch + get userId for realtime. getUser() calls Supabase
-  // directly (cross-origin — the service worker can't cache it, and it
-  // always rejects offline), so only attempt it once we're confirmed online
-  // — this re-runs on reconnect too — and never let it become an unhandled
-  // rejection.
+  // Initial fetch + user id for the realtime filter. getSession() is a local
+  // read (the id is only a filter — RLS does the real scoping), so a network
+  // blip can't leave the bell without a subscription the way the previous
+  // network getUser() + swallowed catch could.
   useEffect(() => {
     fetchNotifications()
 
-    if (!isOnline) return
-    const supabase = createClient()
-    supabase.auth.getUser().then(({ data: { user } }) => {
-      if (user) setUserId(user.id)
-    }).catch(() => {})
+    createClient().auth.getSession().then(({ data: { session } }) => {
+      if (session?.user) setUserId(session.user.id)
+    }).catch((err) => console.warn("[notifications] getSession failed", err))
   }, [fetchNotifications, isOnline])
 
-  // Realtime subscription
-  useEffect(() => {
-    if (!userId) return
-
-    const supabase = createClient()
-    const channel = supabase
-      .channel("notifications-realtime")
-      .on(
-        "postgres_changes",
-        {
-          event: "INSERT",
-          schema: "public",
-          table: "notification",
-          filter: `user_id=eq.${userId}`,
-        },
-        () => {
-          fetchNotifications()
-        }
-      )
-      .subscribe()
-
-    channelRef.current = channel
-
-    return () => {
-      channel.unsubscribe()
-      channelRef.current = null
-    }
-  }, [userId, fetchNotifications])
+  // Realtime: new notifications for this user. Reconciled with a refetch after
+  // any gap — the bell is exactly the thing that must not silently go stale.
+  useRealtimeSubscription({
+    name: "notifications",
+    bindings: userId ? [{ event: "INSERT", table: "notification", filter: `user_id=eq.${userId}` }] : [],
+    onChange: fetchNotifications,
+    onReconcile: fetchNotifications,
+    catchUp: true,
+    enabled: !!userId,
+  })
 
   return {
     notifications,
