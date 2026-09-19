@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest"
-import { jobStatusMessage, notifyJobStatusChange } from "@/lib/notify-job-status"
+import { jobStatusMessage, notifyJobStatusChange, stageDoneMessage, notifyStageDone } from "@/lib/notify-job-status"
 
 function fakeAdmin(userIds: string[]) {
   const inserted: Record<string, unknown>[][] = []
@@ -52,5 +52,19 @@ describe("notifyJobStatusChange", () => {
     await notifyJobStatusChange(a.admin, { jobId: "j", jobLabel: "x", from: "Ongoing", to: "Ongoing" })
     await notifyJobStatusChange(a.admin, { jobId: "j", jobLabel: "x", to: "Released", actorId: "a" })
     expect(a.inserted).toHaveLength(0)
+  })
+})
+
+describe("stage done", () => {
+  it("message with and without progress / rework round", () => {
+    expect(stageDoneMessage("JO-1", "Polishing", { done: 3, total: 5 })).toBe('Stage "Polishing" is done on job JO-1 (3/5 stages).')
+    expect(stageDoneMessage("JO-1", "Polishing")).toBe('Stage "Polishing" is done on job JO-1.')
+    expect(stageDoneMessage("JO-1", "Polishing", { done: 3, total: 5, reworkRound: 2 })).toContain('Rework 2 of stage "Polishing"')
+  })
+  it("notifies Operations except the actor, linked to the job and stage", async () => {
+    const { admin, inserted } = fakeAdmin(["a", "b"])
+    await notifyStageDone(admin, { jobId: "j1", jobLabel: "JO-1", stageId: "s1", stageName: "Wash", actorId: "a" })
+    expect(inserted[0]).toHaveLength(1)
+    expect(inserted[0][0]).toMatchObject({ user_id: "b", type: "job_status", job_order_id: "j1", stage_id: "s1" })
   })
 })
