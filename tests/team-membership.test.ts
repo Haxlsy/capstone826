@@ -10,4 +10,8 @@ describe("alreadyOnJob", () => {
     expect(alreadyOnJob("x", { primaryId: null })).toBeNull()
     expect(alreadyOnJob("x", {})).toBeNull()
   })
+  it("works for crew (ids only in substituteIds)", () => {
+    expect(alreadyOnJob("t1", { substituteIds: ["t1", "t2"] })).toBe("substitute")
+    expect(alreadyOnJob("t3", { substituteIds: ["t1", "t2"] })).toBeNull()
+  })
 })

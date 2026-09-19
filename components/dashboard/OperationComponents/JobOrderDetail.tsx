@@ -450,6 +450,15 @@ export default function JobOrderDetail({
     }
   }
 
+  // Crew already on THIS job (primary or substitute) are shown as assigned —
+  // `on_job` alone would silently hide them (it means "on any active job").
+  const crewOnJob = job ? (subRole === "detailer" ? job.detailers : job.installers).map((c) => c.id) : []
+  const subCandidates = subTechs
+    .filter((t) => t.role === subRole)
+    .map((t) => ({ t, membership: alreadyOnJob(t.id, { substituteIds: crewOnJob }) }))
+    .filter(({ t, membership }) => membership !== null || (isTechnicianAvailableToday(t) && !t.on_job))
+    .sort((a, b) => Number(a.membership !== null) - Number(b.membership !== null))
+
   // Who's already on this job in the chosen head role, so they show as such
   // (and can't be picked) instead of being rejected by the server afterwards.
   const headTeam = job
@@ -1033,27 +1042,39 @@ export default function JobOrderDetail({
             <div className="flex items-center justify-center py-6 text-muted">
               <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Loading…
             </div>
-          ) : subTechs.filter((t) => t.role === subRole && isTechnicianAvailableToday(t) && !t.on_job).length === 0 ? (
+          ) : subCandidates.length === 0 ? (
             <p className="py-6 text-center text-xs text-muted">No available technicians.</p>
           ) : (
-            subTechs
-              .filter((t) => t.role === subRole && isTechnicianAvailableToday(t) && !t.on_job)
-              .map((t) => (
+            <>
+              {subCandidates.every((c) => c.membership !== null) && (
+                <p className="pb-1 text-center text-xs text-muted">Everyone available is already on this job.</p>
+              )}
+              {subCandidates.map(({ t, membership }) => (
                 <button
                   key={t.id}
                   type="button"
+                  disabled={membership !== null}
                   onClick={() => setSelectedSubId(t.id)}
                   className={cn(
                     "flex w-full items-center justify-between rounded-sm border px-3 py-2 text-sm transition-colors",
-                    selectedSubId === t.id
-                      ? "border-primary bg-primary-soft text-primary"
-                      : "border-border-subtle text-body hover:bg-surface-muted",
+                    membership !== null
+                      ? "cursor-not-allowed border-border-subtle bg-surface-muted/60 text-muted"
+                      : selectedSubId === t.id
+                        ? "border-primary bg-primary-soft text-primary"
+                        : "border-border-subtle text-body hover:bg-surface-muted",
                   )}
                 >
                   <span className="font-medium">{t.name}</span>
-                  <StatusBadge status={t.on_job ? "On Job" : isTechnicianAvailableToday(t) ? "Available" : "Unavailable"} />
+                  {membership !== null ? (
+                    <span className="rounded-full bg-primary/12 px-2 py-0.5 text-[10px] font-semibold capitalize text-primary">
+                      Assigned {subRole}
+                    </span>
+                  ) : (
+                    <StatusBadge status={t.on_job ? "On Job" : isTechnicianAvailableToday(t) ? "Available" : "Unavailable"} />
+                  )}
                 </button>
-              ))
+              ))}
+            </>
           )}
         </div>
 
