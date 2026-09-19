@@ -8,6 +8,7 @@ import ServiceOverridePanel, { type Stage } from "./ServiceOverridePanel"
 import JobOrderConfirmDialog, { type JobOrderSummary } from "./JobOrderConfirmDialog"
 import { fmtDateTime } from "@/lib/time-display"
 import { normalizePhone } from "@/lib/phone"
+import { applyTriggerEdit, type MatchField } from "@/lib/operations/customer-match"
 import { useOnlineStatus } from "@/hooks/useOnlineStatus"
 import { enqueue, get as getQueued } from "@/lib/offline/outbox"
 import { useToast } from "@/components/ui/Toast"
@@ -55,6 +56,7 @@ interface FieldErrors {
   customerName?:  string
   contactNumber?: string
   plateNumber?:   string
+  email?:         string
   vehicleUnit?:   string
   service?:       string
   scheduledAt?:   string
@@ -168,7 +170,7 @@ export default function AddJobOrderForm() {
   const [matchedCustomer,      setMatchedCustomer]      = useState<CustomerRecord | null>(null)
   // Which field actually found the match — that one field stays editable (so
   // it can be corrected/cleared to search again); everything else locks.
-  const [matchSource,          setMatchSource]          = useState<"plate" | "phone" | null>(null)
+  const [matchSource,          setMatchSource]          = useState<MatchField | null>(null)
 
   const [selectedServiceType,     setSelectedServiceType]     = useState<string | null>(null)
   const [selectedServiceId,       setSelectedServiceId]       = useState<string | null>(null)
@@ -238,38 +240,34 @@ export default function AddJobOrderForm() {
     loadRefs()
   }, [])
 
-  // Plate and phone can each independently find an existing customer record
-  // — checked in that priority order (both are reliable unique identifiers;
-  // customer name isn't, since two different customers can share one, so
-  // it's never used as a match key, only auto-filled/locked like email and
-  // vehicle unit). Whichever one matches first auto-fills and locks the rest.
-  useEffect(() => {
-    if (!useManualCustomer) return
-    const plate = manualPlateNumber.trim().toLowerCase()
-    const phone = normalizePhone(manualContactNumber)
-
-    let match: CustomerRecord | undefined
-    let source: "plate" | "phone" | null = null
-
-    if (plate) match = customers.find((c) => c.plate_number.toLowerCase() === plate)
-    if (match) source = "plate"
-
-    if (!match && phone) match = customers.find((c) => normalizePhone(c.contact_number) === phone)
-    if (match && !source) source = "phone"
-
-    if (match) {
-      setMatchedCustomer(match)
-      setMatchSource(source)
-      setManualCustomerName(match.full_name)
-      setManualContactNumber(match.contact_number)
-      setManualEmail(match.email ?? "")
-      setManualPlateNumber(match.plate_number)
-      setManualVehicleUnit(match.vehicle_unit ?? "")
-    } else {
-      setMatchedCustomer(null)
-      setMatchSource(null)
-    }
-  }, [manualPlateNumber, manualContactNumber, customers, useManualCustomer])
+  // Plate, phone, and email can each find an existing customer record. Only
+  // the field being edited decides the match (see lib/operations/customer-match.ts)
+  // — deriving it from every field on every keystroke used to re-fill the one
+  // being edited from another auto-filled field, so it couldn't be backspaced.
+  // Customer name isn't a match key: two different customers can share one.
+  function handleTriggerEdit(field: MatchField, value: string) {
+    const next = applyTriggerEdit(
+      {
+        matched: matchedCustomer,
+        source:  matchSource,
+        fields: {
+          name: manualCustomerName, phone: manualContactNumber, email: manualEmail,
+          plate: manualPlateNumber, vehicle: manualVehicleUnit,
+        },
+      },
+      customers,
+      field,
+      value,
+    )
+    setMatchedCustomer(next.matched)
+    setMatchSource(next.source)
+    setManualCustomerName(next.fields.name)
+    setManualContactNumber(next.fields.phone)
+    setManualEmail(next.fields.email)
+    setManualPlateNumber(next.fields.plate)
+    setManualVehicleUnit(next.fields.vehicle)
+    clearField(field === "phone" ? "contactNumber" : field === "plate" ? "plateNumber" : "email")
+  }
 
   function clearField(key: keyof FieldErrors) {
     setFieldErrors((prev) => { const next = { ...prev }; delete next[key]; return next })
@@ -367,6 +365,7 @@ export default function AddJobOrderForm() {
 
 
   const PHONE_RE = /^(09|\+639)\d{9}$/
+  const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 
   function validate(): FieldErrors {
     const errs: FieldErrors = {}
@@ -382,6 +381,10 @@ export default function AddJobOrderForm() {
         errs.contactNumber = "Must be a valid PH mobile number (e.g., 09XX-XXX-XXXX)."
       if (!manualPlateNumber.trim())
         errs.plateNumber = "Plate number is required."
+      if (!manualEmail.trim())
+        errs.email = "Email is required."
+      else if (!EMAIL_RE.test(manualEmail.trim()))
+        errs.email = "Enter a valid email address (e.g., juan@email.com)."
       if (!manualVehicleUnit.trim())
         errs.vehicleUnit = "Vehicle unit is required."
     }
@@ -910,7 +913,7 @@ export default function AddJobOrderForm() {
                   type="tel"
                   value={manualContactNumber}
                   readOnly={!!matchedCustomer && matchSource !== "phone"}
-                  onChange={(e) => { if (!matchedCustomer || matchSource === "phone") { setManualContactNumber(e.target.value); clearField("contactNumber") } }}
+                  onChange={(e) => { if (!matchedCustomer || matchSource === "phone") handleTriggerEdit("phone", e.target.value) }}
                   placeholder="e.g., 09XX-XXX-XXXX"
                   className={inputCls(!!fieldErrors.contactNumber, !!matchedCustomer && matchSource !== "phone")}
                 />
@@ -922,7 +925,7 @@ export default function AddJobOrderForm() {
                   type="text"
                   value={manualPlateNumber}
                   readOnly={!!matchedCustomer && matchSource !== "plate"}
-                  onChange={(e) => { if (!matchedCustomer || matchSource === "plate") { setManualPlateNumber(e.target.value); clearField("plateNumber") } }}
+                  onChange={(e) => { if (!matchedCustomer || matchSource === "plate") handleTriggerEdit("plate", e.target.value) }}
                   placeholder="e.g., ABC-1234"
                   className={inputCls(!!fieldErrors.plateNumber, !!matchedCustomer && matchSource !== "plate")}
                 />
@@ -934,15 +937,16 @@ export default function AddJobOrderForm() {
                 </p>
               )}
               <div className="flex flex-col gap-1.5 col-span-2">
-                <label className="text-xs font-medium text-body">Email</label>
+                <label className="text-xs font-medium text-body">Email <span className="text-status-delayed ml-0.5">*</span></label>
                 <input
                   type="email"
                   value={manualEmail}
-                  readOnly={!!matchedCustomer}
-                  onChange={(e) => { if (!matchedCustomer) setManualEmail(e.target.value) }}
+                  readOnly={!!matchedCustomer && matchSource !== "email"}
+                  onChange={(e) => { if (!matchedCustomer || matchSource === "email") handleTriggerEdit("email", e.target.value) }}
                   placeholder="e.g., juan@email.com"
-                  className={inputCls(false, !!matchedCustomer)}
+                  className={inputCls(!!fieldErrors.email, !!matchedCustomer && matchSource !== "email")}
                 />
+                <FieldError msg={fieldErrors.email} />
               </div>
               <div className="flex flex-col gap-1.5 col-span-2">
                 <label className="text-xs font-medium text-body">Vehicle Unit <span className="text-status-delayed ml-0.5">*</span></label>

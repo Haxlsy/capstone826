@@ -140,6 +140,17 @@ export async function POST(request: Request) {
       // Canonicalise the phone so the Messenger status flow can match this
       // customer's other vehicles by contact number.
       const normContact = normalizePhone(contact_number) || (contact_number?.trim() ?? null)
+
+      // Email is required for a manually entered customer. (Picking an existing
+      // record above doesn't need it — older records may not have one.)
+      const trimmedEmail = typeof email === "string" ? email.trim() : ""
+      if (!trimmedEmail) {
+        return NextResponse.json({ error: "Email is required." }, { status: 400 })
+      }
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmedEmail)) {
+        return NextResponse.json({ error: "Enter a valid email address." }, { status: 400 })
+      }
+
       if (plate_number?.trim()) {
         const { data: existing } = await admin
           .from("customer_record")
@@ -166,13 +177,32 @@ export async function POST(request: Request) {
         if (byPhone && byPhone.length > 0) resolvedCustomerRecordId = byPhone[0].id
       }
 
+      // An email belongs to one customer. The form already auto-fills that
+      // customer when their email is typed, so reaching here with an email that's
+      // on a DIFFERENT record than the one plate/phone resolved (or on any record
+      // when nothing resolved) means a direct API call or a race — reject it
+      // rather than attach it to the wrong person or create a duplicate. Escapes
+      // LIKE wildcards ("_" is common in emails) so the case-insensitive match
+      // stays exact.
+      const { data: byEmail } = await admin
+        .from("customer_record")
+        .select("id")
+        .ilike("email", trimmedEmail.replace(/[\\%_]/g, "\\$&"))
+        .limit(1)
+      if (byEmail && byEmail.length > 0 && byEmail[0].id !== resolvedCustomerRecordId) {
+        return NextResponse.json(
+          { error: "This email is already registered to another customer." },
+          { status: 409 },
+        )
+      }
+
       if (!resolvedCustomerRecordId) {
         const { data: newCustomer, error: custErr } = await admin
           .from("customer_record")
           .insert({
             full_name:      customer_name?.trim()  ?? null,
             contact_number: normContact,
-            email:          email?.trim()          ?? null,
+            email:          trimmedEmail,
             plate_number:   plate_number?.trim()   ?? null,
             vehicle_unit:   vehicle_unit?.trim()   ?? null,
           })
