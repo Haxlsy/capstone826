@@ -17,6 +17,9 @@ describe("renderFirstTimeMessage", () => {
   it("falls back when the name is unknown", () => {
     expect(renderFirstTimeMessage("Hi {name}!", null)).toBe("Hi there!")
     expect(renderFirstTimeMessage("Hi {name}!", "  ", "filipino")).toBe("Hi kaibigan!")
+    // The Graph lookup's failure placeholder must not become "Hi Messenger!"
+    expect(renderFirstTimeMessage("Hi {name}!", "Messenger User")).toBe("Hi there!")
+    expect(renderFirstTimeMessage("Hi {name}!", "Messenger User", "filipino")).toBe("Hi kaibigan!")
   })
   it("replaces every placeholder and leaves plain text alone", () => {
     expect(renderFirstTimeMessage("{name}, {NAME}", "Ana")).toBe("Ana, Ana")
