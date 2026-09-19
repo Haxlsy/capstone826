@@ -20,7 +20,6 @@ import { useOfflineSyncContext } from "@/components/dashboard/OperationComponent
 import StatusPickerModal, { type JobStatus, type StatusOption } from "./StatusPickerModal"
 import StatusConfirmDialog from "./StatusConfirmDialog"
 import { fmtDate } from "@/lib/time-display"
-import { useRealtimeRefetch } from "@/hooks/useRealtimeRefetch"
 import { displayJobStatus } from "@/lib/job-delay"
 import { remove as removeQueued } from "@/lib/offline/outbox"
 import type { JobOrdersData } from "@/lib/operations/job-orders-data"
@@ -178,11 +177,10 @@ export default function JobManagementTable({ initialJobOrders }: { initialJobOrd
     return () => window.removeEventListener("focus", onFocus)
   }, [load])
 
-  // A job-level change (new job, status set without touching a stage, team
-  // reassignment) or a technician marking a stage done should both reflect
-  // here without waiting for window focus or a manual reload — silent so it
-  // doesn't flash the skeleton.
-  useRealtimeRefetch(["job_order", "job_stage_progress"], useCallback(() => load({ silent: true }), [load]))
+  // Intentionally not realtime: Operations doesn't sit on this screen, and the
+  // changes that matter reach them as notifications (components/shared/
+  // NotificationBell.tsx). The list refreshes on mount, on window focus and on
+  // reconnect (above).
 
   const queuedRows = useMemo(
     () => queuedItems.filter((i) => i.type === "add_job_order").map(mapQueuedRow),
