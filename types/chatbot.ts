@@ -197,12 +197,17 @@ export function validateChatbotSettings(s: Partial<ChatbotSettings>): Record<str
  * Fills the First Time Message's `{name}` placeholder with the customer's
  * Messenger first name, or a neutral word when Facebook gave us none.
  */
+/** What lib/messenger/graph.ts returns when the Facebook profile lookup fails. */
+export const UNKNOWN_MESSENGER_NAME = "Messenger User"
+
 export function renderFirstTimeMessage(
   template: string,
   fullName: string | null | undefined,
   lang: "english" | "filipino" = "english",
 ): string {
-  const first = (fullName ?? "").trim().split(/\s+/)[0]
+  const trimmed = (fullName ?? "").trim()
+  const known = trimmed && trimmed.toLowerCase() !== UNKNOWN_MESSENGER_NAME.toLowerCase()
+  const first = known ? trimmed.split(/\s+/)[0] : ""
   const name = first || (lang === "filipino" ? "kaibigan" : "there")
   return template.replace(/\{name\}/gi, name)
 }
