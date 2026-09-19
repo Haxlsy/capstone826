@@ -18,7 +18,10 @@ export default function DashboardShell({ children }: { children: React.ReactNode
   const area = resolveNavArea(pathname)
   const { nav, settingsHref, fallbackName, showBell } = navFor(area)
 
-  const { data: concerns } = useConcerns()
+  // Only Operations shows the Concerns nav badge, and only Operations may read
+  // /api/operations/job-concerns — Sales/Admin used to fire it on every page and
+  // just collect 403s.
+  const { data: concerns } = useConcerns(undefined, { enabled: area === "operations" })
   const pendingConcerns = (concerns ?? []).filter((c) => c.status === "Pending").length
 
   const resolvedNav =

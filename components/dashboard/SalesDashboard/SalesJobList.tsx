@@ -41,15 +41,15 @@ const PAGE_SIZE = 15
 export default function SalesJobList({ jobOrders: initialJobOrders }: { jobOrders: RawJobOrder[] }) {
   const router = useRouter()
 
-  // Self-managed + realtime-refetched, same endpoint Operations' Job
-  // Management uses (read-only here — no write actions) — a light client
-  // refetch instead of router.refresh() re-running the whole server fetch
-  // on every change event.
+  // Self-managed + realtime-refetched from Sales' own read-only route
+  // (same data as the server fetch in the page) — a light client refetch
+  // instead of router.refresh() re-running the whole server fetch on every
+  // change event.
   const [rawOrders, setRawOrders] = useState<RawJobOrder[]>(initialJobOrders)
 
   const load = useCallback(async () => {
     try {
-      const res = await fetch("/api/operations/job-management/list-job-orders")
+      const res = await fetch("/api/sales/job-orders")
       const json = await res.json()
       if (!res.ok) throw new Error(json?.error ?? "Failed to fetch job orders")
       setRawOrders(json.job_orders ?? [])
