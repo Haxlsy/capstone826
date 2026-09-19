@@ -7,7 +7,7 @@ import { computeStageDelays } from "@/lib/job-delay"
 import { fmtDateTime } from "@/lib/time-display"
 import { getAuditCaller } from "@/lib/auth/caller"
 import { logAuditCall } from "@/hooks/audit-helpers"
-import { notifyRole } from "@/lib/notify-role"
+import { notifyJobStatusChange } from "@/lib/notify-job-status"
 import { sendMessengerText, sendMessengerImage, sendMessengerVideo } from "@/lib/messenger/graph"
 import { buildStageUpdateMessage } from "@/lib/messenger/stage-update"
 import { sendPushToUser } from "@/lib/push/send"
@@ -385,11 +385,7 @@ export async function PATCH(
         logAuditCall(caller, { category: "update", action: "Started job", target: jobLabel })
       }
       // Operations' job pages aren't realtime — this is how they hear the job started.
-      await notifyRole(admin, "operations", {
-        type:         "job_status",
-        message:      `Job ${jobLabel} has been started.`,
-        job_order_id: jobId,
-      })
+      await notifyJobStatusChange(admin, { jobId, jobLabel, from: "Pending", to: "Ongoing", actorId: user.id })
       return NextResponse.json({ success: true })
     }
 
@@ -498,10 +494,9 @@ export async function PATCH(
             status:        "For Inspection",
             changed_by_id: user.id,
           })
-          await notifyRole(admin, "operations", {
-            type:         "job_status",
-            message:      `Job ${jobLabel} is ready for inspection after rework.`,
-            job_order_id: jobId,
+          await notifyJobStatusChange(admin, {
+            jobId, jobLabel, from: "For Rework", to: "For Inspection", actorId: user.id,
+            message: `Job ${jobLabel} is ready for inspection after rework.`,
           })
         }
       }
@@ -800,11 +795,7 @@ export async function PATCH(
       if (caller) {
         logAuditCall(caller, { category: "approve", action: "Passed job to operations", target: jobLabel })
       }
-      await notifyRole(admin, "operations", {
-        type:         "job_status",
-        message:      `Job ${jobLabel} is ready for inspection.`,
-        job_order_id: jobId,
-      })
+      await notifyJobStatusChange(admin, { jobId, jobLabel, to: "For Inspection", actorId: user.id })
 
       return NextResponse.json({ success: true })
     }
@@ -883,10 +874,9 @@ export async function PATCH(
       }
 
       // Operations' job pages aren't realtime — tell them a head tech sent the job back.
-      await notifyRole(admin, "operations", {
-        type:         "rework",
-        message:      `Job ${jobLabel} — ${callerIsInstaller ? "Head Installer" : "Head Detailer"} flagged stage(s) for rework. Instructions: ${rework_instructions.trim()}`,
-        job_order_id: jobId,
+      await notifyJobStatusChange(admin, {
+        jobId, jobLabel, to: "For Rework", actorId: user.id,
+        message: `Job ${jobLabel} — ${callerIsInstaller ? "Head Installer" : "Head Detailer"} flagged stage(s) for rework. Instructions: ${rework_instructions.trim()}`,
       })
 
       if (caller) {

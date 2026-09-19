@@ -19,7 +19,11 @@ export function logAudit(params: AuditParams): void {
     .from("audit_log")
     .insert({ ...params, target: params.target ?? "" })
     .then(
-      () => {},
+      // supabase-js resolves `{ error }` on a failed insert rather than
+      // rejecting, so the rejection handler alone never saw DB failures.
+      ({ error }) => {
+        if (error) console.error("[audit] insert failed:", error.message, "-", params.action)
+      },
       (err: unknown) => console.error("[audit]", err)
     )
 }
