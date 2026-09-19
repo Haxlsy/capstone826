@@ -3,6 +3,7 @@
 import { useEffect, useState, useCallback, useRef } from "react"
 import { createClient } from "@/lib/supabase/client"
 import { useOnlineStatus } from "@/hooks/useOnlineStatus"
+import { isDeadSessionError } from "@/lib/auth/refresh-errors"
 
 // Single active session per account. proxy.ts already catches a stale
 // session on every page navigation, but an idle tab that never navigates
@@ -40,16 +41,25 @@ export function useSessionEnforcement() {
   }, [])
 
   // Get the current user id, and run one check on mount — covers a tab
-  // that was already stale before this hook even mounted. getUser() calls
-  // Supabase directly (cross-origin — the service worker can't cache it, and
-  // it always rejects offline), so only attempt it once we're confirmed
-  // online — this re-runs on reconnect too — and never let it become an
-  // unhandled rejection.
+  // that was already stale before this hook even mounted. The id is only a
+  // Realtime filter (RLS and /api/auth/session-status do the real
+  // enforcement), so getSession() — a local read — is enough; getUser() was a
+  // full round trip to Supabase Auth on every mount and reconnect. If the
+  // browser client can't refresh because its refresh token is gone, this tab
+  // is dead: one hard redirect to /login rather than sitting half-broken.
+  // Only attempt it once we're confirmed online — this re-runs on reconnect
+  // too — and never let it become an unhandled rejection.
   useEffect(() => {
     if (isOnline) {
       const supabase = createClient()
-      supabase.auth.getUser().then(({ data: { user } }) => {
-        if (user) setUserId(user.id)
+      supabase.auth.getSession().then(({ data: { session }, error }) => {
+        if (isDeadSessionError(error)) {
+          if (loggingOutRef.current) return
+          loggingOutRef.current = true
+          window.location.href = "/login?reason=session_expired"
+          return
+        }
+        if (session?.user) setUserId(session.user.id)
       }).catch(() => {})
     }
     checkStatus()
