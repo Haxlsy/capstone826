@@ -22,7 +22,6 @@ import { displayJobStatus } from "@/lib/job-delay"
 import { isTechnicianAvailableToday } from "@/lib/technician-availability"
 import { categorySwatch } from "@/lib/ui/category-colors"
 import { fmtDateTime } from "@/lib/time-display"
-import { useRealtimeRefetch } from "@/hooks/useRealtimeRefetch"
 import { useOfflineLock, OfflinePausedNote, OFFLINE_ACTION_HINT } from "@/hooks/useOfflineLock"
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -279,12 +278,10 @@ export default function JobOrderDetail({
     load({ silent: !!initialJob })
   }, [load, initialJob])
 
-  // A technician updating this job's stages, or its own row changing (status,
-  // team assignment, schedule), should reflect here immediately — silent (no
-  // skeleton, no toast) so it doesn't interrupt anyone mid-read. This covers
-  // everything the manual Refresh button used to be needed for, so that
-  // button is gone now.
-  useRealtimeRefetch(["job_stage_progress", "job_order"], useCallback(() => load({ silent: true }), [load]))
+  // Intentionally not realtime: changes to a job reach Operations as
+  // notifications (components/shared/NotificationBell.tsx), and clicking one
+  // for the job already open here re-runs the mount revalidation above (the
+  // server page hands down a fresh `initialJob`).
 
   async function markReleased() {
     setReleasing(true)

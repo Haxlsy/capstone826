@@ -122,7 +122,7 @@ export default function SalesJobList({ jobOrders: initialJobOrders }: { jobOrder
   for (const j of jobOrders) tabCounts[j.status] = (tabCounts[j.status] ?? 0) + 1
 
   const columns: Column<JobOrder>[] = [
-    { key: "id", header: "Job ID", cell: (j) => <span className="font-mono text-xs font-semibold text-body">{j.displayId}</span> },
+    { key: "id", header: "Job Order ID", cell: (j) => <span className="font-mono text-xs font-semibold text-body">{j.displayId}</span> },
     { key: "customer", header: "Customer", cell: (j) => <span className="font-medium text-heading">{j.customer}</span> },
     { key: "plate", header: "Plate", cell: (j) => <span className="text-body">{j.plate}</span> },
     { key: "vehicle", header: "Vehicle", cell: (j) => <span className="block max-w-28 truncate text-body">{j.vehicle}</span> },
