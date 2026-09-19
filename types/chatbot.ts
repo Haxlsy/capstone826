@@ -75,6 +75,15 @@ export const DEFAULT_BOOKING_MESSAGE_FIL =
   "Salamat! Naipadala na ang iyong request sa aming Sales team. Makikipag-ugnayan sila sa iyo " +
   "sa lalong madaling panahon para kumpirmahin ang iyong appointment."
 
+export const DEFAULT_FIRST_TIME_MESSAGE_EN =
+  "Hi {name}! Welcome to 826 Auto Aesthetic & Protection - Ortigas Extension. Thanks for " +
+  "messaging us! I'm our virtual assistant and I'll help you right away. If you'd like to talk " +
+  "to a member of our team, just let me know."
+export const DEFAULT_FIRST_TIME_MESSAGE_FIL =
+  "Hi {name}! Maligayang pagdating sa 826 Auto Aesthetic & Protection - Ortigas Extension. " +
+  "Salamat sa pag-message sa amin! Ako ang aming virtual assistant at tutulungan kita agad. " +
+  "Kung gusto mong makausap ang aming team, sabihin mo lang."
+
 /**
  * Persisted chatbot settings. `.passthrough()` is kept so any legacy keys
  * already stored in `chatbot_config.settings` survive a save/load round trip
@@ -126,9 +135,90 @@ export const chatbotSettingsSchema = z.object({
   resolved_message_fil:            z.string().max(2000),
   booking_message_en:              z.string().max(2000),
   booking_message_fil:             z.string().max(2000),
+  // Unlike the five above these are optional: rows (and open admin tabs) saved
+  // before this template existed must keep parsing. The save schema below still
+  // requires them non-blank.
+  first_time_message_en:           z.string().max(2000).optional(),
+  first_time_message_fil:          z.string().max(2000).optional(),
 }).passthrough()
 
 export type ChatbotSettings = z.infer<typeof chatbotSettingsSchema>
+
+const TEMPLATE_FIELDS = [
+  ["first_time", "First Time Message"],
+  ["vehicle_status", "Vehicle Status"],
+  ["link_verification", "Link Verification"],
+  ["escalation", "Human Escalation"],
+  ["resolved", "Resolved"],
+  ["booking", "Booking Request Confirmation"],
+] as const
+
+const HHMM = /^([01]\d|2[0-3]):[0-5]\d$/
+
+/**
+ * Save-time rules for the admin AI Configuration form. Returns `{ field: message }`
+ * (empty = valid). Shared by the API (chatbotSettingsSaveSchema) and the client
+ * so the two can't drift. Deliberately separate from chatbotSettingsSchema,
+ * which stays lenient because it also parses legacy stored rows and the preview
+ * request — tightening it would make reads fail.
+ */
+export function validateChatbotSettings(s: Partial<ChatbotSettings>): Record<string, string> {
+  const errors: Record<string, string> = {}
+  const rec = s as Record<string, unknown>
+
+  for (const [key, label] of TEMPLATE_FIELDS) {
+    for (const [suffix, lang] of [["en", "English"], ["fil", "Filipino"]] as const) {
+      const field = `${key}_message_${suffix}`
+      const v = rec[field]
+      if (typeof v !== "string" || !v.trim()) errors[field] = `${label} (${lang}) message is required.`
+    }
+  }
+
+  if (s.enable_ai_chatbot === false && !(s.ai_disabled_message ?? "").trim()) {
+    errors.ai_disabled_message = "The auto-reply sent while the AI chatbot is off can't be empty."
+  }
+
+  if (!s.operating_days || s.operating_days.length === 0) {
+    errors.operating_days = "Select at least one open day."
+  }
+
+  const open = s.operating_open_time ?? ""
+  const close = s.operating_close_time ?? ""
+  if (!HHMM.test(open)) errors.operating_open_time = "Enter a valid opening time."
+  if (!HHMM.test(close)) errors.operating_close_time = "Enter a valid closing time."
+  if (!errors.operating_open_time && !errors.operating_close_time && open >= close) {
+    errors.operating_close_time = "Closing time must be after opening time."
+  }
+
+  return errors
+}
+
+/**
+ * Fills the First Time Message's `{name}` placeholder with the customer's
+ * Messenger first name, or a neutral word when Facebook gave us none.
+ */
+export function renderFirstTimeMessage(
+  template: string,
+  fullName: string | null | undefined,
+  lang: "english" | "filipino" = "english",
+): string {
+  const first = (fullName ?? "").trim().split(/\s+/)[0]
+  const name = first || (lang === "filipino" ? "kaibigan" : "there")
+  return template.replace(/\{name\}/gi, name)
+}
+
+/** The welcome goes out only on a person's very first message, and never when the AI is off
+ *  (that path already sends its own auto-reply and hands the thread to Sales). */
+export function shouldSendFirstTimeMessage(opts: { isNewConversation: boolean; aiEnabled: boolean }): boolean {
+  return opts.isNewConversation && opts.aiEnabled
+}
+
+/** Write-path schema: the lenient shape plus the required-field rules above. */
+export const chatbotSettingsSaveSchema = chatbotSettingsSchema.superRefine((val, ctx) => {
+  for (const [field, message] of Object.entries(validateChatbotSettings(val))) {
+    ctx.addIssue({ code: "custom", path: [field], message })
+  }
+})
 
 const WEEKDAY_LABELS: Record<Weekday, string> = {
   mon: "Monday", tue: "Tuesday", wed: "Wednesday", thu: "Thursday",

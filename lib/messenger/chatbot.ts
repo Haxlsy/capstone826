@@ -834,8 +834,10 @@ export async function generateChatbotReply(input: {
   knowledge?: string | null
   vehicleContext?: string | null
   bookingContext?: string | null
+  /** The fixed First Time Message was just sent this turn. */
+  welcomeSent?: boolean
 }): Promise<ChatbotReply> {
-  const { message, history = [], settings, system_prompt, knowledge, vehicleContext, bookingContext } = input
+  const { message, history = [], settings, system_prompt, knowledge, vehicleContext, bookingContext, welcomeSent } = input
 
   let systemPrompt = buildRuntimeSystemPrompt(settings, system_prompt, knowledge)
 
@@ -856,6 +858,12 @@ export async function generateChatbotReply(input: {
   if (bookingContext && bookingContext.trim()) {
     authoritativeBlocks.push(
       `BOOKING FLOW (authoritative — follow this over the generic booking instructions and over conversation history):\n${bookingContext.trim()}`
+    )
+  }
+
+  if (welcomeSent) {
+    authoritativeBlocks.push(
+      "WELCOME ALREADY SENT: the customer was just sent our standard welcome message. Do not greet or introduce yourself again — answer their message directly."
     )
   }
 

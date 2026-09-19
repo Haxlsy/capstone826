@@ -81,6 +81,10 @@ import {
   DEFAULT_ESCALATION_MESSAGE_FIL,
   DEFAULT_BOOKING_MESSAGE_EN,
   DEFAULT_BOOKING_MESSAGE_FIL,
+  DEFAULT_FIRST_TIME_MESSAGE_EN,
+  DEFAULT_FIRST_TIME_MESSAGE_FIL,
+  renderFirstTimeMessage,
+  shouldSendFirstTimeMessage,
 } from "@/types/chatbot"
 import {
   escalationAck,
@@ -266,7 +270,7 @@ async function handleInboundMessage(
   const profile = await fetchMessengerProfile(senderId)
 
   // Get or create the conversation and capture its current status + flow flags.
-  const { conversation_id, status, is_vehicle_inquiry, is_booking_flow, awaiting_confirmation, active_booking_offered, booking_duplicate_notified, conflict_pending, awaiting_link_verification, link_attempts, link_conflict_pending, offtopic_streak, policy_streak, complaint_streak, booking_draft, last_message_at, last_quick_reply_payload } =
+  const { conversation_id, status, is_vehicle_inquiry, is_booking_flow, awaiting_confirmation, active_booking_offered, booking_duplicate_notified, conflict_pending, awaiting_link_verification, link_attempts, link_conflict_pending, offtopic_streak, policy_streak, complaint_streak, booking_draft, last_message_at, last_quick_reply_payload, is_new_conversation } =
     await getOrCreateConversationByPsid(senderId, profile.name)
 
   // Meta can redeliver the same webhook event (observed directly: two
@@ -361,6 +365,37 @@ async function handleInboundMessage(
     settings?.booking_message_en, settings?.booking_message_fil,
     DEFAULT_BOOKING_MESSAGE_EN, DEFAULT_BOOKING_MESSAGE_FIL,
   )
+
+  // ── First Time Message ────────────────────────────────────────────────────
+  // Sent once, on a person's very first message to the page, before the AI
+  // answers that same message (the flow below continues unchanged). Never
+  // blocks the reply: a failed send is logged and the AI still responds.
+  let welcomeSent = false
+  if (shouldSendFirstTimeMessage({ isNewConversation: is_new_conversation, aiEnabled: settings?.enable_ai_chatbot !== false })) {
+    try {
+      const firstTime = resolveTemplate(
+        settings?.first_time_message_en, settings?.first_time_message_fil,
+        DEFAULT_FIRST_TIME_MESSAGE_EN, DEFAULT_FIRST_TIME_MESSAGE_FIL,
+      )
+      const welcomeLang = effectiveLang === "filipino" ? "filipino" : "english"
+      const welcome = renderFirstTimeMessage(
+        pickCopy(effectiveLang, firstTime.en, firstTime.fil),
+        profile.name,
+        welcomeLang,
+      )
+      const welcomeId = await sendMessengerText(senderId, welcome)
+      await insertMessage({
+        conversation_id,
+        sender_type: "agent",
+        message_body: welcome,
+        sent_at: new Date().toISOString(),
+        fb_message_id: welcomeId,
+      })
+      welcomeSent = true
+    } catch (err) {
+      console.error("[webhook/facebook] first-time message failed:", err)
+    }
+  }
 
   // ── Master switch: AI chatbot disabled ───────────────────────────────────
   // Send the configured acknowledgement once, hand the thread to Sales, and
@@ -799,6 +834,7 @@ async function handleInboundMessage(
           system_prompt,
           knowledge,
           vehicleContext,
+          welcomeSent,
         })
 
     reply = result.reply?.trim() || null

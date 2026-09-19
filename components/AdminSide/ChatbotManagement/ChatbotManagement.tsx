@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useMemo } from "react"
 import { useRealtimeRefetch } from "@/hooks/useRealtimeRefetch"
 import {
   Bot, BookOpen, Save, Plus, Pencil, Trash2, X, Check,
@@ -27,10 +27,13 @@ import {
   DEFAULT_RESOLVED_MESSAGE_FIL,
   DEFAULT_BOOKING_MESSAGE_EN,
   DEFAULT_BOOKING_MESSAGE_FIL,
+  DEFAULT_FIRST_TIME_MESSAGE_EN,
+  DEFAULT_FIRST_TIME_MESSAGE_FIL,
   DEFAULT_OPERATING_DAYS,
   DEFAULT_OPERATING_OPEN_TIME,
   DEFAULT_OPERATING_CLOSE_TIME,
   formatOperatingHours,
+  validateChatbotSettings,
   WEEKDAYS,
   type Weekday,
 } from "@/types/chatbot"
@@ -63,6 +66,8 @@ const DEFAULT_SETTINGS: AdminChatbotSettings = {
   resolved_message_fil:          DEFAULT_RESOLVED_MESSAGE_FIL,
   booking_message_en:            DEFAULT_BOOKING_MESSAGE_EN,
   booking_message_fil:           DEFAULT_BOOKING_MESSAGE_FIL,
+  first_time_message_en:         DEFAULT_FIRST_TIME_MESSAGE_EN,
+  first_time_message_fil:        DEFAULT_FIRST_TIME_MESSAGE_FIL,
 }
 
 interface KBForm {
@@ -79,6 +84,8 @@ export default function ChatbotManagement() {
 
   // --- Settings state ---
   const [settings, setSettings]       = useState<AdminChatbotSettings>(DEFAULT_SETTINGS)
+  // Last saved/loaded copy — what Cancel restores.
+  const [savedSettings, setSavedSettings] = useState<AdminChatbotSettings>(DEFAULT_SETTINGS)
   const [settingsDirty, setDirty]     = useState(false)
   const [settingsSaved, setSaved]     = useState(false)
   const [settingsError, setError]     = useState<string | null>(null)
@@ -102,7 +109,11 @@ export default function ChatbotManagement() {
     fetch("/api/admin/chatbot/config")
       .then((r) => r.json())
       .then(({ config }) => {
-        if (config?.settings) setSettings({ ...DEFAULT_SETTINGS, ...config.settings })
+        if (config?.settings) {
+          const loaded = { ...DEFAULT_SETTINGS, ...config.settings }
+          setSettings(loaded)
+          setSavedSettings(loaded)
+        }
       })
       .catch(() => {})
       .finally(() => setLoading(false))
@@ -140,7 +151,28 @@ export default function ChatbotManagement() {
     setError(null)
   }
 
+  // Same rules the API enforces (types/chatbot.ts) — applies from either tab,
+  // since both save the whole settings object.
+  const errors = useMemo(() => validateChatbotSettings(settings), [settings])
+  const hasErrors = Object.keys(errors).length > 0
+
+  // Warn before a refresh/close silently throws away unsaved edits.
+  useEffect(() => {
+    if (!settingsDirty) return
+    const onBeforeUnload = (e: BeforeUnloadEvent) => { e.preventDefault() }
+    window.addEventListener("beforeunload", onBeforeUnload)
+    return () => window.removeEventListener("beforeunload", onBeforeUnload)
+  }, [settingsDirty])
+
+  function handleCancel() {
+    setSettings(savedSettings)
+    setDirty(false)
+    setSaved(false)
+    setError(null)
+  }
+
   async function handleSave() {
+    if (hasErrors) { setError(Object.values(errors)[0]); return }
     setError(null)
     try {
       const res = await fetch("/api/admin/chatbot/config", {
@@ -150,6 +182,7 @@ export default function ChatbotManagement() {
       })
       const json = await res.json()
       if (!res.ok) { setError(json.error ?? "Failed to save settings."); return }
+      setSavedSettings(settings)
       setDirty(false)
       setSaved(true)
       setTimeout(() => setSaved(false), 2500)
@@ -278,8 +311,9 @@ export default function ChatbotManagement() {
                     value={settings.ai_disabled_message}
                     onChange={(e) => patch("ai_disabled_message", e.target.value)}
                     rows={3}
-                    className="w-full border border-border rounded-card px-4 py-3 text-sm text-body leading-relaxed focus:outline-none focus:ring-2 focus:ring-primary/30 resize-none"
+                    className={`w-full border rounded-card px-4 py-3 text-sm text-body leading-relaxed focus:outline-none focus:ring-2 focus:ring-primary/30 resize-none ${errors.ai_disabled_message ? "border-status-delayed" : "border-border"}`}
                   />
+                  {errors.ai_disabled_message && <p className="text-xs text-status-delayed">{errors.ai_disabled_message}</p>}
                   <p className="text-xs text-muted">
                     Sent once per customer message, then the conversation is handed to your Sales team.
                   </p>
@@ -343,6 +377,8 @@ export default function ChatbotManagement() {
                 </div>
               </div>
 
+              {errors.operating_days && <p className="text-xs text-status-delayed -mt-2">{errors.operating_days}</p>}
+
               <div className="flex flex-wrap items-end gap-4">
                 <div className="flex flex-col gap-1.5">
                   <label className="text-xs font-medium text-body">Opens</label>
@@ -363,6 +399,10 @@ export default function ChatbotManagement() {
                   />
                 </div>
               </div>
+
+              {(errors.operating_open_time || errors.operating_close_time) && (
+                <p className="text-xs text-status-delayed">{errors.operating_open_time ?? errors.operating_close_time}</p>
+              )}
 
               <div className="rounded-card bg-surface-muted px-4 py-3">
                 <p className="text-[11px] font-semibold uppercase tracking-wide text-muted mb-1">Customers will see</p>
@@ -400,15 +440,27 @@ export default function ChatbotManagement() {
           <div className="flex items-center gap-3 pb-4">
             <button
               onClick={handleSave}
-              disabled={!settingsDirty}
+              disabled={!settingsDirty || hasErrors}
               className={`flex items-center gap-2 px-5 py-2.5 rounded-card text-sm font-semibold transition-colors ${
-                settingsDirty
+                settingsDirty && !hasErrors
                   ? "bg-primary text-white hover:bg-primary-hover"
                   : "bg-surface-muted text-muted cursor-not-allowed"
               }`}
             >
               <Save className="w-4 h-4" />
               Save Settings
+            </button>
+            <button
+              onClick={handleCancel}
+              disabled={!settingsDirty}
+              title="Discard unsaved changes"
+              className={`px-5 py-2.5 rounded-card text-sm font-semibold border transition-colors ${
+                settingsDirty
+                  ? "border-border text-body hover:bg-surface-muted"
+                  : "border-border text-muted cursor-not-allowed opacity-60"
+              }`}
+            >
+              Cancel
             </button>
             {settingsSaved && (
               <span className="flex items-center gap-1.5 text-sm text-status-inspection">
@@ -430,8 +482,11 @@ export default function ChatbotManagement() {
           settings={settings}
           patch={patch}
           onSave={handleSave}
+          onCancel={handleCancel}
           saved={settingsSaved}
-          saving={settingsDirty}
+          dirty={settingsDirty}
+          errors={errors}
+          error={settingsError}
         />
       )}
 
