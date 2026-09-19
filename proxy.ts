@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 import { createClient } from "@/lib/supabase/middleware-client";
 import { isSessionCurrent } from "@/lib/auth/session-check";
+import { isDeadSessionError } from "@/lib/auth/refresh-errors";
 
 const ROLE_HOMES: Record<string, string> = {
   super_admin:    "/dashboard/admin",
@@ -12,6 +13,27 @@ const ROLE_HOMES: Record<string, string> = {
   head_installer: "/head-technician",
 };
 
+// Supabase's session cookie, including its chunked form (sb-<ref>-auth-token.0, .1, …).
+const AUTH_COOKIE_RE = /^sb-.+-auth-token(\.\d+)?$/;
+
+function hasAuthCookie(request: NextRequest) {
+  return request.cookies.getAll().some((c) => AUTH_COOKIE_RE.test(c.name));
+}
+
+// Expire every auth cookie on the response that's actually being returned.
+// The Supabase client queues its own deletions on `supabaseResponse`, but any
+// redirect built here is a brand-new response that silently drops them — so a
+// dead session's cookies kept coming back on every request and every request
+// retried (and logged) the same doomed refresh.
+function clearAuthCookies(request: NextRequest, response: NextResponse) {
+  for (const c of request.cookies.getAll()) {
+    if (AUTH_COOKIE_RE.test(c.name)) response.cookies.set(c.name, "", { maxAge: 0, path: "/" });
+  }
+  response.cookies.set("826_role", "", { maxAge: 0, path: "/" });
+  response.cookies.set("826_session_token", "", { maxAge: 0, path: "/" });
+  return response;
+}
+
 export async function proxy(request: NextRequest) {
   // A request can never be allowed to set this itself — only this function,
   // after a verified getUser() call below, may add it back. Without this
@@ -21,7 +43,17 @@ export async function proxy(request: NextRequest) {
 
   const { supabase, supabaseResponse } = createClient(request);
 
-  const { data: { user } } = await supabase.auth.getUser();
+  // No session cookie means there's nothing to verify or refresh — skip the
+  // round trip to Supabase Auth entirely (every logged-out /login and / hit).
+  let user = null;
+  let sessionDead = false;
+  if (hasAuthCookie(request)) {
+    const { data, error } = await supabase.auth.getUser();
+    user = data.user;
+    // The refresh token is gone (revoked by another login, a logout, …) — a
+    // session that can never recover, unlike a network blip.
+    sessionDead = !user && isDeadSessionError(error);
+  }
 
   const path = request.nextUrl.pathname;
   const role = request.cookies.get("826_role")?.value ?? "";
@@ -29,6 +61,18 @@ export async function proxy(request: NextRequest) {
   const isProtectedArea =
     path.startsWith("/dashboard") || path.startsWith("/head-technician");
   const isAuthPage = path === "/login" || path === "/";
+
+  if (sessionDead) {
+    if (isProtectedArea) {
+      // One hop to /login. That request arrives with no auth cookies (cleared
+      // here), so it skips Supabase above and /login only redirects when a
+      // user exists — no way to loop.
+      const redirectUrl = new URL("/login", request.url);
+      redirectUrl.searchParams.set("reason", "session_expired");
+      return clearAuthCookies(request, NextResponse.redirect(redirectUrl));
+    }
+    return clearAuthCookies(request, supabaseResponse);
+  }
 
   if (!user && isProtectedArea) {
     return NextResponse.redirect(new URL("/login", request.url));
@@ -78,6 +122,17 @@ export async function proxy(request: NextRequest) {
   return supabaseResponse;
 }
 
+// Only the routes that actually depend on the session. Everything else — the
+// service worker, manifest, icons, images, /offline, /api (which authenticates
+// itself) — must not pay a Supabase Auth round trip per request. Role access
+// is still enforced by requireRole() in the layouts and the getRoleCaller API
+// gates, not by this file alone.
 export const config = {
-  matcher: ["/((?!api|_next/static|_next/image|favicon.ico).*)"],
+  matcher: [
+    "/",
+    "/login",
+    "/change-password-required",
+    "/dashboard/:path*",
+    "/head-technician/:path*",
+  ],
 };

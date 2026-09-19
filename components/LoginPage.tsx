@@ -37,8 +37,18 @@ export default function LoginPage() {
   // doesn't need a Suspense boundary.
   useEffect(() => {
     const reason = new URLSearchParams(window.location.search).get("reason")
-    if (reason === "signed_in_elsewhere") {
-      toastRef.current.error("You were signed out because your account signed in on another device.")
+    if (reason === "signed_in_elsewhere" || reason === "session_expired") {
+      toastRef.current.error(
+        reason === "signed_in_elsewhere"
+          ? "You were signed out because your account signed in on another device."
+          : "Your session has ended — please sign in again.",
+      )
+      if (reason === "session_expired") {
+        // The server already cleared the auth cookies; drop what only the
+        // browser holds (same cleanup as a normal logout, see hooks/useLogout.ts).
+        try { localStorage.removeItem("826_user") } catch { /* ignore */ }
+        try { navigator.serviceWorker?.controller?.postMessage({ type: "CLEAR_APP_CACHES" }) } catch { /* ignore */ }
+      }
       const url = new URL(window.location.href)
       url.searchParams.delete("reason")
       router.replace(url.pathname + url.search)
