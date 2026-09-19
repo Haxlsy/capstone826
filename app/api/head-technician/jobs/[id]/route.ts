@@ -7,7 +7,7 @@ import { computeStageDelays } from "@/lib/job-delay"
 import { fmtDateTime } from "@/lib/time-display"
 import { getAuditCaller } from "@/lib/auth/caller"
 import { logAuditCall } from "@/hooks/audit-helpers"
-import { notifyJobStatusChange } from "@/lib/notify-job-status"
+import { notifyJobStatusChange, notifyStageDone } from "@/lib/notify-job-status"
 import { sendMessengerText, sendMessengerImage, sendMessengerVideo } from "@/lib/messenger/graph"
 import { buildStageUpdateMessage } from "@/lib/messenger/stage-update"
 import { sendPushToUser } from "@/lib/push/send"
@@ -471,6 +471,7 @@ export async function PATCH(
         .eq("job_order_id", jobId)
         .neq("status", "done")
 
+      let jobStatusNotified = false
       if ((remainingStages ?? []).length === 0) {
         // All stages done — check current job status before updating
         const { data: jobRow } = await admin
@@ -498,6 +499,7 @@ export async function PATCH(
             jobId, jobLabel, from: "For Rework", to: "For Inspection", actorId: user.id,
             message: `Job ${jobLabel} is ready for inspection after rework.`,
           })
+          jobStatusNotified = true
         }
       }
 
@@ -522,6 +524,22 @@ export async function PATCH(
           const cat = (ss as any)?.workflow_category
           categoryName = (Array.isArray(cat) ? cat[0]?.name : cat?.name) ?? null
         }
+      }
+
+      // Operations' pages aren't realtime — tell them the stage is done, with
+      // progress. Skipped when the job-level "ready for inspection after
+      // rework" notification above already covers this completion.
+      if (!jobStatusNotified) {
+        const { count: totalStages } = await admin
+          .from("job_stage_progress")
+          .select("id", { count: "exact", head: true })
+          .eq("job_order_id", jobId)
+        await notifyStageDone(admin, {
+          jobId, jobLabel, stageId: stage_id, stageName, actorId: user.id,
+          total: totalStages ?? undefined,
+          done: totalStages != null ? totalStages - (remainingStages ?? []).length : undefined,
+          reworkRound: doneRound,
+        })
       }
 
       if (caller) {

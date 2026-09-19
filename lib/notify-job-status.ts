@@ -52,3 +52,41 @@ export async function notifyJobStatusChange(
     { excludeUserId: opts.actorId ?? null },
   )
 }
+
+/** "Stage X done on Job Y (3/5 stages)" — progress is omitted when unknown. */
+export function stageDoneMessage(
+  jobLabel: string,
+  stageName: string,
+  opts: { done?: number; total?: number; reworkRound?: number } = {},
+): string {
+  const progress = opts.total && opts.done !== undefined ? ` (${opts.done}/${opts.total} stages)` : ""
+  const what = opts.reworkRound && opts.reworkRound > 0 ? `Rework ${opts.reworkRound} of stage "${stageName}"` : `Stage "${stageName}"`
+  return `${what} is done on job ${jobLabel}${progress}.`
+}
+
+/** Tells Operations a head technician finished a stage (not the person who did it). */
+export async function notifyStageDone(
+  admin: ReturnType<typeof createAdminClient>,
+  opts: {
+    jobId: string
+    jobLabel: string
+    stageId: string
+    stageName: string
+    done?: number
+    total?: number
+    reworkRound?: number
+    actorId?: string | null
+  },
+): Promise<void> {
+  await notifyRole(
+    admin,
+    "operations",
+    {
+      type:         "job_status",
+      message:      stageDoneMessage(opts.jobLabel, opts.stageName, opts),
+      job_order_id: opts.jobId,
+      stage_id:     opts.stageId,
+    },
+    { excludeUserId: opts.actorId ?? null },
+  )
+}
