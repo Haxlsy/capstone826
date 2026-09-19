@@ -384,6 +384,12 @@ export async function PATCH(
       if (caller) {
         logAuditCall(caller, { category: "update", action: "Started job", target: jobLabel })
       }
+      // Operations' job pages aren't realtime — this is how they hear the job started.
+      await notifyRole(admin, "operations", {
+        type:         "job_status",
+        message:      `Job ${jobLabel} has been started.`,
+        job_order_id: jobId,
+      })
       return NextResponse.json({ success: true })
     }
 
@@ -684,13 +690,13 @@ export async function PATCH(
           .eq("id", user.id)
           .single()
         const callerIsInstaller = (callerProfile as any)?.role === "head_installer"
-        const notifyRole = callerIsInstaller ? "head_detailer" : "head_installer"
+        const targetRole = callerIsInstaller ? "head_detailer" : "head_installer"
 
         const { data: nextTeam } = await admin
           .from("job_order_team")
           .select("user_account_id, role_in_job")
           .eq("job_order_id", jobId)
-          .eq("role_in_job", notifyRole)
+          .eq("role_in_job", targetRole)
 
         const notifRows = (nextTeam ?? [])
           .filter((t: any) => t.user_account_id)
@@ -847,12 +853,12 @@ export async function PATCH(
       })
 
       // Notify the other role's head technician.
-      const notifyRole = callerIsInstaller ? "head_detailer" : "head_installer"
+      const targetRole = callerIsInstaller ? "head_detailer" : "head_installer"
       const { data: team } = await admin
         .from("job_order_team")
         .select("user_account_id, role_in_job")
         .eq("job_order_id", jobId)
-        .eq("role_in_job", notifyRole)
+        .eq("role_in_job", targetRole)
 
       const notifRows = (team ?? [])
         .filter((t: any) => t.user_account_id)
@@ -875,6 +881,13 @@ export async function PATCH(
           )
         )
       }
+
+      // Operations' job pages aren't realtime — tell them a head tech sent the job back.
+      await notifyRole(admin, "operations", {
+        type:         "rework",
+        message:      `Job ${jobLabel} — ${callerIsInstaller ? "Head Installer" : "Head Detailer"} flagged stage(s) for rework. Instructions: ${rework_instructions.trim()}`,
+        job_order_id: jobId,
+      })
 
       if (caller) {
         logAuditCall(caller, {
