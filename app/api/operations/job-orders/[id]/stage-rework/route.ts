@@ -1,3 +1,4 @@
+import { notifyJobStatusChange } from "@/lib/notify-job-status"
 import { NextResponse } from "next/server"
 import { cookies } from "next/headers"
 import { createClient } from "@/lib/supabase/server"
@@ -132,6 +133,14 @@ export async function POST(
         target:    job.customer_name ?? jobId,
       })
     }
+
+    await notifyJobStatusChange(admin, {
+      jobId,
+      jobLabel: job.job_order_code ?? jobId,
+      to: "For Rework",
+      actorId: user.id,
+      message: `Job ${job.job_order_code ?? jobId} — a stage was sent back for rework. Reason: ${rework_notes.trim()}`,
+    })
 
     return NextResponse.json({ success: true })
   } catch (err: unknown) {

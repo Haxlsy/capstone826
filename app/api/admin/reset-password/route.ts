@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server"
 import { randomBytes } from "crypto"
 import { createAdminClient } from "@/lib/supabase/admin"
-import { logAudit } from "@/hooks/audit-helpers"
+import { logAuditCall } from "@/hooks/audit-helpers"
 import { getRoleCaller } from "@/lib/auth/caller"
 
 function generatePassword(): string {
@@ -18,6 +18,7 @@ export async function POST(request: Request) {
     const auth = await getRoleCaller(["admin", "super_admin"])
     if ("error" in auth) return auth.error
 
+    const { caller } = auth
     const { userId } = await request.json()
 
     if (!userId || typeof userId !== "string") {
@@ -46,16 +47,14 @@ export async function POST(request: Request) {
 
     await admin.from("user_account").update({ must_change_password: true }).eq("id", userId)
 
-    if (profile) {
-      logAudit({
-        user_id:   userId,
-        user_name: profile.full_name,
-        role:      profile.role,
-        category:  "auth",
-        action:    "Password reset",
-        target:    profile.full_name,
-      })
-    }
+    // Actor = the admin who performed the reset (previously this was recorded
+    // under the reset account itself, so it never showed up under the admin).
+    // Logged even if the profile lookup failed — falls back to the user id.
+    logAuditCall(caller, {
+      category: "auth",
+      action:   "Reset account password",
+      target:   profile ? `${profile.full_name} (${profile.role})` : userId,
+    })
 
     return NextResponse.json({ password: newPassword })
   } catch (err: unknown) {

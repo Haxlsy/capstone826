@@ -4,6 +4,8 @@ import { createClient } from "@/lib/supabase/server"
 import { createAdminClient } from "@/lib/supabase/admin"
 import { logAudit } from "@/hooks/audit-helpers"
 import { z } from "zod"
+import { sendPushToUser } from "@/lib/push/send"
+import { substituteAddedMessage, type HeadRole } from "@/lib/substitute-label"
 import { getRoleCaller } from "@/lib/auth/caller"
 
 const BodySchema = z.object({
@@ -44,9 +46,9 @@ export async function POST(
     // Verify job exists
     const { data: job } = await admin
       .from("job_order")
-      .select("id, status, customer_name")
+      .select("id, status, customer_name, job_order_code")
       .eq("id", jobId)
-      .single<{ id: string; status: string; customer_name: string | null }>()
+      .single<{ id: string; status: string; customer_name: string | null; job_order_code: string | null }>()
     if (!job) return NextResponse.json({ error: "Job order not found." }, { status: 404 })
 
     // Resolve + verify the person, and the job_order_team column to write.
@@ -92,6 +94,29 @@ export async function POST(
     }
 
     await admin.from("job_order_team").insert(teamRow)
+
+    // A substitute head technician has an account, so tell them (bell + push);
+    // crew technicians have no login, nothing to notify. Best-effort: a
+    // notification failure must not fail the add.
+    if (isHead) {
+      try {
+        const message = substituteAddedMessage(role as HeadRole, job.job_order_code ?? job.customer_name ?? jobId)
+        await admin.from("notification").insert({
+          user_id:      person_id,
+          type:         "job_assigned",
+          message,
+          job_order_id: jobId,
+          is_read:      false,
+        })
+        await sendPushToUser(person_id, {
+          title: "Added as substitute",
+          body:  message,
+          url:   `/head-technician/${jobId}`,
+        })
+      } catch (notifErr) {
+        console.error("[add-substitute] notification failed:", notifErr)
+      }
+    }
 
     const { data: profile } = await admin
       .from("user_account")

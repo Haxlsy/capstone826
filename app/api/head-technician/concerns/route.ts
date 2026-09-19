@@ -186,12 +186,13 @@ export async function POST(request: Request) {
           message:      autoTitle,
           job_order_id: job_order_id.trim(),
           stage_id:     stage_id?.trim() || null,
+          concern_id:   concernId ?? null,
           is_read:      false,
         }))
         await admin.from("notification").insert(notifRows)
         await Promise.all(
           notifRows.map((n) =>
-            sendPushToUser(n.user_id, { title: "New concern", body: autoTitle, url: "/dashboard/concerns" })
+            sendPushToUser(n.user_id, { title: "New concern", body: autoTitle, url: concernId ? `/dashboard/concerns?concern=${concernId}` : "/dashboard/concerns" })
           )
         )
       }
