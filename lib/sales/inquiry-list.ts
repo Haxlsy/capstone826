@@ -29,7 +29,13 @@ export function newInquiryIds(prev: string[], next: string[]): string[] {
 export function resolveSelectedId(
   current: string | null,
   list: { id: string }[],
+  pendingRequest?: string | null,
 ): string | null {
+  if (pendingRequest) {
+    // A notification click asked for this inquiry: use it once it's in the
+    // list; until then keep waiting rather than snapping to the first row.
+    return list.some((i) => i.id === pendingRequest) ? pendingRequest : current
+  }
   if (current && list.some((i) => i.id === current)) return current
   return list.length > 0 ? list[0].id : null
 }

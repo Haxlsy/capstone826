@@ -3,6 +3,7 @@
 import { useEffect, useCallback, useState } from "react"
 import { createClient } from "@/lib/supabase/client"
 import { useRealtimeRefetch, useRealtimeSubscription } from "@/hooks/useRealtimeRefetch"
+import { emitAppEvent } from "@/lib/app-events"
 import { useOnlineStatus } from "@/hooks/useOnlineStatus"
 
 export interface Notification {
@@ -112,7 +113,12 @@ export function useNotifications() {
   useRealtimeSubscription({
     name: "notifications",
     bindings: userId ? [{ event: "INSERT", table: "notification", filter: `user_id=eq.${userId}` }] : [],
-    onChange: fetchNotifications,
+    // A new notification also nudges screens that mirror what it announces
+    // (Inquiry Management): this stream's RLS is trivial, so it is delivered
+    // more reliably than the inquiry table's own change event.
+    onChange: () => {
+      fetchNotifications().finally(() => emitAppEvent("notification-arrived"))
+    },
     onReconcile: fetchNotifications,
     catchUp: true,
     enabled: !!userId,
