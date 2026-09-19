@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useCallback, useRef } from "react"
 import { createClient } from "@/lib/supabase/client"
+import { useRealtimeSubscription } from "@/hooks/useRealtimeRefetch"
 import { useOnlineStatus } from "@/hooks/useOnlineStatus"
 import { isDeadSessionError } from "@/lib/auth/refresh-errors"
 
@@ -66,29 +67,14 @@ export function useSessionEnforcement() {
   }, [isOnline, checkStatus])
 
   // Realtime subscription — fires the instant a login (this account, any
-  // browser) writes a new session_token.
-  useEffect(() => {
-    if (!userId) return
-
-    const supabase = createClient()
-    const channel = supabase
-      .channel("session-enforcement")
-      .on(
-        "postgres_changes",
-        {
-          event: "*",
-          schema: "public",
-          table: "user_active_session",
-          filter: `user_id=eq.${userId}`,
-        },
-        () => {
-          checkStatus()
-        },
-      )
-      .subscribe()
-
-    return () => {
-      supabase.removeChannel(channel)
-    }
-  }, [userId, checkStatus])
+  // browser) writes a new session_token. A missed event would leave a
+  // superseded session logged in, so reconcile = re-check after any gap.
+  useRealtimeSubscription({
+    name: "session-enforcement",
+    bindings: userId ? [{ event: "*", table: "user_active_session", filter: `user_id=eq.${userId}` }] : [],
+    onChange: checkStatus,
+    onReconcile: checkStatus,
+    catchUp: true,
+    enabled: !!userId,
+  })
 }
