@@ -2,7 +2,8 @@
 
 import { useState, useEffect, useCallback, useRef } from "react"
 import { useRouter } from "next/navigation"
-import { createClient } from "@/lib/supabase/client"
+import { useRealtimeRefetch } from "@/hooks/useRealtimeRefetch"
+import { RealtimeStatusDot } from "@/components/shared/RealtimeStatusDot"
 import {
   ArrowRightLeft, Clock,
   CheckCircle2, ChevronRight, User, Car,
@@ -184,7 +185,11 @@ export default function InquiryManagement() {
       // Never move someone off the inquiry they are reading — only pick a row
       // when nothing is selected or the selection has disappeared.
       setSelectedId((current) => resolveSelectedId(current, shaped))
-    } catch {}
+    } catch (err) {
+      // Was swallowed: an expired session or network error made the list quietly
+      // stop updating while realtime events kept arriving.
+      console.warn("[inquiries] load failed", err)
+    }
     finally { if (!silent) setLoading(false) }
   }, [])
 
@@ -214,25 +219,9 @@ export default function InquiryManagement() {
   // per render: it previously depended on `load`, which was rebuilt whenever
   // `selectedId` changed, so the channel was torn down and reopened every time
   // someone clicked an inquiry.
-  const loadRef = useRef(load)
-  loadRef.current = load
-
-  useEffect(() => {
-    const supabase = createClient()
-
-    const channel = supabase
-      .channel("inquiries-realtime")
-      .on(
-        "postgres_changes",
-        { event: "*", schema: "public", table: "inquiry" },
-        () => { loadRef.current({ silent: true }) },
-      )
-      .subscribe()
-
-    return () => {
-      supabase.removeChannel(channel)
-    }
-  }, [])
+  // Supervised (recreated when it drops) and reconciled with a refetch after any
+  // gap — Realtime never replays what was missed. See lib/realtime/supervised-channel.ts.
+  useRealtimeRefetch("inquiry", () => { load({ silent: true }) }, { catchUp: true })
 
   useEffect(() => {
     const el = tabBarRef.current
@@ -346,6 +335,7 @@ export default function InquiryManagement() {
       <PageHeader
         title="Inquiry Management"
         subtitle="Escalated chatbot conversations requiring Sales action."
+        actions={<RealtimeStatusDot group="rt:inquiry" />}
       />
 
       {/* Stats */}
