@@ -70,3 +70,16 @@ describe("newInquiryToast", () => {
     expect(msg).toBe("2 new escalations")
   })
 })
+
+describe("resolveSelectedId with a pending request", () => {
+  const list = [{ id: "a" }, { id: "b" }]
+  it("selects the requested inquiry once it is in the list", () => {
+    expect(resolveSelectedId("a", list, "b")).toBe("b")
+  })
+  it("keeps waiting (does not snap to the first row) while it is not in the list", () => {
+    expect(resolveSelectedId("zzz", list, "zzz")).toBe("zzz")
+  })
+  it("falls back normally without a pending request", () => {
+    expect(resolveSelectedId("zzz", list)).toBe("a")
+  })
+})

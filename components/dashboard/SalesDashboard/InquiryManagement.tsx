@@ -1,7 +1,8 @@
 "use client"
 
 import { useState, useEffect, useCallback, useRef } from "react"
-import { useRouter } from "next/navigation"
+import { useRouter, useSearchParams } from "next/navigation"
+import { onAppEvent } from "@/lib/app-events"
 import { useRealtimeRefetch } from "@/hooks/useRealtimeRefetch"
 import { RealtimeStatusDot } from "@/components/shared/RealtimeStatusDot"
 import {
@@ -70,7 +71,10 @@ function getInitials(name: string) {
 export default function InquiryManagement() {
   const toast = useToast()
   const router = useRouter()
+  const searchParams = useSearchParams()
   const tabBarRef = useRef<HTMLDivElement>(null)
+  // Inquiry asked for by a notification click, until it is selected.
+  const requestedIdRef = useRef<string | null>(null)
   const [inquiries, setInquiries]   = useState<Inquiry[]>([])
   const [loading, setLoading]       = useState(true)
   const [activeTab, setActiveTab]   = useState<Tab>("all")
@@ -147,6 +151,7 @@ export default function InquiryManagement() {
    */
   const load = useCallback(async (opts?: { silent?: boolean }) => {
     const silent = opts?.silent === true
+    const requestAtStart = requestedIdRef.current
     if (!silent) setLoading(true)
     try {
       const res  = await fetch("/api/sales/inquiries")
@@ -184,7 +189,15 @@ export default function InquiryManagement() {
       setInquiries(shaped)
       // Never move someone off the inquiry they are reading — only pick a row
       // when nothing is selected or the selection has disappeared.
-      setSelectedId((current) => resolveSelectedId(current, shaped))
+      // A notification click may have asked for a specific inquiry. Keep waiting
+      // for it if this load started before the request or predates the row;
+      // give up (normal fallback) only after a load that started after the
+      // request still doesn't contain it.
+      const requested = requestedIdRef.current
+      const found = requested !== null && shaped.some((i) => i.id === requested)
+      const stillPending = requested !== null && !found && requestAtStart !== requested
+      setSelectedId((current) => resolveSelectedId(current, shaped, stillPending || found ? requested : null))
+      if (!stillPending) requestedIdRef.current = null
     } catch (err) {
       // Was swallowed: an expired session or network error made the list quietly
       // stop updating while realtime events kept arriving.
@@ -195,20 +208,35 @@ export default function InquiryManagement() {
 
   useEffect(() => { load() }, [load])
 
-  // Deep-link from a notification click (NotificationBell.tsx builds
-  // /dashboard/sales?inquiry={id}). Reads via window.location.search rather
-  // than useSearchParams() so this doesn't need a Suspense boundary — same
-  // pattern components/LoginPage.tsx uses for its own one-time query param.
-  // resolveSelectedId (above) keeps this selection once `load()` completes,
-  // as long as the inquiry is still in the list.
+  // Deep-link from a notification click (NotificationBell.tsx pushes
+  // /dashboard/sales?inquiry={id}). Driven by useSearchParams so a click while
+  // this page is already open works too, not just a fresh navigation. Clears
+  // the tab/search filters so the row is actually visible, and waits for the
+  // inquiry to arrive if it isn't in the list yet (see `load`).
+  const requestedParam = searchParams.get("inquiry")
   useEffect(() => {
-    const requested = new URLSearchParams(window.location.search).get("inquiry")
-    if (!requested) return
-    setSelectedId(requested)
+    if (!requestedParam) return
+    requestedIdRef.current = requestedParam
+    setActiveTab("all")
+    setSearch("")
+    setSelectedId(requestedParam)
+    if (!inquiriesRef.current.some((i) => i.id === requestedParam)) load({ silent: true })
+    else requestedIdRef.current = null
     const url = new URL(window.location.href)
     url.searchParams.delete("inquiry")
     router.replace(url.pathname + url.search)
-  }, [router])
+  }, [requestedParam, router, load])
+
+  // Bring the selected row into view (e.g. after a notification click) — only
+  // when the selection itself changes, so scrolling the list isn't fought.
+  useEffect(() => {
+    if (!selectedId) return
+    document.querySelector(`[data-inquiry-id="${selectedId}"]`)?.scrollIntoView({ block: "nearest" })
+  }, [selectedId, loading])
+
+  // A new notification (delivered on a lighter RLS path than this table's own
+  // change event) is also a cue to refetch.
+  useEffect(() => onAppEvent("notification-arrived", () => { load({ silent: true }) }), [load])
 
   // Realtime: new escalations and status changes made by other staff.
   //
@@ -391,6 +419,7 @@ export default function InquiryManagement() {
               filtered.map((inq) => (
                 <button
                   key={inq.id}
+                  data-inquiry-id={inq.id}
                   onClick={() => setSelectedId(inq.id)}
                   className={cn(
                     "w-full text-left px-4 py-3.5 flex items-start gap-3 hover:bg-surface-muted transition-colors",
