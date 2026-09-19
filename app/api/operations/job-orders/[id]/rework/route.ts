@@ -1,3 +1,4 @@
+import { notifyJobStatusChange } from "@/lib/notify-job-status"
 import { NextResponse } from "next/server"
 import { cookies } from "next/headers"
 import { createClient } from "@/lib/supabase/server"
@@ -104,6 +105,15 @@ export async function POST(
         target:    jobRow?.customer_name ?? jobId,
       })
     }
+
+    // Other Operations users hear about it too (job pages aren't realtime).
+    await notifyJobStatusChange(admin, {
+      jobId,
+      jobLabel: jobRow?.customer_name ?? jobId,
+      to: "For Rework",
+      actorId: user.id,
+      message: `Job ${jobRow?.customer_name ?? jobId} was sent back for rework. Instructions: ${rework_instructions.trim()}`,
+    })
 
     return NextResponse.json({ success: true })
   } catch (err: unknown) {

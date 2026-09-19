@@ -1,6 +1,7 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
+import { useRouter, useSearchParams } from "next/navigation"
 import { useQueryClient } from "@tanstack/react-query"
 import { Paperclip, ArrowRight } from "lucide-react"
 import { ConcernsSkeleton } from "@/app/dashboard/concerns/loading"
@@ -28,6 +29,34 @@ export default function JobConcerns({ initialRecords }: { initialRecords: Concer
   const [currentPage, setCurrentPage] = useState(1)
   const [pageSize, setPageSize] = useState(15)
   const [selected, setSelected] = useState<ConcernRecord | null>(null)
+
+  // Deep-link from a notification (?concern=<id>) — works on arrival and when
+  // already on this page. Waits for the record to be in the list (a concern
+  // submitted seconds ago may not be yet; a refetch is triggered for it).
+  const router = useRouter()
+  const requestedConcern = useSearchParams().get("concern")
+  const [handledConcern, setHandledConcern] = useState<string | null>(null)
+  const requestedRecord = requestedConcern ? recordsData.find((r) => r.id === requestedConcern) : undefined
+  // Param stripped → allow the same concern to be opened again by a later click.
+  if (!requestedConcern && handledConcern !== null) setHandledConcern(null)
+  if (requestedConcern && requestedConcern !== handledConcern && requestedRecord) {
+    // Adjusting state while rendering (React's documented pattern for
+    // "derive from a prop change") instead of a setState-in-effect.
+    setHandledConcern(requestedConcern)
+    setActiveFilter("All")
+    setSearchQuery("")
+    setSelected(requestedRecord)
+  }
+  useEffect(() => {
+    if (!requestedConcern) return
+    if (!requestedRecord) {
+      queryClient.invalidateQueries({ queryKey: ["concerns"] })
+      return
+    }
+    const url = new URL(window.location.href)
+    url.searchParams.delete("concern")
+    router.replace(url.pathname + url.search)
+  }, [requestedConcern, requestedRecord, queryClient, router])
 
   function handleResolve(id: string, note: string) {
     // Patch the list itself, not just the open drawer's local copy — while

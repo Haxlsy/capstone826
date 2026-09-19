@@ -12,22 +12,7 @@ import {
 import type { Notification } from "@/hooks/useNotifications"
 import { useCurrentUser } from "@/hooks/useCurrentUser"
 import { cn } from "@/lib/utils"
-
-// Same job_order_id means a different route depending on who's looking.
-// "inquiry" notifications (Sales, messenger escalations) have no job order —
-// deep-link to the specific inquiry when we have its id, otherwise fall back
-// to the general Sales page (older notifications, or a failed id capture).
-function getNotificationHref(n: Notification, role: string): string | null {
-  if (n.job_order_id) {
-    if (role === "sales") return `/dashboard/sales/jobs/${n.job_order_id}`
-    if (role === "head_detailer" || role === "head_installer") return `/head-technician/${n.job_order_id}`
-    return `/dashboard/job-management/${n.job_order_id}` // operations, admin, super_admin
-  }
-  if (n.type === "inquiry") {
-    return n.inquiry_id ? `/dashboard/sales?inquiry=${n.inquiry_id}` : "/dashboard/sales"
-  }
-  return null
-}
+import { getNotificationHref } from "@/lib/notification-href"
 
 const dotStyles: Record<string, string> = {
   info: "bg-status-info",

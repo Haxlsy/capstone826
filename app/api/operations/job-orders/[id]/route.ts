@@ -1,3 +1,4 @@
+import { notifyJobStatusChange } from "@/lib/notify-job-status"
 import { NextResponse } from "next/server"
 import { cookies } from "next/headers"
 import { createClient } from "@/lib/supabase/server"
@@ -242,6 +243,15 @@ export async function PATCH(
           target:    current?.customer_name ?? id,
         })
       }
+
+      // Tell the rest of the Operations team (not the person who did it).
+      await notifyJobStatusChange(admin, {
+        jobId:    id,
+        jobLabel: current?.job_order_code ?? current?.customer_name ?? id,
+        from:     current?.status,
+        to:       newStatus,
+        actorId:  user.id,
+      })
 
       // ── Customer-facing status messages ────────────────────────────────────
       // "For Release" → ready-for-pickup, "Released" → thank-you. Wrapped so a

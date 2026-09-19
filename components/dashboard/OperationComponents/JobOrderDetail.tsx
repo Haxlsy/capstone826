@@ -16,6 +16,7 @@ import { StatusBadge, Badge } from "@/components/ui/Badge"
 import { Textarea, Input } from "@/components/ui/Field"
 import { EmptyState } from "@/components/ui/EmptyState"
 import { useToast } from "@/components/ui/Toast"
+import { substituteRoleLabel } from "@/lib/substitute-label"
 import { cn } from "@/lib/utils"
 import { statusStyle } from "@/lib/ui/status"
 import { displayJobStatus } from "@/lib/job-delay"
@@ -706,18 +707,16 @@ export default function JobOrderDetail({
             <CrewCell
               label="Head Detailer"
               lead={job.head_detailer?.full_name ?? "Unassigned"}
-              crew={[
-                ...job.head_detailer_substitutes.map((s) => ({ id: s.id, name: `${s.full_name} (substitute)` })),
-                ...job.detailers,
-              ]}
+              substituteLabel={substituteRoleLabel("head_detailer")}
+              substitutes={job.head_detailer_substitutes.map((s) => ({ id: s.id, name: s.full_name }))}
+              crew={job.detailers}
             />
             <CrewCell
               label="Head Installer"
               lead={job.head_installer?.full_name ?? "Unassigned"}
-              crew={[
-                ...job.head_installer_substitutes.map((s) => ({ id: s.id, name: `${s.full_name} (substitute)` })),
-                ...job.installers,
-              ]}
+              substituteLabel={substituteRoleLabel("head_installer")}
+              substitutes={job.head_installer_substitutes.map((s) => ({ id: s.id, name: s.full_name }))}
+              crew={job.installers}
             />
             <InfoCell label="Started" value={fmtDateTime(job.actual_start_at)} />
             <InfoCell label="Est. Completion" value={fmtDateTime(job.expected_completion_at)} />
@@ -1252,10 +1251,15 @@ function CrewCell({
   label,
   lead,
   crew,
+  substitutes = [],
+  substituteLabel,
 }: {
   label: string
   lead: string
   crew: { id: string; name: string }[]
+  /** Substitute head technicians — always visible, never folded into the crew list. */
+  substitutes?: { id: string; name: string }[]
+  substituteLabel?: string
 }) {
   const [open, setOpen] = useState(false)
   const collapsible = crew.length >= 2
@@ -1264,6 +1268,18 @@ function CrewCell({
     <div>
       <p className="mb-0.5 text-xs uppercase tracking-wide text-muted">{label}</p>
       <p className="font-medium text-body">{lead}</p>
+      {substitutes.length > 0 && (
+        <ul className="mt-1 space-y-1">
+          {substitutes.map((sub) => (
+            <li key={sub.id} className="flex flex-wrap items-center gap-1.5 text-sm text-body">
+              <span className="rounded-full bg-status-info/15 px-2 py-0.5 text-[11px] font-semibold text-status-info">
+                {substituteLabel ?? "Substitute"}
+              </span>
+              {sub.name}
+            </li>
+          ))}
+        </ul>
+      )}
       {crew.length > 0 && (
         <div className="mt-1">
           {collapsible ? (
