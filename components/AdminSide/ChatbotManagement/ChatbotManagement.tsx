@@ -3,11 +3,13 @@
 import { useState, useEffect, useMemo } from "react"
 import { useRealtimeRefetch } from "@/hooks/useRealtimeRefetch"
 import {
-  Bot, BookOpen, Save, Plus, Pencil, Trash2, X, Check,
+  Bot, BookOpen, Save, Plus, Pencil, Trash2, Check,
   ChevronDown, ChevronUp, MessageSquare, Settings, AlertTriangle,
   Globe, SlidersHorizontal, Users, Search,
 } from "lucide-react"
 import MessageTemplates from "./MessageTemplates"
+import { Modal } from "@/components/ui/Modal"
+import { Button } from "@/components/ui/Button"
 import ChatbotPreview from "./ChatbotPreview"
 import { useToast } from "@/components/ui/Toast"
 import {
@@ -193,13 +195,14 @@ export default function ChatbotManagement() {
   }
 
   // KB helpers
-  function openAdd() { setForm(EMPTY_KB_FORM); setEditId(null); setAddOpen(true) }
+  function openAdd() { setForm(EMPTY_KB_FORM); setEditId(null); setKbError(null); setAddOpen(true) }
   function openEdit(entry: KBEntry) {
     setForm({ category: entry.category, topic: entry.topic, content: entry.content })
     setEditId(entry.id)
+    setKbError(null)
     setAddOpen(true)
   }
-  function closeForm() { setAddOpen(false); setEditId(null); setForm(EMPTY_KB_FORM) }
+  function closeForm() { setKbError(null); setAddOpen(false); setEditId(null); setForm(EMPTY_KB_FORM) }
 
   async function saveEntry() {
     if (!form.topic.trim() || !form.content.trim() || kbSaving) return
@@ -531,37 +534,55 @@ export default function ChatbotManagement() {
             </select>
           </div>
 
-          {kbError && (
+          {kbError && !addOpen && (
             <div className="flex items-center gap-2 px-4 py-2.5 bg-status-delayed/10 border border-status-delayed/30 rounded-card text-sm text-status-delayed">
               <AlertTriangle className="w-4 h-4 shrink-0" />
               {kbError}
             </div>
           )}
 
-          {addOpen && (
-            <div className="bg-surface border border-border rounded-card p-5 space-y-4">
-              <div className="flex items-center justify-between">
-                <p className="text-sm font-semibold text-heading">{editId ? "Edit Entry" : "New Entry"}</p>
-                <button onClick={closeForm} className="text-muted hover:text-body"><X className="w-4 h-4" /></button>
-              </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div className="flex flex-col gap-1.5">
-                  <label className="text-xs font-medium text-body">Category</label>
-                  <select
-                    value={form.category}
-                    onChange={(e) => setForm((f) => ({ ...f, category: e.target.value as KBCategory }))}
-                    className="border border-border rounded-sm px-3 py-2 text-sm text-body bg-surface focus:outline-none focus:ring-2 focus:ring-primary/30"
-                  >
-                    {KB_CATEGORIES.map((c) => (
-                      <option key={c} value={c}>{c}</option>
-                    ))}
-                  </select>
+          <Modal
+            open={addOpen}
+            onClose={kbSaving ? undefined : closeForm}
+            title={editId ? "Edit Entry" : "New Entry"}
+            size="md"
+            footer={
+              <>
+                <Button variant="ghost" onClick={closeForm} disabled={kbSaving}>Cancel</Button>
+                <Button onClick={saveEntry} disabled={!form.topic.trim() || !form.content.trim() || kbSaving}>
+                  <Check className="w-3.5 h-3.5" />
+                  {kbSaving ? "Saving…" : editId ? "Save Changes" : "Add Entry"}
+                </Button>
+              </>
+            }
+          >
+            <form
+              className="space-y-4"
+              onSubmit={(e) => { e.preventDefault(); saveEntry() }}
+            >
+              {kbError && (
+                <div className="flex items-center gap-2 px-4 py-2.5 bg-status-delayed/10 border border-status-delayed/30 rounded-card text-sm text-status-delayed">
+                  <AlertTriangle className="w-4 h-4 shrink-0" />
+                  {kbError}
                 </div>
+              )}
+              <div className="flex flex-col gap-1.5">
+                <label className="text-xs font-medium text-body">Category</label>
+                <select
+                  value={form.category}
+                  onChange={(e) => setForm((f) => ({ ...f, category: e.target.value as KBCategory }))}
+                  className="border border-border rounded-sm px-3 py-2 text-sm text-body bg-surface focus:outline-none focus:ring-2 focus:ring-primary/30"
+                >
+                  {KB_CATEGORIES.map((c) => (
+                    <option key={c} value={c}>{c}</option>
+                  ))}
+                </select>
               </div>
               <div className="flex flex-col gap-1.5">
                 <label className="text-xs font-medium text-body">Question / Topic</label>
                 <input
                   type="text"
+                  autoFocus={!editId}
                   value={form.topic}
                   onChange={(e) => setForm((f) => ({ ...f, topic: e.target.value }))}
                   placeholder="e.g., What are your business hours?"
@@ -573,26 +594,13 @@ export default function ChatbotManagement() {
                 <textarea
                   value={form.content}
                   onChange={(e) => setForm((f) => ({ ...f, content: e.target.value }))}
-                  rows={4}
+                  rows={5}
                   placeholder="Enter the chatbot's response for this topic…"
                   className="border border-border rounded-sm px-3 py-2 text-sm text-body focus:outline-none focus:ring-2 focus:ring-primary/30 resize-none"
                 />
               </div>
-              <div className="flex items-center gap-3 pt-1">
-                <button
-                  onClick={saveEntry}
-                  disabled={!form.topic.trim() || !form.content.trim() || kbSaving}
-                  className="flex items-center gap-2 px-4 py-2 bg-primary text-white text-sm font-medium rounded-sm hover:bg-primary-hover disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-                >
-                  <Check className="w-3.5 h-3.5" />
-                  {kbSaving ? "Saving…" : editId ? "Save Changes" : "Add Entry"}
-                </button>
-                <button onClick={closeForm} className="px-4 py-2 text-sm text-body border border-border rounded-sm hover:bg-surface-muted transition-colors">
-                  Cancel
-                </button>
-              </div>
-            </div>
-          )}
+            </form>
+          </Modal>
 
           <div className="flex flex-col gap-2">
             {kbLoading && !kbError && (
