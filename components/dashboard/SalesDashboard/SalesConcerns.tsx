@@ -113,7 +113,7 @@ export default function SalesConcerns({ initialRecords }: { initialRecords: Conc
   // Shares the exact same cached + realtime-refetched query Operations'
   // Job Concerns page uses (hooks/use-concerns.ts) — same `concern` table,
   // no reason to maintain a second copy of this live-data logic.
-  const { data: records = [] } = useConcerns(initialRecords)
+  const { data: records = [] } = useConcerns(initialRecords, { endpoint: "/api/sales/concerns" })
   const [activeFilter, setActiveFilter] = useState<FilterType>("All")
   const [searchQuery, setSearchQuery] = useState("")
   const [currentPage, setCurrentPage] = useState(1)
