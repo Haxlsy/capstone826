@@ -9,6 +9,7 @@ import { cn } from "@/lib/utils"
 import { statusStyle } from "@/lib/ui/status"
 import { displayJobStatus } from "@/lib/job-delay"
 import { useRealtimeRefetch } from "@/hooks/useRealtimeRefetch"
+import { categorySwatch } from "@/lib/ui/category-colors"
 
 interface StageMedia {
   id:         string
@@ -20,7 +21,9 @@ interface Stage {
   id:                  string
   name:                string
   sequence_order:      number
+  category_id:         string | null
   category_name:       string | null
+  category_color:      string | null
   status:              string
   rework_instructions: string | null
   handoff_notes:       string | null
@@ -68,8 +71,8 @@ function StageIcon({ status }: { status: string }) {
   return <div className="w-4 h-4 rounded-full border-2 border-border shrink-0" />
 }
 
-function SectionCollapse({ title, count, children, accent }: {
-  title: string; count: number; children: React.ReactNode; accent: string
+function SectionCollapse({ title, count, children, color }: {
+  title: string; count: number; children: React.ReactNode; color: string | null
 }) {
   const [open, setOpen] = useState(true)
   return (
@@ -80,7 +83,8 @@ function SectionCollapse({ title, count, children, accent }: {
         className="w-full flex items-center justify-between px-4 py-3 bg-surface-subtle hover:bg-surface-muted transition-colors"
       >
         <div className="flex items-center gap-2">
-          <span className={`text-xs font-bold uppercase tracking-widest ${accent}`}>{title}</span>
+          <span className={`h-2 w-2 shrink-0 rounded-full ${categorySwatch(color).dot}`} />
+          <span className="text-xs font-bold uppercase tracking-widest text-heading">{title}</span>
           <span className="text-xs text-muted">({count} stages)</span>
         </div>
         <ChevronDown className={`w-4 h-4 text-muted transition-transform ${open ? "rotate-180" : ""}`} />
@@ -116,9 +120,23 @@ export default function SalesJobDetail({ job: initialJob }: { job: JobDetail }) 
   useRealtimeRefetch(["job_stage_progress", "job_order"], load)
 
   const displayId   = job.job_order_code
-  const prepStages  = job.stages.filter((s) => s.category_name?.toLowerCase() === "preparation")
-  const instStages  = job.stages.filter((s) => s.category_name?.toLowerCase() === "installation")
-  const finStages   = job.stages.filter((s) => s.category_name?.toLowerCase() === "finishing")
+  // Workflow categories are admin-defined (workflow_category table), not a
+  // fixed Preparation/Installation/Finishing set — group by whatever each
+  // stage's category actually is, in workflow order. (This used to match three
+  // hardcoded names, so a stage in any other category — e.g. "Quality Check" —
+  // was counted in the progress bar but never rendered.)
+  const stageGroups = (() => {
+    const groups = new Map<string, { key: string; name: string; color: string | null; stages: Stage[] }>()
+    const ordered = [...job.stages].sort((a, b) => a.sequence_order - b.sequence_order)
+    for (const s of ordered) {
+      const key = s.category_id ?? `_${s.category_name ?? "other"}`
+      if (!groups.has(key)) {
+        groups.set(key, { key, name: s.category_name ?? "Other", color: s.category_color ?? null, stages: [] })
+      }
+      groups.get(key)!.stages.push(s)
+    }
+    return [...groups.values()]
+  })()
   const totalStages = job.stages.length
   const doneStages  = job.stages.filter((s) => s.status === "done").length
   const progress    = totalStages > 0 ? Math.round((doneStages / totalStages) * 100) : 0
@@ -215,23 +233,11 @@ export default function SalesJobDetail({ job: initialJob }: { job: JobDetail }) 
       <div className="flex flex-col gap-3">
         <p className="text-xs font-semibold text-muted uppercase tracking-wide">Workflow Stages</p>
 
-        {prepStages.length > 0 && (
-          <SectionCollapse title="Preparation" count={prepStages.length} accent="text-primary">
-            {prepStages.map((s) => <StageRow key={s.id} stage={s} />)}
+        {stageGroups.map((g) => (
+          <SectionCollapse key={g.key} title={g.name} count={g.stages.length} color={g.color}>
+            {g.stages.map((s) => <StageRow key={s.id} stage={s} />)}
           </SectionCollapse>
-        )}
-
-        {instStages.length > 0 && (
-          <SectionCollapse title="Installation" count={instStages.length} accent="text-status-concern">
-            {instStages.map((s) => <StageRow key={s.id} stage={s} />)}
-          </SectionCollapse>
-        )}
-
-        {finStages.length > 0 && (
-          <SectionCollapse title="Finishing" count={finStages.length} accent="text-status-inspection">
-            {finStages.map((s) => <StageRow key={s.id} stage={s} />)}
-          </SectionCollapse>
-        )}
+        ))}
 
         {job.stages.length === 0 && (
           <p className="text-sm text-muted text-center py-6">No stages found for this job.</p>
