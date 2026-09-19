@@ -8,7 +8,7 @@ import {
   Globe, SlidersHorizontal, Users, Search,
 } from "lucide-react"
 import MessageTemplates from "./MessageTemplates"
-import { Modal } from "@/components/ui/Modal"
+import { Modal, ConfirmModal } from "@/components/ui/Modal"
 import { Button } from "@/components/ui/Button"
 import ChatbotPreview from "./ChatbotPreview"
 import { useToast } from "@/components/ui/Toast"
@@ -244,6 +244,7 @@ export default function ChatbotManagement() {
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Failed to delete entry."
       setKbError(msg)
+      setDeleteConfirmId(null) // close so the error banner behind the overlay is visible
     } finally {
       setKbSaving(false)
     }
@@ -602,6 +603,26 @@ export default function ChatbotManagement() {
             </form>
           </Modal>
 
+          <ConfirmModal
+            open={deleteConfirmId !== null}
+            onClose={() => setDeleteConfirmId(null)}
+            onConfirm={() => { if (deleteConfirmId) deleteEntry(deleteConfirmId) }}
+            title="Remove this entry?"
+            message={
+              <>
+                <span className="font-medium text-heading">
+                  {kbEntries.find((e) => e.id === deleteConfirmId)?.topic}
+                </span>
+                <br />
+                The chatbot will no longer use it to answer customers. This can&apos;t be undone.
+              </>
+            }
+            confirmLabel="Remove"
+            tone="danger"
+            icon={Trash2}
+            loading={kbSaving}
+          />
+
           <div className="flex flex-col gap-2">
             {kbLoading && !kbError && (
               <div className="text-center py-10 text-sm text-muted">Loading knowledge base…</div>
@@ -635,7 +656,6 @@ export default function ChatbotManagement() {
                     <div className="flex flex-col gap-2 pl-3">
                       {group.entries.map((entry) => {
                         const isExpanded = expandedId === entry.id
-                        const isDeleteConfirm = deleteConfirmId === entry.id
                         return (
                           <div key={entry.id} className="bg-surface border border-border rounded-card overflow-hidden">
                             <div
@@ -656,15 +676,6 @@ export default function ChatbotManagement() {
                             {isExpanded && (
                               <div className="px-5 pb-4 pt-0 border-t border-border-subtle">
                                 <p className="text-sm text-body leading-relaxed mt-3">{entry.content}</p>
-                              </div>
-                            )}
-                            {isDeleteConfirm && (
-                              <div className="px-5 py-3 bg-status-delayed/10 border-t border-status-delayed/30 flex items-center justify-between">
-                                <p className="text-sm text-status-delayed">Remove this entry?</p>
-                                <div className="flex gap-2">
-                                  <button onClick={() => deleteEntry(entry.id)} disabled={kbSaving} className="px-3 py-1.5 text-xs font-medium bg-status-delayed text-white rounded-sm hover:brightness-95 transition-colors">Remove</button>
-                                  <button onClick={() => setDeleteConfirmId(null)} className="px-3 py-1.5 text-xs font-medium border border-border text-body rounded-sm hover:bg-surface transition-colors">Cancel</button>
-                                </div>
                               </div>
                             )}
                           </div>

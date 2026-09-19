@@ -1,3 +1,5 @@
+import { UNKNOWN_MESSENGER_NAME } from "@/types/chatbot"
+
 const GRAPH_API_URL = "https://graph.facebook.com/v19.0/me/messages"
 
 export interface MessengerQuickReply {
@@ -205,7 +207,7 @@ export async function fetchMessengerProfile(psid: string): Promise<{
   profile_pic: string | null
 }> {
   const token = process.env.META_PAGE_ACCESS_TOKEN
-  if (!token) return { name: "Messenger User", profile_pic: null }
+  if (!token) return { name: UNKNOWN_MESSENGER_NAME, profile_pic: null }
 
   try {
     const res = await fetch(
@@ -213,10 +215,10 @@ export async function fetchMessengerProfile(psid: string): Promise<{
     )
     const json = await res.json().catch(() => null)
     return {
-      name:        json?.name ?? "Messenger User",
+      name:        json?.name ?? UNKNOWN_MESSENGER_NAME,
       profile_pic: json?.profile_pic ?? null,
     }
   } catch {
-    return { name: "Messenger User", profile_pic: null }
+    return { name: UNKNOWN_MESSENGER_NAME, profile_pic: null }
   }
 }
