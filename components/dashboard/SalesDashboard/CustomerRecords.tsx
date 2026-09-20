@@ -281,41 +281,36 @@ export default function CustomerRecords() {
                     const isEditing = editingId === record.id
                     const isLocked = Boolean(record.activeJobOrderCode)
                     return (
-                      <div key={record.id} className="flex flex-wrap items-center gap-x-6 gap-y-2 px-5 py-3">
-                        <div className="flex flex-col gap-1 min-w-[160px]">
-                          <div className="flex items-center gap-2">
-                            <Car className="h-3.5 w-3.5 shrink-0 text-muted" />
-                            {isEditing ? (
-                              <Input
-                                aria-label="Plate number"
-                                maxLength={50}
-                                className={cn(editCell, "w-28")}
-                                value={editDraft.plateNumber ?? ""}
-                                onChange={(e) => setEditDraft((d) => ({ ...d, plateNumber: e.target.value }))}
-                              />
-                            ) : (
-                              <span className="font-mono font-medium text-body">{record.plateNumber}</span>
-                            )}
-                            {isEditing ? (
-                              <Input
-                                aria-label="Vehicle unit"
-                                maxLength={255}
-                                className={cn(editCell, "w-36")}
-                                value={editDraft.vehicleUnit ?? ""}
-                                onChange={(e) => setEditDraft((d) => ({ ...d, vehicleUnit: e.target.value }))}
-                              />
-                            ) : (
-                              <span className="text-body">{record.vehicleUnit}</span>
-                            )}
-                          </div>
-                          {isLocked && (
-                            <span
-                              className="inline-flex w-fit items-center gap-1 rounded-full bg-status-warning/15 px-2 py-0.5 text-[10px] font-semibold text-status-warning"
-                              title={lockedEditMessage(record.activeJobOrderCode as string)}
-                            >
-                              <Lock className="h-2.5 w-2.5" />
-                              In Service — {record.activeJobOrderCode}
-                            </span>
+                      <div
+                        key={record.id}
+                        className={cn(
+                          "flex flex-wrap items-center gap-x-6 gap-y-2 px-5 py-3",
+                          isLocked && "border-l-2 border-status-warning bg-status-warning/5",
+                        )}
+                      >
+                        <div className="flex items-center gap-2 min-w-[160px]">
+                          <Car className="h-3.5 w-3.5 shrink-0 text-muted" />
+                          {isEditing ? (
+                            <Input
+                              aria-label="Plate number"
+                              maxLength={50}
+                              className={cn(editCell, "w-28")}
+                              value={editDraft.plateNumber ?? ""}
+                              onChange={(e) => setEditDraft((d) => ({ ...d, plateNumber: e.target.value }))}
+                            />
+                          ) : (
+                            <span className="font-mono font-medium text-body">{record.plateNumber}</span>
+                          )}
+                          {isEditing ? (
+                            <Input
+                              aria-label="Vehicle unit"
+                              maxLength={255}
+                              className={cn(editCell, "w-36")}
+                              value={editDraft.vehicleUnit ?? ""}
+                              onChange={(e) => setEditDraft((d) => ({ ...d, vehicleUnit: e.target.value }))}
+                            />
+                          ) : (
+                            <span className="text-body">{record.vehicleUnit}</span>
                           )}
                         </div>
 
@@ -353,7 +348,7 @@ export default function CustomerRecords() {
 
                         <span className="text-xs text-muted">{record.createdAt}</span>
 
-                        <div className="ml-auto flex flex-col gap-1">
+                        <div className="ml-auto flex items-center gap-3">
                           {isEditing ? (
                             <>
                               <div className="flex items-center gap-2">
@@ -368,15 +363,27 @@ export default function CustomerRecords() {
                               {saveErr && <p className="text-[11px] text-status-delayed">{saveErr}</p>}
                             </>
                           ) : (
-                            <Button
-                              size="sm"
-                              variant="subtle"
-                              onClick={() => startEdit(record)}
-                              disabled={isLocked}
-                              title={isLocked ? lockedEditMessage(record.activeJobOrderCode as string) : undefined}
-                            >
-                              <Pencil className="h-3.5 w-3.5" /> Edit
-                            </Button>
+                            <>
+                              {isLocked && (
+                                <span
+                                  className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-full bg-status-warning/15 px-2.5 py-1 text-[11px] font-semibold text-status-warning"
+                                  title={lockedEditMessage(record.activeJobOrderCode as string)}
+                                >
+                                  <Lock className="h-3 w-3" />
+                                  In Service
+                                  <span className="font-mono font-medium opacity-80">· {record.activeJobOrderCode}</span>
+                                </span>
+                              )}
+                              <Button
+                                size="sm"
+                                variant="subtle"
+                                onClick={() => startEdit(record)}
+                                disabled={isLocked}
+                                title={isLocked ? lockedEditMessage(record.activeJobOrderCode as string) : undefined}
+                              >
+                                <Pencil className="h-3.5 w-3.5" /> Edit
+                              </Button>
+                            </>
                           )}
                         </div>
                       </div>
