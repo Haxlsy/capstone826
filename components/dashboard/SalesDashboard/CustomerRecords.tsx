@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback, useMemo } from "react"
 import { useRealtimeRefetch } from "@/hooks/useRealtimeRefetch"
-import { Car, Phone, Mail, Pencil, X, Check, ChevronDown, ChevronUp } from "lucide-react"
+import { Car, Phone, Mail, Pencil, X, Check, ChevronDown, ChevronUp, Lock } from "lucide-react"
 import { getInitials } from "@/hooks/useCurrentUser"
 import { fmtDate } from "@/lib/time-display"
 import { groupByCustomer } from "@/lib/customer-grouping"
@@ -15,6 +15,7 @@ import { EmptyState } from "@/components/ui/EmptyState"
 import { useToast } from "@/components/ui/Toast"
 import { cn } from "@/lib/utils"
 import { LinkAccountModal } from "./LinkAccountModal"
+import { lockedEditMessage } from "@/lib/sales/customer-record-lock"
 import { CustomerRecordsListSkeleton } from "@/app/dashboard/sales/customer-records/loading"
 
 interface CustomerRecord {
@@ -26,6 +27,8 @@ interface CustomerRecord {
   vehicleUnit: string
   psid: string | null
   createdAt: string
+  /** job_order_code of the active job order this vehicle is linked to, if any. */
+  activeJobOrderCode: string | null
 }
 
 
@@ -61,6 +64,7 @@ export default function CustomerRecords() {
       vehicleUnit: r.vehicle_unit,
       psid: r.psid ?? null,
       createdAt: fmtDate(r.created_at),
+      activeJobOrderCode: r.active_job_order_code ?? null,
     }))
   }
 
@@ -133,7 +137,10 @@ export default function CustomerRecords() {
 
   // Live updates when a record is created from an inquiry or edited elsewhere.
   // Re-runs with the active search term so the visible filter is preserved.
-  useRealtimeRefetch("customer_record", () => load(search))
+  // Also refetch on job_order changes — a vehicle's lock (see below) appears
+  // the moment a new job is created against it and clears the moment that
+  // job is Released/Cancelled, without a manual refresh.
+  useRealtimeRefetch(["customer_record", "job_order"], () => load(search))
 
   const groups = useMemo(
     () => groupByCustomer(records, (r) => r.id, (r) => r.contactNumber, (r) => r.psid),
@@ -141,6 +148,7 @@ export default function CustomerRecords() {
   )
 
   function startEdit(record: CustomerRecord) {
+    if (record.activeJobOrderCode) return // defense in depth — the button is already disabled
     setEditingId(record.id)
     setEditDraft({
       fullName: record.fullName,
@@ -271,31 +279,43 @@ export default function CustomerRecords() {
                 <div className="divide-y divide-border-subtle border-t border-border-subtle">
                   {group.vehicles.map((record) => {
                     const isEditing = editingId === record.id
+                    const isLocked = Boolean(record.activeJobOrderCode)
                     return (
                       <div key={record.id} className="flex flex-wrap items-center gap-x-6 gap-y-2 px-5 py-3">
-                        <div className="flex items-center gap-2 min-w-[160px]">
-                          <Car className="h-3.5 w-3.5 shrink-0 text-muted" />
-                          {isEditing ? (
-                            <Input
-                              aria-label="Plate number"
-                              maxLength={50}
-                              className={cn(editCell, "w-28")}
-                              value={editDraft.plateNumber ?? ""}
-                              onChange={(e) => setEditDraft((d) => ({ ...d, plateNumber: e.target.value }))}
-                            />
-                          ) : (
-                            <span className="font-mono font-medium text-body">{record.plateNumber}</span>
-                          )}
-                          {isEditing ? (
-                            <Input
-                              aria-label="Vehicle unit"
-                              maxLength={255}
-                              className={cn(editCell, "w-36")}
-                              value={editDraft.vehicleUnit ?? ""}
-                              onChange={(e) => setEditDraft((d) => ({ ...d, vehicleUnit: e.target.value }))}
-                            />
-                          ) : (
-                            <span className="text-body">{record.vehicleUnit}</span>
+                        <div className="flex flex-col gap-1 min-w-[160px]">
+                          <div className="flex items-center gap-2">
+                            <Car className="h-3.5 w-3.5 shrink-0 text-muted" />
+                            {isEditing ? (
+                              <Input
+                                aria-label="Plate number"
+                                maxLength={50}
+                                className={cn(editCell, "w-28")}
+                                value={editDraft.plateNumber ?? ""}
+                                onChange={(e) => setEditDraft((d) => ({ ...d, plateNumber: e.target.value }))}
+                              />
+                            ) : (
+                              <span className="font-mono font-medium text-body">{record.plateNumber}</span>
+                            )}
+                            {isEditing ? (
+                              <Input
+                                aria-label="Vehicle unit"
+                                maxLength={255}
+                                className={cn(editCell, "w-36")}
+                                value={editDraft.vehicleUnit ?? ""}
+                                onChange={(e) => setEditDraft((d) => ({ ...d, vehicleUnit: e.target.value }))}
+                              />
+                            ) : (
+                              <span className="text-body">{record.vehicleUnit}</span>
+                            )}
+                          </div>
+                          {isLocked && (
+                            <span
+                              className="inline-flex w-fit items-center gap-1 rounded-full bg-status-warning/15 px-2 py-0.5 text-[10px] font-semibold text-status-warning"
+                              title={lockedEditMessage(record.activeJobOrderCode as string)}
+                            >
+                              <Lock className="h-2.5 w-2.5" />
+                              In Service — {record.activeJobOrderCode}
+                            </span>
                           )}
                         </div>
 
@@ -348,7 +368,13 @@ export default function CustomerRecords() {
                               {saveErr && <p className="text-[11px] text-status-delayed">{saveErr}</p>}
                             </>
                           ) : (
-                            <Button size="sm" variant="subtle" onClick={() => startEdit(record)}>
+                            <Button
+                              size="sm"
+                              variant="subtle"
+                              onClick={() => startEdit(record)}
+                              disabled={isLocked}
+                              title={isLocked ? lockedEditMessage(record.activeJobOrderCode as string) : undefined}
+                            >
                               <Pencil className="h-3.5 w-3.5" /> Edit
                             </Button>
                           )}

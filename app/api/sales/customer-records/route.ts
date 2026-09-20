@@ -4,6 +4,7 @@ import { requireAuditCaller, getRoleCaller } from "@/lib/auth/caller"
 import { logAuditCall } from "@/hooks/audit-helpers"
 import { normalizePhone } from "@/lib/phone"
 import { CreateCustomerRecordSchema } from "./schema"
+import { findActiveJobsByCustomerRecord } from "@/lib/sales/customer-record-lock"
 
 export async function GET(request: Request) {
   try {
@@ -48,7 +49,18 @@ export async function GET(request: Request) {
 
     const { data, error } = await query.range(offset, offset + limit - 1)
     if (error) return NextResponse.json({ error: error.message }, { status: 500 })
-    return NextResponse.json({ records: data ?? [], hasMore: (data ?? []).length === limit })
+
+    // A record linked to an active job order can't be edited (see the
+    // customer-records/[id] PATCH route) — flag it here so Edit can be
+    // disabled per vehicle instead of only failing after the fact.
+    const ids = (data ?? []).map((r) => r.id as string)
+    const locked = await findActiveJobsByCustomerRecord(supabase, ids)
+    const records = (data ?? []).map((r) => ({
+      ...r,
+      active_job_order_code: locked.get(r.id as string) ?? null,
+    }))
+
+    return NextResponse.json({ records, hasMore: (data ?? []).length === limit })
   } catch (err: any) {
     return NextResponse.json({ error: err?.message ?? String(err) }, { status: 500 })
   }

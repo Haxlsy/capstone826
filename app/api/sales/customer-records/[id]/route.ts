@@ -4,6 +4,7 @@ import { requireAuditCaller, getRoleCaller } from "@/lib/auth/caller"
 import { logAuditCall } from "@/hooks/audit-helpers"
 import { normalizePhone } from "@/lib/phone"
 import { UpdateCustomerRecordSchema } from "../schema"
+import { findActiveJobsByCustomerRecord, lockedEditMessage, CUSTOMER_RECORD_LOCKED_FIELDS } from "@/lib/sales/customer-record-lock"
 
 export async function PATCH(
   request: Request,
@@ -37,6 +38,19 @@ export async function PATCH(
     if (vehicle_unit !== undefined)   updates.vehicle_unit   = vehicle_unit
 
     const supabase = createAdminClient()
+
+    // A record linked to an active job order can't have its displayed fields
+    // changed out from under that job (lib/operations/job-detail-data.ts
+    // always prefers the live customer_record over the job's own snapshot).
+    // Linking/relinking psid is exempt — it isn't shown on the job at all.
+    const touchesLockedField = CUSTOMER_RECORD_LOCKED_FIELDS.some((f) => updates[f] !== undefined)
+    if (touchesLockedField) {
+      const locked = await findActiveJobsByCustomerRecord(supabase, [id])
+      const jobCode = locked.get(id)
+      if (jobCode) {
+        return NextResponse.json({ error: lockedEditMessage(jobCode) }, { status: 409 })
+      }
+    }
 
     if (updates.plate_number) {
       const { data: plateClash } = await supabase
