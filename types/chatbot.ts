@@ -230,7 +230,10 @@ const WEEKDAY_LABELS: Record<Weekday, string> = {
   fri: "Friday", sat: "Saturday", sun: "Sunday",
 }
 
-function fmtTime12h(hhmm: string): string {
+/** "20:00" -> "8:00 PM". Exported so a caller that needs just the bare
+ *  opening/closing time (not the full formatOperatingHours sentence) can
+ *  format it the same way — e.g. AddJobOrderForm's "Starts at ..." hint. */
+export function fmtTime12h(hhmm: string): string {
   const [hStr, mStr] = hhmm.split(":")
   const h = Number(hStr) || 0
   const m = Number(mStr) || 0
@@ -279,6 +282,43 @@ export function formatOperatingHours(
   }
 
   return text
+}
+
+// Date#getDay()/getUTCDay() convention: 0=Sun .. 6=Sat.
+const JS_DAY_TO_WEEKDAY: Weekday[] = ["sun", "mon", "tue", "wed", "thu", "fri", "sat"]
+
+export interface OperatingHoursCheck {
+  ok: boolean
+  /** Only set when `ok` is false. */
+  reason?: "closed_day" | "outside_hours"
+}
+
+/**
+ * Whether `date` (read in local time — the browser's own clock for a
+ * client-side scheduling check) falls inside the Operating Hours setting.
+ * Pure — the client-side counterpart to hooks/time-utils.ts's addWorkingMins,
+ * which answers "roll this forward to the next open instant" server-side;
+ * this just answers "is this exact instant open," e.g. for validating a
+ * picked Scheduled Date & Time before it's ever sent to the server.
+ */
+export function isWithinOperatingHours(
+  s: Pick<ChatbotSettings, "operating_days" | "operating_open_time" | "operating_close_time">,
+  date: Date,
+): OperatingHoursCheck {
+  const openDays = s.operating_days && s.operating_days.length > 0 ? s.operating_days : DEFAULT_OPERATING_DAYS
+  const weekday = JS_DAY_TO_WEEKDAY[date.getDay()]
+  if (!openDays.includes(weekday)) return { ok: false, reason: "closed_day" }
+
+  const toMins = (hhmm: string) => {
+    const [h, m] = hhmm.split(":").map(Number)
+    return (h || 0) * 60 + (m || 0)
+  }
+  const openMins  = toMins(s.operating_open_time  || DEFAULT_OPERATING_OPEN_TIME)
+  const closeMins = toMins(s.operating_close_time || DEFAULT_OPERATING_CLOSE_TIME)
+  const mins = date.getHours() * 60 + date.getMinutes()
+  if (mins < openMins || mins > closeMins) return { ok: false, reason: "outside_hours" }
+
+  return { ok: true }
 }
 
 // =================================================================
