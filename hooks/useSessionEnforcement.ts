@@ -77,4 +77,46 @@ export function useSessionEnforcement() {
     catchUp: true,
     enabled: !!userId,
   })
+
+  // Neither of the two mechanisms above covers an in-page action (a Save, a
+  // form submit — any fetch that isn't a page navigation) fired in the gap
+  // between another device signing in and this tab's Realtime event arriving.
+  // That fetch just gets a plain 401 from the API, which every component
+  // would otherwise show as its own generic "Failed to ..." error instead of
+  // the graceful "signed in on another device" message. So: patch fetch once
+  // and treat a 401 from any of our own /api/* routes (except /api/auth/* —
+  // a 401 there is an EXPECTED response, e.g. a wrong password on login, not
+  // a sign that THIS session died) as a cue to run the exact same check the
+  // Realtime path uses, which already knows how to tell "kicked out
+  // elsewhere" from "simply expired" and already redirects with the right
+  // reason.
+  useEffect(() => {
+    if (typeof window === "undefined") return
+    // Guards against double-patching — SessionEnforcement is mounted once
+    // per shell, but React 19 dev-mode double-invokes effects.
+    const w = window as typeof window & { __sessionFetchPatched?: boolean }
+    if (w.__sessionFetchPatched) return
+    w.__sessionFetchPatched = true
+
+    const originalFetch = window.fetch.bind(window)
+    window.fetch = async (...args: Parameters<typeof fetch>) => {
+      const res = await originalFetch(...args)
+      if (res.status === 401) {
+        const input = args[0]
+        const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url
+        try {
+          const path = new URL(url, window.location.origin).pathname
+          if (path.startsWith("/api/") && !path.startsWith("/api/auth/")) checkStatus()
+        } catch {
+          // Not a parseable same-origin URL — nothing to act on.
+        }
+      }
+      return res
+    }
+
+    return () => {
+      window.fetch = originalFetch
+      w.__sessionFetchPatched = false
+    }
+  }, [checkStatus])
 }

@@ -211,6 +211,18 @@ export async function POST(request: Request) {
 
         if (custErr) {
           console.error("[add-job-order] customer_record insert error:", custErr.message)
+          // A plate already on file (the lookup above didn't catch it — a
+          // formatting/case difference, or a race with another submission)
+          // hits the column's UNIQUE constraint here. Give the same clear,
+          // field-identifiable message the Customer Records edit route
+          // already uses for this exact conflict, instead of a raw Postgres
+          // string at 500.
+          if (custErr.code === "23505") {
+            return NextResponse.json(
+              { error: "That plate number is already on file for another customer record." },
+              { status: 409 },
+            )
+          }
           return NextResponse.json({ error: custErr.message }, { status: 500 })
         }
 

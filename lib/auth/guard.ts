@@ -62,7 +62,14 @@ export async function requireRole(allowedRoles: string[]) {
 
   const role = profile?.role as string | undefined
   if (!role || !allowedRoles.includes(role)) {
-    redirect(ROLE_HOMES[role ?? ""] ?? "/login")
+    // A known role just isn't allowed on this page (e.g. Sales pasting
+    // /dashboard/admin into the URL bar) — land them on their own dashboard,
+    // not silently: components/shared/SessionEnforcement.tsx reads this once
+    // and shows a toast explaining why. An unknown/missing role is a
+    // different, anomalous case (no dashboard to send them to) — falls back
+    // to /login with no reason to add.
+    const dest = ROLE_HOMES[role ?? ""]
+    redirect(dest ? `${dest}?reason=forbidden_role` : "/login")
   }
 
   if (profile?.must_change_password) {
