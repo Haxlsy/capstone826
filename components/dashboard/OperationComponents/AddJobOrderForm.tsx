@@ -13,6 +13,7 @@ import { useOnlineStatus } from "@/hooks/useOnlineStatus"
 import { enqueue, get as getQueued } from "@/lib/offline/outbox"
 import { useToast } from "@/components/ui/Toast"
 import { isTechnicianAvailableToday } from "@/lib/technician-availability"
+import { formatOperatingHours, isWithinOperatingHours, fmtTime12h, DEFAULT_OPERATING_DAYS, DEFAULT_OPERATING_OPEN_TIME, DEFAULT_OPERATING_CLOSE_TIME, type Weekday } from "@/types/chatbot"
 
 interface CustomerRecord {
   id:             string
@@ -159,6 +160,17 @@ export default function AddJobOrderForm() {
   const [headTechs,   setHeadTechs]   = useState<HeadTech[]>([])
   const [crewMembers, setCrewMembers] = useState<CrewMember[]>([])
   const [loadingRefs, setLoadingRefs] = useState(true)
+  // Admin → AI Configuration's Operating Hours — defaults to the shop's
+  // actual current hours while this loads, so the field never flashes wrong.
+  const [operatingHours, setOperatingHours] = useState<{
+    operating_days: Weekday[]
+    operating_open_time: string
+    operating_close_time: string
+  }>({
+    operating_days: DEFAULT_OPERATING_DAYS,
+    operating_open_time: DEFAULT_OPERATING_OPEN_TIME,
+    operating_close_time: DEFAULT_OPERATING_CLOSE_TIME,
+  })
 
   const [useManualCustomer,    setUseManualCustomer]    = useState(false)
   const [selectedCustomerId,   setSelectedCustomerId]   = useState<string | null>(null)
@@ -212,7 +224,7 @@ export default function AddJobOrderForm() {
     async function loadRefs() {
       setLoadingRefs(true)
       try {
-        const [cRes, sRes, tRes, stagesRes] = await Promise.all([
+        const [cRes, sRes, tRes, stagesRes, hoursRes] = await Promise.all([
           fetch("/api/operations/job-management/list-customers").then((r) =>
             r.ok ? r.json() : { customers: [] }
           ),
@@ -225,12 +237,20 @@ export default function AddJobOrderForm() {
           fetch("/api/operations/job-management/all-service-stages").then((r) =>
             r.ok ? r.json() : { stagesByService: {} }
           ),
+          fetch("/api/operations/job-management/operating-hours").then((r) => (r.ok ? r.json() : null)),
         ])
         setCustomers(cRes.customers ?? [])
         setServices(sRes.services ?? [])
         setHeadTechs(tRes.technicians ?? [])
         setCrewMembers(tRes.crew_members ?? [])
         setAllServiceStages(stagesRes.stagesByService ?? {})
+        if (hoursRes) {
+          setOperatingHours({
+            operating_days: hoursRes.operating_days ?? DEFAULT_OPERATING_DAYS,
+            operating_open_time: hoursRes.operating_open_time ?? DEFAULT_OPERATING_OPEN_TIME,
+            operating_close_time: hoursRes.operating_close_time ?? DEFAULT_OPERATING_CLOSE_TIME,
+          })
+        } // else keep the shop's actual current-hours default already in state
       } catch {
         setApiError("Failed to load form data. Please refresh.")
       } finally {
@@ -402,15 +422,26 @@ export default function AddJobOrderForm() {
       if (isPPF) {
         if (scheduledAt < todayStr) {
           errs.scheduledAt = "Scheduled date cannot be in the past."
+        } else {
+          // Local midnight for the picked calendar day — not `new Date(dateStr)`,
+          // which parses a bare "YYYY-MM-DD" as UTC and can land on the wrong
+          // weekday for a browser whose local offset crosses midnight.
+          const [y, m, d] = scheduledAt.split("-").map(Number)
+          const check = isWithinOperatingHours(operatingHours, new Date(y, (m ?? 1) - 1, d ?? 1))
+          if (check.reason === "closed_day") {
+            errs.scheduledAt = `That date is closed. Open days: ${formatOperatingHours(operatingHours)}`
+          }
         }
       } else {
         const selected = new Date(scheduledAt)
         if (selected <= now) {
           errs.scheduledAt = "Scheduled date and time cannot be in the past."
         } else {
-          const totalMins = selected.getHours() * 60 + selected.getMinutes()
-          if (totalMins < 8 * 60 || totalMins > 20 * 60) {
-            errs.scheduledAt = "Start time must be within working hours (8:00 AM – 8:00 PM)."
+          const check = isWithinOperatingHours(operatingHours, selected)
+          if (check.reason === "closed_day") {
+            errs.scheduledAt = `That date is closed. Open days: ${formatOperatingHours(operatingHours)}`
+          } else if (check.reason === "outside_hours") {
+            errs.scheduledAt = `Start time must be within working hours (${formatOperatingHours(operatingHours)})`
           }
         }
       }
@@ -1017,14 +1048,14 @@ export default function AddJobOrderForm() {
                 <input
                   aria-label="Scheduled Date and Time"
                   type="datetime-local"
-                  min={`${todayStr}T08:00`}
+                  min={`${todayStr}T${operatingHours.operating_open_time}`}
                   value={scheduledAt}
                   onChange={(e) => { setScheduledAt(e.target.value); clearField("scheduledAt"); setSelectedDetailerIds(new Set()); setSelectedInstallerIds(new Set()) }}
                   className={inputCls(!!fieldErrors.scheduledAt)}
                 />
               )}
               {!fieldErrors.scheduledAt && !isPPF && (
-                <p className="text-[10px] text-muted">Working hours: 8:00 AM – 8:00 PM</p>
+                <p className="text-[10px] text-muted">Working hours: {formatOperatingHours(operatingHours)}</p>
               )}
               <FieldError msg={fieldErrors.scheduledAt} />
             </div>
@@ -1038,7 +1069,7 @@ export default function AddJobOrderForm() {
                   {scheduledDisplay(scheduledAt, isPPF)}
                 </p>
                 {isPPF && (
-                  <p className="text-[10px] text-muted mt-0.5">Starts at 8:00 AM</p>
+                  <p className="text-[10px] text-muted mt-0.5">Starts at {fmtTime12h(operatingHours.operating_open_time)}</p>
                 )}
               </div>
               <div>

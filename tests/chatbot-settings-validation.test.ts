@@ -3,6 +3,7 @@ import {
   chatbotSettingsSchema,
   chatbotSettingsSaveSchema,
   validateChatbotSettings,
+  isWithinOperatingHours,
   DEFAULT_OPERATING_DAYS,
 } from "@/types/chatbot"
 
@@ -65,5 +66,35 @@ describe("validateChatbotSettings", () => {
     const blank = { ...valid, vehicle_status_message_en: "", booking_message_fil: "" }
     expect(chatbotSettingsSchema.safeParse(blank).success).toBe(true)
     expect(chatbotSettingsSaveSchema.safeParse(blank).success).toBe(false)
+  })
+})
+
+describe("isWithinOperatingHours", () => {
+  // DEFAULT_OPERATING_DAYS closes Monday. 2026-01-05 is a Monday, 2026-01-06
+  // a Tuesday — constructed with the local Date constructor (not a bare
+  // "YYYY-MM-DD" string) so the weekday can't shift with timezone parsing.
+  const monday  = (h: number, m = 0) => new Date(2026, 0, 5, h, m)
+  const tuesday = (h: number, m = 0) => new Date(2026, 0, 6, h, m)
+  const hours = { operating_days: DEFAULT_OPERATING_DAYS, operating_open_time: "08:00", operating_close_time: "20:00" }
+
+  it("is ok on an open day within hours", () => {
+    expect(isWithinOperatingHours(hours, tuesday(9, 0))).toEqual({ ok: true })
+    expect(isWithinOperatingHours(hours, tuesday(8, 0))).toEqual({ ok: true }) // exactly opening
+    expect(isWithinOperatingHours(hours, tuesday(20, 0))).toEqual({ ok: true }) // exactly closing
+  })
+
+  it("flags outside_hours before opening or after closing on an open day", () => {
+    expect(isWithinOperatingHours(hours, tuesday(7, 59))).toEqual({ ok: false, reason: "outside_hours" })
+    expect(isWithinOperatingHours(hours, tuesday(20, 1))).toEqual({ ok: false, reason: "outside_hours" })
+  })
+
+  it("flags closed_day even at a perfectly in-range time", () => {
+    expect(isWithinOperatingHours(hours, monday(12, 0))).toEqual({ ok: false, reason: "closed_day" })
+  })
+
+  it("falls back sensibly for a legacy/empty operating_days config", () => {
+    const legacy = { operating_days: [], operating_open_time: "08:00", operating_close_time: "20:00" }
+    // Falls back to DEFAULT_OPERATING_DAYS rather than treating every day as closed.
+    expect(isWithinOperatingHours(legacy, tuesday(9, 0)).ok).toBe(true)
   })
 })
