@@ -348,10 +348,11 @@ export default function ChatbotManagement() {
             </div>
           </Section>
 
-          {/* Operating Hours — drives both the AI chatbot's answers and the
-              "For Release" customer message; see formatOperatingHours in
-              types/chatbot.ts, the single source both sides read. */}
-          <Section icon={<Globe className="w-4 h-4" />} title="Operating Hours" subtitle="When customers can reach you and pick up their vehicle. The chatbot and pickup-ready messages use this directly.">
+          {/* Operating Hours — drives the AI chatbot's answers, the
+              "For Release" customer message, and job scheduling's
+              working-hours math (see formatOperatingHours in types/chatbot.ts
+              and lib/operating-hours.ts, the shared sources every side reads). */}
+          <Section icon={<Globe className="w-4 h-4" />} title="Operating Hours" subtitle="When customers can reach you and pick up their vehicle. The chatbot and pickup-ready messages use this directly. Operations job scheduling also uses this to set expected completion times and roll jobs onto the next open day.">
             <div className="flex flex-col gap-4">
               <div>
                 <p className="text-xs font-medium text-body mb-2">Open days</p>

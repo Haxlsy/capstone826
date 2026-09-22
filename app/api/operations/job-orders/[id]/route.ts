@@ -6,6 +6,7 @@ import { createAdminClient } from "@/lib/supabase/admin"
 import { logAudit } from "@/hooks/audit-helpers"
 import { getJobDetailData } from "@/lib/operations/job-detail-data"
 import { totalStageDurationMins, computeExpectedCompletion } from "@/lib/job-estimates"
+import { loadWorkSchedule } from "@/lib/operating-hours"
 import { sendPushToUser } from "@/lib/push/send"
 import { sendMessengerText } from "@/lib/messenger/graph"
 import { buildReleaseMessage, buildCompletionMessage, getOperatingHoursText } from "@/lib/messenger/status-update"
@@ -130,11 +131,12 @@ export async function PATCH(
         ssMap = new Map((ssRows ?? []).map((r) => [r.id, r]))
       }
       const totalDurationMins = totalStageDurationMins(stages ?? [], ssMap)
+      const schedule = await loadWorkSchedule(admin)
       const { expected } = computeExpectedCompletion({
         scheduled_at,
         actual_start_at: current?.actual_start_at ?? null,
         totalDurationMins,
-      })
+      }, schedule)
       updates.expected_completion_at = expected
     }
 

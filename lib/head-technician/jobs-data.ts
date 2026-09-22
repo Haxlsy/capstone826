@@ -1,6 +1,7 @@
 import { createAdminClient } from "@/lib/supabase/admin"
 import { getCurrentUserProfile } from "@/lib/auth/guard"
 import { isJobDelayed, computeStageDelays, hasAnyStageDelayed, type StageForDelay } from "@/lib/job-delay"
+import { loadWorkSchedule } from "@/lib/operating-hours"
 import { fmtDate } from "@/lib/time-display"
 
 export type TechnicianJob = {
@@ -57,7 +58,7 @@ export async function getHeadTechnicianJobs(userId: string) {
     return { jobs: [] as TechnicianJob[], userRole: role, displayName: profile.full_name }
   }
 
-  // These five only depend on jobIds (or nothing at all) — none depends on
+  // These six only depend on jobIds (or nothing at all) — none depends on
   // another's result, so all run concurrently instead of paying for serial
   // round-trips. service_stage/workflow_category are small, mostly-static
   // shop-configuration tables (stage/category definitions, not per-job data),
@@ -70,6 +71,7 @@ export async function getHeadTechnicianJobs(userId: string) {
     { data: stageProg },
     { data: ssData },
     { data: catData },
+    schedule,
   ] = await Promise.all([
     admin
       .from("job_order")
@@ -96,6 +98,7 @@ export async function getHeadTechnicianJobs(userId: string) {
     admin
       .from("workflow_category")
       .select("id, name, display_color, technician_role"),
+    loadWorkSchedule(admin),
   ])
 
   if (error) throw new Error(error.message)
@@ -141,7 +144,7 @@ export async function getHeadTechnicianJobs(userId: string) {
         service_stage_duration_mins: ss?.stage_duration_mins ?? null,
       }
     })
-    if (hasAnyStageDelayed(computeStageDelays(shaped, j.actual_start_at as string))) {
+    if (hasAnyStageDelayed(computeStageDelays(shaped, j.actual_start_at as string, schedule))) {
       delayedJobIds.add(j.id as string)
     }
   }
