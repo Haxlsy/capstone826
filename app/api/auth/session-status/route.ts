@@ -1,8 +1,7 @@
 import { NextResponse } from "next/server"
 import { cookies } from "next/headers"
 import { createClient } from "@/lib/supabase/server"
-import { createAdminClient } from "@/lib/supabase/admin"
-import { isSessionCurrent } from "@/lib/auth/session-check"
+import { isSessionCurrent, resolveStaleSessionCurrency } from "@/lib/auth/session-check"
 
 // GET /api/auth/session-status — single active session per account.
 // Called by hooks/useSessionEnforcement.ts when a Realtime event on
@@ -42,18 +41,15 @@ export async function GET() {
     // device" and "genuinely logged out" both look identical to getUser().
     // The cookie is still present here (checked above), which a deliberate
     // logout would have cleared — so this really is the "kicked out
-    // elsewhere" case, not a false positive. getSession() decodes the JWT
-    // locally (no live revocation check) purely to recover whose cookie this
-    // was, so it still works even though the session itself is dead.
-    const { data: { session } } = await supabase.auth.getSession()
-    const staleUserId = session?.user?.id ?? null
+    // elsewhere" case, not a false positive. resolveStaleSessionCurrency
+    // recovers whose cookie this was locally (no live check) and confirms
+    // against the DB, so it still works even though the session itself is
+    // dead.
+    const valid = await resolveStaleSessionCurrency(supabase, sessionToken)
 
-    if (!staleUserId) {
+    if (valid === null) {
       return NextResponse.json({ valid: false, reason: "no_session" }, { headers: { "Cache-Control": "no-store" } })
     }
-
-    const admin = createAdminClient()
-    const valid = await isSessionCurrent(admin, staleUserId, sessionToken)
 
     return NextResponse.json(
       { valid, reason: valid ? undefined : "mismatch" },
