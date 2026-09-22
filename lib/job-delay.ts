@@ -1,4 +1,4 @@
-import { addWorkingMins } from "@/hooks/time-utils"
+import { addWorkingMins, DEFAULT_SCHEDULE, type WorkSchedule } from "@/hooks/time-utils"
 
 /**
  * The single source of truth for "is this job/stage delayed" — every surface
@@ -64,6 +64,7 @@ export interface StageDelayResult {
 export function computeStageDelays(
   stages: StageForDelay[],
   actualStartAt: string | null | undefined,
+  schedule: WorkSchedule = DEFAULT_SCHEDULE,
 ): Map<string, StageDelayResult> {
   const result = new Map<string, StageDelayResult>()
   for (const s of stages) result.set(s.id, { expected_end_at: null, is_delayed: false })
@@ -78,7 +79,7 @@ export function computeStageDelays(
     const mins = s.stage_duration_mins ?? s.service_stage_duration_mins ?? 0
     cumulativeMins += mins
     if (mins > 0) {
-      const expectedEnd = addWorkingMins(jobStart, cumulativeMins)
+      const expectedEnd = addWorkingMins(jobStart, cumulativeMins, schedule)
       result.set(s.id, {
         expected_end_at: expectedEnd.toISOString(),
         is_delayed: s.status !== "done" && s.status !== "for_rework" && nowMs > expectedEnd.getTime(),

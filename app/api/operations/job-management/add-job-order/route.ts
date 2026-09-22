@@ -4,6 +4,7 @@ import { createClient } from "@/lib/supabase/server"
 import { createAdminClient } from "@/lib/supabase/admin"
 import { logAudit } from "@/hooks/audit-helpers"
 import { addWorkingMins } from "@/hooks/time-utils"
+import { loadWorkSchedule } from "@/lib/operating-hours"
 import { normalizePhone } from "@/lib/phone"
 import { sendPushToUser } from "@/lib/push/send"
 import { getRoleCaller } from "@/lib/auth/caller"
@@ -106,7 +107,8 @@ export async function POST(request: Request) {
     if (scheduled_at && effectiveDurationMins) {
       const d = new Date(scheduled_at)
       if (!isNaN(d.getTime())) {
-        expected_completion_at = addWorkingMins(d, effectiveDurationMins).toISOString()
+        const schedule = await loadWorkSchedule(admin)
+        expected_completion_at = addWorkingMins(d, effectiveDurationMins, schedule).toISOString()
       } else {
         console.error("Invalid date received:", scheduled_at)
       }

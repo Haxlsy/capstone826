@@ -3,6 +3,7 @@ import { cookies } from "next/headers"
 import { createClient } from "@/lib/supabase/server"
 import { createAdminClient } from "@/lib/supabase/admin"
 import { addWorkingMins } from "@/hooks/time-utils"
+import { loadWorkSchedule } from "@/lib/operating-hours"
 import { computeStageDelays } from "@/lib/job-delay"
 import { fmtDateTime } from "@/lib/time-display"
 import { getAuditCaller } from "@/lib/auth/caller"
@@ -232,6 +233,7 @@ export async function GET(
         service_stage_duration_mins: (s.stageInfo?.stage_duration_mins as number | null) ?? null,
       })),
       j.actual_start_at as string | null,
+      await loadWorkSchedule(admin),
     )
     const expectedEndMap = new Map<string, string>()
     const isDelayedMap   = new Map<string, boolean>()
@@ -371,7 +373,8 @@ export async function PATCH(
           return acc + (override != null ? override : base)
         }, 0)
         if (totalMins > 0) {
-          const newCompletion = addWorkingMins(new Date(), totalMins)
+          const schedule = await loadWorkSchedule(admin)
+          const newCompletion = addWorkingMins(new Date(), totalMins, schedule)
           await admin.from("job_order").update({ expected_completion_at: newCompletion.toISOString() }).eq("id", jobId)
         }
       }

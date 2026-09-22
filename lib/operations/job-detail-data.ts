@@ -1,18 +1,21 @@
 import { createAdminClient } from "@/lib/supabase/admin"
 import { computeStageDelays, isJobDelayed } from "@/lib/job-delay"
 import { totalStageDurationMins, computeExpectedCompletion } from "@/lib/job-estimates"
+import { loadWorkSchedule } from "@/lib/operating-hours"
 
 export async function getJobDetailData(id: string) {
   const supabase = createAdminClient()
 
-  // These four only need the already-known `id` param — none depends on
-  // another's result — so run them concurrently instead of four sequential
-  // round-trips (same fix already applied to the head-technician job route).
+  // These five only need the already-known `id` param (or nothing at all,
+  // for the schedule) — none depends on another's result — so run them
+  // concurrently instead of five sequential round-trips (same fix already
+  // applied to the head-technician job route).
   const [
     { data: job, error },
     { data: team },
     { data: history },
     { data: stages, error: stagesError },
+    schedule,
   ] = await Promise.all([
     supabase
       .from("job_order")
@@ -44,6 +47,7 @@ export async function getJobDetailData(id: string) {
       )
       .eq("job_order_id", id)
       .order("custom_sequence_order"),
+    loadWorkSchedule(supabase),
   ])
 
   if (error || !job) throw new Error(error?.message ?? "Not found.")
@@ -107,7 +111,7 @@ export async function getJobDetailData(id: string) {
     scheduled_at: j.scheduled_at,
     actual_start_at: j.actual_start_at,
     totalDurationMins,
-  })
+  }, schedule)
   const expectedCompletionAt: string | null = expected ?? (j.expected_completion_at ?? null)
   const updatedEstAt: string | null = updated
 
@@ -179,6 +183,7 @@ export async function getJobDetailData(id: string) {
         service_stage_duration_mins: s._service_duration_mins,
       })),
       j.actual_start_at,
+      schedule,
     )
     for (const stage of mapped) {
       const d = delays.get(stage.id)

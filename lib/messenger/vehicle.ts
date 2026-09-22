@@ -1,5 +1,6 @@
 import { createAdminClient } from "@/lib/supabase/admin"
 import { computeExpectedCompletion } from "@/lib/job-estimates"
+import { loadWorkSchedule } from "@/lib/operating-hours"
 import { fmtDateTime } from "@/lib/time-display"
 import { ACTIVE_JOB_STATUSES } from "@/lib/messenger/booking"
 import { normalizePhone, isPlausibleMobile } from "@/lib/phone"
@@ -94,13 +95,17 @@ async function buildJobStatus(
   const active = ordered.find((s: any) => s.status !== "done")
 
   // Live estimate — recompute from schedule/actual + stage durations
-  // (working-hours aware) instead of trusting the stored column.
+  // (working-hours aware) instead of trusting the stored column. Loaded via
+  // the same `supabase` client this function already receives, so the
+  // chatbot's own answer always agrees with the current Operating Hours
+  // setting rather than a separate, potentially stale source.
   const totalDurationMins = ordered.reduce((acc: number, s: any) => acc + s.duration_mins, 0)
+  const schedule = await loadWorkSchedule(supabase)
   const { expected } = computeExpectedCompletion({
     scheduled_at: job.scheduled_at,
     actual_start_at: job.actual_start_at,
     totalDurationMins,
-  })
+  }, schedule)
   const expectedCompletionAt = expected ?? (job.expected_completion_at ?? null)
 
   return {
