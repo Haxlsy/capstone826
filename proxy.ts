@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 import { createClient } from "@/lib/supabase/middleware-client";
-import { isSessionCurrent } from "@/lib/auth/session-check";
+import { isSessionCurrent, resolveStaleSessionCurrency } from "@/lib/auth/session-check";
 import { isDeadSessionError } from "@/lib/auth/refresh-errors";
 
 const ROLE_HOMES: Record<string, string> = {
@@ -75,6 +75,30 @@ export async function proxy(request: NextRequest) {
   }
 
   if (!user && isProtectedArea) {
+    // getUser() failed, but NOT in a way isDeadSessionError() recognized
+    // above (sessionDead was false) — that doesn't mean this visitor was
+    // never logged in. A signOut(token, "others") from another device's
+    // login doesn't reliably surface as one of the well-known "refresh token
+    // gone" error shapes (see the same reasoning in
+    // app/api/auth/session-status/route.ts), so an unrecognized error here
+    // can still mean "kicked out elsewhere" — and sending that visitor to a
+    // bare /login with no explanation is exactly the confusing, silent
+    // logout this was supposed to prevent. Only skip the extra check when
+    // there was no auth cookie at all — genuinely never logged in, nothing
+    // to explain.
+    if (hasAuthCookie(request)) {
+      const sessionToken = request.cookies.get("826_session_token")?.value ?? null;
+      const stillCurrent = await resolveStaleSessionCurrency(supabase, sessionToken);
+      // `false` = confirmed kicked out by another login. `true`/`null` are
+      // less certain (the DB still says current, or no stale identity could
+      // even be recovered) but getUser() still failed either way, so this
+      // request can't render the protected page regardless — redirect with
+      // the more conservative "session ended" wording rather than naming a
+      // specific cause we can't confirm.
+      const redirectUrl = new URL("/login", request.url);
+      redirectUrl.searchParams.set("reason", stillCurrent === false ? "signed_in_elsewhere" : "session_expired");
+      return clearAuthCookies(request, NextResponse.redirect(redirectUrl));
+    }
     return NextResponse.redirect(new URL("/login", request.url));
   }
 

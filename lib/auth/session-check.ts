@@ -1,4 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js"
+import { createAdminClient } from "@/lib/supabase/admin"
 
 // Single active session per account — a newer login overwrites this user's
 // row (app/api/auth/login/route.ts), so a stale browser's cookie stops
@@ -33,4 +34,43 @@ export async function isSessionCurrent(
   }
 
   return data?.session_token === sessionToken
+}
+
+/**
+ * When `getUser()` has already failed, this figures out — as precisely as
+ * the still-present (but dead) cookie allows — whether that's because
+ * another login kicked this session out, versus a session that's simply
+ * over. `getUser()`'s error alone can't reliably tell those apart: a
+ * `signOut(token, "others")` revocation doesn't consistently surface as one
+ * of the well-known "refresh token gone" error shapes `isDeadSessionError`
+ * matches, so a caller that only looked at the error would treat a genuine
+ * "kicked out elsewhere" the same as "never had a session at all."
+ *
+ * `staleClient` only needs to locally decode the JWT still sitting in the
+ * cookie (`getSession()` does this without a live check, so it works even
+ * though the session itself is already dead) to recover *whose* cookie this
+ * was — it's never expected to successfully authenticate anything.
+ *
+ * Returns `null` when no stale identity could even be recovered (nothing
+ * meaningful to compare — treat as no session at all), otherwise whether the
+ * DB's `user_active_session` row still matches this exact token.
+ *
+ * Shared by `proxy.ts` (every navigation) and `/api/auth/session-status`
+ * (an idle tab's Realtime-triggered check) so both agree.
+ */
+export async function resolveStaleSessionCurrency(
+  staleClient: SupabaseClient,
+  sessionToken: string | null,
+): Promise<boolean | null> {
+  if (!sessionToken) return null
+
+  const { data: { session } } = await staleClient.auth.getSession()
+  const staleUserId = session?.user?.id ?? null
+  if (!staleUserId) return null
+
+  // Read via the admin client — the caller's own client can't authenticate
+  // anything at this point (that's the whole reason we're here), so it can't
+  // pass RLS on its own.
+  const admin = createAdminClient()
+  return isSessionCurrent(admin, staleUserId, sessionToken)
 }
