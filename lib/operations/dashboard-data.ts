@@ -1,5 +1,6 @@
 import {createAdminClient} from '@/lib/supabase/admin'
 import { ACTIVE_JOB_STATUSES, isJobDelayed, computeStageDelays, hasAnyStageDelayed, type StageForDelay } from '@/lib/job-delay'
+import { loadWorkSchedule } from '@/lib/operating-hours'
 
 export async function getDashboardData(){
        const supabase = createAdminClient()
@@ -16,7 +17,7 @@ export async function getDashboardData(){
     // alongside the job_order fetch instead of after it, since nothing about
     // it needs jobIds. Removes one full round-trip from the critical path
     // this whole page is gated behind.
-    const [{ data: jobs }, concernResult] = await Promise.all([
+    const [{ data: jobs }, concernResult, schedule] = await Promise.all([
       supabase
         .from("job_order")
         .select(
@@ -31,6 +32,8 @@ export async function getDashboardData(){
         .from("concern")
         .select("id", { count: "exact", head: true })
         .eq("status", "Pending"),
+
+      loadWorkSchedule(supabase),
     ])
 
     const rows   = jobs ?? []
@@ -125,7 +128,7 @@ export async function getDashboardData(){
           stage_duration_mins: s.stage_duration_mins,
           service_stage_duration_mins: (s.service_stage as any)?.stage_duration_mins ?? null,
         }))
-        if (hasAnyStageDelayed(computeStageDelays(shaped, startAt))) {
+        if (hasAnyStageDelayed(computeStageDelays(shaped, startAt, schedule))) {
           overdueJobIds.add(jobId)
         }
       }

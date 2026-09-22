@@ -119,6 +119,23 @@ describe("computeStageDelays", () => {
     expect(result.get("first")?.is_delayed).toBe(true)
     expect(result.get("second")?.is_delayed).toBe(false)
   })
+
+  it("threads a custom schedule through to expected_end_at", () => {
+    // FIXED_NOW is a Tuesday. A schedule with Tuesday closed should roll the
+    // stage's expected end onto Wednesday instead of counting it same-day.
+    const tuesdayClosed = { openDays: new Set([0, 1, 3, 4, 5, 6]), openMinutes: 8 * 60, closeMinutes: 20 * 60 }
+    const defaultResult = computeStageDelays(
+      [{ id: "s1", status: "in_progress", sequence_order: 1, stage_duration_mins: 30, service_stage_duration_mins: null }],
+      FIXED_NOW,
+    )
+    const customResult = computeStageDelays(
+      [{ id: "s1", status: "in_progress", sequence_order: 1, stage_duration_mins: 30, service_stage_duration_mins: null }],
+      FIXED_NOW,
+      tuesdayClosed,
+    )
+    expect(defaultResult.get("s1")?.expected_end_at).not.toBe(customResult.get("s1")?.expected_end_at)
+    expect(customResult.get("s1")?.expected_end_at).toContain("2026-01-07") // Wednesday
+  })
 })
 
 describe("hasAnyStageDelayed", () => {

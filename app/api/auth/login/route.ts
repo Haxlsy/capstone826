@@ -58,11 +58,18 @@ export async function POST(request: Request) {
       )
     }
 
-    // 2. Sign in
-    const { data: authData, error: signInError } = await supabase.auth.signInWithPassword({
-      email,
-      password,
-    })
+    // 2. Sign in — alongside a check for an existing active session on this
+    // account. Both only need `account.id`/the submitted credentials, so
+    // this adds no extra round trip; if sign-in fails below, the result is
+    // simply unused. user_active_session has one row per user and
+    // app/api/auth/logout/route.ts deletes it on a clean logout, so a row
+    // still being there means a previous session was never properly ended —
+    // this login is about to end it (see the audit entry in step 4-7).
+    const [{ data: authData, error: signInError }, { data: existingSession }] = await Promise.all([
+      supabase.auth.signInWithPassword({ email, password }),
+      admin.from("user_active_session").select("user_id").eq("user_id", account.id).maybeSingle(),
+    ])
+    const hadExistingSession = !!existingSession
 
     if (signInError || !authData.user) {
       // A lock that already expired (>60s since the last failure) starts a
@@ -139,6 +146,21 @@ export async function POST(request: Request) {
       // getting dropped once the function returned).
       createAuditLog(admin, authData.user.id, profile, "Logged in"),
     ])
+
+    // A security-relevant event worth its own visible entry — same category
+    // the lockout event above uses — so it doesn't just look like an
+    // ordinary "Logged in" alongside it in the Security & Audit Center.
+    // Fire-and-forget, same as the lockout call — never blocks the response.
+    if (hadExistingSession) {
+      logAudit({
+        user_id:   authData.user.id,
+        user_name: profile.full_name,
+        role:      profile.role,
+        category:  "flag",
+        action:    "Logged in — ended a previous active session on another device",
+        target:    profile.full_name,
+      })
+    }
 
     if (sessionUpsertResult.error) {
       // Login still proceeds — see lib/auth/session-check.ts's isSessionCurrent,

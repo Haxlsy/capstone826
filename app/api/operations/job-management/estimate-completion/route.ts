@@ -1,9 +1,11 @@
 import { NextResponse } from "next/server"
 import { cookies } from "next/headers"
 import { createClient } from "@/lib/supabase/server"
+import { createAdminClient } from "@/lib/supabase/admin"
 import { addWorkingMins } from "@/hooks/time-utils"
 import { fmtDateTime } from "@/lib/time-display"
 import { getRoleCaller } from "@/lib/auth/caller"
+import { loadWorkSchedule } from "@/lib/operating-hours"
 
 // Computes the expected completion for a prospective job order so the
 // confirm-dialog preview is produced server-side (same engine that persists
@@ -34,7 +36,8 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Invalid startIso." }, { status: 400 })
     }
 
-    const expected = addWorkingMins(start, durationMins)
+    const schedule = await loadWorkSchedule(createAdminClient())
+    const expected = addWorkingMins(start, durationMins, schedule)
     return NextResponse.json({
       expected_iso:      expected.toISOString(),
       expected_display:  fmtDateTime(expected.toISOString()),
