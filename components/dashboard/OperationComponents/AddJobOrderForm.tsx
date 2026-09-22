@@ -661,7 +661,23 @@ export default function AddJobOrderForm() {
         body:    JSON.stringify(payload),
       })
       const data = await res.json()
-      if (!res.ok) throw new Error(data?.error ?? "Failed to create job order")
+      if (!res.ok) {
+        // A conflict the server caught (duplicate plate/email) belongs next
+        // to the field it's actually about, same as every client-side
+        // validation error on this form — not buried in the generic banner.
+        const msg = data?.error ?? "Failed to create job order"
+        if (res.status === 409 && /plate number/i.test(msg)) {
+          setShowConfirm(false)
+          setFieldErrors((prev) => ({ ...prev, plateNumber: msg }))
+          return
+        }
+        if (res.status === 409 && /email/i.test(msg)) {
+          setShowConfirm(false)
+          setFieldErrors((prev) => ({ ...prev, email: msg }))
+          return
+        }
+        throw new Error(msg)
+      }
       setShowConfirm(false)
       setSuccess(true)
       redirectTimer.current = setTimeout(() => router.push("/dashboard/job-management"), 1200)
