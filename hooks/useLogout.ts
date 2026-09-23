@@ -6,8 +6,16 @@ import { useCallback, useState } from "react"
 /**
  * The single logout routine — previously copy-pasted into every sidebar and
  * the head-technician BottomNav.
+ *
+ * `hard`/`reason` are for a logout the APP forces (idle-timeout), not one the
+ * user clicked: a hard `window.location.href` instead of a soft router push,
+ * matching why hooks/useSessionEnforcement.ts already prefers a hard redirect
+ * for a forced sign-out (tears down realtime channels/client state cleanly,
+ * instead of a soft transition leaving stale connections behind), plus a
+ * `?reason=` LoginPage.tsx turns into an explanatory toast. Every existing
+ * caller passes nothing and keeps today's exact behavior.
  */
-export function useLogout() {
+export function useLogout(opts?: { hard?: boolean; reason?: string }) {
   const router = useRouter()
   return useCallback(async () => {
     try {
@@ -28,10 +36,14 @@ export function useLogout() {
     } catch {
       /* ignore */
     }
+    if (opts?.hard) {
+      window.location.href = `/login${opts.reason ? `?reason=${opts.reason}` : ""}`
+      return
+    }
     // Straight to /login, not "/" — "/" is just a server redirect() to
     // /login, so pushing there would navigate twice.
     router.push("/login")
-  }, [router])
+  }, [router, opts])
 }
 
 /**

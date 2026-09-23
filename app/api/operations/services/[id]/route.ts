@@ -152,6 +152,21 @@ export async function PATCH(
       )
     }
 
+    const trimmedName = serviceName.trim()
+
+    // Pre-check for a friendlier message than the 23505 the unique index
+    // below would otherwise raise — normalized the same way (case/space
+    // insensitive), scoped to "another service" so saving this one under its
+    // own existing name isn't flagged as a clash with itself.
+    const normalize = (s: string) => s.toLowerCase().replace(/\s+/g, "")
+    const { data: otherServices } = await supabase.from("service").select("id, name").neq("id", id)
+    if ((otherServices ?? []).some((s) => normalize(s.name as string) === normalize(trimmedName))) {
+      return NextResponse.json(
+        { error: `A service named "${trimmedName}" already exists.` },
+        { status: 409 }
+      )
+    }
+
     // ── Smart stage update (avoid FK violations on job_stage_progress) ──
     type StagePayload = { dbId: string | null; name: string; category_id: string; sequence_order: number; stage_duration_mins: number }
     const stageList: StagePayload[] = Array.isArray(stages) ? stages : []
@@ -162,14 +177,23 @@ export async function PATCH(
     const { error: updateError } = await supabase
       .from("service")
       .update({
-        name:                   serviceName.trim(),
+        name:                   trimmedName,
         service_type:           serviceType.trim(),
         description:            description?.trim() || null,
         estimated_duration_mins: derivedDuration,
       })
       .eq("id", id)
 
-    if (updateError) return NextResponse.json({ error: updateError.message }, { status: 500 })
+    if (updateError) {
+      // Defensive backstop for a race the pre-check above can't catch.
+      if (updateError.code === "23505") {
+        return NextResponse.json(
+          { error: `A service named "${trimmedName}" already exists.` },
+          { status: 409 }
+        )
+      }
+      return NextResponse.json({ error: updateError.message }, { status: 500 })
+    }
 
     // 1. Find which existing DB stage IDs were removed by the user
     const keptDbIds = new Set(stageList.filter((s) => s.dbId).map((s) => s.dbId as string))
@@ -239,7 +263,7 @@ export async function PATCH(
       role:      profile.role,
       category:  "update",
       action:    "Updated service",
-      target:    serviceName.trim(),
+      target:    trimmedName,
     })
 
     // If some stages couldn't be removed because of active job references, surface them

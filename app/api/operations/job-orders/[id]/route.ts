@@ -6,7 +6,8 @@ import { createAdminClient } from "@/lib/supabase/admin"
 import { logAudit } from "@/hooks/audit-helpers"
 import { getJobDetailData } from "@/lib/operations/job-detail-data"
 import { totalStageDurationMins, computeExpectedCompletion } from "@/lib/job-estimates"
-import { loadWorkSchedule } from "@/lib/operating-hours"
+import { loadWorkSchedule, loadOperatingHoursSettings } from "@/lib/operating-hours"
+import { isWithinOperatingHours, formatOperatingHours } from "@/types/chatbot"
 import { sendPushToUser } from "@/lib/push/send"
 import { sendMessengerText } from "@/lib/messenger/graph"
 import { buildReleaseMessage, buildCompletionMessage, getOperatingHoursText } from "@/lib/messenger/status-update"
@@ -102,6 +103,20 @@ export async function PATCH(
         { error: "Scheduled Start can only be edited while the job is Pending." },
         { status: 400 }
       )
+    }
+
+    // Server-authoritative — the edit modal validates the same way, but a
+    // direct API call must not be able to schedule a job outside the shop's
+    // actual open days/hours either.
+    if (scheduled_at !== undefined) {
+      const hours = await loadOperatingHoursSettings(admin)
+      const check = isWithinOperatingHours(hours, new Date(scheduled_at))
+      if (!check.ok) {
+        const reason = check.reason === "closed_day"
+          ? `That date is closed. Open days: ${formatOperatingHours(hours)}`
+          : `Start time must be within working hours (${formatOperatingHours(hours)})`
+        return NextResponse.json({ error: reason }, { status: 400 })
+      }
     }
 
     const updates: Record<string, any> = {}

@@ -47,7 +47,7 @@ export const ADMIN_NAV: NavItem[] = [
   { label: "Account Management", href: "/dashboard/admin/accounts", icon: Users },
   { label: "Service Management", href: "/dashboard/admin/services", icon: Wrench },
   { label: "Security & Audit Center", href: "/dashboard/admin/security", icon: ShieldHalf },
-  { label: "AI Chatbot", href: "/dashboard/admin/chatbot", icon: Bot },
+  { label: "AI Settings", href: "/dashboard/admin/chatbot", icon: Bot },
 ]
 
 const OPERATIONS_PATHS = [

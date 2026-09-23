@@ -5,7 +5,7 @@ import Link from "next/link"
 import { useRouter } from "next/navigation"
 import {
   ArrowLeft, PackageCheck, ChevronDown, Users, RefreshCw, CheckCircle2, XCircle,
-  Clock, RotateCcw, UserPlus, Loader2, Trash2, FileText, Pencil,
+  Clock, RotateCcw, UserPlus, Loader2, Trash2, FileText, Pencil, X,
 } from "lucide-react"
 import { JobOrderDetailSkeleton } from "@/app/dashboard/job-management/[id]/loading"
 import { PageHeader } from "@/components/ui/PageHeader"
@@ -17,6 +17,7 @@ import { Textarea, Input } from "@/components/ui/Field"
 import { EmptyState } from "@/components/ui/EmptyState"
 import { useToast } from "@/components/ui/Toast"
 import { substituteRoleLabel } from "@/lib/substitute-label"
+import { formatOperatingHours, isWithinOperatingHours, DEFAULT_OPERATING_DAYS, DEFAULT_OPERATING_OPEN_TIME, DEFAULT_OPERATING_CLOSE_TIME, type Weekday } from "@/types/chatbot"
 import { alreadyOnJob } from "@/lib/operations/team-membership"
 import { cn } from "@/lib/utils"
 import { statusStyle } from "@/lib/ui/status"
@@ -76,6 +77,7 @@ interface TeamMember {
 interface CrewMember {
   id: string
   name: string
+  is_substitute: boolean
 }
 
 interface JobDetail {
@@ -251,8 +253,25 @@ export default function JobOrderDetail({
   const [addingHeadSub, setAddingHeadSub] = useState(false)
   const [headSubError, setHeadSubError] = useState<string | null>(null)
 
+  // Removing a substitute (crew or head) — misclicked adds need an undo.
+  const [removeSubTarget, setRemoveSubTarget] = useState<{ id: string; name: string; role: string } | null>(null)
+  const [removingSub, setRemovingSub] = useState(false)
+  const [removeSubError, setRemoveSubError] = useState<string | null>(null)
+
   const [scheduleModal, setScheduleModal] = useState(false)
   const [scheduleValue, setScheduleValue] = useState("")
+  // Admin → AI Configuration's Operating Hours — defaults to the shop's
+  // actual current hours while this loads, so nothing breaks/flashes wrong
+  // (same convention as AddJobOrderForm's own copy of this fetch).
+  const [operatingHours, setOperatingHours] = useState<{
+    operating_days: Weekday[]
+    operating_open_time: string
+    operating_close_time: string
+  }>({
+    operating_days: DEFAULT_OPERATING_DAYS,
+    operating_open_time: DEFAULT_OPERATING_OPEN_TIME,
+    operating_close_time: DEFAULT_OPERATING_CLOSE_TIME,
+  })
   const [schedulePreview, setSchedulePreview] = useState<string | null>(null)
   const [savingSchedule, setSavingSchedule] = useState(false)
   const [scheduleError, setScheduleError] = useState<string | null>(null)
@@ -495,12 +514,51 @@ export default function JobOrderDetail({
     }
   }
 
+  function requestRemoveSubstitute(person: { id: string; name: string }, role: string) {
+    setRemoveSubTarget({ ...person, role })
+    setRemoveSubError(null)
+  }
+
+  async function confirmRemoveSubstitute() {
+    if (!removeSubTarget) return
+    setRemovingSub(true)
+    setRemoveSubError(null)
+    try {
+      const res = await fetch(`/api/operations/job-orders/${jobId}/add-substitute`, {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ person_id: removeSubTarget.id, role: removeSubTarget.role }),
+      })
+      const json = await res.json()
+      if (!res.ok) throw new Error(json?.error ?? "Failed to remove substitute")
+      setRemoveSubTarget(null)
+      await load()
+      toast.success("Substitute removed.")
+    } catch (err: unknown) {
+      setRemoveSubError(err instanceof Error ? err.message : String(err))
+    } finally {
+      setRemovingSub(false)
+    }
+  }
+
   function openScheduleModal() {
     if (!job) return
     setScheduleValue(job.scheduled_at ? toDatetimeLocalValue(job.scheduled_at) : "")
     setSchedulePreview(null)
     setScheduleError(null)
     setScheduleModal(true)
+    fetch("/api/operations/job-management/operating-hours")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((hours) => {
+        if (hours) {
+          setOperatingHours({
+            operating_days: hours.operating_days ?? DEFAULT_OPERATING_DAYS,
+            operating_open_time: hours.operating_open_time ?? DEFAULT_OPERATING_OPEN_TIME,
+            operating_close_time: hours.operating_close_time ?? DEFAULT_OPERATING_CLOSE_TIME,
+          })
+        }
+      })
+      .catch(() => {}) // keep the current-hours default already in state
   }
 
   // Est. Completion preview is computed server-side (same engine that
@@ -532,6 +590,20 @@ export default function JobOrderDetail({
 
   async function saveScheduledStart() {
     if (!scheduleValue) return
+    const selected = new Date(scheduleValue)
+    if (selected <= new Date()) {
+      setScheduleError("Scheduled date and time cannot be in the past.")
+      return
+    }
+    const check = isWithinOperatingHours(operatingHours, selected)
+    if (check.reason === "closed_day") {
+      setScheduleError(`That date is closed. Open days: ${formatOperatingHours(operatingHours)}`)
+      return
+    }
+    if (check.reason === "outside_hours") {
+      setScheduleError(`Start time must be within working hours (${formatOperatingHours(operatingHours)})`)
+      return
+    }
     setSavingSchedule(true)
     setScheduleError(null)
     try {
@@ -733,6 +805,9 @@ export default function JobOrderDetail({
               substituteLabel={substituteRoleLabel("head_detailer")}
               substitutes={job.head_detailer_substitutes.map((s) => ({ id: s.id, name: s.full_name }))}
               crew={job.detailers}
+              headRole="head_detailer"
+              crewRole="detailer"
+              onRemoveSubstitute={requestRemoveSubstitute}
             />
             <CrewCell
               label="Head Installer"
@@ -740,6 +815,9 @@ export default function JobOrderDetail({
               substituteLabel={substituteRoleLabel("head_installer")}
               substitutes={job.head_installer_substitutes.map((s) => ({ id: s.id, name: s.full_name }))}
               crew={job.installers}
+              headRole="head_installer"
+              crewRole="installer"
+              onRemoveSubstitute={requestRemoveSubstitute}
             />
             <InfoCell label="Started" value={fmtDateTime(job.actual_start_at)} />
             <InfoCell label="Est. Completion" value={fmtDateTime(job.expected_completion_at)} />
@@ -1171,6 +1249,25 @@ export default function JobOrderDetail({
         {headSubError && <p className="mt-3 text-xs text-status-delayed">{headSubError}</p>}
       </Modal>
 
+      {/* Remove Substitute confirmation — covers both crew and head substitutes */}
+      <ConfirmModal
+        open={removeSubTarget !== null}
+        onClose={() => { if (!removingSub) { setRemoveSubTarget(null); setRemoveSubError(null) } }}
+        onConfirm={confirmRemoveSubstitute}
+        title="Remove Substitute?"
+        message={
+          <>
+            Remove <strong>{removeSubTarget?.name}</strong> as a substitute on this job? This can&apos;t
+            be undone — you&apos;d need to add them again.
+            {removeSubError && <span className="mt-2 block text-status-delayed">{removeSubError}</span>}
+          </>
+        }
+        confirmLabel="Remove"
+        tone="danger"
+        loading={removingSub}
+        icon={X}
+      />
+
       {/* Edit Scheduled Start Modal */}
       <Modal
         open={scheduleModal}
@@ -1197,10 +1294,11 @@ export default function JobOrderDetail({
           <Input
             aria-label="Scheduled Date and Time"
             type="datetime-local"
+            min={`${new Date().toISOString().split("T")[0]}T${operatingHours.operating_open_time}`}
             value={scheduleValue}
-            onChange={(e) => setScheduleValue(e.target.value)}
+            onChange={(e) => { setScheduleValue(e.target.value); setScheduleError(null) }}
           />
-          <p className="text-[10px] text-muted">Working hours: 8:00 AM – 8:00 PM</p>
+          <p className="text-[10px] text-muted">Working hours: {formatOperatingHours(operatingHours)}</p>
         </div>
 
         {scheduleValue && (
@@ -1304,16 +1402,36 @@ function CrewCell({
   crew,
   substitutes = [],
   substituteLabel,
+  headRole,
+  crewRole,
+  onRemoveSubstitute,
 }: {
   label: string
   lead: string
-  crew: { id: string; name: string }[]
+  crew: { id: string; name: string; is_substitute: boolean }[]
   /** Substitute head technicians — always visible, never folded into the crew list. */
   substitutes?: { id: string; name: string }[]
   substituteLabel?: string
+  /** Passed to onRemoveSubstitute for a head substitute row. */
+  headRole?: "head_detailer" | "head_installer"
+  /** Passed to onRemoveSubstitute for a crew substitute row. */
+  crewRole?: "detailer" | "installer"
+  onRemoveSubstitute?: (person: { id: string; name: string }, role: string) => void
 }) {
   const [open, setOpen] = useState(false)
   const collapsible = crew.length >= 2
+
+  const removeBtn = (person: { id: string; name: string }, role: string) => (
+    <button
+      type="button"
+      onClick={(e) => { e.stopPropagation(); onRemoveSubstitute?.(person, role) }}
+      title={`Remove ${person.name} as substitute`}
+      aria-label={`Remove ${person.name} as substitute`}
+      className="text-muted transition-colors hover:text-status-delayed"
+    >
+      <X size={11} />
+    </button>
+  )
 
   return (
     <div>
@@ -1327,6 +1445,7 @@ function CrewCell({
                 {substituteLabel ?? "Substitute"}
               </span>
               {sub.name}
+              {onRemoveSubstitute && headRole && removeBtn(sub, headRole)}
             </li>
           ))}
         </ul>
@@ -1346,8 +1465,12 @@ function CrewCell({
               {open && (
                 <ul className="mt-1 space-y-0.5 pl-1">
                   {crew.map((m) => (
-                    <li key={m.id} className="text-xs text-body">
+                    <li key={m.id} className="flex items-center gap-1.5 text-xs text-body">
                       {m.name}
+                      {m.is_substitute && (
+                        <span className="rounded-full bg-status-info/15 px-1.5 py-0.5 text-[10px] font-semibold text-status-info">Sub</span>
+                      )}
+                      {m.is_substitute && onRemoveSubstitute && crewRole && removeBtn(m, crewRole)}
                     </li>
                   ))}
                 </ul>
@@ -1356,9 +1479,13 @@ function CrewCell({
           ) : (
             <ul className="space-y-0.5 pl-1">
               {crew.map((m) => (
-                <li key={m.id} className="flex items-center gap-1 text-xs text-body">
+                <li key={m.id} className="flex items-center gap-1.5 text-xs text-body">
                   <Users size={10} className="text-muted" />
                   {m.name}
+                  {m.is_substitute && (
+                    <span className="rounded-full bg-status-info/15 px-1.5 py-0.5 text-[10px] font-semibold text-status-info">Sub</span>
+                  )}
+                  {m.is_substitute && onRemoveSubstitute && crewRole && removeBtn(m, crewRole)}
                 </li>
               ))}
             </ul>

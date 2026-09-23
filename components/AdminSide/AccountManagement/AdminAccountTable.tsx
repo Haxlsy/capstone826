@@ -8,10 +8,12 @@ import { SearchBar } from "@/components/ui/SearchBar"
 import { Button } from "@/components/ui/Button"
 import { DataTable, type Column } from "@/components/ui/DataTable"
 import { Popover, MenuItem } from "@/components/ui/Popover"
+import { FilterTrigger } from "@/components/ui/FilterTrigger"
 import { Modal, ConfirmModal } from "@/components/ui/Modal"
 import { StatusBadge } from "@/components/ui/Badge"
 import { useToast } from "@/components/ui/Toast"
 import { initials } from "@/lib/ui/avatar"
+import { cn } from "@/lib/utils"
 import { useRealtimeRefetch } from "@/hooks/useRealtimeRefetch"
 
 interface AdminAccount {
@@ -29,6 +31,7 @@ export default function AdminAccountTable() {
   const [loading, setLoading] = useState(true)
   const [fetchError, setFetchError] = useState<string | null>(null)
   const [search, setSearch] = useState("")
+  const [statusFilter, setStatusFilter] = useState<"all" | "active" | "archived">("active")
   const [modalOpen, setModalOpen] = useState(false)
   const [editAccount, setEditAccount] = useState<AdminAccount | undefined>(undefined)
   const [archiveTarget, setArchiveTarget] = useState<AdminAccount | null>(null)
@@ -42,7 +45,7 @@ export default function AdminAccountTable() {
     setLoading(true)
     setFetchError(null)
     try {
-      const res = await fetch("/api/admin/accounts?admin=true")
+      const res = await fetch(`/api/admin/accounts?admin=true&status=${statusFilter}&pageSize=200`)
       const json = await res.json()
       if (!res.ok) {
         setFetchError(json.error ?? "Failed to load accounts.")
@@ -54,7 +57,7 @@ export default function AdminAccountTable() {
     } finally {
       setLoading(false)
     }
-  }, [])
+  }, [statusFilter])
 
   useEffect(() => {
     fetchAccounts()
@@ -221,12 +224,50 @@ export default function AdminAccountTable() {
         }
       />
 
-      <SearchBar
-        value={search}
-        onChange={setSearch}
-        placeholder="Search admin accounts…"
-        containerClassName="max-w-sm"
-      />
+      <div className="flex flex-wrap items-start gap-3">
+        <SearchBar
+          value={search}
+          onChange={setSearch}
+          placeholder="Search admin accounts…"
+          containerClassName="max-w-sm flex-1"
+        />
+        <Popover
+          align="start"
+          trigger={({ open, toggle }) => (
+            <FilterTrigger
+              open={open}
+              onClick={toggle}
+              active={statusFilter !== "active"}
+              count={statusFilter !== "active" ? 1 : 0}
+            />
+          )}
+          panelClassName="w-56 p-4"
+        >
+          <p className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-body">Status</p>
+          <div className="space-y-0.5">
+            {(["all", "active", "archived"] as const).map((s) => (
+              <button
+                key={s}
+                onClick={() => setStatusFilter(s)}
+                className={cn(
+                  "w-full rounded-sm px-2.5 py-1.5 text-left text-sm transition-colors",
+                  statusFilter === s ? "bg-primary-soft font-medium text-primary" : "text-body hover:bg-surface-muted",
+                )}
+              >
+                {s === "all" ? "All Status" : s.charAt(0).toUpperCase() + s.slice(1)}
+              </button>
+            ))}
+          </div>
+          {statusFilter !== "active" && (
+            <button
+              onClick={() => setStatusFilter("active")}
+              className="mt-3 text-left text-xs text-muted transition-colors hover:text-status-delayed"
+            >
+              Clear filter
+            </button>
+          )}
+        </Popover>
+      </div>
 
       <ConfirmModal
         open={resetTarget !== null}

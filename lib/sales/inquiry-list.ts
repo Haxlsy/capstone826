@@ -49,3 +49,26 @@ export function newInquiryToast(
   }
   return `${added.length} new escalations`
 }
+
+/**
+ * A heading for an inquiry's `conflict_note`, matched from the free-text the
+ * webhook writes (app/api/webhook/facebook/route.ts) — there's no dedicated
+ * reason column, so the note's own wording is the only signal. Everything
+ * used to show as "Identity Conflict" regardless of why the conversation was
+ * actually escalated — most visibly, a customer who'd already given complete
+ * booking info but got stuck on the AI's vehicle-unit extraction (Bot asked
+ * 3x…) read as an identity mismatch that never happened. Order matters: more
+ * specific patterns are checked before the generic identity-conflict default.
+ */
+export function escalationHeading(conflictNote: string | null | undefined): string {
+  if (!conflictNote) return "Escalation Note"
+  const note = conflictNote
+  if (/^Bot asked/.test(note)) return "Missing Booking Details"
+  if (/^Repeat booking/.test(note)) return "Duplicate Booking"
+  if (/^Re-booking plate/.test(note)) return "Vehicle Already In Service"
+  if (/^Auto-escalated after repeated/.test(note)) return "Repeated Policy/Off-topic Messages"
+  if (/^Auto-escalated: message classified/.test(note)) return "Possible Threat"
+  if (/^POSSIBLE IMPERSONATION/.test(note)) return "Possible Impersonation"
+  if (/^AI chatbot is disabled/.test(note)) return "AI Chatbot Disabled"
+  return "Identity Conflict"
+}

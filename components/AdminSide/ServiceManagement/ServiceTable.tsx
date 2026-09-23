@@ -215,7 +215,14 @@ export default function ServiceTable({ canWrite = true }: { canWrite?: boolean }
                       <MenuItem
                         disabled={inUse}
                         title={inUse ? lockedHint : undefined}
-                        onClick={() => {
+                        onClick={(e) => {
+                          // Popover portals its panel to document.body, so it's
+                          // a DOM sibling of the row, not a descendant — but
+                          // synthetic events still bubble along React's
+                          // component tree, so without this the row's own
+                          // onClick={setViewingService} (View Details) fires
+                          // too, opening both at once.
+                          e.stopPropagation()
                           close()
                           setEditServiceId(s.id)
                         }}
@@ -226,7 +233,8 @@ export default function ServiceTable({ canWrite = true }: { canWrite?: boolean }
                         danger={!s.is_archived}
                         disabled={!s.is_archived && inUse}
                         title={!s.is_archived && inUse ? lockedHint : undefined}
-                        onClick={() => {
+                        onClick={(e) => {
+                          e.stopPropagation()
                           close()
                           handleArchiveToggle(s)
                         }}
