@@ -12,6 +12,7 @@ import { DataTable, type Column } from "@/components/ui/DataTable"
 import { Pagination } from "@/components/ui/Pagination"
 import { Select, FieldLabel } from "@/components/ui/Field"
 import { fmtDateTime } from "@/lib/time-display"
+import { isWithinRecordDateRange } from "@/lib/operations/job-records-filter"
 
 interface JobRecord {
   id: string
@@ -92,8 +93,7 @@ export default function JobOrderRecords({ jobOrders: rawOrders }: { jobOrders: a
     )
       return false
     if (serviceFilter !== "All" && r.service !== serviceFilter) return false
-    if (startDate && new Date(r.created_at) < new Date(startDate)) return false
-    if (endDate && new Date(r.created_at) > new Date(endDate)) return false
+    if (!isWithinRecordDateRange(r, startDate, endDate)) return false
     return true
   })
 
@@ -207,7 +207,8 @@ export default function JobOrderRecords({ jobOrders: rawOrders }: { jobOrders: a
         <div>
           <FieldLabel>Start Date</FieldLabel>
           <input
-            aria-label="Start Date"
+            aria-label="Start Date (Scheduled Start)"
+            title="Filters by Scheduled Start"
             type="date"
             value={pendingStart}
             onChange={(e) => setPendingStart(e.target.value)}
@@ -217,7 +218,8 @@ export default function JobOrderRecords({ jobOrders: rawOrders }: { jobOrders: a
         <div>
           <FieldLabel>End Date</FieldLabel>
           <input
-            aria-label="End Date"
+            aria-label="End Date (Released)"
+            title="Filters by Released date"
             type="date"
             value={pendingEnd}
             onChange={(e) => setPendingEnd(e.target.value)}

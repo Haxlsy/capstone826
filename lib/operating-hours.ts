@@ -50,3 +50,37 @@ export async function loadWorkSchedule(
 
   return { openDays, openMinutes, closeMinutes }
 }
+
+export interface OperatingHoursSettings {
+  operating_days: Weekday[]
+  operating_open_time: string
+  operating_close_time: string
+}
+
+/**
+ * The same Operating Hours setting as `loadWorkSchedule`, but in its raw
+ * (Weekday[] + "HH:MM") form instead of `WorkSchedule`'s internal
+ * day-number/minutes shape — what a caller needs to pass to
+ * `isWithinOperatingHours`/`formatOperatingHours` (types/chatbot.ts), e.g. to
+ * validate or display a Scheduled Date & Time input server-side. Shared by
+ * `/api/operations/job-management/operating-hours` (the client's own fetch)
+ * and any route that needs to validate a scheduled_at server-side.
+ */
+export async function loadOperatingHoursSettings(
+  admin: ReturnType<typeof createAdminClient>,
+): Promise<OperatingHoursSettings> {
+  const { data } = await admin.from("chatbot_config").select("settings").limit(1).single()
+  const settings = data?.settings as Record<string, unknown> | null | undefined
+
+  const operating_days = Array.isArray(settings?.operating_days) && settings.operating_days.length > 0
+    ? (settings.operating_days as Weekday[])
+    : DEFAULT_OPERATING_DAYS
+  const operating_open_time = typeof settings?.operating_open_time === "string"
+    ? settings.operating_open_time
+    : DEFAULT_OPERATING_OPEN_TIME
+  const operating_close_time = typeof settings?.operating_close_time === "string"
+    ? settings.operating_close_time
+    : DEFAULT_OPERATING_CLOSE_TIME
+
+  return { operating_days, operating_open_time, operating_close_time }
+}

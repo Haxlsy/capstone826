@@ -3,6 +3,7 @@ import {
   newInquiryIds,
   resolveSelectedId,
   newInquiryToast,
+  escalationHeading,
 } from "@/lib/sales/inquiry-list"
 
 // The two rules that make a realtime refresh safe to run under someone who is
@@ -81,5 +82,37 @@ describe("resolveSelectedId with a pending request", () => {
   })
   it("falls back normally without a pending request", () => {
     expect(resolveSelectedId("zzz", list)).toBe("a")
+  })
+})
+
+describe("escalationHeading", () => {
+  it("names the actual reason instead of always 'Identity Conflict'", () => {
+    // The exact bug: a customer who'd already given complete booking info
+    // but got stuck on vehicle-unit extraction read as an identity mismatch
+    // that never happened.
+    expect(escalationHeading('Bot asked 3× in a row for the same booking detail(s) (Vehicle Unit) with no progress. Handing to a human.'))
+      .toBe("Missing Booking Details")
+    expect(escalationHeading("Repeat booking: customer is already on file for plate ABC123 and re-submitted the same booking details."))
+      .toBe("Duplicate Booking")
+    expect(escalationHeading("Re-booking plate ABC123, currently in service (job status Ongoing). Customer was already informed once and is still pushing to book it."))
+      .toBe("Vehicle Already In Service")
+    expect(escalationHeading('Auto-escalated after repeated off-topic messages. Last message: "test".'))
+      .toBe("Repeated Policy/Off-topic Messages")
+    expect(escalationHeading('Auto-escalated: message classified as a possible threat or policy violation. Last message: "test".'))
+      .toBe("Possible Threat")
+    expect(escalationHeading('POSSIBLE IMPERSONATION. Messenger PSID 123 tried to claim Job Order ID JO-1.'))
+      .toBe("Possible Impersonation")
+    expect(escalationHeading("AI chatbot is disabled — routed to staff."))
+      .toBe("AI Chatbot Disabled")
+  })
+
+  it("falls back to Identity Conflict for a genuine identity mismatch note", () => {
+    expect(escalationHeading("Customer's provided phone number doesn't match the plate on file."))
+      .toBe("Identity Conflict")
+  })
+
+  it("handles no note", () => {
+    expect(escalationHeading(null)).toBe("Escalation Note")
+    expect(escalationHeading(undefined)).toBe("Escalation Note")
   })
 })

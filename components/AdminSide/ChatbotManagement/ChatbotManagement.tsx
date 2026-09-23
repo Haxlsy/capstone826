@@ -52,7 +52,6 @@ const DEFAULT_SETTINGS: AdminChatbotSettings = {
   enable_media_validation: true,
   ai_disabled_message:     DEFAULT_AI_DISABLED_MESSAGE,
   personality:             "friendly",
-  language:                "english",
   operating_days:               DEFAULT_OPERATING_DAYS,
   operating_open_time:          DEFAULT_OPERATING_OPEN_TIME,
   operating_close_time:         DEFAULT_OPERATING_CLOSE_TIME,
@@ -319,7 +318,10 @@ export default function ChatbotManagement() {
                   />
                   {errors.ai_disabled_message && <p className="text-xs text-status-delayed">{errors.ai_disabled_message}</p>}
                   <p className="text-xs text-muted">
-                    Sent once per customer message, then the conversation is handed to your Sales team.
+                    Sent once, the first time a customer messages while the AI is off, then the
+                    conversation is handed to your Sales team with no further automated replies. Make
+                    sure it tells the customer a real person — not the AI — will respond, so they
+                    don&apos;t keep expecting an automated answer.
                   </p>
                 </div>
               )}
@@ -413,28 +415,6 @@ export default function ChatbotManagement() {
                 <p className="text-[11px] font-semibold uppercase tracking-wide text-muted mb-1">Customers will see</p>
                 <p className="text-sm text-body">{formatOperatingHours(settings)}</p>
               </div>
-            </div>
-          </Section>
-
-          {/* E — Language */}
-          <Section icon={<Globe className="w-4 h-4" />} title="Response Language" subtitle="Choose the language the chatbot uses when talking to customers.">
-            <div className="flex gap-3">
-              {(["english", "filipino", "both"] as const).map((lang) => {
-                const labels: Record<string, string> = { english: "English", filipino: "Filipino", both: "Both" }
-                return (
-                  <button
-                    key={lang}
-                    onClick={() => patch("language", lang)}
-                    className={`px-4 py-2 rounded-card text-sm font-medium border transition-colors ${
-                      settings.language === lang
-                        ? "bg-primary text-white border-primary"
-                        : "bg-surface text-body border-border hover:border-primary/40"
-                    }`}
-                  >
-                    {labels[lang]}
-                  </button>
-                )
-              })}
             </div>
           </Section>
 

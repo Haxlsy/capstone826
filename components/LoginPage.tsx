@@ -37,11 +37,13 @@ export default function LoginPage() {
   // doesn't need a Suspense boundary.
   useEffect(() => {
     const reason = new URLSearchParams(window.location.search).get("reason")
-    if (reason === "signed_in_elsewhere" || reason === "session_expired") {
+    if (reason === "signed_in_elsewhere" || reason === "session_expired" || reason === "idle_timeout") {
       toastRef.current.error(
         reason === "signed_in_elsewhere"
           ? "You were signed out because your account signed in on another device."
-          : "Your session has ended — please sign in again.",
+          : reason === "idle_timeout"
+            ? "You were signed out due to inactivity."
+            : "Your session has ended — please sign in again.",
       )
       if (reason === "session_expired") {
         // The server already cleared the auth cookies; drop what only the

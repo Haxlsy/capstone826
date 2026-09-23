@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest"
 import {
   sanitizeDetail,
+  sanitizeVehicleUnit,
   hasCancelIntent,
   hasExistingBookingIntent,
   shouldStayInBookingFlow,
@@ -78,6 +79,56 @@ describe("sanitizeDetail", () => {
     expect(summary).not.toContain("as provided")
     expect(summary).toContain("• Vehicle: —")
     expect(summary).toContain("Caleb James Dela Cruz")
+  })
+})
+
+// ── Defect: a real vehicle answer, longer than a name, wrongly bounced back to
+// null every turn — tripping the "asked 3x with no progress" escalation even
+// though the customer had already answered. ────────────────────────────────
+describe("sanitizeVehicleUnit", () => {
+  it("accepts a full-sentence answer that sanitizeDetail would have rejected", () => {
+    const answer = "It's a 2020 Toyota Vios, white in color, automatic transmission, plate pending."
+    expect(answer.length).toBeGreaterThan(60)
+    expect(answer.length).toBeLessThanOrEqual(90)
+    expect(sanitizeDetail(answer)).toBeNull()
+    expect(sanitizeVehicleUnit(answer)).toBe(answer.replace(/\.$/, ""))
+  })
+
+  it("accepts a longer multi-sentence description up to its own cap", () => {
+    const answer = "2019 Honda Civic RS Turbo. Dark gray. No modifications aside from tint."
+    expect(sanitizeVehicleUnit(answer)).not.toBeNull()
+  })
+
+  it("still rejects deliberation-marker leakage", () => {
+    const leaked =
+      "SUV Toyota Fortuner (Toyota Fortuner SUV is a bit redundant, keeping as provided or " +
+      "similar structure if allowed, here using 'SUV Toyota Fortuner' as provided by user). " +
+      "Wait, let's use: SUV Toyota Fortuner"
+    expect(sanitizeVehicleUnit(leaked)).toBeNull()
+  })
+
+  it("still rejects multi-line values", () => {
+    expect(sanitizeVehicleUnit("Toyota\nFortuner")).toBeNull()
+  })
+
+  it("still rejects an absurdly long value past its own (higher) cap", () => {
+    expect(sanitizeVehicleUnit("a".repeat(101))).toBeNull()
+  })
+
+  it("keeps ordinary short values untouched", () => {
+    expect(sanitizeVehicleUnit("Toyota Fortuner")).toBe("Toyota Fortuner")
+  })
+
+  it("still strips an embedded phone number or email", () => {
+    expect(sanitizeVehicleUnit("Toyota Vios, 09171234567")).toBe("Toyota Vios")
+    expect(sanitizeVehicleUnit("Toyota Vios, caleb@example.com")).toBe("Toyota Vios")
+  })
+
+  it("treats empty and non-string input as not provided", () => {
+    expect(sanitizeVehicleUnit("")).toBeNull()
+    expect(sanitizeVehicleUnit("   ")).toBeNull()
+    expect(sanitizeVehicleUnit(null)).toBeNull()
+    expect(sanitizeVehicleUnit(42)).toBeNull()
   })
 })
 

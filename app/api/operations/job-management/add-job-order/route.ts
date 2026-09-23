@@ -4,7 +4,8 @@ import { createClient } from "@/lib/supabase/server"
 import { createAdminClient } from "@/lib/supabase/admin"
 import { logAudit } from "@/hooks/audit-helpers"
 import { addWorkingMins } from "@/hooks/time-utils"
-import { loadWorkSchedule } from "@/lib/operating-hours"
+import { loadWorkSchedule, loadOperatingHoursSettings } from "@/lib/operating-hours"
+import { isWithinOperatingHours, formatOperatingHours } from "@/types/chatbot"
 import { normalizePhone } from "@/lib/phone"
 import { sendPushToUser } from "@/lib/push/send"
 import { getRoleCaller } from "@/lib/auth/caller"
@@ -67,6 +68,23 @@ export async function POST(request: Request) {
     if (!user) return NextResponse.json({ error: "Unauthorized." }, { status: 401 })
 
     const admin = createAdminClient()
+
+    // Server-authoritative — the form validates the same way, but a direct
+    // API call must not be able to schedule a job outside the shop's actual
+    // open days/hours either.
+    if (scheduled_at) {
+      const d = new Date(scheduled_at)
+      if (!isNaN(d.getTime())) {
+        const hours = await loadOperatingHoursSettings(admin)
+        const check = isWithinOperatingHours(hours, d)
+        if (!check.ok) {
+          const reason = check.reason === "closed_day"
+            ? `That date is closed. Open days: ${formatOperatingHours(hours)}`
+            : `Start time must be within working hours (${formatOperatingHours(hours)})`
+          return NextResponse.json({ error: reason }, { status: 400 })
+        }
+      }
+    }
 
     // Idempotency check — if this exact request already landed (a prior
     // attempt whose response the client never saw), return the existing job

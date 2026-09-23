@@ -6,6 +6,7 @@ import { useConcerns } from "@/hooks/use-concerns"
 import { resolveNavArea, navFor } from "@/lib/ui/nav"
 import { OfflineSyncProvider } from "@/components/dashboard/OperationComponents/OfflineSyncContext"
 import { SessionEnforcement } from "@/components/shared/SessionEnforcement"
+import { IdleTimeout } from "@/components/shared/IdleTimeout"
 import { ServiceWorkerRegistration } from "@/components/shared/ServiceWorkerRegistration"
 
 /**
@@ -41,6 +42,7 @@ export default function DashboardShell({ children }: { children: React.ReactNode
       lockSettingsOffline={area === "operations"}
     >
       <SessionEnforcement />
+      <IdleTimeout />
       <ServiceWorkerRegistration prewarm={area === "operations"} />
       {area === "operations" ? <OfflineSyncProvider>{children}</OfflineSyncProvider> : children}
     </AppShell>
