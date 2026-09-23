@@ -47,12 +47,29 @@ export async function proxy(request: NextRequest) {
   // round trip to Supabase Auth entirely (every logged-out /login and / hit).
   let user = null;
   let sessionDead = false;
+  let authCheckFailed = false;
   if (hasAuthCookie(request)) {
-    const { data, error } = await supabase.auth.getUser();
-    user = data.user;
-    // The refresh token is gone (revoked by another login, a logout, …) — a
-    // session that can never recover, unlike a network blip.
-    sessionDead = !user && isDeadSessionError(error);
+    try {
+      const { data, error } = await supabase.auth.getUser();
+      user = data.user;
+      // The refresh token is gone (revoked by another login, a logout, …) — a
+      // session that can never recover, unlike a network blip.
+      sessionDead = !user && isDeadSessionError(error);
+    } catch (err) {
+      // getUser() can throw instead of returning { error } for some failure
+      // shapes (observed in production: AuthApiError "Request rate limit
+      // reached"). This runs on every navigation to a protected route, so an
+      // uncaught throw here previously took down the entire app — no HTTP
+      // response at all, not even a Next.js error page, just the browser's
+      // own "This page couldn't load" — until the outage cleared. Fail open,
+      // same reasoning as isSessionCurrent()'s query-error handling
+      // (lib/auth/session-check.ts): let the request through unverified
+      // rather than force-logging out every signed-in user during a
+      // transient outage. requireRole()/getCurrentUser() still perform a
+      // full, independently-verified check at the page level.
+      console.error("[proxy] auth.getUser() failed — passing request through unverified:", err);
+      authCheckFailed = true;
+    }
   }
 
   const path = request.nextUrl.pathname;
@@ -74,7 +91,7 @@ export async function proxy(request: NextRequest) {
     return clearAuthCookies(request, supabaseResponse);
   }
 
-  if (!user && isProtectedArea) {
+  if (!user && isProtectedArea && !authCheckFailed) {
     // getUser() failed, but NOT in a way isDeadSessionError() recognized
     // above (sessionDead was false) — that doesn't mean this visitor was
     // never logged in. A signOut(token, "others") from another device's
