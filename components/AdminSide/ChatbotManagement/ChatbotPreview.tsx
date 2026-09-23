@@ -10,26 +10,15 @@ interface Message {
   time: string
 }
 
-const EXAMPLE_QUESTIONS: Record<"english" | "filipino" | "both", string[]> = {
-  english: [
-    "What are your business hours?",
-    "Where are you located?",
-    "Can I check my service status?",
-    "I want to book a service",
-  ],
-  filipino: [
-    "Anong oras kayo bukas?",
-    "Saan kayo matatagpuan?",
-    "Pwede ko bang tingnan ang status ng aking serbisyo?",
-    "Gusto kong mag-book ng serbisyo",
-  ],
-  both: [
-    "What are your business hours?",
-    "Saan kayo matatagpuan?",
-    "Can I check my service status?",
-    "Gusto kong mag-book ng serbisyo",
-  ],
-}
+// The bot always auto-detects and replies in whichever of English/Filipino
+// the customer used — no more per-account language setting — so a mixed set
+// doubles as both the example prompts and a demonstration of that.
+const EXAMPLE_QUESTIONS: string[] = [
+  "What are your business hours?",
+  "Saan kayo matatagpuan?",
+  "Can I check my service status?",
+  "Gusto kong mag-book ng serbisyo",
+]
 
 function getTime() {
   return new Date().toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })
@@ -171,7 +160,7 @@ export default function ChatbotPreview({ settings }: { settings: ChatbotSettings
         <div className="px-4 pb-3 flex flex-col gap-2 shrink-0">
           <p className="text-[11px] font-medium text-muted uppercase tracking-wide">Try these example questions</p>
           <div className="flex flex-col gap-1.5">
-            {EXAMPLE_QUESTIONS[settings.language].map((q) => (
+            {EXAMPLE_QUESTIONS.map((q) => (
               <button
                 key={q}
                 onClick={() => send(q)}

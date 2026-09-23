@@ -67,6 +67,39 @@ export async function PATCH(
       }
     }
 
+    // Same pattern as the plate check above — contact_number/email had no
+    // uniqueness check at all before, so editing a record to an existing
+    // phone number or email silently succeeded.
+    if (updates.contact_number) {
+      const { data: phoneClash } = await supabase
+        .from("customer_record")
+        .select("id")
+        .eq("contact_number", updates.contact_number)
+        .neq("id", id)
+        .maybeSingle()
+      if (phoneClash) {
+        return NextResponse.json(
+          { error: "That contact number is already on file for another customer record." },
+          { status: 409 }
+        )
+      }
+    }
+
+    if (updates.email) {
+      const { data: emailClash } = await supabase
+        .from("customer_record")
+        .select("id")
+        .ilike("email", (updates.email as string).replace(/[\\%_]/g, "\\$&"))
+        .neq("id", id)
+        .maybeSingle()
+      if (emailClash) {
+        return NextResponse.json(
+          { error: "That email is already on file for another customer record." },
+          { status: 409 }
+        )
+      }
+    }
+
     // Linking a Messenger account (psid) is a deliberate, audited action —
     // Sales does this after verifying identity out-of-band.
     let linkedPsid = false

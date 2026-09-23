@@ -5,7 +5,6 @@ import { z } from "zod"
 // =================================================================
 
 export const botPersonalitySchema = z.enum(["friendly", "formal"])
-export const botLanguageSchema = z.enum(["english", "filipino", "both"])
 
 /**
  * Sent verbatim (no AI) when `enable_ai_chatbot` is off, right before the
@@ -13,7 +12,8 @@ export const botLanguageSchema = z.enum(["english", "filipino", "both"])
  * use it without importing server-only Messenger code.
  */
 export const DEFAULT_AI_DISABLED_MESSAGE =
-  "Thanks for reaching out to 826 Auto Aesthetic and Protection! Our team will get back to " +
+  "Our AI assistant isn't available right now. Thanks for reaching out to 826 Auto Aesthetic " +
+  "and Protection — a member of our team will personally review your message and get back to " +
   "you shortly."
 
 /**
@@ -121,7 +121,11 @@ export const chatbotSettingsSchema = z.object({
   enable_ai_chatbot:       z.boolean().default(true),
   enable_media_validation: z.boolean().default(true),
   ai_disabled_message:     z.string().max(2000).default(DEFAULT_AI_DISABLED_MESSAGE),
-  language:                botLanguageSchema,
+  // No more admin-configurable Response Language — the bot always detects
+  // and replies in whichever of English/Filipino the customer is using (see
+  // lib/messenger/chatbot.ts buildSystemPrompt / detectMessageLanguage call
+  // sites). `.passthrough()` below means a legacy stored row that still has
+  // a `language` key keeps it harmlessly — nothing reads it anymore.
   operating_days:                z.array(weekdaySchema).default(DEFAULT_OPERATING_DAYS),
   operating_open_time:           z.string().default(DEFAULT_OPERATING_OPEN_TIME),
   operating_close_time:          z.string().default(DEFAULT_OPERATING_CLOSE_TIME),

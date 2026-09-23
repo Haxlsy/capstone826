@@ -166,11 +166,9 @@ export async function resumeBotAfterHandoff(psid: string): Promise<void> {
     }
 
     const { settings } = await loadChatbotConfig()
-    const lang = settings?.language
-    // Same "both" resolution as the webhook route — pick English or Filipino
-    // off the customer's own last message instead of sending both concatenated.
-    const effectiveLang: BotLanguage | undefined =
-      lang === "both" ? detectMessageLanguage(lastCustomerMsg?.message_body) : lang
+    // No more admin-configurable Response Language — same as the webhook
+    // route, always detect the customer's own last message and match it.
+    const effectiveLang: BotLanguage = detectMessageLanguage(lastCustomerMsg?.message_body)
     const template = resolveTemplate(
       settings?.resolved_message_en, settings?.resolved_message_fil,
       DEFAULT_RESOLVED_MESSAGE_EN, DEFAULT_RESOLVED_MESSAGE_FIL,

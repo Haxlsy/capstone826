@@ -46,8 +46,23 @@ export async function POST(request: Request) {
   const stageList: Stage[] = Array.isArray(stages) ? stages : []
   const estimatedDurationMins = stageList.reduce((acc, s) => acc + (s.stage_duration_mins ?? 0), 0)
 
+  const trimmedName = serviceName.trim()
+
+  // Pre-check for a friendlier message than the 23505 the unique index
+  // below would otherwise raise — normalized the same way the index is
+  // (case/space-insensitive), so "Ceramic Coating" and "ceramic coating"
+  // are caught here too, not just an exact match.
+  const normalize = (s: string) => s.toLowerCase().replace(/\s+/g, "")
+  const { data: existingServices } = await admin.from("service").select("id, name")
+  if ((existingServices ?? []).some((s) => normalize(s.name as string) === normalize(trimmedName))) {
+    return NextResponse.json(
+      { error: `A service named "${trimmedName}" already exists.` },
+      { status: 409 }
+    )
+  }
+
   const serviceInsert: Record<string, unknown> = {
-    name:                   serviceName.trim(),
+    name:                   trimmedName,
     service_type:           serviceType.trim(),
     description:            description?.trim() || null,
     is_archived:            false,
@@ -61,6 +76,14 @@ export async function POST(request: Request) {
     .single()
 
   if (serviceError || !service) {
+    // Defensive backstop for a race the pre-check above can't catch (two
+    // concurrent creates with the same name) — the unique index still wins.
+    if (serviceError?.code === "23505") {
+      return NextResponse.json(
+        { error: `A service named "${trimmedName}" already exists.` },
+        { status: 409 }
+      )
+    }
     return NextResponse.json(
       { error: serviceError?.message ?? "Failed to create service." },
       { status: 500 }
@@ -95,7 +118,7 @@ export async function POST(request: Request) {
     role:      profile.role,
     category:  "create",
     action:    "Created service",
-    target:    serviceName.trim(),
+    target:    trimmedName,
   })
 
   return NextResponse.json({ success: true, serviceId: service.id })

@@ -29,7 +29,7 @@ export async function getJobDetailData(id: string) {
       .single(),
     supabase
       .from("job_order_team")
-      .select("role_in_job, user_account:user_account_id(id, full_name), technician:technician_id(id, full_name)")
+      .select("role_in_job, is_substitute, user_account:user_account_id(id, full_name), technician:technician_id(id, full_name)")
       .eq("job_order_id", id),
     supabase
       .from("job_order_history")
@@ -126,12 +126,22 @@ export async function getJobDetailData(id: string) {
   const toSub = (t: any) => ({ id: (t.user_account as any)?.id ?? "", full_name: (t.user_account as any)?.full_name ?? "Unknown" })
   const headDetailerSubs  = headDetailerRows.slice(1).map(toSub)
   const headInstallerSubs = headInstallerRows.slice(1).map(toSub)
+  // `is_substitute` is only reliably set going forward (see
+  // supabase/migrations/20260923000002_job_order_team_is_substitute.sql) —
+  // every row from before that migration defaults to false, so a crew member
+  // added as a substitute before this feature existed just won't show a
+  // remove option, rather than risk misidentifying an original assignment.
+  const toCrewMember = (t: any) => ({
+    id: (t.technician as any)?.id ?? "",
+    name: (t.technician as any)?.full_name ?? "Unknown",
+    is_substitute: !!t.is_substitute,
+  })
   const detailers     = (team ?? [])
     .filter((t: any) => t.role_in_job === "detailer")
-    .map((t: any) => ({ id: (t.technician as any)?.id ?? "", name: (t.technician as any)?.full_name ?? "Unknown" }))
+    .map(toCrewMember)
   const installers    = (team ?? [])
     .filter((t: any) => t.role_in_job === "installer")
-    .map((t: any) => ({ id: (t.technician as any)?.id ?? "", name: (t.technician as any)?.full_name ?? "Unknown" }))
+    .map(toCrewMember)
 
   const mappedStages = (() => {
     const mapped = (stages ?? []).map((s: any) => {

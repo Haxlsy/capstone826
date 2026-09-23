@@ -37,6 +37,13 @@ export type { ChatbotSettings, ChatMessage, ChatbotReply, CustomerDetails }
 const MAX_DETAIL_LENGTH = 60
 
 /**
+ * vehicle_unit gets its own, longer cap — a real vehicle description
+ * ("Toyota Vios 2020, white, automatic") legitimately runs longer than a
+ * name, plate, phone, or email ever would.
+ */
+const MAX_VEHICLE_LENGTH = 100
+
+/**
  * Phrases that only ever appear when the model narrates its own reasoning into
  * a structured field instead of answering it. Real customer details never
  * contain these.
@@ -100,24 +107,37 @@ export function sanitizeDetail(v: unknown): string | null {
 }
 
 /**
- * `sanitizeDetail()`, plus a defensive strip of any phone number or email
- * address embedded in the vehicle description. Gemini has been observed
- * appending the customer's contact number/email onto vehicle_unit when all
- * the booking details are sent in one comma-separated message — the prompts
- * in generateChatbotReply/extractCustomerDetails now explicitly forbid this,
+ * Its own lenient pass, not `sanitizeDetail()` — a real vehicle answer
+ * ("2020 Toyota Vios, white, automatic. Plate pending.") is often a full
+ * sentence, longer than a name/plate/email ever is. sanitizeDetail's
+ * sentence-break rejection and 60-char cap were silently discarding genuine
+ * answers here, leaving vehicle_unit stuck at null every turn and wrongly
+ * tripping the "asked the same thing 3 times" escalation even though the
+ * customer had answered. Still rejects deliberation markers and multi-line
+ * text — neither is ever a real answer, for any field — plus a defensive
+ * strip of any phone number or email address embedded in the description.
+ * Gemini has been observed appending the customer's contact number/email
+ * onto vehicle_unit when all the booking details are sent in one
+ * comma-separated message — the prompts in
+ * generateChatbotReply/extractCustomerDetails now explicitly forbid this,
  * but this backstops that instruction rather than replacing it.
  *
  * Deliberately does NOT strip a plate-pattern match — PLATE_PATTERN is loose
  * enough to false-positive on real vehicle names ("RAV4", "CR-V").
  */
 export function sanitizeVehicleUnit(v: unknown): string | null {
-  const cleaned = sanitizeDetail(v)
-  if (!cleaned) return null
+  const value = str(v)
+  if (!value) return null
+  if (/[\r\n]/.test(value)) return null
+  const withoutAside = value.replace(/\s*\([^)]*\)\s*/g, " ").replace(/\s+/g, " ").trim()
+  if (!withoutAside) return null
+  if (DELIBERATION_MARKERS.some((re) => re.test(withoutAside))) return null
+  if (withoutAside.length > MAX_VEHICLE_LENGTH) return null
 
   // Split on comma/semicolon and drop empty pieces rather than a single
   // trailing-separator regex — a phone AND an email both leaking in (the
   // reported bug) leaves TWO dangling separators, not just one at the end.
-  const stripped = cleaned
+  const stripped = withoutAside
     .replace(TOKEN_PHONE, "")
     .replace(TOKEN_EMAIL, "")
     .split(/[,;]/)
@@ -147,6 +167,20 @@ export function toHistoryMessages(
 }
 
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY_CHATBOT! })
+
+// Neither Gemini call below used to set a timeout, so a call that HUNG
+// (never resolved or rejected — distinct from one that errors quickly, which
+// the existing catch/escalate path already handled fine) blocked until the
+// serverless function's own execution limit eventually killed the whole
+// request. The customer had already been shown "typing…" (sent as early as
+// possible, before this call) and then got nothing — no catch block ran, no
+// fallback message was ever sent. This bounds each call so a hang throws an
+// abort error instead, which the same catch/escalate path already handles —
+// no new failure-handling needed, just a ceiling on how long the existing
+// one takes to kick in. A turn can make up to two of these calls in
+// sequence, so 8s each leaves real headroom inside even a conservative
+// (e.g. Hobby-tier, 10s) function budget.
+const GEMINI_CALL_TIMEOUT_MS = 8_000
 
 /**
  * Sourcing rules for business facts. Deliberately contains NO service names,
@@ -232,13 +266,7 @@ export function buildSystemPrompt(s: ChatbotSettings): string {
   lines.push("- Do NOT ask the customer for their plate number or phone number for a status check — our system handles identity and asks for those itself when they are needed.")
 
   lines.push("")
-  if (s.language === "filipino") {
-    lines.push("LANGUAGE: Always respond in Filipino (Tagalog). Use natural, conversational Filipino throughout every message.")
-  } else if (s.language === "both") {
-    lines.push("LANGUAGE: Detect the customer's language from their message and respond in the same language. If they write in English, reply in English. If they write in Filipino/Tagalog, reply in Filipino. If mixed, match their dominant language.")
-  } else {
-    lines.push("LANGUAGE: Always respond in English.")
-  }
+  lines.push("LANGUAGE: Detect the customer's language from their message and respond in the same language. If they write in English, reply in English. If they write in Filipino/Tagalog, reply in Filipino. If mixed, match their dominant language. Only ever reply in English or Filipino — even if the customer writes in a different language, respond in whichever of English or Filipino is the closer fit, never a third language. If the knowledge base content below is in a different language than your reply, translate it rather than quoting it verbatim.")
 
   lines.push("")
   lines.push("Set \"escalate\" to true ONLY if:")
@@ -310,7 +338,6 @@ function buildRuntimeSystemPrompt(
     enable_ai_chatbot: true,
     enable_media_validation: true,
     ai_disabled_message: DEFAULT_AI_DISABLED_MESSAGE,
-    language: "english",
     operating_days: DEFAULT_OPERATING_DAYS,
     operating_open_time: DEFAULT_OPERATING_OPEN_TIME,
     operating_close_time: DEFAULT_OPERATING_CLOSE_TIME,
@@ -931,6 +958,7 @@ Each field must contain ONLY its own kind of information — never combine or ap
         },
         required: ["reply", "escalate", "customer"],
       },
+      httpOptions: { timeout: GEMINI_CALL_TIMEOUT_MS },
     },
   })
 
@@ -1016,6 +1044,7 @@ Each field must contain ONLY its own kind of information — never combine or ap
           },
           required: ["customer"],
         },
+        httpOptions: { timeout: GEMINI_CALL_TIMEOUT_MS },
       },
     })
 

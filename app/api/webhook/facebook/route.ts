@@ -333,19 +333,11 @@ async function handleInboundMessage(
     console.error("[webhook/facebook] chatbot config load failed:", err)
   }
 
-  // Response Language applies to the deterministic replies too, not just the
-  // model's free text — those used to be hardcoded English regardless.
-  const lang = settings?.language as BotLanguage | undefined
-
-  // Every deterministic, fixed-copy reply this turn uses this instead of raw
-  // `lang` — "both" used to mean "show English AND Filipino, concatenated,
-  // every time" for these, which read as a wall of duplicated text to a
-  // customer clearly writing in only one language. Resolved the same way the
-  // quick-reply buttons already are: detect the customer's own last message
-  // and pick just that language. `lang` itself is left untouched for the
-  // Gemini system prompt, which keeps its own per-turn detect-and-match
-  // instruction for the AI's free-text replies.
-  const effectiveLang: BotLanguage | undefined = lang === "both" ? detectMessageLanguage(messageBody) : lang
+  // No more admin-configurable Response Language — every deterministic,
+  // fixed-copy reply this turn always detects the customer's own message and
+  // matches it, same as the AI's free-text replies (buildSystemPrompt's own
+  // per-turn detect-and-match instruction).
+  const effectiveLang: BotLanguage = detectMessageLanguage(messageBody)
 
   // Admin-editable Message Templates, each resolved against its built-in
   // default once per turn and reused at every send site below.

@@ -9,7 +9,7 @@ import {
   ArrowRightLeft, Clock,
   CheckCircle2, ChevronRight, User, Car,
   Phone, Hash, CheckCheck, CircleDot, Search,
-  AlertCircle, Mail, Layers, AlertTriangle,
+  AlertCircle, Mail, Layers, AlertTriangle, Truck,
 } from "lucide-react"
 import { fmtDateTime } from "@/lib/time-display"
 import { PageHeader } from "@/components/ui/PageHeader"
@@ -21,7 +21,7 @@ import { Badge, StatusBadge } from "@/components/ui/Badge"
 import { useToast } from "@/components/ui/Toast"
 import { cn } from "@/lib/utils"
 import { inquiryTypeStyle } from "@/lib/ui/status"
-import { newInquiryIds, resolveSelectedId, newInquiryToast } from "@/lib/sales/inquiry-list"
+import { newInquiryIds, resolveSelectedId, newInquiryToast, escalationHeading } from "@/lib/sales/inquiry-list"
 import { LinkAccountModal } from "./LinkAccountModal"
 
 type InquiryStatus = "open" | "resolved" | "recorded"
@@ -437,7 +437,7 @@ export default function InquiryManagement() {
                     <div className="mt-1 flex items-center gap-1.5">
                       <Badge className={cn("text-[10px]", inquiryTypeStyle(inq.type))}>{inq.type}</Badge>
                       {inq.conflictNote && (
-                        <AlertTriangle className="w-3 h-3 text-status-warning" aria-label="Identity conflict" />
+                        <AlertTriangle className="w-3 h-3 text-status-warning" aria-label={escalationHeading(inq.conflictNote)} />
                       )}
                     </div>
                     <p className="text-[10px] text-muted mt-1">{inq.timeElapsed}</p>
@@ -503,7 +503,7 @@ export default function InquiryManagement() {
               <div className="flex items-start gap-3 rounded-card border border-status-warning/30 bg-status-warning/10 px-4 py-3">
                 <AlertTriangle className="w-4 h-4 text-status-warning shrink-0 mt-0.5" />
                 <div>
-                  <p className="text-xs font-semibold text-status-warning uppercase tracking-wider">Identity Conflict</p>
+                  <p className="text-xs font-semibold text-status-warning uppercase tracking-wider">{escalationHeading(selected.conflictNote)}</p>
                   <p className="text-sm text-status-warning mt-1">{selected.conflictNote}</p>
                 </div>
               </div>
@@ -514,6 +514,7 @@ export default function InquiryManagement() {
               <div className="bg-surface-subtle border border-border-subtle rounded-card divide-y divide-border-subtle overflow-hidden">
                 <FieldRow label="Full name"      value={selected.extractedName}    icon={<User  className="w-3.5 h-3.5 text-muted" />} />
                 <FieldRow label="Plate number"   value={selected.extractedPlate}   icon={<Car   className="w-3.5 h-3.5 text-muted" />} />
+                <FieldRow label="Vehicle unit"   value={selected.extractedVehicle} icon={<Truck className="w-3.5 h-3.5 text-muted" />} />
                 <FieldRow label="Contact number" value={selected.extractedContact} icon={<Phone className="w-3.5 h-3.5 text-muted" />} />
                 <FieldRow label="Email"          value={selected.extractedEmail}   icon={<Mail  className="w-3.5 h-3.5 text-muted" />} />
               </div>
