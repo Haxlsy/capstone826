@@ -29,6 +29,14 @@ const EMPTY_FORM = {
 }
 
 export default function AddServiceModal({ open, onClose, onSuccess }: AddServiceModalProps) {
+  // The server/validation error banner renders at the very top of a long,
+  // scrollable form — invisible (and easy to miss entirely) if the user was
+  // scrolled down to Workflow Stages when they hit Save. Scroll it back into
+  // view on a failed submit only (not on every keystroke that clears a
+  // field's own error) so the message is never silently off-screen.
+  const topRef = useRef<HTMLDivElement>(null)
+  const scrollToTop = () => topRef.current?.scrollIntoView({ behavior: "smooth", block: "start" })
+
   const [form, setForm]                         = useState(EMPTY_FORM)
   const [serviceTypes, setServiceTypes]         = useState<string[]>([])
   const [sections, setSections]                 = useState<CategorySection[]>([])
@@ -212,7 +220,7 @@ export default function AddServiceModal({ open, onClose, onSuccess }: AddService
     e.preventDefault()
     setServerError("")
     const errs = validate()
-    if (Object.keys(errs).length > 0) { setErrors(errs); return }
+    if (Object.keys(errs).length > 0) { setErrors(errs); scrollToTop(); return }
     setSubmitting(true)
     try {
       let seq = 1
@@ -235,11 +243,12 @@ export default function AddServiceModal({ open, onClose, onSuccess }: AddService
         }),
       })
       const json = await res.json()
-      if (!res.ok) { setServerError(json.error ?? "Something went wrong."); return }
+      if (!res.ok) { setServerError(json.error ?? "Something went wrong."); scrollToTop(); return }
       onSuccess()
       onClose()
     } catch {
       setServerError("Network error. Please try again.")
+      scrollToTop()
     } finally {
       setSubmitting(false)
     }
@@ -265,6 +274,7 @@ export default function AddServiceModal({ open, onClose, onSuccess }: AddService
       }
     >
         <form onSubmit={handleSubmit} className="space-y-5">
+          <div ref={topRef} />
           {serverError && (
             <div className="bg-status-delayed/10 border border-status-delayed/30 text-status-delayed text-sm rounded-sm px-4 py-3">
               {serverError}
