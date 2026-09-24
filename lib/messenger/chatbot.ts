@@ -530,6 +530,33 @@ export function hasExistingBookingIntent(message: string): boolean {
   return EXISTING_BOOKING_PATTERNS.some((re) => re.test(normalized))
 }
 
+const FIELD_CORRECTION_PATTERNS = [
+  // Correcting one specific detail of a booking still being collected or
+  // confirmed — e.g. "I want to change my plate number" — distinct from
+  // EXISTING_BOOKING_PATTERNS above, which is about an already-placed
+  // booking/appointment, not a field within one still in progress. \w* stems
+  // (plate\w*, chang\w*, …) tolerate common typos like "plater number". Both
+  // orderings, same as EXISTING_BOOKING_PATTERNS above — Filipino phrasing
+  // often puts the field before the verb ("yung vehicle, ayusin ko").
+  /\b(chang\w*|correct\w*|updat\w*|fix\w*|edit\w*|palitan|itama|ayus\w*)\b[\s\S]*\b(plate\w*|contact\w*|phone\w*|number\w*|email\w*|vehicle\w*|name\w*|plaka)\b/i,
+  /\b(plate\w*|contact\w*|phone\w*|number\w*|email\w*|vehicle\w*|name\w*|plaka)\b[\s\S]*\b(chang\w*|correct\w*|updat\w*|fix\w*|edit\w*|palitan|itama|ayus\w*)\b/i,
+]
+
+/**
+ * True when the message asks to correct one specific detail of a booking
+ * still in progress (e.g. "I want to change my plate number"). Without this,
+ * such a message carries no recognized booking signal (no "book" keyword, no
+ * literal plate/phone/email token yet — the customer hasn't sent the new
+ * value, just asked to change it) and reads as the customer changing the
+ * subject. The webhook route's "customer wandered off" branch then wiped the
+ * entire booking draft on exactly this message, silently losing every field
+ * already collected — not just the one being corrected.
+ */
+export function hasFieldCorrectionIntent(message: string): boolean {
+  const normalized = message.toLowerCase()
+  return FIELD_CORRECTION_PATTERNS.some((re) => re.test(normalized))
+}
+
 const CANCEL_INTENT_PATTERNS = [
   // Plain abandonment — no object needed.
   /\bnever\s?mind\b/i,

@@ -39,6 +39,7 @@ import {
   MISSING_FIELDS_PROMPT_LEAD,
   nextViolationState,
   hasExistingBookingIntent,
+  hasFieldCorrectionIntent,
   hasCancelIntent,
   shouldStayInBookingFlow,
   buildBookingCancelledMessage,
@@ -196,12 +197,17 @@ const hasExtractedDetails = (c: CustomerDetails | null | undefined): boolean =>
     (c.full_name || c.contact_number || c.plate_number || c.vehicle_unit || c.email)
   )
 
-// A message carries a booking signal when it either states booking intent or
-// contains one of the booking detail tokens (plate / phone / email). This is
-// evaluated on the CURRENT message only, so a stray detail from an older turn
-// does not keep the confirmation flow glued to unrelated replies.
+// A message carries a booking signal when it either states booking intent,
+// contains one of the booking detail tokens (plate / phone / email), or asks
+// to correct a specific detail (e.g. "I want to change my plate number") —
+// the last case has neither a keyword nor a literal token yet, but is still
+// squarely on-topic; without it, this fell through to the "customer wandered
+// off" branch below, which wipes the entire booking draft. This is evaluated
+// on the CURRENT message only, so a stray detail from an older turn does not
+// keep the confirmation flow glued to unrelated replies.
 const bookingSignal = (text: string): boolean =>
-  hasBookingIntent(text) || PLATE_PATTERN.test(text) || PHONE_PATTERN.test(text) || EMAIL_PATTERN.test(text)
+  hasBookingIntent(text) || PLATE_PATTERN.test(text) || PHONE_PATTERN.test(text) || EMAIL_PATTERN.test(text) ||
+  hasFieldCorrectionIntent(text)
 
 interface MessengerEvent {
   sender?: { id?: string }

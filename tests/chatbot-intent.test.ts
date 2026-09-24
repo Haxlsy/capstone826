@@ -5,6 +5,7 @@ import {
   hasStatusIntent,
   continuesStatusInquiry,
   hasExistingBookingIntent,
+  hasFieldCorrectionIntent,
   confirmRequested,
   isPureConfirmation,
   missingBookingFields,
@@ -75,6 +76,31 @@ describe("Test 4 — Existing booking modification", () => {
     expect(hasExistingBookingIntent("I need to modify my appointment.")).toBe(true)
     expect(hasExistingBookingIntent("I want to reschedule.")).toBe(true)
     expect(hasExistingBookingIntent("pakansel po yung booking ko")).toBe(true)
+  })
+})
+
+// Defect: a request to correct one field of a booking still being collected
+// (no "book" keyword, no literal plate/phone/email token yet) carried no
+// recognized signal, so it read as the customer changing the subject — the
+// webhook's "wandered off" branch then wiped the entire draft, losing every
+// field already given, not just the one being corrected.
+describe("hasFieldCorrectionIntent", () => {
+  it("detects a request to correct a specific field, including the typo that triggered this", () => {
+    expect(hasFieldCorrectionIntent("i want to change my plater number")).toBe(true)
+    expect(hasFieldCorrectionIntent("I want to change my plate number")).toBe(true)
+    expect(hasFieldCorrectionIntent("can I correct my email")).toBe(true)
+    expect(hasFieldCorrectionIntent("update my contact number please")).toBe(true)
+    expect(hasFieldCorrectionIntent("mali yung vehicle, pwede ko bang ayusin")).toBe(true)
+  })
+
+  it("is not fooled into matching an existing-booking operation (no field mentioned)", () => {
+    expect(hasFieldCorrectionIntent("I want to change my booking.")).toBe(false)
+    expect(hasFieldCorrectionIntent("I want to reschedule.")).toBe(false)
+  })
+
+  it("does not fire on unrelated messages", () => {
+    expect(hasFieldCorrectionIntent("What services do you offer?")).toBe(false)
+    expect(hasFieldCorrectionIntent("ABC 1234")).toBe(false)
   })
 })
 

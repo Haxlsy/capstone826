@@ -53,9 +53,11 @@ export function shouldResumeBot(input: {
   /** Inquiries for this psid still sitting at status 'open'. */
   openInquiryCount: number
   lastCustomerMessageAt: string | null
+  /** The chatbot's enable_ai_chatbot setting. */
+  aiEnabled: boolean
   now?: Date
 }): { resume: boolean; canPush: boolean; reason: string } {
-  const { conversationStatus, openInquiryCount, lastCustomerMessageAt } = input
+  const { conversationStatus, openInquiryCount, lastCustomerMessageAt, aiEnabled } = input
 
   // Only a human-owned thread can be handed back. Anything else means the bot
   // already owns it (or a previous resume already ran) — never push twice.
@@ -67,6 +69,17 @@ export function shouldResumeBot(input: {
   // this thread even though one of their inquiries was just concluded.
   if (openInquiryCount > 0) {
     return { resume: false, canPush: false, reason: `${openInquiryCount} other open inquiry(ies) for this customer` }
+  }
+
+  // The state reset below still needs to happen (so this conversation is
+  // correctly marked resolved, not left stuck 'pending', once AI comes back)
+  // — only the customer-facing "I'm back and ready to assist" text is
+  // withheld, since that would be false while the bot is actually disabled.
+  // Checked before the messaging window below: a customer who just messaged
+  // must not get the resume text just because they're still inside the 24h
+  // window — AI being off overrides that.
+  if (!aiEnabled) {
+    return { resume: true, canPush: false, reason: "AI chatbot is disabled — conversation reset silently, resume message withheld" }
   }
 
   const lastAt = lastCustomerMessageAt ? Date.parse(lastCustomerMessageAt) : NaN
@@ -119,10 +132,13 @@ export async function resumeBotAfterHandoff(psid: string): Promise<void> {
       .limit(1)
       .maybeSingle()
 
+    const { settings } = await loadChatbotConfig()
+
     const decision = shouldResumeBot({
       conversationStatus: conv.status,
       openInquiryCount: openInquiryCount ?? 0,
       lastCustomerMessageAt: lastCustomerMsg?.sent_at ?? null,
+      aiEnabled: settings?.enable_ai_chatbot !== false,
     })
 
     if (!decision.resume) {
@@ -165,7 +181,6 @@ export async function resumeBotAfterHandoff(psid: string): Promise<void> {
       return
     }
 
-    const { settings } = await loadChatbotConfig()
     // No more admin-configurable Response Language — same as the webhook
     // route, always detect the customer's own last message and match it.
     const effectiveLang: BotLanguage = detectMessageLanguage(lastCustomerMsg?.message_body)
