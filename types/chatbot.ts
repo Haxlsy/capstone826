@@ -61,12 +61,16 @@ export const DEFAULT_ESCALATION_MESSAGE_FIL =
   "at may staff na susunod sa iyo rito nang personal. " +
   "Hindi muna ako makakapagpadala ng automated na sagot dito hanggang matugunan ang iyong request."
 
+// Deliberately does NOT end with a colon promising an inline list — the only
+// actual menu is the separate quick-reply buttons Messenger renders near the
+// composer (see quickRepliesFor in lib/messenger/handoff.ts), not text under
+// this message. A colon here reads as broken once nothing textual follows it.
 export const DEFAULT_RESOLVED_MESSAGE_EN =
   "Our team has finished helping with your request. I'm back and ready to assist — " +
-  "here's what I can help you with:"
+  "pick an option below or just tell me what you need."
 export const DEFAULT_RESOLVED_MESSAGE_FIL =
   "Natapos na ng aming team ang pagtulong sa iyong request. Nandito na ako ulit at handang " +
-  "tumulong — narito ang aking maitutulong sa iyo:"
+  "tumulong — pumili sa mga option sa ibaba o sabihin mo lang kung ano ang kailangan mo."
 
 export const DEFAULT_BOOKING_MESSAGE_EN =
   "Thank you! Your request has been sent to our Sales team. They will contact you shortly to " +
