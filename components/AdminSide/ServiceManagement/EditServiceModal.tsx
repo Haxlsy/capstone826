@@ -24,6 +24,12 @@ interface EditServiceModalProps {
 }
 
 export default function EditServiceModal({ serviceId, open, onClose, onSuccess }: EditServiceModalProps) {
+  // See AddServiceModal's identical comment — the error banner is at the top
+  // of a long scrollable form; scroll it into view on a failed submit so a
+  // duplicate-name (or any other) rejection is never off-screen.
+  const topRef = useRef<HTMLDivElement>(null)
+  const scrollToTop = () => topRef.current?.scrollIntoView({ behavior: "smooth", block: "start" })
+
   const [serviceType,  setServiceType]  = useState("")
   const [serviceName,  setServiceName]  = useState("")
   const [description,  setDescription]  = useState("")
@@ -259,7 +265,7 @@ export default function EditServiceModal({ serviceId, open, onClose, onSuccess }
     e.preventDefault()
     setServerError("")
     const errs = validate()
-    if (Object.keys(errs).length > 0) { setErrors(errs); return }
+    if (Object.keys(errs).length > 0) { setErrors(errs); scrollToTop(); return }
     setSubmitting(true)
     try {
       let seq = 1
@@ -283,7 +289,7 @@ export default function EditServiceModal({ serviceId, open, onClose, onSuccess }
         }),
       })
       const json = await res.json()
-      if (!res.ok) { setServerError(json.error ?? "Something went wrong."); return }
+      if (!res.ok) { setServerError(json.error ?? "Something went wrong."); scrollToTop(); return }
       onSuccess()
       if (json.warning) {
         setSaveWarning(json.warning)
@@ -293,6 +299,7 @@ export default function EditServiceModal({ serviceId, open, onClose, onSuccess }
       }
     } catch {
       setServerError("Network error. Please try again.")
+      scrollToTop()
     } finally {
       setSubmitting(false)
     }
@@ -324,6 +331,7 @@ export default function EditServiceModal({ serviceId, open, onClose, onSuccess }
 
         {!fetching && !fetchError && (
           <form onSubmit={handleSubmit} className="space-y-5">
+            <div ref={topRef} />
             {saveWarning && (
               <div className="bg-status-warning/10 border border-status-warning/30 rounded-sm px-4 py-3 space-y-2">
                 <p className="text-sm font-medium text-status-warning">{saveWarning}</p>
