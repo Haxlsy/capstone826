@@ -12,6 +12,7 @@ import {
   type ChatbotSettings,
 } from "@/lib/messenger/chatbot"
 import { quickRepliesFor } from "@/lib/messenger/handoff"
+import { DEFAULT_RESOLVED_MESSAGE_EN, DEFAULT_RESOLVED_MESSAGE_FIL } from "@/types/chatbot"
 
 const settings: ChatbotSettings = {
   personality: "friendly",
@@ -287,5 +288,16 @@ describe("knowledge base authority", () => {
 
   it("returns null for an empty knowledge base", () => {
     expect(formatKnowledgeBase([])).toBeNull()
+  })
+})
+
+// Defect: the resolved/resume message ended with "...here's what I can help
+// you with:" — a colon promising an inline list that never appears; the only
+// actual menu is the separate quick-reply buttons Messenger renders near the
+// composer, not text under the message. Read as broken in production.
+describe("DEFAULT_RESOLVED_MESSAGE — must not promise a list it can't deliver", () => {
+  it("does not end with a bare colon", () => {
+    expect(DEFAULT_RESOLVED_MESSAGE_EN.trim().endsWith(":")).toBe(false)
+    expect(DEFAULT_RESOLVED_MESSAGE_FIL.trim().endsWith(":")).toBe(false)
   })
 })
