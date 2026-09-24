@@ -471,10 +471,17 @@ export default function JobOrderDetail({
 
   // Crew already on THIS job (primary or substitute) are shown as assigned —
   // `on_job` alone would silently hide them (it means "on any active job").
-  const crewOnJob = job ? (subRole === "detailer" ? job.detailers : job.installers).map((c) => c.id) : []
+  // Split by is_substitute (unlike a head role's single primaryId, crew can
+  // have several original members) so the modal can offer to remove a
+  // substitute directly, while an original assignment stays un-removable.
+  const crewList = job ? (subRole === "detailer" ? job.detailers : job.installers) : []
+  const crewTeam = {
+    primaryIds: crewList.filter((c) => !c.is_substitute).map((c) => c.id),
+    substituteIds: crewList.filter((c) => c.is_substitute).map((c) => c.id),
+  }
   const subCandidates = subTechs
     .filter((t) => t.role === subRole)
-    .map((t) => ({ t, membership: alreadyOnJob(t.id, { substituteIds: crewOnJob }) }))
+    .map((t) => ({ t, membership: alreadyOnJob(t.id, crewTeam) }))
     .filter(({ t, membership }) => membership !== null || (isTechnicianAvailableToday(t) && !t.on_job))
     .sort((a, b) => Number(a.membership !== null) - Number(b.membership !== null))
 
@@ -778,70 +785,84 @@ export default function JobOrderDetail({
             <StatusBadge status={displayJobStatus(job.status, job.is_overdue)} />
           </div>
 
-          <div className="grid grid-cols-2 gap-4 text-sm md:grid-cols-4">
-            <InfoCell label="Vehicle" value={job.vehicle_unit} />
-            <InfoCell label="Plate" value={job.plate_number} accent />
-            <InfoCell label="Service" value={job.service} />
-            {job.status === "Pending" ? (
-              <button
-                type="button"
-                onClick={openScheduleModal}
-                className="group text-left disabled:cursor-not-allowed disabled:opacity-60"
-                title={isOnline ? "Edit scheduled start" : OFFLINE_ACTION_HINT}
-                {...lockProps}
-              >
-                <p className="mb-0.5 text-xs uppercase tracking-wide text-muted">Scheduled Start</p>
-                <p className="flex items-center gap-1 font-medium text-body group-hover:text-primary">
-                  {fmtDateTime(job.scheduled_at)}
-                  <Pencil className="h-3 w-3 text-muted group-hover:text-primary" />
-                </p>
-              </button>
-            ) : (
-              <InfoCell label="Scheduled Start" value={fmtDateTime(job.scheduled_at)} />
-            )}
-            <CrewCell
-              label="Head Detailer"
-              lead={job.head_detailer?.full_name ?? "Unassigned"}
-              substituteLabel={substituteRoleLabel("head_detailer")}
-              substitutes={job.head_detailer_substitutes.map((s) => ({ id: s.id, name: s.full_name }))}
-              crew={job.detailers}
-              headRole="head_detailer"
-              crewRole="detailer"
-              onRemoveSubstitute={requestRemoveSubstitute}
-            />
-            <CrewCell
-              label="Head Installer"
-              lead={job.head_installer?.full_name ?? "Unassigned"}
-              substituteLabel={substituteRoleLabel("head_installer")}
-              substitutes={job.head_installer_substitutes.map((s) => ({ id: s.id, name: s.full_name }))}
-              crew={job.installers}
-              headRole="head_installer"
-              crewRole="installer"
-              onRemoveSubstitute={requestRemoveSubstitute}
-            />
-            <InfoCell label="Started" value={fmtDateTime(job.actual_start_at)} />
-            <InfoCell label="Est. Completion" value={fmtDateTime(job.expected_completion_at)} />
-            {updatedEst && (
-              <div>
-                <p className="mb-0.5 text-xs uppercase tracking-wide text-muted">Updated Est.</p>
-                <p className="font-medium text-status-onjob">{fmtDateTime(updatedEst)}</p>
-              </div>
-            )}
-            {job.status !== "Released" && (
-              <div className="col-span-2 flex flex-col gap-2 pt-1 md:col-span-4">
-                <div className="flex flex-wrap gap-2">
-                  <Button variant="secondary" size="sm" onClick={openHeadSubModal} {...lockProps}>
-                    <UserPlus className="h-3.5 w-3.5" />
-                    Add Substitute Head Technician
-                  </Button>
-                  <Button variant="secondary" size="sm" onClick={openSubModal} {...lockProps}>
-                    <UserPlus className="h-3.5 w-3.5" />
-                    Add Substitute Technician
-                  </Button>
+          {/* Grouped into separate boxes — Vehicle/Timeline/Team each keep to their
+              own column, so a long crew list in Team can never misalign or push
+              around unrelated cells the way one flat shared grid used to. */}
+          <div className="grid grid-cols-1 gap-4 text-sm md:grid-cols-3">
+            <div className="flex flex-col gap-3 rounded-card border border-border-subtle p-4">
+              <p className="text-xs font-semibold uppercase tracking-wide text-muted">Vehicle &amp; Service</p>
+              <InfoCell label="Vehicle" value={job.vehicle_unit} />
+              <InfoCell label="Plate" value={job.plate_number} accent />
+              <InfoCell label="Service" value={job.service} />
+            </div>
+
+            <div className="flex flex-col gap-3 rounded-card border border-border-subtle p-4">
+              <p className="text-xs font-semibold uppercase tracking-wide text-muted">Timeline</p>
+              {job.status === "Pending" ? (
+                <button
+                  type="button"
+                  onClick={openScheduleModal}
+                  className="group text-left disabled:cursor-not-allowed disabled:opacity-60"
+                  title={isOnline ? "Edit scheduled start" : OFFLINE_ACTION_HINT}
+                  {...lockProps}
+                >
+                  <p className="mb-0.5 text-xs uppercase tracking-wide text-muted">Scheduled Start</p>
+                  <p className="flex items-center gap-1 font-medium text-body group-hover:text-primary">
+                    {fmtDateTime(job.scheduled_at)}
+                    <Pencil className="h-3 w-3 text-muted group-hover:text-primary" />
+                  </p>
+                </button>
+              ) : (
+                <InfoCell label="Scheduled Start" value={fmtDateTime(job.scheduled_at)} />
+              )}
+              <InfoCell label="Started" value={fmtDateTime(job.actual_start_at)} />
+              <InfoCell label="Est. Completion" value={fmtDateTime(job.expected_completion_at)} />
+              {updatedEst && (
+                <div>
+                  <p className="mb-0.5 text-xs uppercase tracking-wide text-muted">Updated Est.</p>
+                  <p className="font-medium text-status-onjob">{fmtDateTime(updatedEst)}</p>
                 </div>
-                {!isOnline && <OfflinePausedNote />}
-              </div>
-            )}
+              )}
+            </div>
+
+            <div className="flex flex-col gap-3 rounded-card border border-border-subtle p-4">
+              <p className="text-xs font-semibold uppercase tracking-wide text-muted">Team</p>
+              <CrewCell
+                label="Head Detailer"
+                lead={job.head_detailer?.full_name ?? "Unassigned"}
+                substituteLabel={substituteRoleLabel("head_detailer")}
+                substitutes={job.head_detailer_substitutes.map((s) => ({ id: s.id, name: s.full_name }))}
+                crew={job.detailers}
+                headRole="head_detailer"
+                crewRole="detailer"
+                onRemoveSubstitute={requestRemoveSubstitute}
+              />
+              <CrewCell
+                label="Head Installer"
+                lead={job.head_installer?.full_name ?? "Unassigned"}
+                substituteLabel={substituteRoleLabel("head_installer")}
+                substitutes={job.head_installer_substitutes.map((s) => ({ id: s.id, name: s.full_name }))}
+                crew={job.installers}
+                headRole="head_installer"
+                crewRole="installer"
+                onRemoveSubstitute={requestRemoveSubstitute}
+              />
+              {job.status !== "Released" && (
+                <div className="flex flex-col gap-2 border-t border-border-subtle pt-3">
+                  <div className="flex flex-wrap gap-2">
+                    <Button variant="secondary" size="sm" onClick={openHeadSubModal} {...lockProps}>
+                      <UserPlus className="h-3.5 w-3.5" />
+                      Add Substitute Head Technician
+                    </Button>
+                    <Button variant="secondary" size="sm" onClick={openSubModal} {...lockProps}>
+                      <UserPlus className="h-3.5 w-3.5" />
+                      Add Substitute Technician
+                    </Button>
+                  </div>
+                  {!isOnline && <OfflinePausedNote />}
+                </div>
+              )}
+            </div>
           </div>
         </CardBody>
       </Card>
@@ -1127,31 +1148,40 @@ export default function JobOrderDetail({
               {subCandidates.every((c) => c.membership !== null) && (
                 <p className="pb-1 text-center text-xs text-muted">Everyone available is already on this job.</p>
               )}
-              {subCandidates.map(({ t, membership }) => (
-                <button
-                  key={t.id}
-                  type="button"
-                  disabled={membership !== null}
-                  onClick={() => setSelectedSubId(t.id)}
-                  className={cn(
-                    "flex w-full items-center justify-between rounded-sm border px-3 py-2 text-sm transition-colors",
-                    membership !== null
-                      ? "cursor-not-allowed border-border-subtle bg-surface-muted/60 text-muted"
-                      : selectedSubId === t.id
+              {subCandidates.map(({ t, membership }) =>
+                membership !== null ? (
+                  <div
+                    key={t.id}
+                    className="flex w-full items-center justify-between rounded-sm border border-border-subtle bg-surface-muted/60 px-3 py-2 text-sm text-muted"
+                  >
+                    <span className="font-medium">{t.name}</span>
+                    {membership === "primary" ? (
+                      <span className="rounded-full bg-primary/12 px-2 py-0.5 text-[10px] font-semibold capitalize text-primary">
+                        Assigned {subRole}
+                      </span>
+                    ) : (
+                      <span className="rounded-full bg-status-info/15 px-2 py-0.5 text-[10px] font-semibold text-status-info">
+                        Already a substitute
+                      </span>
+                    )}
+                  </div>
+                ) : (
+                  <button
+                    key={t.id}
+                    type="button"
+                    onClick={() => setSelectedSubId(t.id)}
+                    className={cn(
+                      "flex w-full items-center justify-between rounded-sm border px-3 py-2 text-sm transition-colors",
+                      selectedSubId === t.id
                         ? "border-primary bg-primary-soft text-primary"
                         : "border-border-subtle text-body hover:bg-surface-muted",
-                  )}
-                >
-                  <span className="font-medium">{t.name}</span>
-                  {membership !== null ? (
-                    <span className="rounded-full bg-primary/12 px-2 py-0.5 text-[10px] font-semibold capitalize text-primary">
-                      Assigned {subRole}
-                    </span>
-                  ) : (
+                    )}
+                  >
+                    <span className="font-medium">{t.name}</span>
                     <StatusBadge status={t.on_job ? "On Job" : isTechnicianAvailableToday(t) ? "Available" : "Unavailable"} />
-                  )}
-                </button>
-              ))}
+                  </button>
+                ),
+              )}
             </>
           )}
         </div>
@@ -1211,37 +1241,42 @@ export default function JobOrderDetail({
               {allHeadsOnJob && (
                 <p className="pb-1 text-center text-xs text-muted">Everyone in this role is already on this job.</p>
               )}
-              {headCandidates.map(({ t, membership }) => (
-                <button
-                  key={t.id}
-                  type="button"
-                  disabled={membership !== null}
-                  onClick={() => setSelectedHeadSubId(t.id)}
-                  className={cn(
-                    "flex w-full items-center justify-between rounded-sm border px-3 py-2 text-sm transition-colors",
-                    membership !== null
-                      ? "cursor-not-allowed border-border-subtle bg-surface-muted/60 text-muted"
-                      : selectedHeadSubId === t.id
+              {headCandidates.map(({ t, membership }) =>
+                membership !== null ? (
+                  <div
+                    key={t.id}
+                    className="flex w-full items-center justify-between rounded-sm border border-border-subtle bg-surface-muted/60 px-3 py-2 text-sm text-muted"
+                  >
+                    <span className="font-medium">{t.name}</span>
+                    {membership === "primary" ? (
+                      <span className="rounded-full bg-primary/12 px-2 py-0.5 text-[10px] font-semibold text-primary">
+                        Assigned {headSubRole === "head_detailer" ? "Head Detailer" : "Head Installer"}
+                      </span>
+                    ) : (
+                      <span className="rounded-full bg-status-info/15 px-2 py-0.5 text-[10px] font-semibold text-status-info">
+                        Already a substitute
+                      </span>
+                    )}
+                  </div>
+                ) : (
+                  <button
+                    key={t.id}
+                    type="button"
+                    onClick={() => setSelectedHeadSubId(t.id)}
+                    className={cn(
+                      "flex w-full items-center justify-between rounded-sm border px-3 py-2 text-sm transition-colors",
+                      selectedHeadSubId === t.id
                         ? "border-primary bg-primary-soft text-primary"
                         : "border-border-subtle text-body hover:bg-surface-muted",
-                  )}
-                >
-                  <span className="font-medium">{t.name}</span>
-                  {membership === "primary" ? (
-                    <span className="rounded-full bg-primary/12 px-2 py-0.5 text-[10px] font-semibold text-primary">
-                      Assigned {headSubRole === "head_detailer" ? "Head Detailer" : "Head Installer"}
-                    </span>
-                  ) : membership === "substitute" ? (
-                    <span className="rounded-full bg-status-info/15 px-2 py-0.5 text-[10px] font-semibold text-status-info">
-                      Already a substitute
-                    </span>
-                  ) : (
+                    )}
+                  >
+                    <span className="font-medium">{t.name}</span>
                     <span className="text-[10px] text-muted">
                       {t.active_jobs} active job{t.active_jobs === 1 ? "" : "s"}
                     </span>
-                  )}
-                </button>
-              ))}
+                  </button>
+                ),
+              )}
             </>
           )}
         </div>
@@ -1257,8 +1292,8 @@ export default function JobOrderDetail({
         title="Remove Substitute?"
         message={
           <>
-            Remove <strong>{removeSubTarget?.name}</strong> as a substitute on this job? This can&apos;t
-            be undone — you&apos;d need to add them again.
+            Remove <strong>{removeSubTarget?.name}</strong>{" "}
+            as a substitute on this job? This can&apos;t be undone — you&apos;d need to add them again.
             {removeSubError && <span className="mt-2 block text-status-delayed">{removeSubError}</span>}
           </>
         }
@@ -1427,9 +1462,9 @@ function CrewCell({
       onClick={(e) => { e.stopPropagation(); onRemoveSubstitute?.(person, role) }}
       title={`Remove ${person.name} as substitute`}
       aria-label={`Remove ${person.name} as substitute`}
-      className="text-muted transition-colors hover:text-status-delayed"
+      className="rounded-full p-1 text-status-delayed transition-colors hover:bg-status-delayed/10"
     >
-      <X size={11} />
+      <Trash2 size={13} />
     </button>
   )
 
@@ -1444,8 +1479,10 @@ function CrewCell({
               <span className="rounded-full bg-status-info/15 px-2 py-0.5 text-[11px] font-semibold text-status-info">
                 {substituteLabel ?? "Substitute"}
               </span>
-              {sub.name}
-              {onRemoveSubstitute && headRole && removeBtn(sub, headRole)}
+              <span className="inline-flex items-center gap-1">
+                {sub.name}
+                {onRemoveSubstitute && headRole && removeBtn(sub, headRole)}
+              </span>
             </li>
           ))}
         </ul>

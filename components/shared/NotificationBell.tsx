@@ -117,7 +117,7 @@ export default function NotificationBell({ variant = "dark" }: { variant?: "dark
                 <li
                   key={n.id}
                   onClick={() => {
-                    markOne(n.id)
+                    if (!n.is_read) markOne(n.id)
                     const href = getNotificationHref(n, role)
                     if (href) { setOpen(false); router.push(href) }
                   }}
