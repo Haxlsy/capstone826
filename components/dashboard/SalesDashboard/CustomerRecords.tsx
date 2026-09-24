@@ -348,7 +348,7 @@ export default function CustomerRecords() {
 
                         <span className="text-xs text-muted">{record.createdAt}</span>
 
-                        <div className="ml-auto flex items-center gap-3">
+                        <div className="ml-auto flex flex-wrap items-center justify-end gap-2">
                           {isEditing ? (
                             <>
                               <div className="flex items-center gap-2">
@@ -360,7 +360,13 @@ export default function CustomerRecords() {
                                   <X className="h-3.5 w-3.5" /> Cancel
                                 </Button>
                               </div>
-                              {saveErr && <p className="text-[11px] text-status-delayed">{saveErr}</p>}
+                              {/* basis-full forces this onto its own line below the
+                                  buttons instead of cramming next to them on one row
+                                  (and potentially overflowing the row) when there's
+                                  a message to show. */}
+                              {saveErr && (
+                                <p className="basis-full text-right text-[11px] text-status-delayed">{saveErr}</p>
+                              )}
                             </>
                           ) : (
                             <>
