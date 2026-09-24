@@ -12,6 +12,7 @@ const decide = (over: Partial<Parameters<typeof shouldResumeBot>[0]> = {}) =>
     conversationStatus: "pending",
     openInquiryCount: 0,
     lastCustomerMessageAt: hoursAgo(1),
+    aiEnabled: true,
     now: NOW,
     ...over,
   })
@@ -67,6 +68,22 @@ describe("shouldResumeBot — handing a concluded handoff back to the bot", () =
     expect(decide().reason).toBeTruthy()
     expect(decide({ conversationStatus: "closed" }).reason).toBeTruthy()
     expect(decide({ openInquiryCount: 2 }).reason).toContain("2")
+  })
+
+  // Defect: the "I'm back and ready to assist" resume message was sent even
+  // when the AI chatbot toggle was off — a lie the customer has no way to
+  // detect, since the bot immediately re-escalates their very next message.
+  it("resets state silently (no resume message) when AI is disabled", () => {
+    const d = decide({ aiEnabled: false })
+    expect(d.resume).toBe(true)
+    expect(d.canPush).toBe(false)
+    expect(d.reason).toBeTruthy()
+  })
+
+  it("AI disabled overrides being inside the messaging window", () => {
+    // Well inside the 24h window — would otherwise push the resume message.
+    const d = decide({ aiEnabled: false, lastCustomerMessageAt: hoursAgo(1) })
+    expect(d.canPush).toBe(false)
   })
 })
 
