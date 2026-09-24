@@ -177,10 +177,16 @@ const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY_CHATBOT! })
 // fallback message was ever sent. This bounds each call so a hang throws an
 // abort error instead, which the same catch/escalate path already handles —
 // no new failure-handling needed, just a ceiling on how long the existing
-// one takes to kick in. A turn can make up to two of these calls in
-// sequence, so 8s each leaves real headroom inside even a conservative
-// (e.g. Hobby-tier, 10s) function budget.
-const GEMINI_CALL_TIMEOUT_MS = 8_000
+// one takes to kick in.
+//
+// Must be >= 10s: confirmed directly from a production 400 — Gemini's API
+// itself rejects any shorter deadline outright ("Manually set deadline 8s is
+// too short. Minimum allowed deadline is 10s."), which made every single
+// call fail immediately, not just a rare hang. 15s leaves a 5s margin above
+// that floor. This project's Function Max Duration is 300s (Vercel Project
+// Settings → Functions), so there's no function-timeout pressure pushing
+// this lower — Gemini's own floor is the only real constraint.
+const GEMINI_CALL_TIMEOUT_MS = 15_000
 
 /**
  * Sourcing rules for business facts. Deliberately contains NO service names,

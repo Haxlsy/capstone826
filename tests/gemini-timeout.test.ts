@@ -28,7 +28,11 @@ describe("Gemini calls set a bounded timeout", () => {
     expect(generateContent).toHaveBeenCalledTimes(1)
     const call = generateContent.mock.calls[0][0]
     expect(call.config.httpOptions?.timeout).toBeTypeOf("number")
-    expect(call.config.httpOptions.timeout).toBeGreaterThan(0)
+    // Regression: Gemini's API rejects any deadline under 10s outright (a
+    // production 400 confirmed this — see the constant's own comment in
+    // lib/messenger/chatbot.ts) — a shorter "timeout" isn't a fast bound,
+    // it's a guaranteed failure on every single call.
+    expect(call.config.httpOptions.timeout).toBeGreaterThanOrEqual(10_000)
   })
 
   it("extractCustomerDetails passes httpOptions.timeout", async () => {
@@ -39,7 +43,7 @@ describe("Gemini calls set a bounded timeout", () => {
     expect(generateContent).toHaveBeenCalledTimes(1)
     const call = generateContent.mock.calls[0][0]
     expect(call.config.httpOptions?.timeout).toBeTypeOf("number")
-    expect(call.config.httpOptions.timeout).toBeGreaterThan(0)
+    expect(call.config.httpOptions.timeout).toBeGreaterThanOrEqual(10_000)
   })
 
   it("a hung/aborted call is not left unhandled — extractCustomerDetails degrades to null", async () => {
