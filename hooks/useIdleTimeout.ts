@@ -71,7 +71,11 @@ export function useIdleTimeout() {
 
   useEffect(() => {
     const timer = startIdleTimer(
-      { setTimeout, clearTimeout },
+      // Bound: setTimeout/clearTimeout are Window operations that throw
+      // "Illegal invocation" if called detached from their receiver — which
+      // is exactly what a bare `{ setTimeout, clearTimeout }` produces, since
+      // lib/idle-timer.ts calls them as env.setTimeout(...)/env.clearTimeout(...).
+      { setTimeout: setTimeout.bind(globalThis), clearTimeout: clearTimeout.bind(globalThis) },
       { idleMs: IDLE_MS, warningMs: WARNING_MS, onWarn: showWarning, onTimeout: doLogout },
     )
     timerRef.current = timer

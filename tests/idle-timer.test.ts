@@ -68,4 +68,29 @@ describe("startIdleTimer", () => {
     vi.advanceTimersByTime(1000)
     expect(onTimeout).toHaveBeenCalledTimes(1)
   })
+
+  // Defect: hooks/useIdleTimeout.ts passed `{ setTimeout, clearTimeout }` —
+  // bare global references, detached from their required receiver. Real
+  // browsers throw "Illegal invocation" for a detached Window operation
+  // called as env.setTimeout(...)/env.clearTimeout(...) (this file's own
+  // schedule()). That specific throw can't be reproduced here: verified
+  // directly (`node -e`) that Node's setTimeout/clearTimeout do NOT enforce
+  // a receiver the way browsers do, so a Node-environment test — this
+  // project's vitest config uses environment: "node" — cannot fail on the
+  // old, buggy bare-reference shape no matter how it calls them. jsdom might
+  // reproduce it but isn't a dependency here, and adding one is out of scope
+  // for a one-line fix. This instead asserts the structural property that
+  // actually distinguishes the fix from the bug: the functions passed must
+  // be produced by .bind(), not the bare global functions themselves — real
+  // regression coverage for the exact browser exception would require a
+  // browser/jsdom-based test this suite doesn't have.
+  it("regression: setTimeout/clearTimeout are bound before use, not passed bare", () => {
+    vi.useRealTimers()
+    const bound = { setTimeout: setTimeout.bind(globalThis), clearTimeout: clearTimeout.bind(globalThis) }
+    expect(bound.setTimeout).not.toBe(setTimeout)
+    expect(bound.clearTimeout).not.toBe(clearTimeout)
+
+    const timer = startIdleTimer(bound, { idleMs: 10, warningMs: 5, onWarn: () => {}, onTimeout: () => {} })
+    timer.stop()
+  })
 })

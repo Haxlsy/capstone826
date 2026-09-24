@@ -52,6 +52,17 @@ function relativeTime(iso: string): string {
   return `${days}d ago`
 }
 
+/**
+ * Whether clicking a notification should actually mark it read. Guards
+ * against the exact bug this shipped to fix: clicking an already-read
+ * notification unconditionally decremented unreadCount by one it was never
+ * carrying, then the next real fetch corrected it back up — a visible
+ * 5 → 4 → 5 flicker for a row that was never unread to begin with.
+ */
+export function shouldMarkRead(notification: { is_read: boolean } | undefined): boolean {
+  return !!notification && !notification.is_read
+}
+
 export function useNotifications() {
   const [notifications, setNotifications] = useState<Notification[]>([])
   const [unreadCount, setUnreadCount] = useState(0)
@@ -87,6 +98,11 @@ export function useNotifications() {
   useRealtimeRefetch("job_order", fetchNotifications)
 
   const markOne = useCallback(async (id: string) => {
+    // Already read (e.g. re-clicked to navigate again): no state to change
+    // and no request worth making — see shouldMarkRead's own comment for the
+    // bug this prevents.
+    if (!shouldMarkRead(notifications.find((n) => n.id === id))) return
+
     setNotifications((prev) =>
       prev.map((n) => (n.id === id ? { ...n, is_read: true } : n))
     )
@@ -102,7 +118,7 @@ export function useNotifications() {
         body: JSON.stringify({ is_read: true }),
       })
     } catch {}
-  }, [seqGuard])
+  }, [notifications, seqGuard])
 
   const markAll = useCallback(async () => {
     setNotifications((prev) => prev.map((n) => ({ ...n, is_read: true })))
