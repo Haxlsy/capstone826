@@ -5,6 +5,12 @@ import { useRouter } from "next/navigation"
 import { User, Lock, Eye, EyeOff, ShieldAlert } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { useToast } from "@/components/ui/Toast"
+import { checkAlreadySignedIn } from "@/lib/auth/already-signed-in"
+
+// Upper bound on how long the form can be held back by the already-signed-in
+// check — a slow check may delay the form but must never block it.
+const SESSION_CHECK_TIMEOUT_MS = 1_500
+const sessionFetch: typeof fetch = (input, init) => fetch(input, init)
 
 const ROLE_ROUTES: Record<string, string> = {
   super_admin: "/dashboard/admin",
@@ -30,6 +36,47 @@ export default function LoginPage() {
   useEffect(() => {
     toastRef.current = toast
   })
+
+  // "checking" until we know whether this browser already has a live session.
+  // Starts as "checking" on server AND client (no hydration mismatch) so the
+  // form is never shown — and can't be submitted — before the answer is in.
+  const [gate, setGate] = useState<"checking" | "open">("checking")
+  const isLoadingRef = useRef(false)
+  useEffect(() => {
+    isLoadingRef.current = isLoading
+  })
+
+  // This page can be open in a tab that was loaded while logged out and is
+  // still on screen after another tab of the same browser signed in. Tabs
+  // share one cookie jar, so signing in again from that stale form rotates the
+  // session token and revokes sessions — the start of a race that can log out
+  // both tabs. proxy.ts only bounces a signed-in visitor who navigates here,
+  // so check on load, and again whenever the tab is looked at again.
+  useEffect(() => {
+    let cancelled = false
+    const check = async (): Promise<boolean> => {
+      const signedIn = await checkAlreadySignedIn(sessionFetch, SESSION_CHECK_TIMEOUT_MS)
+      if (cancelled || !signedIn) return false
+      // "/" is proxied to the signed-in user's own home (and requireRole
+      // handles must_change_password), so no role lookup is needed here.
+      window.location.replace("/")
+      return true
+    }
+    void check().then((redirecting) => {
+      if (!redirecting && !cancelled) setGate("open")
+    })
+
+    const recheck = () => {
+      if (!isLoadingRef.current && document.visibilityState === "visible") void check()
+    }
+    document.addEventListener("visibilitychange", recheck)
+    window.addEventListener("focus", recheck)
+    return () => {
+      cancelled = true
+      document.removeEventListener("visibilitychange", recheck)
+      window.removeEventListener("focus", recheck)
+    }
+  }, [])
 
   // Redirected here after being signed out for a newer login elsewhere
   // (proxy.ts — single active session per account). Reads the query param
@@ -127,6 +174,14 @@ export default function LoginPage() {
     setIsLoading(true)
 
     try {
+      // The form may have been rendered while logged out and another tab
+      // signed in since, with no focus/visibility event in between — check
+      // once more right before signing in a second time.
+      if (await checkAlreadySignedIn(sessionFetch, SESSION_CHECK_TIMEOUT_MS)) {
+        window.location.replace("/")
+        return
+      }
+
       const res = await fetch("/api/auth/login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -336,8 +391,14 @@ export default function LoginPage() {
             </p>
           </div>
 
-          {/* Form */}
-          {form}
+          {/* Form — held back until the already-signed-in check has answered */}
+          {gate === "open" ? form : (
+            <div aria-busy="true" aria-label="Checking your session" className="w-full animate-pulse space-y-5">
+              <div className="h-11 rounded-lg bg-slate-100" />
+              <div className="h-11 rounded-lg bg-slate-100" />
+              <div className="h-11 rounded-lg bg-slate-200" />
+            </div>
+          )}
 
         </div>
       </div>
