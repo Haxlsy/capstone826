@@ -83,3 +83,20 @@ export function escalationHeading(conflictNote: string | null | undefined): stri
   if (/^AI chatbot is disabled/.test(note)) return "AI Chatbot Disabled"
   return "Identity Conflict"
 }
+
+/**
+ * Confirmation text for "Mark as Resolved". For a Booking inquiry, resolving
+ * is also the "the booking never went through" outcome, which used to read as
+ * if details might be lost or collected — so say exactly what happens: no
+ * customer record is created, the AI-captured details stay on the inquiry, and
+ * recording them later is still possible.
+ */
+export function resolveConfirmMessage(type: string): string {
+  if (type === "Booking") {
+    return (
+      "Close this booking inquiry without recording the customer? No customer record will be created. " +
+      "The details the AI captured stay on this inquiry, and you can still record them later."
+    )
+  }
+  return "This inquiry will be marked as resolved and moved out of the active queue."
+}

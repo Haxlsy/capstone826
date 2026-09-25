@@ -21,7 +21,7 @@ import { Badge, StatusBadge } from "@/components/ui/Badge"
 import { useToast } from "@/components/ui/Toast"
 import { cn } from "@/lib/utils"
 import { inquiryTypeStyle } from "@/lib/ui/status"
-import { newInquiryIds, resolveSelectedId, newInquiryToast, escalationHeading, canRecordCustomerDetails } from "@/lib/sales/inquiry-list"
+import { newInquiryIds, resolveSelectedId, newInquiryToast, escalationHeading, canRecordCustomerDetails, resolveConfirmMessage } from "@/lib/sales/inquiry-list"
 import { LinkAccountModal } from "./LinkAccountModal"
 
 type InquiryStatus = "open" | "resolved" | "recorded"
@@ -557,6 +557,12 @@ export default function InquiryManagement() {
                 </button>
               )}
 
+              {selected.type === "Booking" && selected.status === "open" && (
+                <p className="text-[10px] text-muted text-center px-4">
+                  Record = the booking went ahead. Resolve = it didn&apos;t; nothing is saved to Customer Records.
+                </p>
+              )}
+
               {selected.status === "resolved" && (
                 <div className="flex items-center justify-center gap-2 py-2.5 rounded-card bg-surface-subtle border border-border text-body text-sm font-medium">
                   <CheckCheck className="w-4 h-4" />
@@ -577,7 +583,7 @@ export default function InquiryManagement() {
         onClose={() => setResolveTarget(null)}
         onConfirm={confirmResolve}
         title="Mark as Resolved?"
-        message="This inquiry will be marked as resolved and moved out of the active queue."
+        message={resolveConfirmMessage(inquiries.find((i) => i.id === resolveTarget)?.type ?? "")}
         confirmLabel="Confirm"
         loading={!!resolvingId}
         icon={CheckCheck}

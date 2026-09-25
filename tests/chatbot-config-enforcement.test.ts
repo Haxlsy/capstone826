@@ -192,6 +192,16 @@ describe("shouldStayInBookingFlow", () => {
     expect(shouldStayInBookingFlow({ ...base, awaitingConfirmation: true })).toBe(true)
   })
 
+  it("stays in while an identity-conflict answer is pending, even with no booking signal", () => {
+    // "ito ay sa ibang pangalan" carries no keyword/plate/phone/email token.
+    expect(shouldStayInBookingFlow({ ...base, isBookingFlow: true, conflictPending: true })).toBe(true)
+  })
+
+  it("still exits on cancel or link verification while a conflict is pending", () => {
+    expect(shouldStayInBookingFlow({ ...base, conflictPending: true, cancelIntent: true })).toBe(false)
+    expect(shouldStayInBookingFlow({ ...base, conflictPending: true, awaitingLinkVerification: true })).toBe(false)
+  })
+
   it("does NOT drag an unrelated message in on a sticky flag alone", () => {
     // "October promo" mid-booking: no signal, no pending confirmation.
     expect(shouldStayInBookingFlow({ ...base, isBookingFlow: true })).toBe(false)

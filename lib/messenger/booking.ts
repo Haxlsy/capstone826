@@ -260,6 +260,30 @@ export function namesCompatible(a: string, b: string): boolean {
 }
 
 /**
+ * What to do with a complete booking this turn, given whether it conflicts with
+ * the customer record on file and whether a conflict question was already asked.
+ *
+ * - "clarify":  first time the conflict shows up — ask, don't escalate.
+ * - "escalate": the customer answered and the conflict is still there (they
+ *   didn't correct the name/plate), so it's a booking for someone else that
+ *   Sales must verify. There is deliberately no second "are you sure" round:
+ *   the answer to the clarification IS the confirmation. (An escalation that
+ *   waited for a separate confirmed "yes" was unreachable — the flow was
+ *   dropped before it, because the answer carries no booking signal.)
+ * - "proceed":  no conflict (or the customer corrected it / cancelled) — carry
+ *   on with the normal confirm-and-hand-off path.
+ */
+export function conflictTurnAction(input: {
+  conflict: boolean
+  conflictPending: boolean
+  cancelIntent: boolean
+}): "clarify" | "escalate" | "proceed" {
+  const { conflict, conflictPending, cancelIntent } = input
+  if (!conflict || cancelIntent) return "proceed"
+  return conflictPending ? "escalate" : "clarify"
+}
+
+/**
  * Phase 4 (identity-conflict detection) — flags a booking whose details
  * contradict the canonical customer record instead of silently accepting them
  * (docs/chatbot/AI_CHATBOT_OPENCODE_INSTRUCTION.md §7 / §7.1 / Test 5):

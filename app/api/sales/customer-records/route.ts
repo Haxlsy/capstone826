@@ -5,6 +5,7 @@ import { logAuditCall } from "@/hooks/audit-helpers"
 import { normalizePhone } from "@/lib/phone"
 import { CreateCustomerRecordSchema } from "./schema"
 import { findActiveJobsByCustomerRecord } from "@/lib/sales/customer-record-lock"
+import { dateAddedBounds } from "@/lib/sales/customer-records-filter"
 
 export async function GET(request: Request) {
   try {
@@ -15,6 +16,8 @@ export async function GET(request: Request) {
     const search = searchParams.get("search") ?? ""
     const limit  = Math.min(Math.max(parseInt(searchParams.get("limit")  ?? "20", 10) || 20, 1), 100)
     const offset = Math.max(parseInt(searchParams.get("offset") ?? "0",  10) || 0, 0)
+    // Date added (Asia/Manila days), both bounds optional.
+    const bounds = dateAddedBounds(searchParams.get("from"), searchParams.get("to"))
 
     const supabase = createAdminClient()
     let query = supabase
@@ -23,6 +26,9 @@ export async function GET(request: Request) {
         "id, full_name, contact_number, email, plate_number, vehicle_unit, psid, created_at"
       )
       .order("created_at", { ascending: false })
+
+    if (bounds.gte) query = query.gte("created_at", bounds.gte)
+    if (bounds.lt)  query = query.lt("created_at", bounds.lt)
 
     const trimmed = search.trim()
     if (trimmed) {
