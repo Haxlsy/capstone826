@@ -4,6 +4,7 @@ import {
   resolveSelectedId,
   newInquiryToast,
   escalationHeading,
+  canRecordCustomerDetails,
 } from "@/lib/sales/inquiry-list"
 
 // The two rules that make a realtime refresh safe to run under someone who is
@@ -114,5 +115,24 @@ describe("escalationHeading", () => {
   it("handles no note", () => {
     expect(escalationHeading(null)).toBe("Escalation Note")
     expect(escalationHeading(undefined)).toBe("Escalation Note")
+  })
+})
+
+// Defect (TC-064): marking a Booking inquiry resolved removed the "Record
+// Customer Details" button, so Sales couldn't record the customer afterwards.
+describe("canRecordCustomerDetails", () => {
+  it("is offered for a Booking inquiry while open AND after it is resolved", () => {
+    expect(canRecordCustomerDetails({ type: "Booking", status: "open" })).toBe(true)
+    expect(canRecordCustomerDetails({ type: "Booking", status: "resolved" })).toBe(true)
+  })
+
+  it("is not offered once already recorded", () => {
+    expect(canRecordCustomerDetails({ type: "Booking", status: "recorded" })).toBe(false)
+  })
+
+  it("is only for Booking inquiries", () => {
+    for (const type of ["Human Response", "Concern", "Status"]) {
+      expect(canRecordCustomerDetails({ type, status: "open" })).toBe(false)
+    }
   })
 })

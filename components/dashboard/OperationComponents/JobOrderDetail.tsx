@@ -194,9 +194,14 @@ const STAGE_PILL: Record<string, string> = {
 export default function JobOrderDetail({
   jobId,
   initialJob,
+  backHref = "/dashboard/job-management",
+  backLabel = "Back to Job Management",
 }: {
   jobId: string
   initialJob?: JobDetail | null
+  /** Where "Back" goes — this page is reached from both Job Management and Job Records. */
+  backHref?: string
+  backLabel?: string
 }) {
   const router = useRouter()
   const toast = useToast()
@@ -653,8 +658,8 @@ export default function JobOrderDetail({
     return (
       <div className="flex flex-col items-center justify-center gap-3 py-20">
         <p className="text-sm text-status-delayed">{error ?? "Job not found."}</p>
-        <Link href="/dashboard/job-management" className="text-sm text-primary hover:underline">
-          ← Back to Job Management
+        <Link href={backHref} className="text-sm text-primary hover:underline">
+          ← {backLabel}
         </Link>
       </div>
     )
@@ -725,11 +730,11 @@ export default function JobOrderDetail({
     <div className="mx-auto flex max-w-5xl flex-col gap-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <Link
-          href="/dashboard/job-management"
+          href={backHref}
           className="flex items-center gap-1.5 text-sm text-body transition-colors hover:text-heading"
         >
           <ArrowLeft className="h-4 w-4" />
-          Back to Job Management
+          {backLabel}
         </Link>
         <div className="flex flex-wrap items-center gap-2">
           {job.status !== "Released" && (
