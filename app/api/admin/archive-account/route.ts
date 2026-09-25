@@ -36,6 +36,20 @@ export async function POST(request: Request) {
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
+  if (isArchived) {
+    // Kick any tab the archived user still has open. Rotating the session
+    // token is the same write login/route.ts does for a second login, which
+    // already pushes a realtime event to that user's idle tabs (an UPDATE —
+    // Realtime doesn't reliably filter DELETEs). Best-effort: the archived
+    // flag is already set and is enforced on the user's very next request
+    // (lib/auth/guard.ts), so a failure here only delays the push.
+    const { error: kickErr } = await admin
+      .from("user_active_session")
+      .update({ session_token: crypto.randomUUID() })
+      .eq("user_id", userId)
+    if (kickErr) console.error("[archive-account] session rotation failed:", kickErr.message)
+  }
+
   if (callerResult && target) {
     logAudit({
       user_id:   callerResult.id,

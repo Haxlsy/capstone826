@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server"
 import { cookies } from "next/headers"
 import { createClient } from "@/lib/supabase/server"
+import { createAdminClient } from "@/lib/supabase/admin"
 import { isSessionCurrent, resolveStaleSessionCurrency } from "@/lib/auth/session-check"
 
 // GET /api/auth/session-status — single active session per account.
@@ -27,6 +28,19 @@ export async function GET() {
     const { data: { user } } = await supabase.auth.getUser()
 
     if (user) {
+      // Archived while signed in — checked BEFORE the token comparison:
+      // archiving rotates this user's session_token to kick their open tabs,
+      // which would otherwise read as a plain "mismatch" and tell them they
+      // signed in on another device. (See app/api/admin/archive-account.)
+      const { data: profile } = await createAdminClient()
+        .from("user_account")
+        .select("is_archived")
+        .eq("id", user.id)
+        .single()
+      if (profile?.is_archived === true) {
+        return NextResponse.json({ valid: false, reason: "archived" }, { headers: { "Cache-Control": "no-store" } })
+      }
+
       const valid = await isSessionCurrent(supabase, user.id, sessionToken)
       return NextResponse.json(
         { valid, reason: valid ? undefined : "mismatch" },

@@ -40,6 +40,17 @@ export function resolveSelectedId(
   return list.length > 0 ? list[0].id : null
 }
 
+/**
+ * Whether the "Record Customer Details" action is offered for an inquiry.
+ * A Booking inquiry can be recorded while still open AND after it has been
+ * marked resolved — resolving used to remove the button, so Sales couldn't
+ * capture the customer's details once they'd closed the inquiry out. Once
+ * recorded there is nothing left to record.
+ */
+export function canRecordCustomerDetails(inquiry: { type: string; status: string }): boolean {
+  return inquiry.type === "Booking" && (inquiry.status === "open" || inquiry.status === "resolved")
+}
+
 /** Wording for the "new escalation arrived" toast. */
 export function newInquiryToast(
   added: { messengerName: string; type: string }[],

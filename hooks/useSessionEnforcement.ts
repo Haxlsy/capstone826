@@ -5,6 +5,12 @@ import { createClient } from "@/lib/supabase/client"
 import { useRealtimeSubscription } from "@/hooks/useRealtimeRefetch"
 import { useOnlineStatus } from "@/hooks/useOnlineStatus"
 import { isDeadSessionError } from "@/lib/auth/refresh-errors"
+import { redirectReasonFor } from "@/lib/auth/session-reasons"
+import { startSessionPoll } from "@/lib/auth/session-poll"
+
+// One /api/auth/session-status call (an Auth getUser + a small query) per
+// visible tab per interval. Tunable here if Supabase Auth rate limits ever bite.
+const SESSION_POLL_MS = 60_000
 
 // Single active session per account. proxy.ts already catches a stale
 // session on every page navigation, but an idle tab that never navigates
@@ -33,8 +39,16 @@ export function useSessionEnforcement() {
         // redirect either way, not router.push — tears down open realtime
         // channels/client state instead of a soft client-side transition
         // leaving stale connections behind.
-        const reason = json?.reason === "mismatch" ? "?reason=signed_in_elsewhere" : ""
-        window.location.href = `/login${reason}`
+        if (json?.reason === "archived") {
+          // An admin archived this account while it was in use. The session
+          // itself is still valid, so /login alone would just bounce back
+          // (proxy.ts sends signed-in visitors to their dashboard) — this
+          // route actually ends it, then lands on /login with the reason.
+          window.location.href = "/api/auth/force-logout"
+          return
+        }
+        const reason = redirectReasonFor(json?.reason)
+        window.location.href = `/login${reason ? `?reason=${reason}` : ""}`
       }
     } catch {
       // Network blip — same reasoning, don't force a logout on ambiguity.
@@ -64,6 +78,27 @@ export function useSessionEnforcement() {
       }).catch(() => {})
     }
     checkStatus()
+  }, [isOnline, checkStatus])
+
+  // Fallback for the Realtime push below: also re-check whenever the tab
+  // becomes visible and once a minute while it is, so a dropped WebSocket (or
+  // a push that never arrived) can't leave a superseded tab logged in
+  // indefinitely. See lib/auth/session-poll.ts. Timer functions are BOUND —
+  // bare globals throw "Illegal invocation" when called as env.setInterval().
+  useEffect(() => {
+    if (!isOnline) return
+    return startSessionPoll(
+      {
+        setInterval: setInterval.bind(globalThis),
+        clearInterval: clearInterval.bind(globalThis),
+        isVisible: () => document.visibilityState === "visible",
+        onVisibilityChange: (cb) => {
+          document.addEventListener("visibilitychange", cb)
+          return () => document.removeEventListener("visibilitychange", cb)
+        },
+      },
+      { intervalMs: SESSION_POLL_MS, onCheck: checkStatus },
+    )
   }, [isOnline, checkStatus])
 
   // Realtime subscription — fires the instant a login (this account, any

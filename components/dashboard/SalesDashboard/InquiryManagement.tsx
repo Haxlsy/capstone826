@@ -21,7 +21,7 @@ import { Badge, StatusBadge } from "@/components/ui/Badge"
 import { useToast } from "@/components/ui/Toast"
 import { cn } from "@/lib/utils"
 import { inquiryTypeStyle } from "@/lib/ui/status"
-import { newInquiryIds, resolveSelectedId, newInquiryToast, escalationHeading } from "@/lib/sales/inquiry-list"
+import { newInquiryIds, resolveSelectedId, newInquiryToast, escalationHeading, canRecordCustomerDetails } from "@/lib/sales/inquiry-list"
 import { LinkAccountModal } from "./LinkAccountModal"
 
 type InquiryStatus = "open" | "resolved" | "recorded"
@@ -521,7 +521,7 @@ export default function InquiryManagement() {
             </div>
 
             <div className="mt-auto pt-4 flex flex-col gap-3">
-              {selected.type === "Booking" && selected.status === "open" && (
+              {canRecordCustomerDetails(selected) && (
                 <div>
                   <button
                     onClick={() => openRecordModal(selected)}

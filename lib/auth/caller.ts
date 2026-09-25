@@ -31,11 +31,16 @@ export const getAuditCaller = cache(async (): Promise<AuditCaller | null> => {
   const admin = createAdminClient()
   const { data: profile } = await admin
     .from("user_account")
-    .select("full_name, role")
+    .select("full_name, role, is_archived")
     .eq("id", user.id)
     .single()
 
   if (!profile || !profile.role) return null
+
+  // An account archived while its owner is still signed in keeps a valid
+  // session — treat it as no caller at all so every API route built on this
+  // (getRoleCaller, requireAuditCaller) answers 401 instead of serving it.
+  if (profile.is_archived === true) return null
 
   return {
     id:         user.id,

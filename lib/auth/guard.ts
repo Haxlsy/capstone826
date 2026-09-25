@@ -48,7 +48,7 @@ export const getCurrentUserProfile = cache(async (userId: string) => {
   const admin = createAdminClient()
   const { data: profile } = await admin
     .from("user_account")
-    .select("full_name, role, must_change_password")
+    .select("full_name, role, must_change_password, is_archived")
     .eq("id", userId)
     .single()
   return profile
@@ -59,6 +59,16 @@ export async function requireRole(allowedRoles: string[]) {
   if (!user) redirect("/login")
 
   const profile = await getCurrentUserProfile(user.id)
+
+  // Archived while still signed in: the session is still valid, so this has
+  // to actively end it. Not a plain redirect to /login — a Server Component
+  // can't clear cookies, and proxy.ts bounces any still-authenticated visitor
+  // off /login straight back here (a redirect loop). This route handler
+  // (outside the proxy matcher) signs out, clears the cookies, then sends
+  // them to /login with the reason.
+  if (profile?.is_archived === true) {
+    redirect("/api/auth/force-logout")
+  }
 
   const role = profile?.role as string | undefined
   if (!role || !allowedRoles.includes(role)) {
@@ -112,9 +122,12 @@ export async function getAdminCaller(): Promise<
   const admin = createAdminClient()
   const { data: profile } = await admin
     .from("user_account")
-    .select("full_name, role")
+    .select("full_name, role, is_archived")
     .eq("id", user.id)
     .single()
+
+  // Archived while signed in — same reasoning as requireRole/getAuditCaller.
+  if (profile?.is_archived === true) return { error: unauthorized() }
 
   if (!profile || !["admin", "super_admin"].includes(profile.role)) {
     return { error: forbidden() }
