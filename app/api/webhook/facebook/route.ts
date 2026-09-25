@@ -1165,7 +1165,7 @@ async function handleInboundMessage(
     // job) is briefly informed their booking is currently active, but the new
     // booking request is still collected and submitted to Sales normally. The
     // notice is shown once per booking attempt (active_booking_offered). A
-    // customer_record alone does not count as an active booking.
+    // customer_record alone does not count as an active booking
     const activeBooking = await lookupActiveBooking(senderId)
 
     // Dedup: an identical repeat booking for a vehicle this psid is already on
