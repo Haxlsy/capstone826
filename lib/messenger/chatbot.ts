@@ -188,6 +188,34 @@ const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY_CHATBOT! })
 // this lower — Gemini's own floor is the only real constraint.
 const GEMINI_CALL_TIMEOUT_MS = 15_000
 
+// Confirmed in production: Gemini's preview-tier models occasionally return
+// 503 ("This model is currently experiencing high demand... Please try again
+// later.") or 429 (rate limit) — both are the API's own words for "transient,
+// just retry," not a real failure. Escalating a customer to Sales over a
+// one-second capacity blip is avoidable; one retry after a short delay is.
+// Any other error (a genuine hang past GEMINI_CALL_TIMEOUT_MS, a malformed
+// request, etc.) is NOT retried — it still fails straight into the existing
+// escalation path, unchanged.
+const RETRY_DELAY_MS = 1_500
+
+function isRetryableGeminiError(err: unknown): boolean {
+  if (!err || typeof err !== "object") return false
+  const status = (err as { status?: unknown }).status
+  return status === 503 || status === 429
+}
+
+async function generateContentWithRetry(
+  params: Parameters<typeof ai.models.generateContent>[0],
+): ReturnType<typeof ai.models.generateContent> {
+  try {
+    return await ai.models.generateContent(params)
+  } catch (err) {
+    if (!isRetryableGeminiError(err)) throw err
+    await new Promise((r) => setTimeout(r, RETRY_DELAY_MS))
+    return ai.models.generateContent(params) // one retry only — a second failure still escalates
+  }
+}
+
 /**
  * Sourcing rules for business facts. Deliberately contains NO service names,
  * prices, hours or company details — every one of those now lives in the
@@ -963,7 +991,7 @@ Each field must contain ONLY its own kind of information — never combine or ap
     { role: "user" as const, parts: [{ text: message.trim() }] },
   ]
 
-  const response = await ai.models.generateContent({
+  const response = await generateContentWithRetry({
     model: "gemini-3.1-flash-lite-preview",
     contents,
     config: {
@@ -1053,7 +1081,7 @@ Each field must contain ONLY its own kind of information — never combine or ap
   ]
 
   try {
-    const response = await ai.models.generateContent({
+    const response = await generateContentWithRetry({
       model: "gemini-3.1-flash-lite-preview",
       contents,
       config: {
