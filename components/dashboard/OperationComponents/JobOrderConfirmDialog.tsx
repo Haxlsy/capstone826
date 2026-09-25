@@ -25,6 +25,8 @@ export interface JobOrderSummary {
   headInstaller: string
   detailers: string[]
   installers: string[]
+  /** Which teams this job needs — the other team's rows are hidden. Both when omitted. */
+  teamNeeds?: { detailer: boolean; installer: boolean }
 }
 
 interface Props {
@@ -126,10 +128,18 @@ export default function JobOrderConfirmDialog({ summary, submitting, onConfirm, 
         </Section>
 
         <Section icon={Users} title="Team">
-          <Row label="Head Detailer" value={summary.headDetailer} />
-          <Row label="Head Installer" value={summary.headInstaller} />
-          <Row label="Detailers" value={summary.detailers.join(", ")} />
-          <Row label="Installers" value={summary.installers.join(", ")} />
+          {(summary.teamNeeds?.detailer ?? true) && (
+            <>
+              <Row label="Head Detailer" value={summary.headDetailer} />
+              <Row label="Detailers" value={summary.detailers.join(", ")} />
+            </>
+          )}
+          {(summary.teamNeeds?.installer ?? true) && (
+            <>
+              <Row label="Head Installer" value={summary.headInstaller} />
+              <Row label="Installers" value={summary.installers.join(", ")} />
+            </>
+          )}
         </Section>
       </div>
     </Modal>

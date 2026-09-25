@@ -10,6 +10,8 @@ export interface Stage {
   category_id:         string | null
   category_name:       string | null
   category_color:      string | null
+  /** Which technician team does this category's stages (workflow_category.technician_role). */
+  category_role?:      "detailer" | "installer" | null
   sequence_order:      number
   stage_duration_mins: number
   isNew?:              boolean
@@ -258,6 +260,7 @@ export default function ServiceOverridePanel({
       category_id:         categoryId,
       category_name:       template?.category_name ?? null,
       category_color:      template?.category_color ?? null,
+      category_role:       template?.category_role ?? null,
       sequence_order:      customStages.length + 1,
       stage_duration_mins: 0,
       isNew:               true,
