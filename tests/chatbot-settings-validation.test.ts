@@ -70,11 +70,16 @@ describe("validateChatbotSettings", () => {
 })
 
 describe("isWithinOperatingHours", () => {
+  // isWithinOperatingHours always evaluates in Asia/Manila (fixed UTC+8, no
+  // DST) regardless of the test runner's own timezone — so these build an
+  // exact Manila wall-clock instant via Date.UTC minus 8h, not the local
+  // Date constructor (which would represent the test RUNNER's own local
+  // time, wrong whenever that isn't already Asia/Manila).
   // DEFAULT_OPERATING_DAYS closes Monday. 2026-01-05 is a Monday, 2026-01-06
-  // a Tuesday — constructed with the local Date constructor (not a bare
-  // "YYYY-MM-DD" string) so the weekday can't shift with timezone parsing.
-  const monday  = (h: number, m = 0) => new Date(2026, 0, 5, h, m)
-  const tuesday = (h: number, m = 0) => new Date(2026, 0, 6, h, m)
+  // a Tuesday.
+  const manila  = (y: number, mo: number, d: number, h: number, min = 0) => new Date(Date.UTC(y, mo, d, h - 8, min))
+  const monday  = (h: number, m = 0) => manila(2026, 0, 5, h, m)
+  const tuesday = (h: number, m = 0) => manila(2026, 0, 6, h, m)
   const hours = { operating_days: DEFAULT_OPERATING_DAYS, operating_open_time: "08:00", operating_close_time: "20:00" }
 
   it("is ok on an open day within hours", () => {
@@ -96,5 +101,17 @@ describe("isWithinOperatingHours", () => {
     const legacy = { operating_days: [], operating_open_time: "08:00", operating_close_time: "20:00" }
     // Falls back to DEFAULT_OPERATING_DAYS rather than treating every day as closed.
     expect(isWithinOperatingHours(legacy, tuesday(9, 0)).ok).toBe(true)
+  })
+
+  // Regression: reported live — creating a job order for 10:03 AM Manila (a
+  // normal morning booking) was rejected as "outside hours". Root cause: the
+  // old implementation read date.getHours() in the RUNTIME's own timezone —
+  // correct in a Philippine browser, wrong on a server (Vercel always runs
+  // in UTC). 10:03 AM Manila is 02:03 UTC, which used to read as 2 AM and
+  // fail the 8am-8pm check. Every day here uses DEFAULT_OPERATING_DAYS,
+  // which is open every day except Monday — Jan 6 2026 is a Tuesday.
+  it("accepts a normal morning booking regardless of the server's own timezone (UTC)", () => {
+    const morning = new Date(Date.UTC(2026, 0, 6, 2, 3)) // 10:03 AM Manila = 02:03 UTC
+    expect(isWithinOperatingHours(hours, morning)).toEqual({ ok: true })
   })
 })

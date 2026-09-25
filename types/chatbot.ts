@@ -1,4 +1,5 @@
 import { z } from "zod"
+import { TIME_ZONE } from "@/lib/time-display"
 
 // =================================================================
 // Chatbot settings
@@ -292,8 +293,34 @@ export function formatOperatingHours(
   return text
 }
 
-// Date#getDay()/getUTCDay() convention: 0=Sun .. 6=Sat.
-const JS_DAY_TO_WEEKDAY: Weekday[] = ["sun", "mon", "tue", "wed", "thu", "fri", "sat"]
+// Date#getDay()/getHours() reflect the RUNTIME's own local timezone — correct
+// in a browser (a Philippine customer's own local time) but wrong on a
+// server, which on Vercel always runs in UTC regardless of account/project.
+// That mismatch let a server-side check reject perfectly valid Manila
+// business-hours bookings whenever UTC's hour-of-day (Manila minus 8) fell
+// outside the 8am-8pm window — most of a normal morning/early-afternoon
+// booking (confirmed: 10:03 AM Manila is 02:03 UTC). Always resolve
+// day/hour/minute in the shop's own timezone instead, matching
+// lib/time-display.ts's TIME_ZONE convention, so this gives the same answer
+// no matter which timezone the calling code happens to run in.
+function partsInBusinessTimeZone(date: Date): { weekday: Weekday; hour: number; minute: number } {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: TIME_ZONE,
+    weekday: "short",
+    hour: "2-digit",
+    minute: "2-digit",
+    // Explicit h23 — en-US with only hour12:false can format midnight as
+    // "24" instead of "0" in some engines, which would silently miscompute
+    // minutes-since-midnight below.
+    hourCycle: "h23",
+  }).formatToParts(date)
+  const get = (type: string) => parts.find((p) => p.type === type)?.value ?? ""
+  return {
+    weekday: get("weekday").toLowerCase().slice(0, 3) as Weekday,
+    hour: Number(get("hour")),
+    minute: Number(get("minute")),
+  }
+}
 
 export interface OperatingHoursCheck {
   ok: boolean
@@ -302,19 +329,20 @@ export interface OperatingHoursCheck {
 }
 
 /**
- * Whether `date` (read in local time — the browser's own clock for a
- * client-side scheduling check) falls inside the Operating Hours setting.
+ * Whether `date` (an absolute instant, evaluated in the shop's own Manila
+ * timezone — never the caller's) falls inside the Operating Hours setting.
  * Pure — the client-side counterpart to hooks/time-utils.ts's addWorkingMins,
  * which answers "roll this forward to the next open instant" server-side;
  * this just answers "is this exact instant open," e.g. for validating a
- * picked Scheduled Date & Time before it's ever sent to the server.
+ * picked Scheduled Date & Time before it's ever sent to the server (and
+ * again, authoritatively, once it is).
  */
 export function isWithinOperatingHours(
   s: Pick<ChatbotSettings, "operating_days" | "operating_open_time" | "operating_close_time">,
   date: Date,
 ): OperatingHoursCheck {
   const openDays = s.operating_days && s.operating_days.length > 0 ? s.operating_days : DEFAULT_OPERATING_DAYS
-  const weekday = JS_DAY_TO_WEEKDAY[date.getDay()]
+  const { weekday, hour, minute } = partsInBusinessTimeZone(date)
   if (!openDays.includes(weekday)) return { ok: false, reason: "closed_day" }
 
   const toMins = (hhmm: string) => {
@@ -323,7 +351,7 @@ export function isWithinOperatingHours(
   }
   const openMins  = toMins(s.operating_open_time  || DEFAULT_OPERATING_OPEN_TIME)
   const closeMins = toMins(s.operating_close_time || DEFAULT_OPERATING_CLOSE_TIME)
-  const mins = date.getHours() * 60 + date.getMinutes()
+  const mins = hour * 60 + minute
   if (mins < openMins || mins > closeMins) return { ok: false, reason: "outside_hours" }
 
   return { ok: true }
