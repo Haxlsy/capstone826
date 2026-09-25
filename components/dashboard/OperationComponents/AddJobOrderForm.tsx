@@ -7,6 +7,7 @@ import { CheckCircle2, User, Phone, Mail, IdCard, Car } from "lucide-react"
 import ServiceOverridePanel, { type Stage } from "./ServiceOverridePanel"
 import JobOrderConfirmDialog, { type JobOrderSummary } from "./JobOrderConfirmDialog"
 import { fmtDateTime } from "@/lib/time-display"
+import { requiredTeamRoles, teamAssignmentErrors, teamAssignmentHint } from "@/lib/operations/required-team"
 import { normalizePhone } from "@/lib/phone"
 import { applyTriggerEdit, type MatchField } from "@/lib/operations/customer-match"
 import { useOnlineStatus } from "@/hooks/useOnlineStatus"
@@ -212,6 +213,16 @@ export default function AddJobOrderForm() {
   const isOnline = useOnlineStatus()
   const [showConfirm,    setShowConfirm]    = useState(false)
   const [confirmSummary, setConfirmSummary] = useState<JobOrderSummary | null>(null)
+
+  // Which teams this job needs, from its stages' categories (see
+  // lib/operations/required-team.ts). A team the job has no stages for is
+  // hidden and never required or submitted — any selection made while it was
+  // still needed is simply ignored, and comes back if the stages do.
+  const teamNeeds = useMemo(() => requiredTeamRoles(customStages), [customStages])
+  const effHeadDetailerId  = teamNeeds.detailer  ? selectedHeadDetailerId  : null
+  const effHeadInstallerId = teamNeeds.installer ? selectedHeadInstallerId : null
+  const effDetailerIds     = teamNeeds.detailer  ? [...selectedDetailerIds]  : []
+  const effInstallerIds    = teamNeeds.installer ? [...selectedInstallerIds] : []
 
   useEffect(() => {
     return () => {
@@ -446,10 +457,12 @@ export default function AddJobOrderForm() {
         }
       }
     }
-    if (!selectedHeadDetailerId)         errs.headDetailer  = "Please select a Head Detailer."
-    if (!selectedHeadInstallerId)        errs.headInstaller = "Please select a Head Installer."
-    if (selectedDetailerIds.size === 0)  errs.detailers     = "Please assign at least one Detailer."
-    if (selectedInstallerIds.size === 0) errs.installers    = "Please assign at least one Installer."
+    Object.assign(errs, teamAssignmentErrors(teamNeeds, {
+      headDetailerId:  selectedHeadDetailerId,
+      headInstallerId: selectedHeadInstallerId,
+      detailerCount:   selectedDetailerIds.size,
+      installerCount:  selectedInstallerIds.size,
+    }))
     return errs
   }
 
@@ -586,10 +599,11 @@ export default function AddJobOrderForm() {
         ? (estimateDisplay ?? "…")
         : scheduledDisplay(scheduledAt, isPPF),
       duration:      dLabel,
-      headDetailer:  headTechs.find((t) => t.id === selectedHeadDetailerId)?.full_name  ?? "—",
-      headInstaller: headTechs.find((t) => t.id === selectedHeadInstallerId)?.full_name ?? "—",
-      detailers:     crewMembers.filter((c) => selectedDetailerIds.has(c.id)).map((c) => c.full_name),
-      installers:    crewMembers.filter((c) => selectedInstallerIds.has(c.id)).map((c) => c.full_name),
+      headDetailer:  headTechs.find((t) => t.id === effHeadDetailerId)?.full_name  ?? "—",
+      headInstaller: headTechs.find((t) => t.id === effHeadInstallerId)?.full_name ?? "—",
+      detailers:     crewMembers.filter((c) => effDetailerIds.includes(c.id)).map((c) => c.full_name),
+      installers:    crewMembers.filter((c) => effInstallerIds.includes(c.id)).map((c) => c.full_name),
+      teamNeeds,
     }
     setConfirmSummary(summary)
     setShowConfirm(true)
@@ -618,10 +632,10 @@ export default function AddJobOrderForm() {
       const payload: Record<string, unknown> = {
         service_id:           selectedServiceId,
         scheduled_at:         resolveStartDate(scheduledAt, isPPF).toISOString(),
-        head_detailer_id:     selectedHeadDetailerId  ?? null,
-        head_installer_id:    selectedHeadInstallerId ?? null,
-        detailer_ids:         [...selectedDetailerIds],
-        installer_ids:        [...selectedInstallerIds],
+        head_detailer_id:     effHeadDetailerId,
+        head_installer_id:    effHeadInstallerId,
+        detailer_ids:         effDetailerIds,
+        installer_ids:        effInstallerIds,
         custom_service_name:  nameChanged ? customServiceName : null,
         custom_description:   descChanged ? customDescription : null,
         custom_duration_mins: customDurationMins,
@@ -1092,51 +1106,57 @@ export default function AddJobOrderForm() {
         <div className="bg-surface border border-border rounded-card p-5 space-y-5">
           <div>
             <h2 className="font-semibold text-sm text-heading">Team Assignment</h2>
-            <p className="text-xs text-muted mt-0.5">All team fields are required.</p>
+            <p className="text-xs text-muted mt-0.5">{teamAssignmentHint(teamNeeds)}</p>
           </div>
 
-          <div className="grid grid-cols-2 gap-4">
-            <div className="flex flex-col gap-1.5">
-              <label className="text-xs font-medium text-body">Head Detailer <span className="text-status-delayed">*</span></label>
-              <select
-                value={selectedHeadDetailerId ?? ""}
-                onChange={(e) => { setSelectedHeadDetailerId(e.target.value || null); clearField("headDetailer") }}
-                disabled={loadingRefs}
-                aria-label="Head Detailer"
-                className={selectCls(!!fieldErrors.headDetailer)}
-              >
-                <option value="">— Select head detailer —</option>
-                {headDetailers.map((t) => (
-                  <option key={t.id} value={t.id}>
-                    {t.full_name}{t.active_jobs > 0 ? ` (${t.active_jobs} active)` : ""}
-                  </option>
-                ))}
-              </select>
-              <FieldError msg={fieldErrors.headDetailer} />
-            </div>
-            <div className="flex flex-col gap-1.5">
-              <label className="text-xs font-medium text-body">Head Installer <span className="text-status-delayed">*</span></label>
-              <select
-                value={selectedHeadInstallerId ?? ""}
-                onChange={(e) => { setSelectedHeadInstallerId(e.target.value || null); clearField("headInstaller") }}
-                disabled={loadingRefs}
-                aria-label="Head Installer"
-                className={selectCls(!!fieldErrors.headInstaller)}
-              >
-                <option value="">— Select head installer —</option>
-                {headInstallers.map((t) => (
-                  <option key={t.id} value={t.id}>
-                    {t.full_name}{t.active_jobs > 0 ? ` (${t.active_jobs} active)` : ""}
-                  </option>
-                ))}
-              </select>
-              <FieldError msg={fieldErrors.headInstaller} />
-            </div>
+          <div className={teamNeeds.detailer && teamNeeds.installer ? "grid grid-cols-2 gap-4" : "grid grid-cols-1 gap-4"}>
+            {teamNeeds.detailer && (
+              <div className="flex flex-col gap-1.5">
+                <label className="text-xs font-medium text-body">Head Detailer <span className="text-status-delayed">*</span></label>
+                <select
+                  value={selectedHeadDetailerId ?? ""}
+                  onChange={(e) => { setSelectedHeadDetailerId(e.target.value || null); clearField("headDetailer") }}
+                  disabled={loadingRefs}
+                  aria-label="Head Detailer"
+                  className={selectCls(!!fieldErrors.headDetailer)}
+                >
+                  <option value="">— Select head detailer —</option>
+                  {headDetailers.map((t) => (
+                    <option key={t.id} value={t.id}>
+                      {t.full_name}{t.active_jobs > 0 ? ` (${t.active_jobs} active)` : ""}
+                    </option>
+                  ))}
+                </select>
+                <FieldError msg={fieldErrors.headDetailer} />
+              </div>
+            )}
+            {teamNeeds.installer && (
+              <div className="flex flex-col gap-1.5">
+                <label className="text-xs font-medium text-body">Head Installer <span className="text-status-delayed">*</span></label>
+                <select
+                  value={selectedHeadInstallerId ?? ""}
+                  onChange={(e) => { setSelectedHeadInstallerId(e.target.value || null); clearField("headInstaller") }}
+                  disabled={loadingRefs}
+                  aria-label="Head Installer"
+                  className={selectCls(!!fieldErrors.headInstaller)}
+                >
+                  <option value="">— Select head installer —</option>
+                  {headInstallers.map((t) => (
+                    <option key={t.id} value={t.id}>
+                      {t.full_name}{t.active_jobs > 0 ? ` (${t.active_jobs} active)` : ""}
+                    </option>
+                  ))}
+                </select>
+                <FieldError msg={fieldErrors.headInstaller} />
+              </div>
+            )}
           </div>
 
           {!scheduledAt ? (
-            <div className="grid grid-cols-2 gap-4">
-              {(["Detailers", "Installers"] as const).map((label) => (
+            <div className={teamNeeds.detailer && teamNeeds.installer ? "grid grid-cols-2 gap-4" : "grid grid-cols-1 gap-4"}>
+              {(["Detailers", "Installers"] as const)
+                .filter((label) => (label === "Detailers" ? teamNeeds.detailer : teamNeeds.installer))
+                .map((label) => (
                 <div key={label} className="flex flex-col gap-1.5">
                   <label className="text-xs font-medium text-body">
                     {label} <span className="text-status-delayed">*</span>
@@ -1153,25 +1173,29 @@ export default function AddJobOrderForm() {
               ))}
             </div>
           ) : (
-            <div className="grid grid-cols-2 gap-4">
-              <CrewCheckboxList
-                label="Detailers"
-                required
-                members={detailers}
-                selected={selectedDetailerIds}
-                onToggle={(id) => toggleCrew(id, selectedDetailerIds, setSelectedDetailerIds, "detailers")}
-                loading={loadingRefs}
-                error={fieldErrors.detailers}
-              />
-              <CrewCheckboxList
-                label="Installers"
-                required
-                members={installers}
-                selected={selectedInstallerIds}
-                onToggle={(id) => toggleCrew(id, selectedInstallerIds, setSelectedInstallerIds, "installers")}
-                loading={loadingRefs}
-                error={fieldErrors.installers}
-              />
+            <div className={teamNeeds.detailer && teamNeeds.installer ? "grid grid-cols-2 gap-4" : "grid grid-cols-1 gap-4"}>
+              {teamNeeds.detailer && (
+                <CrewCheckboxList
+                  label="Detailers"
+                  required
+                  members={detailers}
+                  selected={selectedDetailerIds}
+                  onToggle={(id) => toggleCrew(id, selectedDetailerIds, setSelectedDetailerIds, "detailers")}
+                  loading={loadingRefs}
+                  error={fieldErrors.detailers}
+                />
+              )}
+              {teamNeeds.installer && (
+                <CrewCheckboxList
+                  label="Installers"
+                  required
+                  members={installers}
+                  selected={selectedInstallerIds}
+                  onToggle={(id) => toggleCrew(id, selectedInstallerIds, setSelectedInstallerIds, "installers")}
+                  loading={loadingRefs}
+                  error={fieldErrors.installers}
+                />
+              )}
             </div>
           )}
         </div>
