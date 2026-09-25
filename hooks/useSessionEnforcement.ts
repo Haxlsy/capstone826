@@ -7,10 +7,23 @@ import { useOnlineStatus } from "@/hooks/useOnlineStatus"
 import { isDeadSessionError } from "@/lib/auth/refresh-errors"
 import { redirectReasonFor } from "@/lib/auth/session-reasons"
 import { startSessionPoll } from "@/lib/auth/session-poll"
+import { confirmSuperseded, type SessionStatus } from "@/lib/auth/confirm-kick"
 
 // One /api/auth/session-status call (an Auth getUser + a small query) per
 // visible tab per interval. Tunable here if Supabase Auth rate limits ever bite.
 const SESSION_POLL_MS = 60_000
+
+// How long a first "mismatch" waits before being re-checked — long enough for a
+// same-browser login's new cookies to land (see lib/auth/confirm-kick.ts).
+const RECHECK_DELAY_MS = 2_000
+
+const wait = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms))
+
+async function fetchStatus(): Promise<SessionStatus | null> {
+  const res = await fetch("/api/auth/session-status", { cache: "no-store" })
+  if (!res.ok) return null
+  return (await res.json()) as SessionStatus
+}
 
 // Single active session per account. proxy.ts already catches a stale
 // session on every page navigation, but an idle tab that never navigates
@@ -26,10 +39,15 @@ export function useSessionEnforcement() {
   const checkStatus = useCallback(async () => {
     if (loggingOutRef.current) return
     try {
-      const res = await fetch("/api/auth/session-status", { cache: "no-store" })
-      if (!res.ok) return // transient failure — not a confirmed stale session, don't act
-      const json = await res.json()
+      const json = await fetchStatus()
+      if (!json) return // transient failure — not a confirmed stale session, don't act
       if (json?.valid === false) {
+        // A "mismatch" is only acted on if it survives a short re-check. In a
+        // browser where another tab just signed in, this tab hears the push
+        // before the new (shared) cookies land, so its first look is stale —
+        // and acting on it makes proxy.ts delete the shared cookies, logging
+        // out BOTH tabs. See lib/auth/confirm-kick.ts.
+        if (json.reason === "mismatch" && !(await confirmSuperseded(json, fetchStatus, wait, RECHECK_DELAY_MS))) return
         loggingOutRef.current = true
         // "no_session" is just as much the normal shape of a deliberate
         // logout (this check can fire mid-logout, before that flow's own
