@@ -29,7 +29,6 @@ import {
   hasStatusIntent,
   continuesStatusInquiry,
   missingBookingFields,
-  confirmRequested,
   isPureConfirmation,
   isCompleteBooking,
   buildBookingSummary,
@@ -50,6 +49,7 @@ import {
   lookupActiveBooking,
   formatActiveBooking,
   lookupIdentityConflict,
+  conflictTurnAction,
   isSameVehicleOnFile,
   buildDuplicateBookingNotice,
   lookupActiveJobByPlate,
@@ -723,7 +723,7 @@ async function handleInboundMessage(
       } else if (bookingIntent || signal) {
         await setVehicleInquiry(conversation_id, false)
         await setBookingFlow(conversation_id, true)
-      } else if (is_booking_flow && !awaiting_confirmation) {
+      } else if (is_booking_flow && !awaiting_confirmation && !conflict_pending) {
         // The customer moved on to something else mid-booking and there is no
         // confirmation pending. Clear the flag now — it used to be sticky with
         // nothing to clear it, so unrelated questions ("October promo") were
@@ -990,6 +990,7 @@ async function handleInboundMessage(
     linkEscalation: Boolean(linkState.escalation),
     isBookingFlow: Boolean(is_booking_flow),
     awaitingConfirmation: Boolean(awaiting_confirmation),
+    conflictPending: Boolean(conflict_pending),
     cancelIntent,
   })
   let escalateBooking = false
@@ -1265,48 +1266,33 @@ async function handleInboundMessage(
         record: activeBooking.record,
       })
 
-      if (conflict) {
-        if (conflict_pending) {
-          if (confirmRequested(messageBody) && !signal && awaiting_confirmation) {
-            // Customer confirmed the booking despite the conflict, AND has
-            // already seen their details summary (awaiting_confirmation) → Sales
-            // verifies identity before anything is finalized.
-            escalate = true
-            escalateBooking = true
-            conflictNote = conflict.note
-            await persistConfirmFlag(false)
-            await persistConflictPending(false)
-            await persistBookingFlowFlag(false)
-            branchContext =
-              "The customer confirmed a booking that conflicts with the customer record on file. " +
-              "The booking is escalated to Sales for identity verification. Do NOT finalize the details as correct."
-          } else if (confirmRequested(messageBody) && !signal) {
-            // Confirmed despite the conflict but the details summary was never
-            // shown — show it first (keep conflict_pending so the next "yes"
-            // reaches the branch above). Rendered deterministically below.
-            escalate = false
-            confirmSummary = true
-            await persistConfirmFlag(true)
-          } else {
-            // Still conflicting and not confirmed → adapt the prompt so Gemini
-            // understands the customer is responding to an existing identity
-            // conflict clarification, not receiving one for the first time.
-            escalate = false
-            await persistConfirmFlag(false)
-            branchContext =
-              conflict.clarification +
-              "\n\nThe customer has already been asked about this identity conflict and is now responding. " +
-              "If they confirm the conflicting details are correct, the booking will be escalated to Sales for identity verification. " +
-              "If they provide corrected details that match the customer record, the conflict is resolved. " +
-              "If their response is unclear or does not address the identity conflict, repeat the neutral clarification question."
-          }
-        } else {
-          // First time the conflict is detected → surface it, don't escalate.
-          escalate = false
-          await persistConflictPending(true)
-          await persistConfirmFlag(false)
-          branchContext = conflict.clarification
-        }
+      const conflictAction = conflictTurnAction({
+        conflict: Boolean(conflict),
+        conflictPending: Boolean(conflict_pending),
+        cancelIntent,
+      })
+
+      if (conflict && conflictAction === "escalate") {
+        // The customer was asked about the conflict and the details still
+        // conflict (they didn't correct the name/plate) → this is a booking
+        // for someone else. Sales verifies; nothing is finalized. The
+        // customer's own answer is kept on the note so Sales sees why.
+        const said = messageBody.replace(/\s+/g, " ").trim().slice(0, 200)
+        escalate = true
+        escalateBooking = true
+        conflictNote = said ? `${conflict.note} Customer said: "${said}"` : conflict.note
+        await persistConfirmFlag(false)
+        await persistConflictPending(false)
+        await persistBookingFlowFlag(false)
+        branchContext =
+          "The customer's booking details still differ from the customer record on file after they were asked about it. " +
+          "The booking is escalated to Sales for verification. Do NOT finalize the details as correct."
+      } else if (conflict) {
+        // First time the conflict is detected → surface it, don't escalate.
+        escalate = false
+        await persistConflictPending(true)
+        await persistConfirmFlag(false)
+        branchContext = conflict.clarification
       } else if (isPureConfirmation(messageBody) && awaiting_confirmation) {
         // Escalate only when a confirmation prompt was actually shown on a
         // previous turn (awaiting_confirmation was persisted then) AND this

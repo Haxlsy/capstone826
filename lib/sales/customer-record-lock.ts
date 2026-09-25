@@ -50,3 +50,26 @@ export async function findActiveJobsByCustomerRecord(
     .in("status", ACTIVE_JOB_STATUSES as unknown as string[])
   return pickActiveJobCodes((data ?? []) as { customer_record_id: string | null; job_order_code: string; status: string }[])
 }
+
+/** Wording for the API's 409 and the UI's disabled-Delete tooltip. */
+export function deleteBlockedMessage(jobOrderCode: string): string {
+  return `Linked to active job order ${jobOrderCode} — it can't be deleted while it's in service.`
+}
+
+/** A customer record can be deleted unless a job order for it is still active. */
+export function canDeleteCustomerRecord(
+  activeJobCode: string | null | undefined,
+): { ok: true } | { ok: false; reason: string } {
+  return activeJobCode ? { ok: false, reason: deleteBlockedMessage(activeJobCode) } : { ok: true }
+}
+
+/**
+ * Confirmation text for deleting a customer record. Past job orders keep their
+ * own copy of the customer's details, so history survives; a linked Messenger
+ * account is dropped and the customer re-verifies next time.
+ */
+export function deleteConfirmMessage(r: { fullName: string; plateNumber: string; psid: string | null }): string {
+  const base = `This permanently removes ${r.fullName} — ${r.plateNumber}. Past job orders keep their details.`
+  const link = r.psid ? " Their linked Messenger account will be unlinked and they'll need to verify again." : ""
+  return `${base}${link} This can't be undone.`
+}

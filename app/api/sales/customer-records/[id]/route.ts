@@ -4,7 +4,12 @@ import { requireAuditCaller, getRoleCaller } from "@/lib/auth/caller"
 import { logAuditCall } from "@/hooks/audit-helpers"
 import { normalizePhone } from "@/lib/phone"
 import { UpdateCustomerRecordSchema } from "../schema"
-import { findActiveJobsByCustomerRecord, lockedEditMessage, CUSTOMER_RECORD_LOCKED_FIELDS } from "@/lib/sales/customer-record-lock"
+import {
+  findActiveJobsByCustomerRecord,
+  lockedEditMessage,
+  canDeleteCustomerRecord,
+  CUSTOMER_RECORD_LOCKED_FIELDS,
+} from "@/lib/sales/customer-record-lock"
 
 export async function PATCH(
   request: Request,
@@ -152,6 +157,69 @@ export async function PATCH(
         ? (updates.psid ? "Linked Messenger account to customer record" : "Unlinked Messenger account from customer record")
         : "Updated customer record",
       target:   (updates.full_name ?? `record ${id}`) as string,
+    })
+
+    return NextResponse.json({ success: true })
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err)
+    return NextResponse.json({ error: msg }, { status: 500 })
+  }
+}
+
+export async function DELETE(
+  _request: Request,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  try {
+    const { id } = await params
+
+    const roleAuth = await getRoleCaller(["sales"])
+    if ("error" in roleAuth) return roleAuth.error
+
+    const auth = await requireAuditCaller()
+    if ("error" in auth) return auth.error
+    const { caller } = auth
+
+    const supabase = createAdminClient()
+
+    const { data: record } = await supabase
+      .from("customer_record")
+      .select("id, full_name, psid")
+      .eq("id", id)
+      .maybeSingle()
+    if (!record) {
+      return NextResponse.json({ error: "Customer record not found." }, { status: 404 })
+    }
+
+    // A job order still in service reads this record live
+    // (lib/operations/job-detail-data.ts), so it can't go while one is active.
+    const locked = await findActiveJobsByCustomerRecord(supabase, [id])
+    const verdict = canDeleteCustomerRecord(locked.get(id))
+    if (!verdict.ok) {
+      return NextResponse.json({ error: verdict.reason }, { status: 409 })
+    }
+
+    // Past job orders keep their own name/contact/plate snapshot and their
+    // customer_record_id is set to NULL by the FK, so history survives.
+    const { error } = await supabase.from("customer_record").delete().eq("id", id)
+    if (error) {
+      return NextResponse.json({ error: error.message }, { status: 500 })
+    }
+
+    // The customer is no longer linked — clear any half-finished verification
+    // so the Messenger flow starts clean. Best effort: the delete has already
+    // happened, so a failure here must not turn into an error response.
+    if (record.psid) {
+      await supabase
+        .from("messenger_conversation")
+        .update({ awaiting_link_verification: false, link_attempts: 0, link_conflict_pending: false })
+        .eq("psid", record.psid)
+    }
+
+    logAuditCall(caller, {
+      category: "delete",
+      action:   "Deleted customer record",
+      target:   record.full_name as string,
     })
 
     return NextResponse.json({ success: true })

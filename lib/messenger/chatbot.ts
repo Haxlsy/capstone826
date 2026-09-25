@@ -829,11 +829,13 @@ export function shouldStayInBookingFlow(input: {
   linkEscalation: boolean
   isBookingFlow: boolean
   awaitingConfirmation: boolean
+  /** An identity-conflict question was asked and the customer's answer is due. */
+  conflictPending?: boolean
   cancelIntent: boolean
 }): boolean {
   const {
     signal, statusIntent, awaitingLinkVerification, linkEscalation,
-    isBookingFlow, awaitingConfirmation, cancelIntent,
+    isBookingFlow, awaitingConfirmation, conflictPending = false, cancelIntent,
   } = input
 
   if (cancelIntent) return false
@@ -846,6 +848,11 @@ export function shouldStayInBookingFlow(input: {
   // `is_booking_flow` alone is NOT enough — that is what dragged unrelated
   // messages ("October promo") into the booking block.
   if (awaitingConfirmation) return true
+
+  // An identity-conflict question is awaiting the customer's answer ("it's
+  // under a different name" carries no booking signal). Dropping the flow here
+  // skipped the conflict handling entirely, so the booking was never escalated.
+  if (conflictPending) return true
 
   // Sticky flag with no pending confirmation and no signal → the customer has
   // moved on; let the message be answered normally.

@@ -5,6 +5,7 @@ import {
   newInquiryToast,
   escalationHeading,
   canRecordCustomerDetails,
+  resolveConfirmMessage,
 } from "@/lib/sales/inquiry-list"
 
 // The two rules that make a realtime refresh safe to run under someone who is
@@ -133,6 +134,23 @@ describe("canRecordCustomerDetails", () => {
   it("is only for Booking inquiries", () => {
     for (const type of ["Human Response", "Concern", "Status"]) {
       expect(canRecordCustomerDetails({ type, status: "open" })).toBe(false)
+    }
+  })
+})
+
+// Unfulfilled bookings: Mark as Resolved is the "it didn't go through" outcome,
+// so a Booking inquiry's confirmation must say nothing gets recorded.
+describe("resolveConfirmMessage", () => {
+  it("explains a Booking resolve creates no customer record and keeps the captured details", () => {
+    const msg = resolveConfirmMessage("Booking")
+    expect(msg).toMatch(/without recording/i)
+    expect(msg).toMatch(/No customer record will be created/)
+    expect(msg).toMatch(/record them later/)
+  })
+
+  it("keeps the generic wording for every other inquiry type", () => {
+    for (const type of ["Human Response", "Concern", ""]) {
+      expect(resolveConfirmMessage(type)).toBe("This inquiry will be marked as resolved and moved out of the active queue.")
     }
   })
 })

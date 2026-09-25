@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest"
 import {
   lookupIdentityConflict,
+  conflictTurnAction,
   namesCompatible,
   type IdentityConflict,
 } from "@/lib/messenger/booking"
@@ -68,5 +69,45 @@ describe("Test 5 — identity conflict: detection", () => {
     await expect(
       lookupIdentityConflict({ psid: "9", extracted: caleb, record: undefined })
     ).resolves.toBeNull()
+  })
+})
+describe("conflictTurnAction — linked customer books for someone else", () => {
+  it("asks first when the conflict shows up for the first time", () => {
+    expect(conflictTurnAction({ conflict: true, conflictPending: false, cancelIntent: false })).toBe("clarify")
+  })
+
+  it("escalates on the customer's answer when the conflict is still there", () => {
+    // T2 → T3: "ito ay sa ibang pangalan" leaves the name unchanged.
+    expect(conflictTurnAction({ conflict: true, conflictPending: true, cancelIntent: false })).toBe("escalate")
+  })
+
+  it("proceeds normally when there is no conflict, or the customer corrected it", () => {
+    expect(conflictTurnAction({ conflict: false, conflictPending: false, cancelIntent: false })).toBe("proceed")
+    expect(conflictTurnAction({ conflict: false, conflictPending: true, cancelIntent: false })).toBe("proceed")
+  })
+
+  it("never escalates a cancelled booking", () => {
+    expect(conflictTurnAction({ conflict: true, conflictPending: true, cancelIntent: true })).toBe("proceed")
+  })
+})
+
+describe("linked PSID booking under a different name (QA round 3)", () => {
+  const harley = { ...record, full_name: "Harley Soldao" }
+  const loopy: CustomerDetails = {
+    full_name: "Loopy Driver",
+    contact_number: "09998887777",
+    plate_number: null,
+    vehicle_unit: "Honda Civic",
+    email: "loopy@example.com",
+  }
+
+  it("is a name conflict even with a different phone and email", async () => {
+    const c = await lookupIdentityConflict({ psid: "p1", extracted: loopy, record: harley })
+    expect(c?.nameConflict).toBe(true)
+  })
+
+  it("is not a conflict when the same person adds a second vehicle", async () => {
+    const same: CustomerDetails = { ...loopy, full_name: "Harley Soldao" }
+    expect(await lookupIdentityConflict({ psid: "p1", extracted: same, record: harley })).toBeNull()
   })
 })

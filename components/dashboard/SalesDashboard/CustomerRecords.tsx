@@ -2,20 +2,26 @@
 
 import { useState, useEffect, useRef, useCallback, useMemo } from "react"
 import { useRealtimeRefetch } from "@/hooks/useRealtimeRefetch"
-import { Car, Phone, Mail, Pencil, X, Check, ChevronDown, ChevronUp, Lock } from "lucide-react"
+import { Car, Phone, Mail, Pencil, X, Check, ChevronDown, ChevronUp, Lock, Trash2, FileText, FileSpreadsheet } from "lucide-react"
 import { getInitials } from "@/hooks/useCurrentUser"
 import { fmtDate } from "@/lib/time-display"
+import { dateRangeError, dateRangeLabel } from "@/lib/sales/customer-records-filter"
 import { groupByCustomer } from "@/lib/customer-grouping"
 import { EMAIL_PATTERN } from "@/lib/messenger/patterns"
 import { PageHeader } from "@/components/ui/PageHeader"
 import { SearchBar } from "@/components/ui/SearchBar"
 import { Button } from "@/components/ui/Button"
-import { Input } from "@/components/ui/Field"
+import { Input, FieldLabel } from "@/components/ui/Field"
+import { Card } from "@/components/ui/Card"
 import { EmptyState } from "@/components/ui/EmptyState"
 import { useToast } from "@/components/ui/Toast"
+import { ConfirmModal } from "@/components/ui/Modal"
+import { useOfflineLock } from "@/hooks/useOfflineLock"
 import { cn } from "@/lib/utils"
 import { LinkAccountModal } from "./LinkAccountModal"
-import { lockedEditMessage } from "@/lib/sales/customer-record-lock"
+import { lockedEditMessage, deleteBlockedMessage, deleteConfirmMessage } from "@/lib/sales/customer-record-lock"
+import { buildCsv, downloadCsv, openPrintPreview } from "@/lib/export/print"
+import { EXPORT_HEADERS, toCsvCells, exportFilename, buildPrintHtml } from "@/lib/sales/customer-records-export"
 import { CustomerRecordsListSkeleton } from "@/app/dashboard/sales/customer-records/loading"
 
 interface CustomerRecord {
@@ -33,15 +39,25 @@ interface CustomerRecord {
 
 
 const PAGE_SIZE = 20
+// The API caps a page at 100; exports page through it at that size.
+const EXPORT_PAGE_SIZE = 100
 
 export default function CustomerRecords() {
   const toast = useToast()
+  const { isOnline, lockProps } = useOfflineLock()
   const [records, setRecords] = useState<CustomerRecord[]>([])
   const [loading, setLoading] = useState(true)
   const [loadingMore, setLoadingMore] = useState(false)
   const [hasMore, setHasMore] = useState(false)
   const [fetchErr, setFetchErr] = useState<string | null>(null)
   const [search, setSearch] = useState("")
+  // Date-added filter: the pending* values follow the inputs; the applied ones
+  // (set by Apply Filters) drive the list and both exports.
+  const [pendingFrom, setPendingFrom] = useState("")
+  const [pendingTo, setPendingTo] = useState("")
+  const [dateFrom, setDateFrom] = useState("")
+  const [dateTo, setDateTo] = useState("")
+  const [dateErr, setDateErr] = useState<string | null>(null)
   const [expanded, setExpanded] = useState<Record<string, boolean>>({})
 
   const isFirstRender = useRef(true)
@@ -53,6 +69,12 @@ export default function CustomerRecords() {
   const [saveErr, setSaveErr] = useState<string | null>(null)
 
   const [linkTargetId, setLinkTargetId] = useState<string | null>(null)
+
+  const [deleteTarget, setDeleteTarget] = useState<CustomerRecord | null>(null)
+  const [deleting, setDeleting] = useState(false)
+
+  const [exportConfirm, setExportConfirm] = useState<"pdf" | "excel" | null>(null)
+  const [exporting, setExporting] = useState(false)
 
   function shapeRecords(raw: any[]): CustomerRecord[] {
     return raw.map((r: any) => ({
@@ -71,12 +93,14 @@ export default function CustomerRecords() {
   // Fetches the first page for a (possibly new) search term, replacing
   // whatever's currently shown — the lazy-loaded pages beyond it are handled
   // by loadMore() below.
-  const load = useCallback(async (q = "") => {
+  const load = useCallback(async (q = "", from = "", to = "") => {
     setLoading(true)
     setFetchErr(null)
     try {
       const params = new URLSearchParams({ limit: String(PAGE_SIZE) })
       if (q) params.set("search", q)
+      if (from) params.set("from", from)
+      if (to) params.set("to", to)
       const res = await fetch(`/api/sales/customer-records?${params}`)
       const json = await res.json()
       if (!res.ok) throw new Error(json?.error ?? "Failed to load records")
@@ -95,6 +119,8 @@ export default function CustomerRecords() {
     try {
       const params = new URLSearchParams({ limit: String(PAGE_SIZE), offset: String(records.length) })
       if (search.trim()) params.set("search", search.trim())
+      if (dateFrom) params.set("from", dateFrom)
+      if (dateTo) params.set("to", dateTo)
       const res = await fetch(`/api/sales/customer-records?${params}`)
       const json = await res.json()
       if (!res.ok) throw new Error(json?.error ?? "Failed to load more records")
@@ -106,7 +132,7 @@ export default function CustomerRecords() {
     } finally {
       setLoadingMore(false)
     }
-  }, [records.length, search])
+  }, [records.length, search, dateFrom, dateTo])
 
   useEffect(() => {
     if (isFirstRender.current) {
@@ -115,10 +141,10 @@ export default function CustomerRecords() {
       return
     }
     const t = setTimeout(() => {
-      load(search)
+      load(search, dateFrom, dateTo)
     }, 300)
     return () => clearTimeout(t)
-  }, [search, load])
+  }, [search, dateFrom, dateTo, load])
 
   // Lazy-loads the next page as the sentinel at the bottom of the list
   // scrolls into view — no "Load More" click needed.
@@ -140,7 +166,7 @@ export default function CustomerRecords() {
   // Also refetch on job_order changes — a vehicle's lock (see below) appears
   // the moment a new job is created against it and clears the moment that
   // job is Released/Cancelled, without a manual refresh.
-  useRealtimeRefetch(["customer_record", "job_order"], () => load(search))
+  useRealtimeRefetch(["customer_record", "job_order"], () => load(search, dateFrom, dateTo))
 
   const groups = useMemo(
     () => groupByCustomer(records, (r) => r.id, (r) => r.contactNumber, (r) => r.psid),
@@ -211,18 +237,155 @@ export default function CustomerRecords() {
     }
   }
 
+  function applyDateFilter() {
+    const err = dateRangeError(pendingFrom, pendingTo)
+    setDateErr(err)
+    if (err) return
+    setDateFrom(pendingFrom)
+    setDateTo(pendingTo)
+  }
+
+  function resetDateFilter() {
+    setPendingFrom(""); setPendingTo("")
+    setDateFrom(""); setDateTo("")
+    setDateErr(null)
+  }
+
+  const rangeLabel = dateRangeLabel(dateFrom, dateTo, fmtDate)
+  const filterNote = [search.trim() && `Search “${search.trim()}”`, rangeLabel && `Date added ${rangeLabel}`]
+    .filter(Boolean)
+    .join(" · ")
+
+  async function confirmDelete() {
+    if (!deleteTarget) return
+    setDeleting(true)
+    try {
+      const res = await fetch(`/api/sales/customer-records/${deleteTarget.id}`, { method: "DELETE" })
+      const json = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(json?.error ?? "Failed to delete")
+      const removedId = deleteTarget.id
+      setRecords((prev) => prev.filter((r) => r.id !== removedId))
+      setDeleteTarget(null)
+      toast.success("Customer record deleted.")
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : String(err))
+      setDeleteTarget(null)
+    } finally {
+      setDeleting(false)
+    }
+  }
+
+  // The screen only holds one lazily-loaded page, so an export re-reads every
+  // match for the current search — paging the same GET the list uses.
+  async function fetchAllMatching(): Promise<CustomerRecord[]> {
+    const all: CustomerRecord[] = []
+    const q = search.trim()
+    for (let offset = 0; ; offset += EXPORT_PAGE_SIZE) {
+      const params = new URLSearchParams({ limit: String(EXPORT_PAGE_SIZE), offset: String(offset) })
+      if (q) params.set("search", q)
+      if (dateFrom) params.set("from", dateFrom)
+      if (dateTo) params.set("to", dateTo)
+      const res = await fetch(`/api/sales/customer-records?${params}`)
+      const json = await res.json()
+      if (!res.ok) throw new Error(json?.error ?? "Failed to load records for export")
+      all.push(...shapeRecords(json.records ?? []))
+      if (!json.hasMore) return all
+    }
+  }
+
+  async function runExport(type: "pdf" | "excel") {
+    setExporting(true)
+    try {
+      const all = await fetchAllMatching()
+      if (all.length === 0) {
+        toast.error("Nothing to export.")
+        return
+      }
+      const now = new Date()
+      if (type === "excel") {
+        downloadCsv(exportFilename(now), buildCsv([...EXPORT_HEADERS], all.map(toCsvCells)))
+      } else {
+        openPrintPreview(buildPrintHtml(all, fmtDate(now.toISOString()), filterNote || null))
+      }
+      setExportConfirm(null)
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : String(err))
+      setExportConfirm(null)
+    } finally {
+      setExporting(false)
+    }
+  }
+
   const editCell = "h-8 text-sm"
 
   return (
     <div className="flex flex-col gap-5">
       <PageHeader title="Customer Records" subtitle="Confirmed customer details from booking inquiries." />
 
-      <SearchBar
-        value={search}
-        onChange={setSearch}
-        placeholder="Search by name, plate, or contact…"
-        containerClassName="max-w-sm"
-      />
+      <Card className="flex flex-wrap items-end gap-4 p-5">
+        <div>
+          <FieldLabel>Added on or after</FieldLabel>
+          <input
+            aria-label="Date added on or after"
+            type="date"
+            value={pendingFrom}
+            max={pendingTo || undefined}
+            onChange={(e) => setPendingFrom(e.target.value)}
+            className="h-10 rounded-sm border border-border bg-surface px-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
+          />
+        </div>
+        <div>
+          <FieldLabel>Added on or before</FieldLabel>
+          <input
+            aria-label="Date added on or before"
+            type="date"
+            value={pendingTo}
+            min={pendingFrom || undefined}
+            onChange={(e) => setPendingTo(e.target.value)}
+            className="h-10 rounded-sm border border-border bg-surface px-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
+          />
+        </div>
+        <div className="flex items-center gap-2">
+          <Button onClick={applyDateFilter}>Apply Filters</Button>
+          <Button variant="ghost" onClick={resetDateFilter}>Reset</Button>
+        </div>
+        {dateErr ? (
+          <p className="basis-full text-xs text-status-delayed">{dateErr}</p>
+        ) : (
+          <p className="basis-full text-xs text-muted">
+            {rangeLabel
+              ? `Showing records — date added: ${rangeLabel}`
+              : "Filter by the date a record was added — leave one side empty for no limit."}
+          </p>
+        )}
+      </Card>
+
+      <div className="flex flex-wrap items-center gap-3">
+        <SearchBar
+          value={search}
+          onChange={setSearch}
+          placeholder="Search by name, plate, or contact…"
+          containerClassName="max-w-sm flex-1"
+        />
+        <div className="flex items-center gap-2">
+          <Button
+            variant="secondary"
+            onClick={() => setExportConfirm("pdf")}
+            disabled={loading || records.length === 0}
+            {...lockProps}
+          >
+            <FileText className="h-4 w-4" /> Export PDF
+          </Button>
+          <Button
+            variant="secondary"
+            onClick={() => setExportConfirm("excel")}
+            disabled={loading || records.length === 0}
+            {...lockProps}
+          >
+            <FileSpreadsheet className="h-4 w-4" /> Export Excel
+          </Button>
+        </div>
+      </div>
 
       {loading ? (
         <CustomerRecordsListSkeleton />
@@ -389,6 +552,22 @@ export default function CustomerRecords() {
                               >
                                 <Pencil className="h-3.5 w-3.5" /> Edit
                               </Button>
+                              <Button
+                                size="sm"
+                                variant="subtle"
+                                onClick={() => setDeleteTarget(record)}
+                                disabled={isLocked || !isOnline}
+                                title={
+                                  isLocked
+                                    ? deleteBlockedMessage(record.activeJobOrderCode as string)
+                                    : !isOnline
+                                      ? lockProps.title
+                                      : undefined
+                                }
+                                className="text-status-delayed"
+                              >
+                                <Trash2 className="h-3.5 w-3.5" /> Delete
+                              </Button>
                             </>
                           )}
                         </div>
@@ -409,6 +588,32 @@ export default function CustomerRecords() {
           {loadingMore ? "Loading more…" : ""}
         </div>
       )}
+
+      <ConfirmModal
+        open={deleteTarget !== null}
+        onClose={() => setDeleteTarget(null)}
+        onConfirm={confirmDelete}
+        title="Delete customer record?"
+        message={deleteTarget ? deleteConfirmMessage(deleteTarget) : undefined}
+        confirmLabel="Delete"
+        tone="danger"
+        loading={deleting}
+        icon={Trash2}
+      />
+
+      <ConfirmModal
+        open={exportConfirm !== null}
+        onClose={() => setExportConfirm(null)}
+        onConfirm={() => { if (exportConfirm) runExport(exportConfirm) }}
+        title={exportConfirm === "excel" ? "Export as Excel" : "Export as PDF"}
+        message={
+          (filterNote ? `Export every customer record matching ${filterNote}` : "Export all customer records") +
+          (exportConfirm === "excel" ? " to a CSV file that opens in Excel?" : "? This opens a print preview in a new tab.")
+        }
+        confirmLabel="Export"
+        loading={exporting}
+        icon={exportConfirm === "excel" ? FileSpreadsheet : FileText}
+      />
 
       <LinkAccountModal
         open={linkTargetId !== null}
