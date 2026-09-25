@@ -11,6 +11,7 @@ import { cn } from "@/lib/utils"
 import { statusStyle } from "@/lib/ui/status"
 import { fmtDateTimeShort } from "@/lib/time-display"
 import { displayJobStatus } from "@/lib/job-delay"
+import { tooltipAlign } from "@/lib/ui/calendar-tooltip"
 
 const DAY_HEADERS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]
 const MONTH_NAMES = [
@@ -312,7 +313,7 @@ export default function JobCalendarView({ loading, calendarJobs }: Props) {
             </>
           )}
         </div>
-        {showTip && <CompactTooltip jobs={dayJobs} />}
+        {showTip && <CompactTooltip jobs={dayJobs} align={tooltipAlign(date.getDay())} />}
       </div>
     )
   }
