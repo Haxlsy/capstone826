@@ -1,3 +1,4 @@
+import { TIME_ZONE } from "@/lib/time-display"
 import { SummaryCards } from "./dashboard/SummaryCards"
 import { ShopPerformanceChart } from "./dashboard/ShopPerformanceChart"
 import { DelayedJobsTable } from "./dashboard/DelayedJobsTable"
@@ -12,11 +13,14 @@ export default function AdminDashboard({
   initialDelayedJobs: { id: string; status: string; expected_completion_at: string | null; service: { name: string } | null }[]
   initialServiceBreakdown: { service_name: string; count: number }[]
 }) {
+  // Server component (UTC on Vercel): pin the shop's zone or the heading shows
+  // yesterday between midnight and 8 AM Manila.
   const today = new Date().toLocaleDateString("en-US", {
     weekday: "long",
     year: "numeric",
     month: "long",
     day: "numeric",
+    timeZone: TIME_ZONE,
   })
 
   return (

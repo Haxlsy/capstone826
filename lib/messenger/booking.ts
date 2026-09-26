@@ -11,9 +11,12 @@ export interface ActiveBooking {
   record?: {
     full_name:      string | null
     contact_number: string | null
+    /** The vehicle to talk about: the one with the live job, else the customer's first. */
     plate_number:   string | null
     vehicle_unit:   string | null
     email:          string | null
+    /** Every vehicle the customer owns (a booking for any of them is a repeat, not a new one). */
+    vehicles?: { plate_number: string | null; vehicle_unit: string | null }[]
   }
   job?: {
     service_name: string | null
@@ -33,48 +36,65 @@ export const ACTIVE_JOB_STATUSES = [
 
 /**
  * Looks up whether a Messenger user (identified by their page-scoped id) already
- * has a booking on file. The `customer_record.psid` column is UNIQUE, so it is
- * the single source of truth for "this customer has booked with us before".
+ * has a booking on file. `customer.psid` is UNIQUE — one Messenger account is one
+ * customer — so it is the single source of truth for "this customer has booked
+ * with us before". The customer owns their vehicles (`customer_record`).
  *
- * Returns the customer's recorded details (`record`, when a customer_record
- * exists) plus their most recent live job order (`job`, when there is one).
- * `hasActiveBooking` is true ONLY when a live job exists — a customer_record
+ * Returns the customer's recorded details (`record`, when the customer exists)
+ * plus their most recent live job order (`job`, when there is one) across ALL of
+ * their vehicles and any vehicle this account booked for someone else.
+ * `hasActiveBooking` is true ONLY when a live job exists — a customer on file
  * alone never means "you have an active booking".
  */
 export async function lookupActiveBooking(psid: string): Promise<ActiveBooking> {
   const supabase = createAdminClient()
 
-  const { data: record } = await supabase
-    .from("customer_record")
-    .select("id, full_name, contact_number, plate_number, vehicle_unit, email")
+  const { data: customer } = await supabase
+    .from("customer")
+    .select("id, full_name, contact_number, email, vehicles:customer_record!customer_id(id, plate_number, vehicle_unit, created_at)")
     .eq("psid", psid)
     .maybeSingle()
 
-  if (!record) {
+  if (!customer) {
     return { hasActiveBooking: false }
   }
 
-  const { data: job } = await supabase
-    .from("job_order")
-    .select(
-      `id, status, scheduled_at,
-       service:service_id(name)`
-    )
-    .eq("customer_record_id", record.id)
-    .in("status", ACTIVE_JOB_STATUSES)
-    .eq("is_archived", false)
-    .order("created_at", { ascending: false })
-    .limit(1)
-    .maybeSingle()
+  const own = [...((customer.vehicles ?? []) as { id: string; plate_number: string | null; vehicle_unit: string | null; created_at: string }[])]
+    .sort((x, y) => x.created_at.localeCompare(y.created_at))
+
+  // Vehicles this account booked for another person count as this account's booking.
+  const { data: bookedFor } = await supabase
+    .from("customer_record")
+    .select("id")
+    .eq("booked_by_customer_id", customer.id)
+  const vehicleIds = [...own.map((v) => v.id), ...((bookedFor ?? []) as { id: string }[]).map((v) => v.id)]
+
+  const { data: job } = vehicleIds.length
+    ? await supabase
+        .from("job_order")
+        .select(
+          `id, status, scheduled_at, customer_record_id,
+           service:service_id(name)`
+        )
+        .in("customer_record_id", vehicleIds)
+        .in("status", ACTIVE_JOB_STATUSES)
+        .eq("is_archived", false)
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle()
+    : { data: null }
+
+  const shown = (job && own.find((v) => v.id === (job as { customer_record_id?: string }).customer_record_id)) || own[0]
 
   return {
     hasActiveBooking: Boolean(job),
     record: {
-      full_name:      record.full_name      ?? null,
-      contact_number: record.contact_number ?? null,
-      plate_number:   record.plate_number   ?? null,
-      vehicle_unit:   record.vehicle_unit   ?? null,
-      email:          record.email          ?? null,
+      full_name:      customer.full_name    ?? null,
+      contact_number: customer.contact_number ?? null,
+      plate_number:   shown?.plate_number   ?? null,
+      vehicle_unit:   shown?.vehicle_unit   ?? null,
+      email:          customer.email        ?? null,
+      vehicles:       own.map((v) => ({ plate_number: v.plate_number ?? null, vehicle_unit: v.vehicle_unit ?? null })),
     },
     job: job
       ? {
@@ -198,19 +218,26 @@ function platesEqual(a?: string | null, b?: string | null): boolean {
 }
 
 /**
- * True when a completed booking is for a vehicle this psid is already on file
- * for — same plate, and a name compatible with the customer record. A same-plate
- * booking under an incompatible name is NOT this (it stays an identity conflict).
+ * The vehicle a completed booking repeats, when the psid's customer is already
+ * on file for it — same plate as ANY of their vehicles, and a name compatible
+ * with the customer. A same-plate booking under an incompatible name is NOT this
+ * (it stays an identity conflict).
  */
+export function findVehicleOnFile(
+  record: ActiveBooking["record"] | null | undefined,
+  extracted: CustomerDetails | null | undefined
+): { plate_number: string | null; vehicle_unit: string | null } | null {
+  if (!record || !extracted) return null
+  if (!namesCompatible(record.full_name ?? "", extracted.full_name ?? "")) return null
+  const vehicles = record.vehicles ?? [{ plate_number: record.plate_number, vehicle_unit: record.vehicle_unit }]
+  return vehicles.find((v) => platesEqual(v.plate_number, extracted.plate_number)) ?? null
+}
+
 export function isSameVehicleOnFile(
   record: ActiveBooking["record"] | null | undefined,
   extracted: CustomerDetails | null | undefined
 ): boolean {
-  if (!record || !extracted) return false
-  return (
-    platesEqual(record.plate_number, extracted.plate_number) &&
-    namesCompatible(record.full_name ?? "", extracted.full_name ?? "")
-  )
+  return findVehicleOnFile(record, extracted) !== null
 }
 
 /** Deterministic "you already have a booking on file" acknowledgement. */
@@ -318,13 +345,31 @@ export async function lookupIdentityConflict(input: {
 
   if (extracted.plate_number) {
     const supabase = createAdminClient()
-    const { data: plateOwner } = await supabase
+    // The plate's vehicle belongs to a customer. It is this account's own if the
+    // owner holds this psid (including their 2nd vehicle, which used to be
+    // flagged) or if this account booked it for someone else; a vehicle owned by
+    // any other customer — linked to another account or to none — is a conflict.
+    const { data: plateVehicle } = await supabase
       .from("customer_record")
-      .select("psid")
-      .ilike("plate_number", extracted.plate_number.trim().toUpperCase())
+      .select("booked_by_customer_id, owner:customer!customer_id(psid)")
+      .ilike("plate_number", extracted.plate_number.trim().toUpperCase().replace(/[\\%_]/g, "\\$&"))
       .limit(1)
       .maybeSingle()
-    if (plateOwner && plateOwner.psid !== psid) plateConflict = true
+    if (plateVehicle) {
+      const owner = Array.isArray(plateVehicle.owner) ? plateVehicle.owner[0] : plateVehicle.owner
+      if ((owner?.psid ?? null) !== psid) {
+        let bookedByThisAccount = false
+        if (plateVehicle.booked_by_customer_id) {
+          const { data: booker } = await supabase
+            .from("customer")
+            .select("psid")
+            .eq("id", plateVehicle.booked_by_customer_id)
+            .maybeSingle()
+          bookedByThisAccount = booker?.psid === psid
+        }
+        if (!bookedByThisAccount) plateConflict = true
+      }
+    }
   }
 
   if (!nameConflict && !plateConflict) return null

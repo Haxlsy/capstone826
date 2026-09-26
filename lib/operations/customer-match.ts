@@ -13,6 +13,8 @@ import { normalizePhone } from "@/lib/phone"
 export type MatchField = "plate" | "phone" | "email"
 
 export interface MatchableCustomer {
+  /** The person the vehicle belongs to (one customer can have several vehicles). */
+  customer_id:    string
   full_name:      string
   contact_number: string
   email:          string | null
@@ -66,6 +68,17 @@ export function applyTriggerEdit<C extends MatchableCustomer>(
   field: MatchField,
   value: string,
 ): MatchState<C> {
+  const key = FIELD_KEY[field]
+
+  // Once a customer has been fetched, plate / phone / email are ordinary
+  // editable fields: the customer stays matched (their name stays locked) and
+  // nothing is cleared or re-fetched, so a returning customer can be booked
+  // with another vehicle. Duplicates are caught by plateConflict/emailConflict
+  // below and, authoritatively, by the server.
+  if (state.matched) {
+    return { ...state, fields: { ...state.fields, [key]: value } }
+  }
+
   const match = findMatch(customers, field, value)
 
   if (match) {
@@ -82,19 +95,41 @@ export function applyTriggerEdit<C extends MatchableCustomer>(
     }
   }
 
-  const key = FIELD_KEY[field]
-
-  // A match just broke because the field that found it was edited — everything
-  // else was auto-filled from that (now unrelated) record, so clear it rather
-  // than leave a stale name/vehicle behind to end up on a different customer's
-  // job order. Only what's being typed survives.
-  if (state.matched) {
-    return {
-      matched: null,
-      source:  null,
-      fields:  { name: "", phone: "", email: "", plate: "", vehicle: "", [key]: value },
-    }
-  }
-
   return { ...state, fields: { ...state.fields, [key]: value } }
+}
+
+/** Back to a blank form — "not this customer". */
+export function clearMatch<C extends MatchableCustomer>(): MatchState<C> {
+  return { matched: null, source: null, fields: { name: "", phone: "", email: "", plate: "", vehicle: "" } }
+}
+
+const norm = (v: string | null | undefined) => (v ?? "").trim().toLowerCase()
+
+/**
+ * A typed plate that another customer record already holds. The matched
+ * customer's own plate is not a conflict (a repeat job for the same vehicle).
+ */
+export function plateConflict<C extends MatchableCustomer>(
+  customers: C[],
+  matched: C | null,
+  plate: string,
+): C | null {
+  const p = norm(plate)
+  if (!p) return null
+  if (matched && norm(matched.plate_number) === p) return null
+  return customers.find((c) => norm(c.plate_number) === p) ?? null
+}
+
+/**
+ * A typed email held by a DIFFERENT customer — not the matched one or any of
+ * their vehicles (same `customer_id`). One email = one customer.
+ */
+export function emailConflict<C extends MatchableCustomer>(
+  customers: C[],
+  matched: C | null,
+  email: string,
+): C | null {
+  const e = norm(email)
+  if (!e || !matched) return null
+  return customers.find((c) => norm(c.email) === e && c.customer_id !== matched.customer_id) ?? null
 }

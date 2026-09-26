@@ -1,28 +1,43 @@
 import type { createAdminClient } from "@/lib/supabase/admin"
 import { ACTIVE_JOB_STATUSES } from "@/lib/job-delay"
 
-/** One wording shared by the API's 409 and the UI's disabled-Edit tooltip. */
-export function lockedEditMessage(jobOrderCode: string): string {
+/**
+ * Locks and delete rules for the Customer / vehicle split.
+ *
+ *   customer          the person: name, phone, email, Messenger account
+ *   customer_record   one of their vehicles: plate, vehicle unit
+ *
+ * Job pages read the live customer/vehicle over the job's own snapshot, so
+ * changing what an in-service job displays is restricted:
+ *   - the customer's NAME is locked while ANY of their vehicles is in service
+ *     (phone and email can always be corrected);
+ *   - a vehicle's plate / unit is locked while THAT vehicle is in service;
+ *   - a vehicle or a customer can't be deleted while it (or, for a customer,
+ *     any of their vehicles) is in service.
+ */
+export const CUSTOMER_LOCKED_FIELDS = ["full_name"] as const
+export const VEHICLE_LOCKED_FIELDS = ["plate_number", "vehicle_unit"] as const
+
+export function nameLockedMessage(jobOrderCode: string): string {
+  return `Linked to active job order ${jobOrderCode} — the name can't be changed while a vehicle is in service.`
+}
+
+export function vehicleLockedMessage(jobOrderCode: string): string {
   return `Linked to active job order ${jobOrderCode} — edit is disabled while it's in service.`
 }
 
-/** Fields whose value a linked job order actually displays (see
- *  lib/operations/job-detail-data.ts, which prefers the live customer_record
- *  over the job's own snapshot). Editing any of these on a customer_record
- *  that's linked to an active job changes what that job shows. `psid` isn't
- *  one of them — linking/relinking Messenger doesn't feed a job's display. */
-export const CUSTOMER_RECORD_LOCKED_FIELDS = [
-  "full_name",
-  "contact_number",
-  "email",
-  "plate_number",
-  "vehicle_unit",
-] as const
+export function deleteVehicleBlockedMessage(jobOrderCode: string): string {
+  return `Linked to active job order ${jobOrderCode} — it can't be deleted while it's in service.`
+}
+
+export function deleteCustomerBlockedMessage(jobOrderCode: string): string {
+  return `A vehicle is in service (job order ${jobOrderCode}) — the customer can't be deleted until it is released.`
+}
 
 /**
  * Pure reducer: given job_order rows (customer_record_id, job_order_code,
- * status), which record ids are locked and by which job order code. A record
- * realistically has at most one active job at a time; if more than one
+ * status), which vehicle ids are in service and by which job order code. A
+ * vehicle realistically has at most one active job at a time; if more than one
  * somehow exists, the first one found wins.
  */
 export function pickActiveJobCodes(
@@ -37,7 +52,7 @@ export function pickActiveJobCodes(
   return locked
 }
 
-/** Bulk lookup for a page of customer_record ids — one query, not N+1. */
+/** Bulk lookup for a page of vehicle ids — one query, not N+1. */
 export async function findActiveJobsByCustomerRecord(
   admin: ReturnType<typeof createAdminClient>,
   ids: string[],
@@ -51,25 +66,33 @@ export async function findActiveJobsByCustomerRecord(
   return pickActiveJobCodes((data ?? []) as { customer_record_id: string | null; job_order_code: string; status: string }[])
 }
 
-/** Wording for the API's 409 and the UI's disabled-Delete tooltip. */
-export function deleteBlockedMessage(jobOrderCode: string): string {
-  return `Linked to active job order ${jobOrderCode} — it can't be deleted while it's in service.`
+/** Vehicle id → active job code for every vehicle a customer owns. */
+export async function findActiveJobsByCustomer(
+  admin: ReturnType<typeof createAdminClient>,
+  customerId: string,
+): Promise<Map<string, string>> {
+  const { data: vehicles } = await admin.from("customer_record").select("id").eq("customer_id", customerId)
+  return findActiveJobsByCustomerRecord(admin, (vehicles ?? []).map((v) => v.id as string))
 }
 
-/** A customer record can be deleted unless a job order for it is still active. */
-export function canDeleteCustomerRecord(
-  activeJobCode: string | null | undefined,
-): { ok: true } | { ok: false; reason: string } {
-  return activeJobCode ? { ok: false, reason: deleteBlockedMessage(activeJobCode) } : { ok: true }
+/** Any one active job code from a vehicle-id → code map, or null. */
+export function anyActiveCode(map: Map<string, string>): string | null {
+  return map.values().next().value ?? null
 }
 
-/**
- * Confirmation text for deleting a customer record. Past job orders keep their
- * own copy of the customer's details, so history survives; a linked Messenger
- * account is dropped and the customer re-verifies next time.
- */
-export function deleteConfirmMessage(r: { fullName: string; plateNumber: string; psid: string | null }): string {
-  const base = `This permanently removes ${r.fullName} — ${r.plateNumber}. Past job orders keep their details.`
-  const link = r.psid ? " Their linked Messenger account will be unlinked and they'll need to verify again." : ""
-  return `${base}${link} This can't be undone.`
+/** Confirmation text for deleting ONE vehicle. The customer and their Messenger link are untouched. */
+export function deleteVehicleConfirmMessage(v: { plateNumber: string; vehicleUnit: string | null }): string {
+  const what = v.vehicleUnit ? `${v.plateNumber} (${v.vehicleUnit})` : v.plateNumber
+  return `This permanently removes the vehicle ${what}. The customer and their other vehicles stay. Past job orders keep their details. This can't be undone.`
+}
+
+/** Confirmation text for deleting a whole customer and all their vehicles. */
+export function deleteCustomerConfirmMessage(c: {
+  fullName: string
+  vehicleCount: number
+  psid: string | null
+}): string {
+  const cars = c.vehicleCount === 1 ? "their 1 vehicle" : `all ${c.vehicleCount} of their vehicles`
+  const link = c.psid ? " Their linked Messenger account will be unlinked and they'll need to verify again." : ""
+  return `This permanently removes ${c.fullName} and ${cars}. Past job orders keep their details.${link} This can't be undone.`
 }

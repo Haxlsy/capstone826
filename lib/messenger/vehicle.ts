@@ -4,6 +4,7 @@ import { loadWorkSchedule } from "@/lib/operating-hours"
 import { fmtDateTime } from "@/lib/time-display"
 import { ACTIVE_JOB_STATUSES } from "@/lib/messenger/booking"
 import { normalizePhone, isPlausibleMobile } from "@/lib/phone"
+import { jobCustomer } from "@/lib/operations/job-customer"
 import {
   DEFAULT_VEHICLE_STATUS_MESSAGE_EN,
   DEFAULT_VEHICLE_STATUS_MESSAGE_FIL,
@@ -110,7 +111,7 @@ async function buildJobStatus(
 
   return {
     plate:           normalizePlate(job.plate_number ?? ""),
-    customerName:    (Array.isArray(job.customer) ? job.customer[0]?.full_name : job.customer?.full_name) ?? fallbackName ?? null,
+    customerName:    jobCustomer({ customer: job.customer }).name ?? fallbackName ?? null,
     serviceName:     (Array.isArray(job.service) ? job.service[0]?.name : job.service?.name) ?? null,
     status:          job.status,
     currentStage:    active?.name ?? null,
@@ -124,11 +125,14 @@ async function buildJobStatus(
 const JOB_SELECT = `id, status, scheduled_at, actual_start_at, expected_completion_at,
    customer_record_id, plate_number, contact_number,
    service:service_id(name),
-   customer:customer_record_id(full_name, plate_number, contact_number)`
+   customer:customer_record_id(plate_number, owner:customer!customer_id(full_name, contact_number))`
 
-/** plate_number / contact_number of the customer_record a job is linked to. */
-const jobCustomer = (j: JobRow): { plate_number?: string | null; contact_number?: string | null } | null =>
-  (Array.isArray(j.customer) ? j.customer[0] : j.customer) ?? null
+/** The plate / phone of the live vehicle + owner a job is linked to (not the job's own snapshot). */
+const liveVehicle = (j: JobRow): { plate_number: string | null; contact_number: string | null } => {
+  const v = Array.isArray(j.customer) ? j.customer[0] : j.customer
+  const o = Array.isArray(v?.owner) ? v.owner[0] : v?.owner
+  return { plate_number: v?.plate_number ?? null, contact_number: o?.contact_number ?? null }
+}
 
 const stripPlateKey = (s: string | null | undefined): string =>
   normalizePlate(s ?? "").replace(/[^A-Z0-9]/g, "")
@@ -137,11 +141,11 @@ const stripPlateKey = (s: string | null | undefined): string =>
  * Resolves the live status of every vehicle a Messenger customer has in service.
  * Identity is resolved from the psid, in priority order:
  *
- *   1. The customer_record CURRENTLY linked to the psid (Sales links this after
- *      verifying a walk-in). Its jobs = jobs under that record, under its plate,
- *      or sharing its verified phone (a 2nd car on a separate record). The psid's
- *      inquiry history is ignored — a record the psid used to be linked to must
- *      not leak.
+ *   1. The CUSTOMER that holds the psid (one Messenger account = one customer;
+ *      Sales links it after verifying a walk-in). Their jobs = jobs on any of
+ *      their vehicles, plus vehicles this account booked FOR someone else
+ *      (`booked_by_customer_id`). The psid's inquiry history is ignored — a
+ *      customer it used to be linked to must not leak.
  *   2. Otherwise, the psid's own UNHANDLED Messenger inquiries (status not yet
  *      `recorded`/`resolved`) — the grace window for a booker Sales hasn't
  *      recorded yet. A handled inquiry no longer confers identity.
@@ -152,15 +156,15 @@ const stripPlateKey = (s: string | null | undefined): string =>
 export async function resolveOwnVehicleStatus(psid: string): Promise<OwnVehicleOutcome> {
   const supabase = createAdminClient()
 
-  // Every identity signal this psid owns: a customer_record linked to the psid
-  // (set when Sales records the inquiry) AND the plate / phone the customer gave
-  // in their own Messenger inquiries. A psid with ANY of these has "booked
-  // through Messenger" and must never hit the plate+phone verification wall —
-  // that ask is only for a genuine stranger (no record, no inquiry).
-  const [{ data: record }, { data: inquiries }, { data: notifyRecords }] = await Promise.all([
+  // Every identity signal this psid owns: the customer linked to it (set when
+  // Sales records the inquiry) AND the plate / phone the customer gave in their
+  // own Messenger inquiries. A psid with ANY of these has "booked through
+  // Messenger" and must never hit the plate+phone verification wall — that ask
+  // is only for a genuine stranger (no customer, no inquiry).
+  const [{ data: customer }, { data: inquiries }] = await Promise.all([
     supabase
-      .from("customer_record")
-      .select("id, full_name, contact_number, plate_number, psid")
+      .from("customer")
+      .select("id, full_name, vehicles:customer_record!customer_id(id, plate_number)")
       .eq("psid", psid)
       .maybeSingle(),
     supabase
@@ -169,15 +173,13 @@ export async function resolveOwnVehicleStatus(psid: string): Promise<OwnVehicleO
       .eq("psid", psid)
       .order("escalated_at", { ascending: false })
       .limit(5),
-    // Vehicles booked from this Messenger account whose record couldn't hold
-    // the psid itself (see notify_psid). An error here (column not migrated
-    // yet) just yields no rows.
-    supabase
-      .from("customer_record")
-      .select("id, plate_number")
-      .eq("notify_psid", psid)
-      .limit(20),
   ])
+  const record = customer
+
+  // Vehicles this account booked for another person (their own customer, no psid).
+  const { data: bookedFor } = customer
+    ? await supabase.from("customer_record").select("id, plate_number").eq("booked_by_customer_id", customer.id)
+    : { data: [] as { id: string; plate_number: string | null }[] }
 
   const inqRows = (inquiries ?? []) as {
     inquiry_type: string | null
@@ -186,12 +188,11 @@ export async function resolveOwnVehicleStatus(psid: string): Promise<OwnVehicleO
     extracted_contact: string | null
   }[]
   // Only inquiries Sales has NOT yet processed confer identity. Once an inquiry
-  // is recorded/resolved, the psid's identity is whatever customer_record it is
-  // (or is not) linked to.
+  // is recorded/resolved, the psid's identity is whatever customer it is (or is
+  // not) linked to.
   const softInq = inqRows.filter((i) => i.status !== "recorded" && i.status !== "resolved")
 
-  const plateKeys = new Set<string>()       // record + inquiry plates — strong signal
-  const verifiedPhones = new Set<string>()  // the linked record's phone — strong
+  const plateKeys = new Set<string>()       // vehicle + inquiry plates — strong signal
   const softPhones = new Set<string>()      // inquiry-only phones — fallback match only
   const recordIds = new Set<string>()
   const addPlate = (p: string | null | undefined) => {
@@ -203,12 +204,16 @@ export async function resolveOwnVehicleStatus(psid: string): Promise<OwnVehicleO
     if (isPlausibleMobile(k)) set.add(k)
   }
 
-  if (record) {
-    // A linked psid IS its currently-linked record. Its inquiry history — which
-    // may name a record it used to be linked to — is deliberately ignored.
-    recordIds.add(record.id)
-    addPlate(record.plate_number)
-    addPhone(verifiedPhones, record.contact_number)
+  let firstPlate: string | null = null
+  if (customer) {
+    // A linked psid IS its customer. Their vehicles are matched by id / plate —
+    // no phone aggregation is needed now that a customer owns its vehicles.
+    const own = ((customer.vehicles ?? []) as { id: string; plate_number: string | null }[])
+    for (const v of [...own, ...((bookedFor ?? []) as { id: string; plate_number: string | null }[])]) {
+      recordIds.add(v.id)
+      addPlate(v.plate_number)
+    }
+    firstPlate = own[0]?.plate_number ?? null
   } else {
     for (const i of softInq) {
       addPlate(i.extracted_plate)
@@ -216,22 +221,14 @@ export async function resolveOwnVehicleStatus(psid: string): Promise<OwnVehicleO
     }
   }
 
-  // Vehicles booked from this Messenger account under another name/number
-  // (record kept its psid only as notify_psid). Match them by record id / plate
-  // only — the other person's phone is NOT a verified phone for this psid.
-  for (const n of (notifyRecords ?? []) as { id: string; plate_number: string | null }[]) {
-    recordIds.add(n.id)
-    addPlate(n.plate_number)
-  }
-
   // Genuine stranger — nothing on file to identify them by → ask to verify.
-  if (recordIds.size === 0 && plateKeys.size === 0 && verifiedPhones.size === 0 && softPhones.size === 0) {
+  if (recordIds.size === 0 && plateKeys.size === 0 && softPhones.size === 0) {
     console.log("[vehicle/status]", { psid, record: Boolean(record), inquiries: inqRows.length, softInquiries: softInq.length, result: "not_linked" })
     return { kind: "not_linked" }
   }
 
   const bookingPlate =
-    softInq.find((i) => i.extracted_plate)?.extracted_plate ?? record?.plate_number ?? null
+    softInq.find((i) => i.extracted_plate)?.extracted_plate ?? firstPlate
 
   const { data: activeJobs } = await supabase
     .from("job_order")
@@ -243,24 +240,24 @@ export async function resolveOwnVehicleStatus(psid: string): Promise<OwnVehicleO
 
   const rows = (activeJobs ?? []) as unknown as JobRow[]
 
-  // A job is the customer's when it is linked to their recorded customer_record,
-  // its plate matches (its own denormalised value OR the customer_record it is
-  // linked to), or it shares the record's verified phone. An inquiry-only phone
-  // is a weaker signal — used only when nothing stronger matched.
+  // A job is the customer's when it is linked to one of their vehicles or its
+  // plate matches (its own denormalised value OR the vehicle it is linked to). An
+  // inquiry-only phone is a weaker signal — used only when nothing stronger
+  // matched.
   const idHit = (j: JobRow) => j.customer_record_id != null && recordIds.has(j.customer_record_id)
   const plateHit = (j: JobRow) =>
     plateKeys.has(stripPlateKey(j.plate_number)) ||
-    plateKeys.has(stripPlateKey(jobCustomer(j)?.plate_number))
-  const phoneIn = (set: Set<string>, j: JobRow) =>
-    set.size > 0 &&
-    (set.has(normalizePhone(j.contact_number)) ||
-      set.has(normalizePhone(jobCustomer(j)?.contact_number)))
-  const strongHit = (j: JobRow) => idHit(j) || plateHit(j) || phoneIn(verifiedPhones, j)
+    plateKeys.has(stripPlateKey(liveVehicle(j).plate_number))
+  const softPhoneHit = (j: JobRow) =>
+    softPhones.size > 0 &&
+    (softPhones.has(normalizePhone(j.contact_number)) ||
+      softPhones.has(normalizePhone(liveVehicle(j).contact_number)))
 
-  let mine = rows.filter(strongHit)
-  if (mine.length === 0) mine = rows.filter((j) => phoneIn(softPhones, j))
-  if (mine.length > MAX_JOBS_PER_PHONE) {
-    mine = rows.filter((j) => idHit(j) || plateHit(j))
+  let mine = rows.filter((j) => idHit(j) || plateHit(j))
+  if (mine.length === 0) {
+    mine = rows.filter(softPhoneHit)
+    // A shared / placeholder number matching this many jobs is not one customer.
+    if (mine.length > MAX_JOBS_PER_PHONE) mine = rows.filter((j) => idHit(j) || plateHit(j))
   }
 
   console.log("[vehicle/status]", {
@@ -269,7 +266,6 @@ export async function resolveOwnVehicleStatus(psid: string): Promise<OwnVehicleO
     inquiries: inqRows.length,
     softInquiries: softInq.length,
     plateKeys: [...plateKeys],
-    verifiedPhones: [...verifiedPhones],
     softPhones: [...softPhones],
     activeJobs: rows.length,
     matched: mine.length,
@@ -286,7 +282,7 @@ export async function resolveOwnVehicleStatus(psid: string): Promise<OwnVehicleO
   }
 
   const jobs = await Promise.all(
-    mine.map((j) => buildJobStatus(supabase, j, record?.full_name ?? null))
+    mine.map((j) => buildJobStatus(supabase, j, customer?.full_name ?? null))
   )
   return record ? { kind: "ok", jobs } : { kind: "ok", jobs, soft: true }
 }
@@ -463,80 +459,6 @@ export function formatVehicleStatusForCustomer(
   return `${STATUS_COPY.latestHeader(jobs.length > 1, opts?.lang)}\n\n${body}`
 }
 
-export type LinkClaim =
-  | { kind: "no_record" }                                  // nothing matches the plate
-  | { kind: "match_unlinked"; recordName: string | null }  // record exists, psid null, phone matches
-  | { kind: "phone_mismatch" }                             // record exists, psid null, phone wrong
-  | { kind: "owned_by_other"; phoneMatched: boolean }      // record.psid is a different PSID
-  | { kind: "owned_by_requester"; outcome: OwnVehicleOutcome } // defensive: psid already this user
-
-/**
- * Assesses a Messenger customer's claim to an existing customer_record using the
- * plate number and the phone number on file. **Read-only** — it never links the
- * record. Account linking is a persistent access grant, so it is always
- * completed by Sales (after an out-of-band identity check) via the
- * customer-record edit form.
- *
- * The plate is resolved via `customer_record.plate_number` (UNIQUE) first, then
- * — for a returning customer whose 2nd car only exists as a job — via
- * `job_order.plate_number`.
- */
-export async function assessLinkClaim(input: {
-  psid: string
-  plate: string
-  phone: string
-}): Promise<LinkClaim> {
-  const supabase = createAdminClient()
-  const plate = normalizePlate(input.plate)
-  const phone = normalizePhone(input.phone)
-  if (!plate || !isPlausibleMobile(phone)) return { kind: "no_record" }
-
-  let record:
-    | { id: string; full_name: string | null; contact_number: string | null; psid: string | null }
-    | null = null
-
-  const { data: byPlate } = await supabase
-    .from("customer_record")
-    .select("id, full_name, contact_number, psid")
-    .ilike("plate_number", plate)
-    .maybeSingle()
-  record = byPlate ?? null
-
-  if (!record) {
-    // The plate may only exist on a job_order (manual 2nd car).
-    const { data: job } = await supabase
-      .from("job_order")
-      .select("customer_record_id")
-      .ilike("plate_number", plate)
-      .not("customer_record_id", "is", null)
-      .order("created_at", { ascending: false })
-      .limit(1)
-      .maybeSingle()
-    if (job?.customer_record_id) {
-      const { data: r2 } = await supabase
-        .from("customer_record")
-        .select("id, full_name, contact_number, psid")
-        .eq("id", job.customer_record_id)
-        .maybeSingle()
-      record = r2 ?? null
-    }
-  }
-
-  if (!record) return { kind: "no_record" }
-
-  const phoneMatched = normalizePhone(record.contact_number) === phone
-
-  if (record.psid && record.psid === input.psid) {
-    return { kind: "owned_by_requester", outcome: await resolveOwnVehicleStatus(input.psid) }
-  }
-  if (record.psid && record.psid !== input.psid) {
-    return { kind: "owned_by_other", phoneMatched }
-  }
-  if (!phoneMatched) return { kind: "phone_mismatch" }
-
-  return { kind: "match_unlinked", recordName: record.full_name ?? null }
-}
-
 export type JobOrderLinkClaim =
   | { kind: "no_record" }                                       // code doesn't resolve to a linkable record
   | { kind: "linked"; outcome: OwnVehicleOutcome }               // just auto-linked this turn
@@ -574,10 +496,18 @@ export async function assessJobOrderLinkClaim(input: {
 
   if (!job?.customer_record_id) return { kind: "no_record" }
 
-  const { data: record } = await supabase
+  // job → vehicle → the customer who owns it; the psid attaches to the customer.
+  const { data: vehicle } = await supabase
     .from("customer_record")
-    .select("id, psid")
+    .select("customer_id")
     .eq("id", job.customer_record_id)
+    .maybeSingle()
+  if (!vehicle?.customer_id) return { kind: "no_record" }
+
+  const { data: record } = await supabase
+    .from("customer")
+    .select("id, psid")
+    .eq("id", vehicle.customer_id)
     .maybeSingle()
 
   if (!record) return { kind: "no_record" }
@@ -590,7 +520,7 @@ export async function assessJobOrderLinkClaim(input: {
   }
 
   const { data: updated } = await supabase
-    .from("customer_record")
+    .from("customer")
     .update({ psid: input.psid })
     .eq("id", record.id)
     .is("psid", null)
@@ -600,7 +530,7 @@ export async function assessJobOrderLinkClaim(input: {
   if (!updated) {
     // Lost a race to another claim between the read above and this write.
     const { data: recheck } = await supabase
-      .from("customer_record")
+      .from("customer")
       .select("psid")
       .eq("id", record.id)
       .maybeSingle()

@@ -1,3 +1,4 @@
+import { jobCustomer } from "@/lib/operations/job-customer"
 import { NextResponse } from "next/server"
 import { createAdminClient } from "@/lib/supabase/admin"
 import { getRoleCaller } from "@/lib/auth/caller"
@@ -17,7 +18,7 @@ export async function GET() {
       .from("job_order")
       .select(
         `id, status, scheduled_at, actual_start_at, expected_completion_at, created_at, job_order_code,
-         customer:customer_record_id(full_name),
+         customer:customer_record_id(owner:customer!customer_id(full_name)),
          service:service_id(name),
          customer_name`
       )
@@ -70,7 +71,7 @@ export async function GET() {
       return {
         job_id:                  j.id,
         display_id:              j.job_order_code,
-        customer:                (j.customer as any)?.full_name ?? j.customer_name ?? "—",
+        customer:                jobCustomer(j).name ?? "—",
         service:                 (j.service  as any)?.name ?? "—",
         status:                  j.status,
         scheduled_at:            j.scheduled_at,

@@ -1,3 +1,4 @@
+import { jobCustomer } from "@/lib/operations/job-customer"
 import { createAdminClient } from "@/lib/supabase/admin"
 import { getCurrentUserProfile } from "@/lib/auth/guard"
 import { isJobDelayed, computeStageDelays, hasAnyStageDelayed, type StageForDelay } from "@/lib/job-delay"
@@ -77,7 +78,7 @@ export async function getHeadTechnicianJobs(userId: string) {
       .from("job_order")
       .select(`
         id, status, scheduled_at, actual_start_at, expected_completion_at, created_at, job_order_code,
-        customer:customer_record_id(full_name, plate_number, vehicle_unit),
+        customer:customer_record_id(plate_number, vehicle_unit, owner:customer!customer_id(full_name)),
         service:service_id(name),
         customer_name, plate_number, vehicle_unit
       `)
@@ -161,9 +162,9 @@ export async function getHeadTechnicianJobs(userId: string) {
     return {
       job_id: j.job_order_code,
       raw_id: j.id as string,
-      customer_name: (j.customer as any)?.full_name ?? j.customer_name ?? "—",
-      plate_number: (j.customer as any)?.plate_number ?? j.plate_number ?? "—",
-      car_make: (j.customer as any)?.vehicle_unit ?? j.vehicle_unit ?? "—",
+      customer_name: jobCustomer(j as any).name ?? "—",
+      plate_number: jobCustomer(j as any).plate ?? "—",
+      car_make: jobCustomer(j as any).vehicle ?? "—",
       car_color: "",
       service: (j.service as any)?.name ?? "—",
       technician_name: (member?.user_account as any)?.full_name ?? "Unassigned",

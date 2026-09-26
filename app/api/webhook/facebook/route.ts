@@ -41,6 +41,7 @@ import {
   hasFieldCorrectionIntent,
   hasCancelIntent,
   shouldStayInBookingFlow,
+  answersDetailPrompt,
   buildBookingCancelledMessage,
   type ChatbotReply,
   type CustomerDetails,
@@ -51,6 +52,7 @@ import {
   lookupIdentityConflict,
   conflictTurnAction,
   isSameVehicleOnFile,
+  findVehicleOnFile,
   buildDuplicateBookingNotice,
   lookupActiveJobByPlate,
   buildVehicleInServiceNotice,
@@ -705,6 +707,13 @@ async function handleInboundMessage(
   // contains a booking detail token (plate / phone / email).
   const signal = bookingSignal(messageBody)
 
+  // The customer is replying to the bot's "please include: …" re-ask with just
+  // the value ("Harley Stephen A. Soldao", "Toyota Vios") — no booking signal.
+  // `history` was built before this message was stored, so its last model
+  // message is what they are answering.
+  const lastBotText = [...history].reverse().find((h) => h.role === "model")?.text
+  const answeringDetailPrompt = answersDetailPrompt({ lastBotText, message: messageBody })
+
   // Persist which flow the conversation is in so a bare follow-up reply
   // (e.g. just a plate + phone after the status template, or a vehicle type
   // that completes a booking) stays on the same track without needing the
@@ -720,7 +729,7 @@ async function handleInboundMessage(
       } else if (existingBookingIntent) {
         await setVehicleInquiry(conversation_id, false)
         await setBookingFlow(conversation_id, false)
-      } else if (bookingIntent || signal) {
+      } else if (bookingIntent || signal || answeringDetailPrompt) {
         await setVehicleInquiry(conversation_id, false)
         await setBookingFlow(conversation_id, true)
       } else if (is_booking_flow && !awaiting_confirmation && !conflict_pending) {
@@ -991,6 +1000,7 @@ async function handleInboundMessage(
     isBookingFlow: Boolean(is_booking_flow),
     awaitingConfirmation: Boolean(awaiting_confirmation),
     conflictPending: Boolean(conflict_pending),
+    answeringDetailPrompt,
     cancelIntent,
   })
   let escalateBooking = false
@@ -1129,7 +1139,14 @@ async function handleInboundMessage(
     // Merge this turn's extraction onto the draft collected so far. A Gemini
     // pass that omits a field (common on a bare "yes") can no longer regress the
     // flow — a detail once given stays until the customer changes it.
-    extracted = mergeBookingDetails(booking_draft, extracted)
+    //
+    // A NEW booking (empty draft) starts blank: the reply pass and the refresh
+    // below both read the whole chat history, which resurrected the plate,
+    // phone, vehicle and email of an earlier cancelled/finished booking — after
+    // just "Booking" the bot only asked for the name. So a fresh booking is
+    // built from the customer's current message alone.
+    const freshBooking = !hasExtractedDetails(booking_draft)
+    extracted = freshBooking ? mergeBookingDetails(null, null) : mergeBookingDetails(booking_draft, extracted)
 
     // Gemini (lite model) often omits phone/email/plate even from a clean
     // comma-separated list — take them straight from the customer's text; a
@@ -1144,7 +1161,7 @@ async function handleInboundMessage(
       try {
         const refreshed = await extractCustomerDetails({
           message: messageBody,
-          history,
+          history: freshBooking ? [] : history,
           settings,
           system_prompt,
           knowledge,
@@ -1181,7 +1198,10 @@ async function handleInboundMessage(
     if (acknowledgeDuplicate) {
       escalate = false
       escalateBooking = false
-      reply = buildDuplicateBookingNotice(activeBooking.record)
+      const repeated = findVehicleOnFile(activeBooking.record, extracted)
+      reply = buildDuplicateBookingNotice(
+        activeBooking.record ? { ...activeBooking.record, ...(repeated ?? {}) } : activeBooking.record,
+      )
       await persistBookingDuplicateNotified(true)
       await persistBookingFlowFlag(false)
       await persistConfirmFlag(false)
@@ -1191,7 +1211,7 @@ async function handleInboundMessage(
     } else if (sameVehicleOnFile) {
       conflictNote =
         `Repeat booking: customer is already on file for plate ` +
-        `${activeBooking.record?.plate_number ?? "?"} and re-submitted the same booking details.`
+        `${findVehicleOnFile(activeBooking.record, extracted)?.plate_number ?? activeBooking.record?.plate_number ?? "?"} and re-submitted the same booking details.`
     }
 
     let activeBookingContext: string | null = null

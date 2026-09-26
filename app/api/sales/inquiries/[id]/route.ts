@@ -63,7 +63,7 @@ export async function PATCH(
       let customerName: string | null = inq?.extracted_name ?? null
       if (!customerName && inq?.psid) {
         const { data: rec } = await admin
-          .from("customer_record")
+          .from("customer")
           .select("full_name")
           .eq("psid", inq.psid)
           .maybeSingle()

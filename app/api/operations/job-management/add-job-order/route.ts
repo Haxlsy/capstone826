@@ -9,6 +9,8 @@ import { isWithinOperatingHours, formatOperatingHours } from "@/types/chatbot"
 import { normalizePhone } from "@/lib/phone"
 import { sendPushToUser } from "@/lib/push/send"
 import { getRoleCaller } from "@/lib/auth/caller"
+import { decideManualCustomer } from "@/lib/operations/manual-customer"
+import { findActiveJobsByCustomerRecord } from "@/lib/sales/customer-record-lock"
 
 interface CustomStage {
   service_stage_id:      string | null   // null for stages added only for this job
@@ -33,6 +35,9 @@ export async function POST(request: Request) {
       // duplicate job order.
       id,
       customer_record_id,
+      // Manual entry only: the existing customer the form auto-fetched (name
+      // locked, other fields edited) — see lib/operations/manual-customer.ts.
+      matched_customer_record_id,
       service_id,
       head_detailer_id,
       head_installer_id,
@@ -132,33 +137,42 @@ export async function POST(request: Request) {
       }
     }
 
-    // ── Resolve customer record ───────────────────────────────────────────────
+    // ── Resolve customer + vehicle ────────────────────────────────────────────
+    // A `customer` is the person (name, phone, email, Messenger account); a
+    // `customer_record` is one of their VEHICLES, and job_order points at the
+    // vehicle. `customer_record_id` / `matched_customer_record_id` are vehicle ids.
     let resolvedCustomerRecordId: string | null = customer_record_id ?? null
     // These mirror the customer's data directly on job_order so queries work
-    // without always joining customer_record.
+    // without always joining.
     let resolvedCustomerName:   string | null = null
     let resolvedContactNumber:  string | null = null
     let resolvedPlateNumber:    string | null = null
     let resolvedVehicleUnit:    string | null = null
+    // Set when this request also created/edited a customer or vehicle (manual entry).
+    let customerAuditAction:    string | null = null
+
+    const like = (v: string) => v.replace(/[\\%_]/g, "\\$&")
+    type OneOrMany<T> = T | T[] | null
+    const firstOf = <T,>(v: OneOrMany<T>): T | null => (Array.isArray(v) ? (v[0] ?? null) : v)
 
     if (resolvedCustomerRecordId) {
-      // Selected from customer records — fetch the data to denormalise onto job_order.
-      const { data: existingCustomer } = await admin
+      // Picked from customer records — denormalise the vehicle + owner onto job_order.
+      const { data: existingVehicle } = await admin
         .from("customer_record")
-        .select("full_name, contact_number, plate_number, vehicle_unit")
+        .select("plate_number, vehicle_unit, owner:customer!customer_id(full_name, contact_number)")
         .eq("id", resolvedCustomerRecordId)
         .single()
 
-      if (existingCustomer) {
-        resolvedCustomerName  = (existingCustomer as any).full_name      ?? null
-        resolvedContactNumber = (existingCustomer as any).contact_number ?? null
-        resolvedPlateNumber   = (existingCustomer as any).plate_number   ?? null
-        resolvedVehicleUnit   = (existingCustomer as any).vehicle_unit   ?? null
+      if (existingVehicle) {
+        const owner = firstOf(existingVehicle.owner as OneOrMany<{ full_name: string | null; contact_number: string | null }>)
+        resolvedCustomerName  = owner?.full_name ?? null
+        resolvedContactNumber = owner?.contact_number ?? null
+        resolvedPlateNumber   = (existingVehicle.plate_number as string | null) ?? null
+        resolvedVehicleUnit   = (existingVehicle.vehicle_unit as string | null) ?? null
       }
     } else {
-      // Manual entry — create or reuse a customer_record row.
-      // Canonicalise the phone so the Messenger status flow can match this
-      // customer's other vehicles by contact number.
+      // Manual entry — create or reuse a customer and vehicle.
+      // Canonicalise the phone so customers compare consistently.
       const normContact = normalizePhone(contact_number) || (contact_number?.trim() ?? null)
 
       // Email is required for a manually entered customer. (Picking an existing
@@ -171,88 +185,206 @@ export async function POST(request: Request) {
         return NextResponse.json({ error: "Enter a valid email address." }, { status: 400 })
       }
 
-      if (plate_number?.trim()) {
-        const { data: existing } = await admin
+      const plateTrim = plate_number?.trim() ?? ""
+      const matchedId =
+        typeof matched_customer_record_id === "string" && matched_customer_record_id.trim()
+          ? matched_customer_record_id.trim()
+          : null
+
+      if (matchedId) {
+        // The form auto-fetched an existing customer; only the name is locked.
+        const { data: matchedVehicle } = await admin
           .from("customer_record")
-          .select("id")
-          .eq("plate_number", plate_number.trim())
+          .select("id, customer_id, booked_by_customer_id")
+          .eq("id", matchedId)
           .maybeSingle()
+        const { data: matchedCustomer } = matchedVehicle
+          ? await admin
+              .from("customer")
+              .select("id, full_name, contact_number, email")
+              .eq("id", matchedVehicle.customer_id)
+              .maybeSingle()
+          : { data: null }
 
-        if (existing) resolvedCustomerRecordId = existing.id
-      }
+        const customerPhone = normalizePhone(matchedCustomer?.contact_number as string | null)
+        const phoneChanged = normContact ? normalizePhone(normContact) !== customerPhone : false
+        const emailChanged = trimmedEmail.toLowerCase() !== ((matchedCustomer?.email as string | null) ?? "").toLowerCase()
 
-      // Plate didn't match (or wasn't given) — fall back to phone. A customer already
-      // known to the system (e.g. a Messenger-linked record from an earlier Sales
-      // inquiry, with no job order and no plate on file yet) should be reused rather
-      // than duplicated. contact_number has no uniqueness constraint (two vehicles can
-      // share a phone), so this takes the first match rather than .maybeSingle(), which
-      // would throw on more than one row.
-      if (!resolvedCustomerRecordId && normContact) {
-        const { data: byPhone } = await admin
-          .from("customer_record")
-          .select("id")
-          .eq("contact_number", normContact)
-          .limit(1)
+        const [{ data: plateRows }, { data: emailRows }, { data: phoneRows }] = await Promise.all([
+          plateTrim
+            ? admin.from("customer_record").select("id, customer_id, vehicle_unit, plate_number")
+                .ilike("plate_number", like(plateTrim)).limit(1)
+            : Promise.resolve({ data: [] as never[] }),
+          emailChanged
+            ? admin.from("customer").select("id").ilike("email", like(trimmedEmail)).limit(1)
+            : Promise.resolve({ data: [] as never[] }),
+          phoneChanged && normContact
+            ? admin.from("customer").select("id").eq("contact_number", normContact).limit(1)
+            : Promise.resolve({ data: [] as never[] }),
+        ])
 
-        if (byPhone && byPhone.length > 0) resolvedCustomerRecordId = byPhone[0].id
-      }
+        const decision = decideManualCustomer({
+          customer: (matchedCustomer as never) ?? null,
+          matchedVehicle: (matchedVehicle as never) ?? null,
+          entry: { phone: contact_number, email: trimmedEmail, plate: plate_number, vehicle: vehicle_unit },
+          plateOwner: (plateRows?.[0] as never) ?? null,
+          emailOwner: (emailRows?.[0] as never) ?? null,
+          phoneOwner: (phoneRows?.[0] as never) ?? null,
+        })
 
-      // An email belongs to one customer. The form already auto-fills that
-      // customer when their email is typed, so reaching here with an email that's
-      // on a DIFFERENT record than the one plate/phone resolved (or on any record
-      // when nothing resolved) means a direct API call or a race — reject it
-      // rather than attach it to the wrong person or create a duplicate. Escapes
-      // LIKE wildcards ("_" is common in emails) so the case-insensitive match
-      // stays exact.
-      const { data: byEmail } = await admin
-        .from("customer_record")
-        .select("id")
-        .ilike("email", trimmedEmail.replace(/[\\%_]/g, "\\$&"))
-        .limit(1)
-      if (byEmail && byEmail.length > 0 && byEmail[0].id !== resolvedCustomerRecordId) {
-        return NextResponse.json(
-          { error: "This email is already registered to another customer." },
-          { status: 409 },
-        )
-      }
+        if (decision.kind === "error") {
+          return NextResponse.json({ error: decision.message }, { status: decision.status })
+        }
 
-      if (!resolvedCustomerRecordId) {
-        const { data: newCustomer, error: custErr } = await admin
-          .from("customer_record")
-          .insert({
-            full_name:      customer_name?.trim()  ?? null,
-            contact_number: normContact,
-            email:          trimmedEmail,
-            plate_number:   plate_number?.trim()   ?? null,
-            vehicle_unit:   vehicle_unit?.trim()   ?? null,
-          })
-          .select("id")
-          .single()
-
-        if (custErr) {
-          console.error("[add-job-order] customer_record insert error:", custErr.message)
-          // A plate already on file (the lookup above didn't catch it — a
-          // formatting/case difference, or a race with another submission)
-          // hits the column's UNIQUE constraint here. Give the same clear,
-          // field-identifiable message the Customer Records edit route
-          // already uses for this exact conflict, instead of a raw Postgres
-          // string at 500.
-          if (custErr.code === "23505") {
+        // A vehicle already in service can't have its details changed under the
+        // job — check BEFORE any write.
+        if (decision.vehicle.mode === "reuse") {
+          const locked = await findActiveJobsByCustomerRecord(admin, [decision.vehicle.id])
+          if (locked.get(decision.vehicle.id)) {
             return NextResponse.json(
-              { error: "That plate number is already on file for another customer record." },
+              { error: "This customer already has an active job order. Complete or cancel it before adding a new one." },
               { status: 409 },
             )
           }
-          return NextResponse.json({ error: custErr.message }, { status: 500 })
         }
 
-        resolvedCustomerRecordId = newCustomer.id
-      }
+        if (Object.keys(decision.customerUpdates).length > 0) {
+          const { error: custUpdErr } = await admin
+            .from("customer")
+            .update({ ...decision.customerUpdates, updated_at: new Date().toISOString() })
+            .eq("id", (matchedCustomer as { id: string }).id)
+          if (custUpdErr) return NextResponse.json({ error: custUpdErr.message }, { status: 500 })
+          customerAuditAction = "Updated customer (via Add Job Order)"
+        }
 
-      resolvedCustomerName  = customer_name?.trim()  ?? null
-      resolvedContactNumber = normContact
-      resolvedPlateNumber   = plate_number?.trim()   ?? null
-      resolvedVehicleUnit   = vehicle_unit?.trim()   ?? null
+        if (decision.vehicle.mode === "create") {
+          const { data: createdVehicle, error: createErr } = await admin
+            .from("customer_record")
+            .insert(decision.vehicle.insert)
+            .select("id")
+            .single()
+          if (createErr) {
+            if (createErr.code === "23505") {
+              return NextResponse.json(
+                { error: "That plate number is already on file for another customer record." },
+                { status: 409 },
+              )
+            }
+            return NextResponse.json({ error: createErr.message }, { status: 500 })
+          }
+          resolvedCustomerRecordId = createdVehicle.id
+          customerAuditAction = "Created vehicle (via Add Job Order)"
+        } else {
+          resolvedCustomerRecordId = decision.vehicle.id
+          if (Object.keys(decision.vehicle.updates).length > 0) {
+            const { error: updErr } = await admin
+              .from("customer_record")
+              .update(decision.vehicle.updates)
+              .eq("id", decision.vehicle.id)
+            if (updErr) return NextResponse.json({ error: updErr.message }, { status: 500 })
+            customerAuditAction = customerAuditAction ?? "Updated vehicle (via Add Job Order)"
+          }
+        }
+
+        resolvedCustomerName  = decision.snapshot.name
+        resolvedContactNumber = decision.snapshot.contact_number
+        resolvedPlateNumber   = decision.snapshot.plate_number
+        resolvedVehicleUnit   = decision.snapshot.vehicle_unit
+      } else {
+        // No auto-fetched customer (a direct API call, or a brand-new customer).
+        let customerId: string | null = null
+        let customerName: string | null = customer_name?.trim() ?? null
+        let customerContact: string | null = normContact
+
+        if (plateTrim) {
+          const { data: existing } = await admin
+            .from("customer_record")
+            .select("id, customer_id")
+            .eq("plate_number", plateTrim)
+            .maybeSingle()
+          if (existing) {
+            resolvedCustomerRecordId = existing.id
+            customerId = existing.customer_id
+          }
+        }
+
+        // No vehicle by that plate — a customer already known by phone (e.g. one
+        // linked to Messenger from an earlier Sales inquiry, with no vehicle yet)
+        // is reused rather than duplicated; the vehicle is added to them.
+        if (!resolvedCustomerRecordId && normContact) {
+          const { data: byPhone } = await admin
+            .from("customer")
+            .select("id, full_name, contact_number")
+            .eq("contact_number", normContact)
+            .limit(1)
+          if (byPhone && byPhone.length > 0) {
+            customerId = byPhone[0].id
+            customerName = byPhone[0].full_name
+            customerContact = byPhone[0].contact_number
+          }
+        }
+
+        // An email belongs to one customer: on a DIFFERENT customer than the one
+        // resolved (or on any customer when nothing resolved) means a direct API
+        // call or a race — reject rather than attach it to the wrong person or
+        // create a duplicate.
+        const { data: byEmail } = await admin
+          .from("customer")
+          .select("id")
+          .ilike("email", like(trimmedEmail))
+          .limit(1)
+        if (byEmail && byEmail.length > 0 && byEmail[0].id !== customerId) {
+          return NextResponse.json(
+            { error: "This email is already registered to another customer." },
+            { status: 409 },
+          )
+        }
+
+        if (!resolvedCustomerRecordId) {
+          if (!customerId) {
+            const { data: newCustomer, error: custErr } = await admin
+              .from("customer")
+              .insert({ full_name: customerName, contact_number: normContact, email: trimmedEmail })
+              .select("id")
+              .single()
+            if (custErr) {
+              console.error("[add-job-order] customer insert error:", custErr.message)
+              return NextResponse.json({ error: custErr.message }, { status: 500 })
+            }
+            customerId = newCustomer.id
+            customerAuditAction = "Created customer (via Add Job Order)"
+          }
+
+          const { data: newVehicle, error: vehErr } = await admin
+            .from("customer_record")
+            .insert({
+              customer_id:  customerId,
+              plate_number: plateTrim || null,
+              vehicle_unit: vehicle_unit?.trim() ?? null,
+            })
+            .select("id")
+            .single()
+          if (vehErr) {
+            console.error("[add-job-order] vehicle insert error:", vehErr.message)
+            // A plate already on file (the lookup above didn't catch it — a
+            // formatting/case difference, or a race with another submission)
+            // hits the column's UNIQUE constraint here.
+            if (vehErr.code === "23505") {
+              return NextResponse.json(
+                { error: "That plate number is already on file for another customer record." },
+                { status: 409 },
+              )
+            }
+            return NextResponse.json({ error: vehErr.message }, { status: 500 })
+          }
+          resolvedCustomerRecordId = newVehicle.id
+        }
+
+        resolvedCustomerName  = customerName
+        resolvedContactNumber = customerContact
+        resolvedPlateNumber   = plateTrim || null
+        resolvedVehicleUnit   = vehicle_unit?.trim() ?? null
+      }
     }
 
     // ── Guard: reject if customer already has an active job ──────────────────
@@ -427,6 +559,16 @@ export async function POST(request: Request) {
         action:    "Created job order",
         target:    resolvedCustomerName ?? job.id,
       })
+      if (customerAuditAction) {
+        logAudit({
+          user_id:   user.id,
+          user_name: callerProfile.full_name,
+          role:      callerProfile.role,
+          category:  customerAuditAction.startsWith("Created") ? "create" : "update",
+          action:    customerAuditAction,
+          target:    resolvedCustomerName ?? String(resolvedCustomerRecordId),
+        })
+      }
     }
 
     return NextResponse.json({ success: true, job }, { status: 201 })

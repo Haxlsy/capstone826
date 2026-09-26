@@ -5,12 +5,14 @@ import {
   hasCancelIntent,
   hasExistingBookingIntent,
   shouldStayInBookingFlow,
+  answersDetailPrompt,
   buildBookingSummary,
   buildSystemPrompt,
   buildFullSystemPrompt,
   formatKnowledgeBase,
   type ChatbotSettings,
 } from "@/lib/messenger/chatbot"
+import { missingFieldsPrompt } from "@/lib/messenger/copy"
 import { quickRepliesFor } from "@/lib/messenger/handoff"
 import { DEFAULT_RESOLVED_MESSAGE_EN, DEFAULT_RESOLVED_MESSAGE_FIL } from "@/types/chatbot"
 
@@ -53,6 +55,19 @@ describe("sanitizeDetail", () => {
 
   it("strips a parenthetical aside rather than losing the whole value", () => {
     expect(sanitizeDetail("Toyota Veloz (white)")).toBe("Toyota Veloz")
+  })
+
+  it("keeps names with initials and abbreviations (the name was being dropped as 'prose')", () => {
+    expect(sanitizeDetail("Harley Stephen A. Soldao")).toBe("Harley Stephen A. Soldao")
+    expect(sanitizeDetail("Ma. Cristina Reyes")).toBe("Ma. Cristina Reyes")
+    expect(sanitizeDetail("Dr. Juan Cruz")).toBe("Dr. Juan Cruz")
+    expect(sanitizeDetail("Juan Dela Cruz Jr.")).toBe("Juan Dela Cruz Jr.")
+    expect(sanitizeDetail("J. R. Santos")).toBe("J. R. Santos")
+  })
+
+  it("still rejects real prose that merely contains a period", () => {
+    expect(sanitizeDetail("Harley. Actually my name is Juan")).toBeNull()
+    expect(sanitizeDetail("Toyota Fortuner. Actually the customer meant a Vios")).toBeNull()
   })
 
   it("rejects multi-line, over-long, and multi-sentence values", () => {
@@ -202,6 +217,16 @@ describe("shouldStayInBookingFlow", () => {
     expect(shouldStayInBookingFlow({ ...base, conflictPending: true, awaitingLinkVerification: true })).toBe(false)
   })
 
+  it("stays in when the customer is answering the missing-details re-ask with no signal", () => {
+    expect(shouldStayInBookingFlow({ ...base, isBookingFlow: true, answeringDetailPrompt: true })).toBe(true)
+  })
+
+  it("an answer to the re-ask still yields to cancel, link verification and status intent", () => {
+    expect(shouldStayInBookingFlow({ ...base, answeringDetailPrompt: true, cancelIntent: true })).toBe(false)
+    expect(shouldStayInBookingFlow({ ...base, answeringDetailPrompt: true, awaitingLinkVerification: true })).toBe(false)
+    expect(shouldStayInBookingFlow({ ...base, answeringDetailPrompt: true, statusIntent: true })).toBe(false)
+  })
+
   it("does NOT drag an unrelated message in on a sticky flag alone", () => {
     // "October promo" mid-booking: no signal, no pending confirmation.
     expect(shouldStayInBookingFlow({ ...base, isBookingFlow: true })).toBe(false)
@@ -309,5 +334,31 @@ describe("DEFAULT_RESOLVED_MESSAGE — must not promise a list it can't deliver"
   it("does not end with a bare colon", () => {
     expect(DEFAULT_RESOLVED_MESSAGE_EN.trim().endsWith(":")).toBe(false)
     expect(DEFAULT_RESOLVED_MESSAGE_FIL.trim().endsWith(":")).toBe(false)
+  })
+})
+
+describe("answersDetailPrompt", () => {
+  const reask = "To continue your booking, please include: Full Name. Please send it and I'll get you set up."
+
+  it("treats a bare name or vehicle after the re-ask as an answer", () => {
+    expect(answersDetailPrompt({ lastBotText: reask, message: "Harley Stephen A. Soldao" })).toBe(true)
+    expect(answersDetailPrompt({ lastBotText: reask, message: "Toyota Vios" })).toBe(true)
+  })
+
+  it("recognises the Filipino re-ask lead too", () => {
+    const fil = missingFieldsPrompt(["Full Name"], "filipino")
+    expect(answersDetailPrompt({ lastBotText: fil, message: "Juan Dela Cruz" })).toBe(true)
+  })
+
+  it("is false when the bot's last message was anything else", () => {
+    expect(answersDetailPrompt({ lastBotText: "Our shop opens at 8am.", message: "Juan Dela Cruz" })).toBe(false)
+    expect(answersDetailPrompt({ lastBotText: null, message: "Juan Dela Cruz" })).toBe(false)
+    expect(answersDetailPrompt({ lastBotText: undefined, message: "Juan" })).toBe(false)
+  })
+
+  it("does not swallow a question, an empty message, or a paragraph", () => {
+    expect(answersDetailPrompt({ lastBotText: reask, message: "what promos do you have?" })).toBe(false)
+    expect(answersDetailPrompt({ lastBotText: reask, message: "   " })).toBe(false)
+    expect(answersDetailPrompt({ lastBotText: reask, message: "a".repeat(121) })).toBe(false)
   })
 })

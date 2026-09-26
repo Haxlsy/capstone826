@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest"
-import { isSameVehicleOnFile, buildDuplicateBookingNotice } from "@/lib/messenger/booking"
+import { isSameVehicleOnFile, findVehicleOnFile, buildDuplicateBookingNotice } from "@/lib/messenger/booking"
 import type { CustomerDetails } from "@/types/chatbot"
 
 const record = {
@@ -53,5 +53,35 @@ describe("buildDuplicateBookingNotice", () => {
     const msg = buildDuplicateBookingNotice(record)
     expect(msg).toContain("AAA-111")
     expect(msg).toMatch(/our team will reach out/i)
+  })
+})
+
+describe("findVehicleOnFile — a customer with several vehicles", () => {
+  const twoCars = {
+    ...record,
+    vehicles: [
+      { plate_number: "AAA-111", vehicle_unit: "SUV" },
+      { plate_number: "BBB-222", vehicle_unit: "Van" },
+    ],
+  }
+
+  it("finds the repeated vehicle among ALL of the customer's vehicles, not just the first", () => {
+    expect(findVehicleOnFile(twoCars, booking({ plate_number: "bbb 222" }))).toEqual({
+      plate_number: "BBB-222",
+      vehicle_unit: "Van",
+    })
+    expect(isSameVehicleOnFile(twoCars, booking({ plate_number: "BBB-222" }))).toBe(true)
+  })
+
+  it("a brand-new plate is not a repeat", () => {
+    expect(findVehicleOnFile(twoCars, booking({ plate_number: "CCC-333" }))).toBeNull()
+  })
+
+  it("an incompatible name is not a repeat even on a known plate (it stays an identity conflict)", () => {
+    expect(findVehicleOnFile(twoCars, booking({ plate_number: "BBB-222", full_name: "Caleb Cruz" }))).toBeNull()
+  })
+
+  it("falls back to the single plate on a record without a vehicles list", () => {
+    expect(findVehicleOnFile(record, booking())).toEqual({ plate_number: "AAA-111", vehicle_unit: "SUV" })
   })
 })

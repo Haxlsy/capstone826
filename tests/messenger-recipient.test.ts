@@ -1,22 +1,29 @@
 import { describe, it, expect } from "vitest"
-import { pickRecipientPsid } from "@/lib/messenger/recipient"
+import { recipientFromVehicle } from "@/lib/messenger/recipient"
 
-describe("pickRecipientPsid", () => {
-  it("prefers the record's own psid", () => {
-    expect(pickRecipientPsid({ own: "own", notify: "n", siblingPsids: ["s"] })).toBe("own")
+describe("recipientFromVehicle", () => {
+  it("the owner's Messenger account first", () => {
+    expect(recipientFromVehicle({ owner: { psid: "o" }, booked_by: { psid: "b" } })).toEqual({ psid: "o", via: "own" })
   })
-  it("uses notify_psid when the record has no psid of its own", () => {
-    expect(pickRecipientPsid({ own: null, notify: "n", siblingPsids: ["s"] })).toBe("n")
+  it("a booking for someone else goes to whoever booked it", () => {
+    expect(recipientFromVehicle({ owner: { psid: null }, booked_by: { psid: "b" } })).toEqual({ psid: "b", via: "booked_by" })
   })
-  it("uses a same-phone sibling's psid when there is exactly one", () => {
-    expect(pickRecipientPsid({ own: null, notify: null, siblingPsids: ["s"] })).toBe("s")
-    expect(pickRecipientPsid({ own: null, notify: null, siblingPsids: ["s", "s"] })).toBe("s")
+  it("nobody reachable → null", () => {
+    expect(recipientFromVehicle({ owner: { psid: null }, booked_by: null })).toEqual({ psid: null, via: null })
+    expect(recipientFromVehicle(null)).toEqual({ psid: null, via: null })
+    expect(recipientFromVehicle(undefined)).toEqual({ psid: null, via: null })
   })
-  it("never guesses between different siblings' psids", () => {
-    expect(pickRecipientPsid({ own: null, notify: null, siblingPsids: ["a", "b"] })).toBeNull()
+  it("accepts array-shaped embeds", () => {
+    expect(recipientFromVehicle([{ owner: [{ psid: "o" }] }]).psid).toBe("o")
+    expect(recipientFromVehicle([{ owner: [{ psid: null }], booked_by: [{ psid: "b" }] }]).via).toBe("booked_by")
   })
-  it("returns null when nothing identifies a recipient", () => {
-    expect(pickRecipientPsid({ own: null, notify: null, siblingPsids: [] })).toBeNull()
-    expect(pickRecipientPsid({ own: "", notify: undefined, siblingPsids: [null, undefined] })).toBeNull()
+  it("relinking/unlinking follows automatically because it is a reference, not a copy", () => {
+    const booker = { psid: "old" as string | null }
+    const vehicle = { owner: { psid: null }, booked_by: booker }
+    expect(recipientFromVehicle(vehicle).psid).toBe("old")
+    booker.psid = "new"
+    expect(recipientFromVehicle(vehicle).psid).toBe("new")
+    booker.psid = null
+    expect(recipientFromVehicle(vehicle).psid).toBeNull()
   })
 })

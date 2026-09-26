@@ -8,6 +8,7 @@ import {
   missingFieldsPrompt,
   BOOKING_SUMMARY_COPY,
   MISSING_FIELDS_LEADS,
+  ALL_MISSING_FIELDS_LEADS,
 } from "@/lib/messenger/copy"
 import {
   DEFAULT_AI_DISABLED_MESSAGE,
@@ -85,6 +86,11 @@ const str = (v: unknown): string | null =>
  * multiple lines/sentences, or absurdly long. Returning null is safe — the
  * missing-field prompt simply asks the customer for it again.
  */
+// A period that ends an initial ("Stephen A. Soldao") or a common name
+// abbreviation ("Ma. Cristina", "Dr. Cruz", "Juan Cruz Jr.") is part of the
+// name, not a sentence break.
+const NAME_ABBREVIATION = /\b(?:[A-Za-z]|Ma|Dr|Mr|Mrs|Ms|Jr|Sr|Engr|Atty)\.(?=\s|$)/gi
+
 export function sanitizeDetail(v: unknown): string | null {
   const value = str(v)
   if (!value) return null
@@ -98,8 +104,11 @@ export function sanitizeDetail(v: unknown): string | null {
 
   if (DELIBERATION_MARKERS.some((re) => re.test(withoutAside))) return null
 
-  // Prose, not a field value: a sentence break followed by more words.
-  if (/[.!?]\s+\S/.test(withoutAside)) return null
+  // Prose, not a field value: a sentence break followed by more words. An
+  // initial/abbreviation period is not a break — "Harley Stephen A. Soldao"
+  // was being read as two sentences and dropped, so the bot kept asking for a
+  // name the customer had already given.
+  if (/[.!?]\s+\S/.test(withoutAside.replace(NAME_ABBREVIATION, (m) => m.slice(0, -1)))) return null
 
   if (withoutAside.length > MAX_DETAIL_LENGTH) return null
 
@@ -812,6 +821,26 @@ export function buildBookingCancelledMessage(lang?: BotLanguage): string {
   return bookingCancelled(lang)
 }
 
+// Longest reply still treated as "the value I was asked for". A vehicle
+// description can run long, but a paragraph is a new topic.
+const MAX_DETAIL_ANSWER_LENGTH = 120
+
+/**
+ * True when the bot's LAST message was the missing-details re-ask ("To continue
+ * your booking, please include: …") and the customer's message reads like an
+ * answer to it: non-empty, short, and not a question ("what promos do you
+ * have?" must still be answered normally, not swallowed as a name).
+ */
+export function answersDetailPrompt(input: {
+  lastBotText: string | null | undefined
+  message: string
+}): boolean {
+  const last = input.lastBotText ?? ""
+  if (!ALL_MISSING_FIELDS_LEADS.some((lead) => last.startsWith(lead))) return false
+  const m = input.message.trim()
+  return m.length > 0 && m.length <= MAX_DETAIL_ANSWER_LENGTH && !m.includes("?")
+}
+
 /**
  * Whether the conversation should still be treated as an in-progress booking.
  *
@@ -831,11 +860,14 @@ export function shouldStayInBookingFlow(input: {
   awaitingConfirmation: boolean
   /** An identity-conflict question was asked and the customer's answer is due. */
   conflictPending?: boolean
+  /** The bot's last message asked for missing booking details and this message plausibly answers it. */
+  answeringDetailPrompt?: boolean
   cancelIntent: boolean
 }): boolean {
   const {
     signal, statusIntent, awaitingLinkVerification, linkEscalation,
-    isBookingFlow, awaitingConfirmation, conflictPending = false, cancelIntent,
+    isBookingFlow, awaitingConfirmation, conflictPending = false,
+    answeringDetailPrompt = false, cancelIntent,
   } = input
 
   if (cancelIntent) return false
@@ -853,6 +885,12 @@ export function shouldStayInBookingFlow(input: {
   // under a different name" carries no booking signal). Dropping the flow here
   // skipped the conflict handling entirely, so the booking was never escalated.
   if (conflictPending) return true
+
+  // The bot just asked "please include: Full Name" and the customer replied
+  // with the bare value — a name or a vehicle carries no booking signal, so
+  // this used to drop the flow and let the model improvise a summary (and a
+  // false "your details have been recorded"). A status request still wins.
+  if (answeringDetailPrompt && !statusIntent) return true
 
   // Sticky flag with no pending confirmation and no signal → the customer has
   // moved on; let the message be answered normally.
