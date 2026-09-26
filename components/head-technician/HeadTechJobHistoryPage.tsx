@@ -17,6 +17,7 @@ import { fmtDateTime, fmtDateTimeShort } from "@/lib/time-display";
 import { HeadTechJobDetailSkeleton } from "@/app/head-technician/[jobId]/loading";
 import { useRealtimeRefetch } from "@/hooks/useRealtimeRefetch";
 import { VideoRecorderModal } from "./VideoRecorderModal";
+import { headRoleLabel, type HeadRole } from "@/lib/head-technician/start-job";
 import { MAX_VIDEO_MB, MAX_VIDEO_BYTES, MAX_PHOTOS_PER_ROUND, MAX_VIDEOS_PER_ROUND } from "@/lib/media/limits";
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
@@ -91,6 +92,8 @@ interface JobDetail {
   handoff_notes:         string | null;
   preparation_finished:  boolean;
   last_stage_role:       string;
+  /** Head technician who starts the job (owner of the first stage). Older payloads omit it → Head Detailer. */
+  start_role?:           HeadRole;
   finishing_approved_at: string | null;
   category_handoffs:     Record<string, string>;
   detailers:             string[];
@@ -233,6 +236,9 @@ export default function HeadTechJobHistoryPage({ jobId }: { jobId: string }) {
 
   const isInstaller = userRole === "head_installer";
   const myRole      = isInstaller ? "installer" : "detailer";
+  // Only the head technician who owns the first stage starts the job.
+  const startRole   = job?.start_role ?? "head_detailer";
+  const canStart    = (isInstaller ? "head_installer" : "head_detailer") === startRole;
 
   const delayedStages = useMemo(
     () => (job?.stages ?? []).filter((s) => s.is_delayed),
@@ -662,17 +668,17 @@ export default function HeadTechJobHistoryPage({ jobId }: { jobId: string }) {
           <div className="space-y-2">
             <button
               onClick={handleStartJob}
-              disabled={startingJob || isInstaller}
+              disabled={startingJob || !canStart}
               className={`w-full flex items-center justify-center gap-2 text-sm font-semibold text-white rounded-card py-3.5 transition-all disabled:opacity-50 ${
-                isInstaller ? "bg-border cursor-not-allowed" : "bg-primary hover:bg-primary-hover active:scale-[0.98]"
+                !canStart ? "bg-border cursor-not-allowed" : "bg-primary hover:bg-primary-hover active:scale-[0.98]"
               }`}
             >
-              {startingJob ? <Loader2 size={15} className="animate-spin" /> : isInstaller ? <Clock size={15} /> : <Play size={15} />}
-              {startingJob ? "Starting…" : isInstaller ? "Waiting for Preparation" : "Start Job"}
+              {startingJob ? <Loader2 size={15} className="animate-spin" /> : !canStart ? <Clock size={15} /> : <Play size={15} />}
+              {startingJob ? "Starting…" : !canStart ? `Waiting for ${headRoleLabel(startRole)}` : "Start Job"}
             </button>
-            {isInstaller && (
+            {!canStart && (
               <p className="text-[10px] text-muted text-center px-6">
-                Only the Head Detailer can start the job. Please wait for preparation to begin.
+                Only the {headRoleLabel(startRole)} can start the job. Please wait for it to begin.
               </p>
             )}
           </div>

@@ -13,6 +13,9 @@ import { sendMessengerText, sendMessengerImage, sendMessengerVideo } from "@/lib
 import { buildStageUpdateMessage } from "@/lib/messenger/stage-update"
 import { sendPushToUser } from "@/lib/push/send"
 import { getRoleCaller } from "@/lib/auth/caller"
+import { startRoleFor, canStartJob, headRoleLabel } from "@/lib/head-technician/start-job"
+import { loadJobStageRoles } from "@/lib/head-technician/stage-roles"
+import { resolveRecipientPsid } from "@/lib/messenger/recipient"
 
 export async function GET(
   _request: Request,
@@ -256,6 +259,13 @@ export async function GET(
         handoff_notes:         handoffNotes,
         preparation_finished,
         last_stage_role,
+        // Which head technician starts this job (owner of the first stage).
+        start_role: startRoleFor(
+          stagesWithInfo.map((s: any) => ({
+            role: s.stageInfo.category_role as string,
+            sequence: s.stageInfo.sequence_order as number,
+          })),
+        ),
         finishing_approved_at: j.finishing_approved_at ?? null,
         category_handoffs:     categoryHandoffs,
         detailers,
@@ -347,8 +357,15 @@ export async function PATCH(
         .eq("id", user.id)
         .single()
 
-      if ((profile as any)?.role !== "head_detailer") {
-        return NextResponse.json({ error: "Unauthorized: Only the Head Detailer can start the job." }, { status: 403 })
+      // The head technician who owns the job's first stage starts it — the
+      // Head Detailer on a detailer-first job, the Head Installer on an
+      // installer-only (or installer-first) one.
+      const stageRoles = await loadJobStageRoles(admin, jobId)
+      if (!canStartJob((profile as any)?.role, stageRoles)) {
+        return NextResponse.json(
+          { error: `Unauthorized: Only the ${headRoleLabel(startRoleFor(stageRoles))} can start the job.` },
+          { status: 403 },
+        )
       }
 
       await admin
@@ -569,14 +586,19 @@ export async function PATCH(
           const { data: custRow } = await admin
             .from("job_order")
             .select(
-              `plate_number, vehicle_unit, customer_name,
+              `customer_record_id, plate_number, vehicle_unit, customer_name,
                service:service_id(name),
                customer:customer_record_id(psid, full_name, vehicle_unit, plate_number)`
             )
             .eq("id", jobId)
             .single()
           const cr = custRow as any
-          const psid = cr?.customer?.psid ?? null
+          // Own psid, else the booking Messenger account / same-phone sibling —
+          // a 2nd vehicle's record has no psid of its own.
+          const psid = await resolveRecipientPsid(admin, {
+            customerRecordId: cr?.customer_record_id,
+            ownPsid: cr?.customer?.psid ?? null,
+          })
 
           if (!psid || !process.env.META_PAGE_ACCESS_TOKEN) {
             await admin

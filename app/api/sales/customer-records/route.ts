@@ -120,20 +120,31 @@ export async function POST(request: Request) {
     } else {
       // A genuinely new vehicle. If this psid already belongs to a different
       // row (the customer's earlier vehicle), it can't be set here too — psid
-      // is also UNIQUE. Leave it null; resolveOwnVehicleStatus already finds
-      // this row via the shared (normalized) phone number instead.
+      // is also UNIQUE. Keep it as notify_psid instead (not unique): that
+      // Messenger account made this booking, so it is who job updates go to
+      // (lib/messenger/recipient.ts) — including a booking under a different
+      // name/number, which no shared phone would ever link back to it.
       let psidForInsert = psid ?? null
+      let notifyPsid: string | null = null
       if (psidForInsert) {
         const { data: existingByPsid } = await supabase
           .from("customer_record")
           .select("id")
           .eq("psid", psidForInsert)
           .maybeSingle()
-        if (existingByPsid) psidForInsert = null
+        if (existingByPsid) {
+          notifyPsid = psidForInsert
+          psidForInsert = null
+        }
+      }
+      const insertRow = {
+        full_name, contact_number: normalizedContact, email, plate_number, vehicle_unit,
+        psid: psidForInsert,
+        ...(notifyPsid ? { notify_psid: notifyPsid } : {}),
       }
       ;({ data, error } = await supabase
         .from("customer_record")
-        .insert({ full_name, contact_number: normalizedContact, email, plate_number, vehicle_unit, psid: psidForInsert })
+        .insert(insertRow)
         .select()
         .single())
       isNewRecord = true
