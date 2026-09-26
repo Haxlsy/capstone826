@@ -138,7 +138,7 @@ export async function POST(request: Request) {
     if (!parsed.success) {
       return NextResponse.json({ error: parsed.error.issues[0]?.message ?? "Validation failed." }, { status: 400 })
     }
-    const { full_name, contact_number, plate_number, vehicle_unit, psid, for_someone_else } = parsed.data
+    const { full_name, contact_number, plate_number, vehicle_unit, psid } = parsed.data
     const email = parsed.data.email || null
     const supabase = createAdminClient()
     const phone = normalizePhone(contact_number) || contact_number
@@ -199,7 +199,6 @@ export async function POST(request: Request) {
 
     const decision = decideRecordCustomer({
       psid: psidValue,
-      forSomeoneElse: Boolean(for_someone_else),
       customerByPsid,
       sameNamePhoneCustomer,
     })

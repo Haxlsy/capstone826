@@ -32,8 +32,6 @@ export const CreateCustomerRecordSchema = z.object({
   plate_number:   CustomerRecordFields.plate_number,
   vehicle_unit:   CustomerRecordFields.vehicle_unit,
   psid:           CustomerRecordFields.psid.optional().nullable(),
-  // The booking was made for another person from this Messenger account.
-  for_someone_else: z.boolean().optional(),
 })
 
 // Customer-level edit (name / phone / email / Messenger link). Every field is
