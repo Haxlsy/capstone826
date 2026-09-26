@@ -157,7 +157,7 @@ export async function resolveOwnVehicleStatus(psid: string): Promise<OwnVehicleO
   // in their own Messenger inquiries. A psid with ANY of these has "booked
   // through Messenger" and must never hit the plate+phone verification wall —
   // that ask is only for a genuine stranger (no record, no inquiry).
-  const [{ data: record }, { data: inquiries }] = await Promise.all([
+  const [{ data: record }, { data: inquiries }, { data: notifyRecords }] = await Promise.all([
     supabase
       .from("customer_record")
       .select("id, full_name, contact_number, plate_number, psid")
@@ -169,6 +169,14 @@ export async function resolveOwnVehicleStatus(psid: string): Promise<OwnVehicleO
       .eq("psid", psid)
       .order("escalated_at", { ascending: false })
       .limit(5),
+    // Vehicles booked from this Messenger account whose record couldn't hold
+    // the psid itself (see notify_psid). An error here (column not migrated
+    // yet) just yields no rows.
+    supabase
+      .from("customer_record")
+      .select("id, plate_number")
+      .eq("notify_psid", psid)
+      .limit(20),
   ])
 
   const inqRows = (inquiries ?? []) as {
@@ -206,6 +214,14 @@ export async function resolveOwnVehicleStatus(psid: string): Promise<OwnVehicleO
       addPlate(i.extracted_plate)
       addPhone(softPhones, i.extracted_contact)
     }
+  }
+
+  // Vehicles booked from this Messenger account under another name/number
+  // (record kept its psid only as notify_psid). Match them by record id / plate
+  // only — the other person's phone is NOT a verified phone for this psid.
+  for (const n of (notifyRecords ?? []) as { id: string; plate_number: string | null }[]) {
+    recordIds.add(n.id)
+    addPlate(n.plate_number)
   }
 
   // Genuine stranger — nothing on file to identify them by → ask to verify.

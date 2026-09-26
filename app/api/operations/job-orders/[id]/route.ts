@@ -12,6 +12,7 @@ import { sendPushToUser } from "@/lib/push/send"
 import { sendMessengerText } from "@/lib/messenger/graph"
 import { buildReleaseMessage, buildCompletionMessage, getOperatingHoursText } from "@/lib/messenger/status-update"
 import { getRoleCaller } from "@/lib/auth/caller"
+import { resolveRecipientPsid } from "@/lib/messenger/recipient"
 
 export async function GET(
   _request: Request,
@@ -279,13 +280,16 @@ export async function PATCH(
           const { data: custRow } = await admin
             .from("job_order")
             .select(
-              `plate_number, vehicle_unit, customer_name,
+              `customer_record_id, plate_number, vehicle_unit, customer_name,
                customer:customer_record_id(psid, full_name, vehicle_unit, plate_number)`
             )
             .eq("id", id)
             .single()
           const cr = custRow as any
-          const psid = cr?.customer?.psid ?? null
+          const psid = await resolveRecipientPsid(admin, {
+            customerRecordId: cr?.customer_record_id,
+            ownPsid: cr?.customer?.psid ?? null,
+          })
 
           if (psid && process.env.META_PAGE_ACCESS_TOKEN) {
             const customerName = cr?.customer?.full_name ?? cr?.customer_name ?? null

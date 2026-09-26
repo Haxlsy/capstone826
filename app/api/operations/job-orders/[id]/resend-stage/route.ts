@@ -5,6 +5,7 @@ import { createAdminClient } from "@/lib/supabase/admin"
 import { sendMessengerText, sendMessengerImage, sendMessengerVideo } from "@/lib/messenger/graph"
 import { buildStageUpdateMessage } from "@/lib/messenger/stage-update"
 import { getRoleCaller } from "@/lib/auth/caller"
+import { resolveRecipientPsid } from "@/lib/messenger/recipient"
 
 // POST /api/operations/job-orders/[id]/resend-stage
 // Body: { stage_id: string }
@@ -57,7 +58,8 @@ export async function POST(
     const { data: job } = await admin
       .from("job_order")
       .select(
-        `customer:customer_record_id(psid, full_name, vehicle_unit, plate_number),
+        `customer_record_id,
+         customer:customer_record_id(psid, full_name, vehicle_unit, plate_number),
          service:service_id(name),
          customer_name, plate_number, vehicle_unit`
       )
@@ -66,7 +68,10 @@ export async function POST(
 
     const j            = job as any
     const s            = stage as any
-    const psid         = j?.customer?.psid ?? null
+    const psid         = await resolveRecipientPsid(admin, {
+      customerRecordId: j?.customer_record_id,
+      ownPsid: j?.customer?.psid ?? null,
+    })
     const customerName = j?.customer?.full_name ?? j?.customer_name ?? "Customer"
     const stageName    = s.stage?.name ?? "Stage"
     const stageCat     = Array.isArray(s.stage?.workflow_category)
