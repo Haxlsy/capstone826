@@ -24,6 +24,7 @@ const CustomerRecordFields = {
   psid:         z.string().trim().max(100),
 }
 
+// Recording a booking: a customer (name / phone / email / Messenger account) plus one vehicle.
 export const CreateCustomerRecordSchema = z.object({
   full_name:      CustomerRecordFields.full_name,
   contact_number: CustomerRecordFields.contact_number,
@@ -31,16 +32,22 @@ export const CreateCustomerRecordSchema = z.object({
   plate_number:   CustomerRecordFields.plate_number,
   vehicle_unit:   CustomerRecordFields.vehicle_unit,
   psid:           CustomerRecordFields.psid.optional().nullable(),
+  // The booking was made for another person from this Messenger account.
+  for_someone_else: z.boolean().optional(),
 })
 
-// Every field optional — this endpoint supports a partial update (e.g.
-// LinkAccountModal calls it with just `{ psid }`), but a field that IS
-// present must still be valid, not silently dropped when falsy.
-export const UpdateCustomerRecordSchema = z.object({
+// Customer-level edit (name / phone / email / Messenger link). Every field is
+// optional — LinkAccountModal calls it with just `{ psid }` — but a field that
+// IS present must still be valid, not silently dropped when falsy.
+export const UpdateCustomerSchema = z.object({
   full_name:      CustomerRecordFields.full_name.optional(),
   contact_number: CustomerRecordFields.contact_number.optional(),
   email:          CustomerRecordFields.email.optional().nullable(),
-  plate_number:   CustomerRecordFields.plate_number.optional(),
-  vehicle_unit:   CustomerRecordFields.vehicle_unit.optional(),
   psid:           CustomerRecordFields.psid.optional().nullable(),
+})
+
+// Vehicle-level edit.
+export const UpdateVehicleSchema = z.object({
+  plate_number: CustomerRecordFields.plate_number.optional(),
+  vehicle_unit: CustomerRecordFields.vehicle_unit.optional(),
 })

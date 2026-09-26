@@ -1,4 +1,5 @@
 import { createAdminClient } from "@/lib/supabase/admin"
+import { jobCustomer } from "@/lib/operations/job-customer"
 import { computeStageDelays, isJobDelayed } from "@/lib/job-delay"
 import { totalStageDurationMins, computeExpectedCompletion } from "@/lib/job-estimates"
 import { loadWorkSchedule } from "@/lib/operating-hours"
@@ -21,7 +22,7 @@ export async function getJobDetailData(id: string) {
       .from("job_order")
       .select(
         `id, status, scheduled_at, actual_start_at, expected_completion_at, created_at, finishing_approved_at, job_order_code,
-         customer:customer_record_id(full_name, plate_number, vehicle_unit, contact_number, email),
+         customer:customer_record_id(plate_number, vehicle_unit, owner:customer!customer_id(full_name, contact_number, email)),
          service:service_id(name),
          customer_name, contact_number, plate_number, vehicle_unit`
       )
@@ -206,15 +207,16 @@ export async function getJobDetailData(id: string) {
     return mapped.map(({ _raw_duration_mins: _rd, _service_duration_mins: _sd, ...rest }) => rest)
   })()
 
+  const cust = jobCustomer(j)
   return {
     job: {
       id: j.id,
       job_order_code: j.job_order_code,
-      customer_name: j.customer?.full_name ?? j.customer_name ?? "—",
-      plate_number: j.customer?.plate_number ?? j.plate_number ?? "—",
-      vehicle_unit: j.customer?.vehicle_unit ?? j.vehicle_unit ?? "—",
-      contact_number: j.customer?.contact_number ?? j.contact_number ?? "—",
-      email: j.customer?.email ?? null,
+      customer_name: cust.name ?? "—",
+      plate_number: cust.plate ?? "—",
+      vehicle_unit: cust.vehicle ?? "—",
+      contact_number: cust.phone ?? "—",
+      email: cust.email,
       service: j.service?.name ?? "—",
       head_detailer: (headDetailer?.user_account as any) ?? null,
       head_installer: (headInstaller?.user_account as any) ?? null,

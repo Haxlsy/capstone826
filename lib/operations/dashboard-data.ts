@@ -1,3 +1,4 @@
+import { jobCustomer } from "@/lib/operations/job-customer"
 import {createAdminClient} from '@/lib/supabase/admin'
 import { ACTIVE_JOB_STATUSES, isJobDelayed, computeStageDelays, hasAnyStageDelayed, type StageForDelay } from '@/lib/job-delay'
 import { loadWorkSchedule } from '@/lib/operating-hours'
@@ -22,7 +23,7 @@ export async function getDashboardData(){
         .from("job_order")
         .select(
           `id, status, scheduled_at, actual_start_at, expected_completion_at, created_at, updated_at, job_order_code,
-           customer:customer_record_id(full_name),
+           customer:customer_record_id(owner:customer!customer_id(full_name)),
            service:service_id(name)`
         )
         .gte("created_at", twelveMonthsAgo.toISOString())
@@ -146,7 +147,7 @@ export async function getDashboardData(){
       .map((r: any) => ({
         id:         r.id,
         display_id: r.job_order_code,
-        customer:   r.customer?.full_name ?? "Manual Entry",
+        customer:   jobCustomer(r).name ?? "Manual Entry",
         service:    r.service?.name ?? "—",
         status:     r.status,
         is_overdue: isJobDelayed(r),
@@ -165,7 +166,7 @@ export async function getDashboardData(){
           expected_completion_at: r.expected_completion_at,
           status:                 r.status,
           is_overdue:             isJobDelayed(r),
-          customer:               r.customer?.full_name ?? "Manual Entry",
+          customer:               jobCustomer(r).name ?? "Manual Entry",
           service:                r.service?.name ?? "—",
           head_detailer:          team.head_detailer,
           head_installer:         team.head_installer,

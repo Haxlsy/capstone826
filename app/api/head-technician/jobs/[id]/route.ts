@@ -13,9 +13,10 @@ import { sendMessengerText, sendMessengerImage, sendMessengerVideo } from "@/lib
 import { buildStageUpdateMessage } from "@/lib/messenger/stage-update"
 import { sendPushToUser } from "@/lib/push/send"
 import { getRoleCaller } from "@/lib/auth/caller"
+import { jobCustomer } from "@/lib/operations/job-customer"
 import { startRoleFor, canStartJob, headRoleLabel } from "@/lib/head-technician/start-job"
 import { loadJobStageRoles } from "@/lib/head-technician/stage-roles"
-import { resolveRecipientPsid } from "@/lib/messenger/recipient"
+import { recipientFromVehicle } from "@/lib/messenger/recipient"
 
 export async function GET(
   _request: Request,
@@ -49,7 +50,7 @@ export async function GET(
         .from("job_order")
         .select(
           `id, status, scheduled_at, actual_start_at, created_at, finishing_approved_at, category_handoffs, job_order_code,
-           customer:customer_record_id(full_name, plate_number, vehicle_unit),
+           customer:customer_record_id(plate_number, vehicle_unit, owner:customer!customer_id(full_name)),
            service:service_id(name),
            customer_name, plate_number, vehicle_unit`
         )
@@ -249,9 +250,9 @@ export async function GET(
       job: {
         job_id:                j.job_order_code,
         raw_id:                j.id,
-        customer_name:         (j.customer as any)?.full_name    ?? j.customer_name    ?? "—",
-        plate_number:          (j.customer as any)?.plate_number ?? j.plate_number     ?? "—",
-        car_make:              (j.customer as any)?.vehicle_unit ?? j.vehicle_unit     ?? "—",
+        customer_name:         jobCustomer(j).name    ?? "—",
+        plate_number:          jobCustomer(j).plate   ?? "—",
+        car_make:              jobCustomer(j).vehicle ?? "—",
         service:               (j.service as any)?.name          ?? "—",
         technician_name:       (leader?.user_account as any)?.full_name ?? "—",
         scheduled_start:       fmtDateTime(j.scheduled_at),
@@ -588,17 +589,14 @@ export async function PATCH(
             .select(
               `customer_record_id, plate_number, vehicle_unit, customer_name,
                service:service_id(name),
-               customer:customer_record_id(psid, full_name, vehicle_unit, plate_number)`
+               customer:customer_record_id(plate_number, vehicle_unit, owner:customer!customer_id(psid, full_name, contact_number), booked_by:customer!booked_by_customer_id(psid))`
             )
             .eq("id", jobId)
             .single()
           const cr = custRow as any
-          // Own psid, else the booking Messenger account / same-phone sibling —
-          // a 2nd vehicle's record has no psid of its own.
-          const psid = await resolveRecipientPsid(admin, {
-            customerRecordId: cr?.customer_record_id,
-            ownPsid: cr?.customer?.psid ?? null,
-          })
+          // The customer's Messenger account, else the account that booked it.
+          const psid = recipientFromVehicle(cr?.customer).psid
+          const cust = jobCustomer(cr)
 
           if (!psid || !process.env.META_PAGE_ACCESS_TOKEN) {
             await admin
@@ -606,10 +604,9 @@ export async function PATCH(
               .update({ messenger_sent: false, messenger_sent_at: nowIso })
               .eq("id", stage_id)
           } else {
-            const customerName =
-              cr?.customer?.full_name ?? cr?.customer_name ?? "Customer"
-            const plate = cr?.customer?.plate_number ?? cr?.plate_number ?? null
-            const vehicleUnit = cr?.customer?.vehicle_unit ?? cr?.vehicle_unit ?? null
+            const customerName = cust.name ?? "Customer"
+            const plate = cust.plate
+            const vehicleUnit = cust.vehicle
             const serviceName = cr?.service?.name ?? null
 
             // Progress across the whole job.

@@ -1,22 +1,21 @@
 "use client"
 
-import { useState, useEffect, useCallback, useMemo, useRef } from "react"
-import { Search, Car } from "lucide-react"
+import { useState, useEffect, useCallback, useRef } from "react"
+import { Search } from "lucide-react"
 import { Modal } from "@/components/ui/Modal"
 import { Button } from "@/components/ui/Button"
 import { FieldLabel, Input } from "@/components/ui/Field"
 import { Popover } from "@/components/ui/Popover"
 import { useToast } from "@/components/ui/Toast"
 import { getInitials } from "@/hooks/useCurrentUser"
-import { groupByCustomer } from "@/lib/customer-grouping"
 
-export interface CustomerRecordOption {
+export interface CustomerOption {
   id:             string
   full_name:      string
-  plate_number:   string
-  vehicle_unit:   string
-  contact_number: string
+  contact_number: string | null
   psid:           string | null
+  /** Plate numbers of the customer's vehicles, for the subtitle. */
+  plates:         string[]
 }
 
 interface LinkAccountModalProps {
@@ -25,30 +24,25 @@ interface LinkAccountModalProps {
   /** Pre-fills and locks the PSID field when the caller already knows it
    *  (e.g. opened from an Inquiry). Omit to let Sales type/paste one. */
   psid?: string
-  /** Pre-selects a specific record when opened from that record's row
-   *  (e.g. the Customer Records page). Still changeable via search. */
-  initialRecordId?: string
-  /** Full data for `initialRecordId`, when the caller already has it in
-   *  memory (Customer Records does) — lets the combobox show the right
-   *  selection immediately without depending on that record turning up in
-   *  whatever the current paginated search happens to return. */
-  initialRecord?: CustomerRecordOption
-  onLinked?: (recordId: string, psid: string) => void
+  /** Pre-selects a customer when opened from that customer's header
+   *  (the Customer Records page). Still changeable via search. */
+  initialCustomer?: CustomerOption
+  onLinked?: (customerId: string, psid: string) => void
 }
 
-function recordSubtitle(r: Pick<CustomerRecordOption, "plate_number" | "vehicle_unit" | "contact_number">) {
-  return `${r.plate_number} · ${r.vehicle_unit} · ${r.contact_number}`
+function customerSubtitle(c: Pick<CustomerOption, "contact_number" | "plates">) {
+  return [c.contact_number, c.plates.join(", ")].filter(Boolean).join(" · ")
 }
 
-// Replaces the old inline "paste the PSID into a record row" workflow: Sales
-// searches customer records (by name, plate, contact, or Job Order ID) and
-// picks the right one, instead of hunting for the row to edit by hand.
-export function LinkAccountModal({ open, onClose, psid, initialRecordId, initialRecord, onLinked }: LinkAccountModalProps) {
+// Sales searches customers (by name, plate, contact, or Job Order ID) and picks
+// the right person. The Messenger account attaches to the CUSTOMER — all of
+// their vehicles are reached through it.
+export function LinkAccountModal({ open, onClose, psid, initialCustomer, onLinked }: LinkAccountModalProps) {
   const toast = useToast()
   const [psidValue, setPsidValue] = useState(psid ?? "")
   const [search, setSearch] = useState("")
   const [dropOpen, setDropOpen] = useState(false)
-  const [results, setResults] = useState<CustomerRecordOption[]>([])
+  const [results, setResults] = useState<CustomerOption[]>([])
   const [loading, setLoading] = useState(false)
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [selectedLabel, setSelectedLabel] = useState<{ name: string; sub: string } | null>(null)
@@ -61,7 +55,17 @@ export function LinkAccountModal({ open, onClose, psid, initialRecordId, initial
     try {
       const res = await fetch(`/api/sales/customer-records?search=${encodeURIComponent(q)}`)
       const json = await res.json()
-      if (res.ok) setResults(json.records ?? [])
+      if (res.ok) {
+        setResults(
+          (json.customers ?? []).map((c: { id: string; full_name: string; contact_number: string | null; psid: string | null; vehicles: { plate_number: string }[] }) => ({
+            id: c.id,
+            full_name: c.full_name,
+            contact_number: c.contact_number,
+            psid: c.psid,
+            plates: (c.vehicles ?? []).map((v) => v.plate_number),
+          })),
+        )
+      }
     } catch {
       // best-effort — leave the previous results visible
     } finally {
@@ -74,13 +78,13 @@ export function LinkAccountModal({ open, onClose, psid, initialRecordId, initial
     setPsidValue(psid ?? "")
     setSearch("")
     setDropOpen(false)
-    setSelectedId(initialRecordId ?? null)
-    setSelectedLabel(initialRecord ? { name: initialRecord.full_name, sub: recordSubtitle(initialRecord) } : null)
+    setSelectedId(initialCustomer?.id ?? null)
+    setSelectedLabel(initialCustomer ? { name: initialCustomer.full_name, sub: customerSubtitle(initialCustomer) } : null)
     setError(null)
     isFirstLoad.current = true
     load("")
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, psid, initialRecordId, initialRecord])
+  }, [open, psid, initialCustomer])
 
   useEffect(() => {
     if (!open) return
@@ -92,17 +96,9 @@ export function LinkAccountModal({ open, onClose, psid, initialRecordId, initial
     return () => clearTimeout(t)
   }, [search, open, load])
 
-  // Grouped the same way Customer Records presents a customer with multiple
-  // vehicles — one header, one row per vehicle — instead of a flat list
-  // where the same name repeats once per vehicle.
-  const groups = useMemo(
-    () => groupByCustomer(results, (r) => r.id, (r) => r.contact_number, (r) => r.psid),
-    [results],
-  )
-
-  function selectRecord(r: CustomerRecordOption) {
-    setSelectedId(r.id)
-    setSelectedLabel({ name: r.full_name, sub: recordSubtitle(r) })
+  function selectCustomer(c: CustomerOption) {
+    setSelectedId(c.id)
+    setSelectedLabel({ name: c.full_name, sub: customerSubtitle(c) })
     setSearch("")
   }
 
@@ -111,7 +107,7 @@ export function LinkAccountModal({ open, onClose, psid, initialRecordId, initial
     setLinking(true)
     setError(null)
     try {
-      const res = await fetch(`/api/sales/customer-records/${selectedId}`, {
+      const res = await fetch(`/api/sales/customers/${selectedId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ psid: psidValue.trim() }),
@@ -159,7 +155,7 @@ export function LinkAccountModal({ open, onClose, psid, initialRecordId, initial
         </div>
 
         <div>
-          <FieldLabel>Search Customer Records</FieldLabel>
+          <FieldLabel>Search Customers</FieldLabel>
           <Popover
             open={dropOpen}
             onOpenChange={setDropOpen}
@@ -193,75 +189,32 @@ export function LinkAccountModal({ open, onClose, psid, initialRecordId, initial
             {(close) =>
               loading ? (
                 <p className="p-4 text-center text-sm text-muted">Loading…</p>
-              ) : groups.length === 0 ? (
-                <p className="p-4 text-center text-sm text-muted">No matching customer records.</p>
+              ) : results.length === 0 ? (
+                <p className="p-4 text-center text-sm text-muted">No matching customers.</p>
               ) : (
-                groups.map((group) => {
-                  const isMulti = group.vehicles.length > 1
-
-                  if (!isMulti) {
-                    const r = group.primary
-                    const isTaken = Boolean(r.psid) && r.psid !== psidValue.trim()
-                    return (
-                      <button
-                        key={group.key}
-                        type="button"
-                        onMouseDown={(e) => e.preventDefault()}
-                        onClick={() => { selectRecord(r); close() }}
-                        className="flex w-full items-center gap-3 border-b border-border-subtle px-4 py-3 text-left last:border-b-0 transition-colors hover:bg-surface-subtle"
-                      >
-                        <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-surface-muted text-xs font-bold text-body">
-                          {getInitials(r.full_name)}
-                        </span>
-                        <div className="min-w-0 flex-1">
-                          <p className="truncate text-sm font-medium text-heading">{r.full_name}</p>
-                          <p className="truncate text-xs text-muted">{recordSubtitle(r)}</p>
-                        </div>
-                        {isTaken && (
-                          <span className="shrink-0 rounded-full bg-status-warning/10 px-2 py-0.5 text-[10px] font-semibold text-status-warning">
-                            Already linked
-                          </span>
-                        )}
-                      </button>
-                    )
-                  }
-
+                results.map((c) => {
+                  const isTaken = Boolean(c.psid) && c.psid !== psidValue.trim()
                   return (
-                    <div key={group.key} className="border-b border-border-subtle last:border-b-0">
-                      {/* Customer header — grouping label only, not itself selectable
-                          since a PSID attaches to one specific vehicle record. */}
-                      <div className="flex items-center gap-3 px-4 py-2.5 bg-surface-subtle">
-                        <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-surface-muted text-[11px] font-bold text-body">
-                          {getInitials(group.primary.full_name)}
-                        </span>
-                        <div className="min-w-0 flex-1">
-                          <p className="truncate text-sm font-medium text-heading">{group.primary.full_name}</p>
-                          <p className="truncate text-[11px] text-muted">{group.primary.contact_number}</p>
-                        </div>
+                    <button
+                      key={c.id}
+                      type="button"
+                      onMouseDown={(e) => e.preventDefault()}
+                      onClick={() => { selectCustomer(c); close() }}
+                      className="flex w-full items-center gap-3 border-b border-border-subtle px-4 py-3 text-left last:border-b-0 transition-colors hover:bg-surface-subtle"
+                    >
+                      <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-surface-muted text-xs font-bold text-body">
+                        {getInitials(c.full_name)}
+                      </span>
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-sm font-medium text-heading">{c.full_name}</p>
+                        <p className="truncate text-xs text-muted">{customerSubtitle(c)}</p>
                       </div>
-                      {group.vehicles.map((r) => {
-                        const isTaken = Boolean(r.psid) && r.psid !== psidValue.trim()
-                        return (
-                          <button
-                            key={r.id}
-                            type="button"
-                            onMouseDown={(e) => e.preventDefault()}
-                            onClick={() => { selectRecord(r); close() }}
-                            className="flex w-full items-center gap-3 py-2.5 pl-11 pr-4 text-left transition-colors hover:bg-surface-subtle"
-                          >
-                            <Car className="h-3.5 w-3.5 shrink-0 text-muted" />
-                            <span className="min-w-0 flex-1 truncate text-sm text-body">
-                              <span className="font-mono font-medium text-heading">{r.plate_number}</span> · {r.vehicle_unit}
-                            </span>
-                            {isTaken && (
-                              <span className="shrink-0 rounded-full bg-status-warning/10 px-2 py-0.5 text-[10px] font-semibold text-status-warning">
-                                Already linked
-                              </span>
-                            )}
-                          </button>
-                        )
-                      })}
-                    </div>
+                      {isTaken && (
+                        <span className="shrink-0 rounded-full bg-status-warning/10 px-2 py-0.5 text-[10px] font-semibold text-status-warning">
+                          Already linked
+                        </span>
+                      )}
+                    </button>
                   )
                 })
               )

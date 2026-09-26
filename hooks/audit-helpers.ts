@@ -1,3 +1,4 @@
+import { TIME_ZONE } from "@/lib/time-display"
 import { createAdminClient } from "@/lib/supabase/admin"
 import { TimePeriod } from "@/types/audit"
 import type { AuditCaller } from "@/lib/auth/caller"
@@ -64,6 +65,7 @@ export function fmtTime(iso: string): string {
   return new Date(iso).toLocaleString("en-US", {
     month: "short", day: "numeric",
     hour: "numeric", minute: "2-digit", hour12: true,
+    timeZone: TIME_ZONE,
   })
 }
 

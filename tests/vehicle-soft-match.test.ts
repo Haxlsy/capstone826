@@ -46,7 +46,7 @@ beforeEach(() => {
 describe("resolveOwnVehicleStatus — inquiry soft-match (Testing Note #3)", () => {
   it("matches an active job by the plate the psid gave in its own inquiry", async () => {
     store.responses = {
-      customer_record: [{ data: null, error: null }],
+      customer: [{ data: null, error: null }],
       inquiry: [{ data: [{ extracted_plate: "ABC 123", extracted_contact: "09171234567" }], error: null }],
       job_order: [{ data: [job()], error: null }],
       job_stage_progress: [stages()],
@@ -62,7 +62,7 @@ describe("resolveOwnVehicleStatus — inquiry soft-match (Testing Note #3)", () 
 
   it("still returns not_linked when the psid has no inquiry and no record", async () => {
     store.responses = {
-      customer_record: [{ data: null, error: null }],
+      customer: [{ data: null, error: null }],
       inquiry: [{ data: [], error: null }],
     }
     await expect(resolveOwnVehicleStatus("psid-none")).resolves.toEqual({ kind: "not_linked" })
@@ -70,7 +70,7 @@ describe("resolveOwnVehicleStatus — inquiry soft-match (Testing Note #3)", () 
 
   it("returns booked_no_active_job (not the verification wall) when the psid's inquiry matches no active job", async () => {
     store.responses = {
-      customer_record: [{ data: null, error: null }],
+      customer: [{ data: null, error: null }],
       inquiry: [{ data: [{ extracted_plate: "XYZ 999", extracted_contact: "09990000000" }], error: null }],
       job_order: [{ data: [job()], error: null }],
     }
@@ -84,7 +84,7 @@ describe("resolveOwnVehicleStatus — inquiry soft-match (Testing Note #3)", () 
     // inquiry plate ABC 123 matches job j1; a second job shares the phone but a
     // different plate — plate match wins, phone-only job is not surfaced.
     store.responses = {
-      customer_record: [{ data: null, error: null }],
+      customer: [{ data: null, error: null }],
       inquiry: [{ data: [{ extracted_plate: "ABC 123", extracted_contact: "09171234567" }], error: null }],
       job_order: [{ data: [job(), job({ id: "j2", plate_number: "DEF 456" })], error: null }],
       job_stage_progress: [stages(), stages()],
@@ -100,7 +100,7 @@ describe("resolveOwnVehicleStatus — inquiry soft-match (Testing Note #3)", () 
     // The job's own plate/phone are blank (or differ) but it is linked to the
     // customer_record whose plate matches the psid's booking inquiry.
     store.responses = {
-      customer_record: [{ data: null, error: null }],
+      customer: [{ data: null, error: null }],
       inquiry: [{ data: [{ inquiry_type: "Booking", extracted_plate: "ABC-111", extracted_contact: "09664015109" }], error: null }],
       job_order: [{ data: [job({ plate_number: null, contact_number: null, customer_record_id: "r1", customer: { full_name: "John", plate_number: "ABC-111", contact_number: null } })], error: null }],
       job_stage_progress: [stages()],
@@ -115,7 +115,7 @@ describe("resolveOwnVehicleStatus — inquiry soft-match (Testing Note #3)", () 
 
   it("returns booked_no_active_job when the psid booked but no job matches", async () => {
     store.responses = {
-      customer_record: [{ data: null, error: null }],
+      customer: [{ data: null, error: null }],
       inquiry: [{ data: [{ inquiry_type: "Booking", extracted_plate: "ABC-111", extracted_contact: "09664015109" }], error: null }],
       job_order: [{ data: [job({ plate_number: "ZZZ 999", contact_number: "09990000000", customer: null })], error: null }],
     }
@@ -127,7 +127,7 @@ describe("resolveOwnVehicleStatus — inquiry soft-match (Testing Note #3)", () 
 
   it("still returns not_linked when the psid's inquiries carry no plate or phone", async () => {
     store.responses = {
-      customer_record: [{ data: null, error: null }],
+      customer: [{ data: null, error: null }],
       inquiry: [{ data: [{ inquiry_type: "Human Response", extracted_plate: null, extracted_contact: null }], error: null }],
     }
     await expect(resolveOwnVehicleStatus("psid-noinfo")).resolves.toEqual({ kind: "not_linked" })
@@ -135,11 +135,12 @@ describe("resolveOwnVehicleStatus — inquiry soft-match (Testing Note #3)", () 
 })
 
 describe("resolveOwnVehicleStatus — re-link / unlink isolation", () => {
-  it("after a psid is re-linked, only the CURRENT record's job shows (not the old one via a stale recorded inquiry)", async () => {
+  it("after a psid is re-linked, only the CURRENT customer's job shows (not the old one via a stale recorded inquiry)", async () => {
     // psid now linked to the "Walk In" record (XYZ 1234). Its history still has a
     // recorded Booking inquiry for ABC 826 (the record it used to be linked to).
     store.responses = {
-      customer_record: [{ data: { id: "walkin", full_name: "Walk In", contact_number: "09121231234", plate_number: "XYZ 1234" }, error: null }],
+      customer: [{ data: { id: "cw", full_name: "Walk In", vehicles: [{ id: "walkin", plate_number: "XYZ 1234" }] }, error: null }],
+      customer_record: [{ data: [], error: null }],
       inquiry: [{ data: [{ inquiry_type: "Booking", status: "recorded", extracted_plate: "ABC 826", extracted_contact: "09664015109" }], error: null }],
       job_order: [{ data: [
         job({ id: "jNew", plate_number: "XYZ 1234", contact_number: "09121231234", customer_record_id: "walkin", customer: { full_name: "Walk In", plate_number: "XYZ 1234", contact_number: "09121231234" } }),
@@ -156,7 +157,7 @@ describe("resolveOwnVehicleStatus — re-link / unlink isolation", () => {
 
   it("after Sales unlinks the psid, a leftover recorded inquiry does NOT grant status", async () => {
     store.responses = {
-      customer_record: [{ data: null, error: null }],
+      customer: [{ data: null, error: null }],
       inquiry: [{ data: [{ inquiry_type: "Booking", status: "recorded", extracted_plate: "ABC 826", extracted_contact: "09664015109" }], error: null }],
       job_order: [{ data: [job({ plate_number: "ABC 826", contact_number: "09664015109", customer_record_id: "john" })], error: null }],
     }
@@ -165,7 +166,8 @@ describe("resolveOwnVehicleStatus — re-link / unlink isolation", () => {
 
   it("a linked record still ignores an unrelated OPEN inquiry plate", async () => {
     store.responses = {
-      customer_record: [{ data: { id: "r1", full_name: "Jane", contact_number: "09171234567", plate_number: "ABC 123" }, error: null }],
+      customer: [{ data: { id: "c1", full_name: "Jane", vehicles: [{ id: "r1", plate_number: "ABC 123" }] }, error: null }],
+      customer_record: [{ data: [], error: null }],
       inquiry: [{ data: [{ inquiry_type: "Booking", status: "open", extracted_plate: "QQQ 000", extracted_contact: "09990000000" }], error: null }],
       job_order: [{ data: [
         job({ id: "mine", plate_number: "ABC 123", customer_record_id: "r1" }),

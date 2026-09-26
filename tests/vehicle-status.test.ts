@@ -36,7 +36,6 @@ import {
   formatVehicleStatusForCustomer,
   buildLinkVerificationPrompt,
   resolveOwnVehicleStatus,
-  assessLinkClaim,
   assessJobOrderLinkClaim,
   type OwnVehicleOutcome,
   type JobStatus,
@@ -196,22 +195,26 @@ describe("formatVehicleStatusForCustomer (deterministic reply, no Gemini)", () =
 })
 
 describe("resolveOwnVehicleStatus — PSID scoping + aggregation", () => {
-  it("returns not_linked when no customer_record matches the psid", async () => {
-    store.responses = { customer_record: [{ data: null, error: null }] }
+  const jane = { id: "c1", full_name: "Jane", vehicles: [{ id: "r1", plate_number: "ABC 123" }] }
+
+  it("returns not_linked when no customer holds the psid", async () => {
+    store.responses = { customer: [{ data: null, error: null }] }
     await expect(resolveOwnVehicleStatus("psid-x")).resolves.toEqual({ kind: "not_linked" })
   })
 
   it("returns ok with no jobs when the person has nothing in service", async () => {
     store.responses = {
-      customer_record: [{ data: { id: "r1", full_name: "Jane", contact_number: "09171234567", plate_number: "ABC 123" }, error: null }],
+      customer: [{ data: jane, error: null }],
+      customer_record: [{ data: [], error: null }],
       job_order: [{ data: [], error: null }],
     }
     await expect(resolveOwnVehicleStatus("psid-1")).resolves.toEqual({ kind: "ok", jobs: [] })
   })
 
-  it("returns the job on the psid record", async () => {
+  it("returns the job on the customer's vehicle", async () => {
     store.responses = {
-      customer_record: [{ data: { id: "r1", full_name: "Jane", contact_number: "09171234567", plate_number: "ABC 123" }, error: null }],
+      customer: [{ data: jane, error: null }],
+      customer_record: [{ data: [], error: null }],
       job_order: [{ data: [job()], error: null }],
       job_stage_progress: [stages()],
     }
@@ -225,12 +228,13 @@ describe("resolveOwnVehicleStatus — PSID scoping + aggregation", () => {
     }
   })
 
-  it("aggregates a 2nd car by verified phone (different record, psid=null)", async () => {
+  it("returns the job of EVERY vehicle the customer owns (a 2nd vehicle no longer needs a shared phone)", async () => {
     store.responses = {
-      customer_record: [{ data: { id: "r1", full_name: "Jane", contact_number: "0917 123 4567", plate_number: "ABC 123" }, error: null }],
+      customer: [{ data: { ...jane, vehicles: [{ id: "r1", plate_number: "ABC 123" }, { id: "r2", plate_number: "XYZ 789" }] }, error: null }],
+      customer_record: [{ data: [], error: null }],
       job_order: [{ data: [
         job({ id: "j1", customer_record_id: "r1", plate_number: "ABC 123" }),
-        job({ id: "j2", customer_record_id: "r2", plate_number: "XYZ 789", contact_number: "+639171234567" }),
+        job({ id: "j2", customer_record_id: "r2", plate_number: "XYZ 789", contact_number: "09990001111" }),
       ], error: null }],
       job_stage_progress: [stages(), stages()],
     }
@@ -241,86 +245,38 @@ describe("resolveOwnVehicleStatus — PSID scoping + aggregation", () => {
     }
   })
 
-  it("does NOT pull a job for an unrelated record / phone", async () => {
+  it("includes a vehicle this account booked FOR someone else", async () => {
     store.responses = {
-      customer_record: [{ data: { id: "r1", full_name: "Jane", contact_number: "09171234567", plate_number: "ABC 123" }, error: null }],
+      customer: [{ data: jane, error: null }],
+      customer_record: [{ data: [{ id: "r9", plate_number: "OTH 900" }], error: null }],
+      job_order: [{ data: [job({ id: "j9", customer_record_id: "r9", plate_number: "OTH 900" })], error: null }],
+      job_stage_progress: [stages()],
+    }
+    const out = await resolveOwnVehicleStatus("psid-1")
+    expect(out.kind === "ok" && out.jobs.map((j) => j.plate)).toEqual(["OTH 900"])
+  })
+
+  it("does NOT pull a job for an unrelated vehicle / phone", async () => {
+    store.responses = {
+      customer: [{ data: jane, error: null }],
+      customer_record: [{ data: [], error: null }],
       job_order: [{ data: [
-        job({ id: "j2", customer_record_id: "rZ", plate_number: "ZZZ 000", contact_number: "09990001111" }),
+        job({ id: "j2", customer_record_id: "rZ", plate_number: "ZZZ 000", contact_number: "09171234567" }),
       ], error: null }],
     }
     const out = await resolveOwnVehicleStatus("psid-1")
     expect(out).toEqual({ kind: "ok", jobs: [] })
   })
 
-  it("falls back to psid-record jobs only when a junk phone matches too many", async () => {
+  it("a shared/placeholder phone matching too many jobs is not treated as one customer (soft phone path)", async () => {
     const many = Array.from({ length: 10 }, (_, i) =>
       job({ id: `j${i}`, customer_record_id: `other-${i}`, plate_number: `P${i}`, contact_number: "09000000000" }))
-    many.push(job({ id: "mine", customer_record_id: "r1", plate_number: "MINE 1", contact_number: "09000000000" }))
     store.responses = {
-      customer_record: [{ data: { id: "r1", full_name: "Jane", contact_number: "09000000000", plate_number: "MINE 1" }, error: null }],
+      customer: [{ data: null, error: null }],
+      inquiry: [{ data: [{ inquiry_type: "Booking", status: "open", extracted_plate: "NOPE 1", extracted_contact: "09000000000" }], error: null }],
       job_order: [{ data: many, error: null }],
-      job_stage_progress: [stages()],
     }
-    const out = await resolveOwnVehicleStatus("psid-1")
-    expect(out.kind).toBe("ok")
-    if (out.kind === "ok") {
-      expect(out.jobs.map((j) => j.plate)).toEqual(["MINE 1"])
-    }
-  })
-})
-
-describe("assessLinkClaim (read-only — never links)", () => {
-  it("match_unlinked when plate + phone match a record with no psid", async () => {
-    store.responses = {
-      customer_record: [{ data: { id: "r1", full_name: "Jane Cruz", contact_number: "0917 123 4567", psid: null }, error: null }],
-    }
-    const res = await assessLinkClaim({ psid: "psid-1", plate: "ABC 123", phone: "+639171234567" })
-    expect(res).toEqual({ kind: "match_unlinked", recordName: "Jane Cruz" })
-  })
-
-  it("resolves the record via a job_order when the plate is on no record", async () => {
-    store.responses = {
-      customer_record: [
-        { data: null, error: null }, // by plate → none
-        { data: { id: "r9", full_name: "Jane", contact_number: "09171234567", psid: null }, error: null }, // via job
-      ],
-      job_order: [{ data: { customer_record_id: "r9" }, error: null }],
-    }
-    const res = await assessLinkClaim({ psid: "psid-1", plate: "XYZ 789", phone: "09171234567" })
-    expect(res.kind).toBe("match_unlinked")
-  })
-
-  it("phone_mismatch when the record exists but the phone is wrong", async () => {
-    store.responses = {
-      customer_record: [{ data: { id: "r1", full_name: "Jane", contact_number: "09179999999", psid: null }, error: null }],
-    }
-    const res = await assessLinkClaim({ psid: "psid-1", plate: "ABC 123", phone: "09171234567" })
-    expect(res.kind).toBe("phone_mismatch")
-  })
-
-  it("owned_by_other when the plate's record already has a different psid", async () => {
-    store.responses = {
-      customer_record: [{ data: { id: "r1", full_name: "Jane", contact_number: "09171234567", psid: "someone-else" }, error: null }],
-    }
-    const res = await assessLinkClaim({ psid: "psid-1", plate: "ABC 123", phone: "09171234567" })
-    expect(res).toEqual({ kind: "owned_by_other", phoneMatched: true })
-  })
-
-  it("owned_by_other with phoneMatched=false when phone is also wrong", async () => {
-    store.responses = {
-      customer_record: [{ data: { id: "r1", full_name: "Jane", contact_number: "09179999999", psid: "someone-else" }, error: null }],
-    }
-    const res = await assessLinkClaim({ psid: "psid-1", plate: "ABC 123", phone: "09171234567" })
-    expect(res).toEqual({ kind: "owned_by_other", phoneMatched: false })
-  })
-
-  it("no_record when nothing has that plate", async () => {
-    store.responses = {
-      customer_record: [{ data: null, error: null }],
-      job_order: [{ data: null, error: null }],
-    }
-    const res = await assessLinkClaim({ psid: "psid-1", plate: "ZZZ 000", phone: "09171234567" })
-    expect(res.kind).toBe("no_record")
+    await expect(resolveOwnVehicleStatus("psid-1")).resolves.toEqual({ kind: "booked_no_active_job", plate: "NOPE 1" })
   })
 })
 
@@ -333,7 +289,7 @@ describe("assessJobOrderLinkClaim (auto-links on an unlinked match)", () => {
     expect(res.kind).toBe("no_record")
   })
 
-  it("no_record when the job order has no linked customer_record", async () => {
+  it("no_record when the job order has no linked vehicle", async () => {
     store.responses = {
       job_order: [{ data: { customer_record_id: null }, error: null }],
     }
@@ -341,25 +297,39 @@ describe("assessJobOrderLinkClaim (auto-links on an unlinked match)", () => {
     expect(res.kind).toBe("no_record")
   })
 
-  it("owned_by_other when the code's record already has a different psid", async () => {
+  it("no_record when the vehicle has no customer", async () => {
     store.responses = {
       job_order: [{ data: { customer_record_id: "r1" }, error: null }],
-      customer_record: [{ data: { id: "r1", psid: "someone-else" }, error: null }],
+      customer_record: [{ data: null, error: null }],
+    }
+    const res = await assessJobOrderLinkClaim({ psid: "psid-1", code: "JO-8X2K9F" })
+    expect(res.kind).toBe("no_record")
+  })
+
+  it("owned_by_other when the code's customer already has a different psid", async () => {
+    store.responses = {
+      job_order: [{ data: { customer_record_id: "r1" }, error: null }],
+      customer_record: [{ data: { customer_id: "c1" }, error: null }],
+      customer: [{ data: { id: "c1", psid: "someone-else" }, error: null }],
     }
     const res = await assessJobOrderLinkClaim({ psid: "psid-1", code: "JO-8X2K9F" })
     expect(res).toEqual({ kind: "owned_by_other" })
   })
 
-  it("links the psid and returns status when the record is unlinked", async () => {
+  it("links the psid to the customer and returns status when the customer is unlinked", async () => {
     store.responses = {
       job_order: [
         { data: { customer_record_id: "r1" }, error: null }, // code lookup
         { data: [], error: null },                            // resolveOwnVehicleStatus active jobs
       ],
       customer_record: [
-        { data: { id: "r1", psid: null }, error: null },                                        // record read
-        { data: { id: "r1" }, error: null },                                                     // conditional update — success
-        { data: { id: "r1", full_name: "Jane", contact_number: "09171234567", plate_number: "ABC 123", psid: "psid-1" }, error: null }, // resolveOwnVehicleStatus's own lookup
+        { data: { customer_id: "c1" }, error: null },         // job → vehicle → customer
+        { data: [], error: null },                            // resolveOwnVehicleStatus: vehicles booked for someone else
+      ],
+      customer: [
+        { data: { id: "c1", psid: null }, error: null },                                                       // customer read
+        { data: { id: "c1" }, error: null },                                                                   // conditional update — success
+        { data: { id: "c1", full_name: "Jane", vehicles: [{ id: "r1", plate_number: "ABC 123" }] }, error: null }, // resolveOwnVehicleStatus's own lookup
       ],
       inquiry: [{ data: [], error: null }],
     }
@@ -371,8 +341,9 @@ describe("assessJobOrderLinkClaim (auto-links on an unlinked match)", () => {
   it("treats a lost race on the conditional update as owned_by_other", async () => {
     store.responses = {
       job_order: [{ data: { customer_record_id: "r1" }, error: null }],
-      customer_record: [
-        { data: { id: "r1", psid: null }, error: null },       // record read — looked unlinked
+      customer_record: [{ data: { customer_id: "c1" }, error: null }],
+      customer: [
+        { data: { id: "c1", psid: null }, error: null },       // customer read — looked unlinked
         { data: null, error: null },                            // conditional update — 0 rows, lost the race
         { data: { psid: "someone-else" }, error: null },        // recheck — someone else grabbed it
       ],

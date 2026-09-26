@@ -85,6 +85,9 @@ export default function InquiryManagement() {
   const [recordOpen, setRecordOpen] = useState(false)
   const [linkOpen, setLinkOpen]     = useState(false)
   const [recordForm, setRecordForm] = useState({ full_name: "", contact_number: "", email: "", plate_number: "", vehicle_unit: "" })
+  // Recording a booking made from this Messenger account FOR ANOTHER PERSON:
+  // a new customer, with job updates still going to the account that booked it.
+  const [forSomeoneElse, setForSomeoneElse] = useState(false)
   const [recording, setRecording]   = useState(false)
   const [recordErrors, setRecordErrors] = useState<Record<string, string>>({})
 
@@ -295,6 +298,9 @@ export default function InquiryManagement() {
       plate_number:   inq.extractedPlate   ?? "",
       vehicle_unit:   inq.extractedVehicle ?? "",
     })
+    // An identity conflict means the customer said the booking is under another
+    // name — default the toggle on, Sales can turn it off.
+    setForSomeoneElse(escalationHeading(inq.conflictNote) === "Identity Conflict" && Boolean(inq.conflictNote))
     setRecordErrors({})
     setRecordOpen(true)
   }
@@ -319,7 +325,7 @@ export default function InquiryManagement() {
       const crRes  = await fetch("/api/sales/customer-records", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ...trimmed, psid: selected.psid }),
+        body: JSON.stringify({ ...trimmed, psid: selected.psid, for_someone_else: forSomeoneElse }),
       })
       const crJson = await crRes.json()
       if (!crRes.ok) throw new Error(crJson?.error ?? "Failed to create customer record")
@@ -634,6 +640,21 @@ export default function InquiryManagement() {
             </div>
           ))}
         </div>
+        <label className="mt-4 flex cursor-pointer items-start gap-2 rounded-sm border border-border bg-surface-subtle px-3 py-2.5 text-xs text-body">
+          <input
+            type="checkbox"
+            checked={forSomeoneElse}
+            onChange={(e) => setForSomeoneElse(e.target.checked)}
+            className="mt-0.5 h-4 w-4 rounded border-border"
+          />
+          <span>
+            <span className="font-semibold text-heading">This booking is for someone else</span>
+            <span className="block text-muted">
+              Creates a separate customer for this person. Job updates still go to the Messenger account that
+              sent this booking; the customer already linked to it is not changed.
+            </span>
+          </span>
+        </label>
         {recordErrors._submit && <p className="mt-3 text-xs text-status-delayed">{recordErrors._submit}</p>}
       </Modal>
 

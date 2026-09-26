@@ -8,7 +8,8 @@ export interface ExportableCustomerRecord {
   email: string | null
   plateNumber: string
   vehicleUnit: string
-  psid: string | null
+  /** Job updates for this vehicle reach a Messenger account (the customer's own, or the one that booked it). */
+  messengerLinked: boolean
   createdAt: string
   activeJobOrderCode: string | null
 }
@@ -26,7 +27,7 @@ export const EXPORT_HEADERS = [
 
 const DASH = "—"
 
-/** One display row per vehicle record. The raw Messenger psid is deliberately NOT exported. */
+/** One display row per vehicle. The raw Messenger psid is deliberately NOT exported. */
 export function toExportRow(r: ExportableCustomerRecord): string[] {
   return [
     r.fullName,
@@ -34,7 +35,7 @@ export function toExportRow(r: ExportableCustomerRecord): string[] {
     r.email || DASH,
     r.plateNumber,
     r.vehicleUnit,
-    r.psid ? "Yes" : "No",
+    r.messengerLinked ? "Yes" : "No",
     r.activeJobOrderCode || DASH,
     r.createdAt,
   ]

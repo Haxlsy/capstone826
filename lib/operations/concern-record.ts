@@ -1,3 +1,5 @@
+import { fmtDateTime } from "@/lib/time-display"
+
 export interface ConcernRecord {
   id:            string
   title:         string
@@ -12,13 +14,10 @@ export interface ConcernRecord {
   media:         { id: string; file_url: string; media_type: string }[]
 }
 
-export function fmtDate(iso: string | null | undefined): string {
-  if (!iso) return "—"
-  return new Date(iso).toLocaleString("en-US", {
-    month: "short", day: "numeric", year: "numeric",
-    hour: "numeric", minute: "2-digit",
-  })
-}
+// Rendered on the server (UTC on Vercel), so the time zone MUST be pinned —
+// fmtDateTime is Asia/Manila. A local, un-pinned formatter here showed a
+// concern submitted at 2:37 PM as 6:37 AM.
+export const fmtDate = fmtDateTime
 
 export function toConcernRecords(raw: unknown[]): ConcernRecord[] {
   return (raw ?? []).map((c: any) => ({

@@ -1,4 +1,5 @@
 import { createAdminClient } from "@/lib/supabase/admin"
+import { jobCustomer } from "@/lib/operations/job-customer"
 import { isJobDelayed } from "@/lib/job-delay"
 
 export async function getJobOrdersData(released = false) {
@@ -8,7 +9,7 @@ export async function getJobOrdersData(released = false) {
     .from("job_order")
     .select(
       `id, status, scheduled_at, actual_start_at, expected_completion_at, created_at, job_order_code,
-       customer:customer_record_id(full_name, plate_number, vehicle_unit, contact_number),
+       customer:customer_record_id(plate_number, vehicle_unit, owner:customer!customer_id(full_name, contact_number, email)),
        service:service_id(name),
        customer_name, contact_number, plate_number, vehicle_unit`
     )
@@ -75,13 +76,14 @@ export async function getJobOrdersData(released = false) {
   const result = (jobs ?? []).map((j: any) => {
     const prog = progressMap.get(j.id) ?? { total: 0, done: 0 }
     const team = teamMap.get(j.id) ?? { head_detailer: "Unassigned", head_installer: "Unassigned" }
+    const cust = jobCustomer(j)
     return {
       id: j.id,
       job_order_code: j.job_order_code,
-      customer_name: j.customer?.full_name ?? j.customer_name ?? "—",
-      plate_number: j.customer?.plate_number ?? j.plate_number ?? "—",
-      vehicle_unit: j.customer?.vehicle_unit ?? j.vehicle_unit ?? "—",
-      contact_number: j.customer?.contact_number ?? j.contact_number ?? "—",
+      customer_name: cust.name ?? "—",
+      plate_number: cust.plate ?? "—",
+      vehicle_unit: cust.vehicle ?? "—",
+      contact_number: cust.phone ?? "—",
       service: j.service?.name ?? "—",
       head_detailer: team.head_detailer,
       head_installer: team.head_installer,

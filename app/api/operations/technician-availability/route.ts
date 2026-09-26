@@ -1,3 +1,4 @@
+import { jobCustomer } from "@/lib/operations/job-customer"
 import { NextResponse } from "next/server"
 import { createAdminClient } from "@/lib/supabase/admin"
 import { getAuditCaller, getRoleCaller } from "@/lib/auth/caller"
@@ -59,7 +60,7 @@ export async function GET(request: Request) {
         .from("job_order")
         .select(
           `id, status, customer_name,
-           customer:customer_record_id(full_name),
+           customer:customer_record_id(owner:customer!customer_id(full_name)),
            service:service_id(name)`
         )
         .in("id", assignedJobIds)
@@ -69,7 +70,7 @@ export async function GET(request: Request) {
       for (const j of ongoingJobs ?? []) {
         jobInfoMap.set(j.id, {
           job_id:   j.id,
-          customer: (j.customer as any)?.full_name ?? (j as any).customer_name ?? "—",
+          customer: jobCustomer(j as any).name ?? "—",
           service:  (j.service  as any)?.name ?? "—",
         })
       }

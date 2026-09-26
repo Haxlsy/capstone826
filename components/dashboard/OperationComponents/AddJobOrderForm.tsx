@@ -3,13 +3,13 @@
 import { useState, useEffect, useRef, useMemo } from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
-import { CheckCircle2, User, Phone, Mail, IdCard, Car } from "lucide-react"
+import { CheckCircle2, User, Phone, Mail, IdCard, Car, Info } from "lucide-react"
 import ServiceOverridePanel, { type Stage } from "./ServiceOverridePanel"
 import JobOrderConfirmDialog, { type JobOrderSummary } from "./JobOrderConfirmDialog"
 import { fmtDateTime } from "@/lib/time-display"
 import { requiredTeamRoles, teamAssignmentErrors, teamAssignmentHint } from "@/lib/operations/required-team"
 import { normalizePhone } from "@/lib/phone"
-import { applyTriggerEdit, type MatchField } from "@/lib/operations/customer-match"
+import { applyTriggerEdit, clearMatch, plateConflict, emailConflict, type MatchField } from "@/lib/operations/customer-match"
 import { useOnlineStatus } from "@/hooks/useOnlineStatus"
 import { enqueue, get as getQueued } from "@/lib/offline/outbox"
 import { useToast } from "@/components/ui/Toast"
@@ -17,13 +17,18 @@ import { isTechnicianAvailableToday } from "@/lib/technician-availability"
 import { formatOperatingHours, isWithinOperatingHours, fmtTime12h, DEFAULT_OPERATING_DAYS, DEFAULT_OPERATING_OPEN_TIME, DEFAULT_OPERATING_CLOSE_TIME, type Weekday } from "@/types/chatbot"
 
 interface CustomerRecord {
+  /** The vehicle's id (customer_record). */
   id:             string
+  /** The person the vehicle belongs to — one customer can have several vehicles. */
+  customer_id:    string
   full_name:      string
   contact_number: string
   email:          string | null
   plate_number:   string
   vehicle_unit:   string | null
   has_active_job: boolean
+  /** How job updates reach this customer on Messenger; null = they don't. */
+  messenger_via?: "own" | "booked_by" | null
 }
 
 interface Service {
@@ -300,6 +305,19 @@ export default function AddJobOrderForm() {
     clearField(field === "phone" ? "contactNumber" : field === "plate" ? "plateNumber" : "email")
   }
 
+  // "Not this customer" — back to a blank manual form.
+  function handleClearMatch() {
+    const blank = clearMatch<CustomerRecord>()
+    setMatchedCustomer(blank.matched)
+    setMatchSource(blank.source)
+    setManualCustomerName(blank.fields.name)
+    setManualContactNumber(blank.fields.phone)
+    setManualEmail(blank.fields.email)
+    setManualPlateNumber(blank.fields.plate)
+    setManualVehicleUnit(blank.fields.vehicle)
+    setFieldErrors({})
+  }
+
   function clearField(key: keyof FieldErrors) {
     setFieldErrors((prev) => { const next = { ...prev }; delete next[key]; return next })
   }
@@ -398,6 +416,13 @@ export default function AddJobOrderForm() {
   const PHONE_RE = /^(09|\+639)\d{9}$/
   const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 
+  // After an auto-fetch the plate/email are editable, so they can now collide
+  // with ANOTHER customer's record — flagged live, and again by the server.
+  const PLATE_DUPLICATE_MSG = "That plate number is already on file for another customer record."
+  const EMAIL_DUPLICATE_MSG = "This email is already registered to another customer."
+  const plateDuplicate = matchedCustomer ? plateConflict(customers, matchedCustomer, manualPlateNumber) : null
+  const emailDuplicate = matchedCustomer ? emailConflict(customers, matchedCustomer, manualEmail) : null
+
   function validate(): FieldErrors {
     const errs: FieldErrors = {}
     if (!useManualCustomer && !selectedCustomerId)
@@ -412,10 +437,14 @@ export default function AddJobOrderForm() {
         errs.contactNumber = "Must be a valid PH mobile number (e.g., 09XX-XXX-XXXX)."
       if (!manualPlateNumber.trim())
         errs.plateNumber = "Plate number is required."
+      else if (plateDuplicate)
+        errs.plateNumber = PLATE_DUPLICATE_MSG
       if (!manualEmail.trim())
         errs.email = "Email is required."
       else if (!EMAIL_RE.test(manualEmail.trim()))
         errs.email = "Enter a valid email address (e.g., juan@email.com)."
+      else if (emailDuplicate)
+        errs.email = EMAIL_DUPLICATE_MSG
       if (!manualVehicleUnit.trim())
         errs.vehicleUnit = "Vehicle unit is required."
     }
@@ -650,6 +679,9 @@ export default function AddJobOrderForm() {
         payload.email          = manualEmail.trim() || null
         payload.plate_number   = manualPlateNumber.trim()
         payload.vehicle_unit   = manualVehicleUnit.trim() || null
+        // The auto-fetched customer (name locked) — lets the server add another
+        // vehicle to them instead of reusing their first vehicle's record.
+        if (matchedCustomer) payload.matched_customer_record_id = matchedCustomer.id
       }
 
       // Offline — queue it instead of creating it now. The actual creation
@@ -756,14 +788,12 @@ export default function AddJobOrderForm() {
     )
   },[searchQuery, customers]);
 
-  // Groups search results by customer (normalized phone number) so a customer
-  // with more than one vehicle on file shows once, with each plate selectable
-  // underneath — the same correlation the Messenger status flow already uses,
-  // since a customer_record row models one vehicle, not one customer.
+  // Groups search results by customer so a customer with more than one vehicle
+  // on file shows once, with each plate selectable underneath.
   const filteredCustomerGroups = useMemo(() => {
     const map = new Map<string, CustomerRecord[]>();
     for (const c of filteredCustomers) {
-      const key = normalizePhone(c.contact_number) || `unknown:${c.id}`;
+      const key = c.customer_id;
       if (!map.has(key)) map.set(key, []);
       map.get(key)!.push(c);
     }
@@ -967,16 +997,40 @@ export default function AddJobOrderForm() {
                   className={inputCls(!!fieldErrors.customerName, !!matchedCustomer)}
                 />
                 <FieldError msg={fieldErrors.customerName} />
+                {matchedCustomer && (
+                  <div className="flex items-center justify-between gap-3 rounded-sm border border-primary/30 bg-primary/10 px-3 py-2.5 text-[11px] text-primary">
+                    <div className="flex min-w-0 flex-1 flex-col gap-2">
+                      <p className="flex items-start gap-1.5">
+                        <Info className="mt-px h-3.5 w-3.5 shrink-0" />
+                        <span>
+                          Existing customer found (matched by {matchSource === "phone" ? "contact number" : matchSource}) — the name is locked.
+                          Edit the plate, contact, email or vehicle to book another vehicle for this customer.
+                        </span>
+                      </p>
+                      <p className={`pl-5 font-semibold ${matchedCustomer.messenger_via ? "" : "text-status-delayed"}`}>
+                        {matchedCustomer.messenger_via
+                          ? "Job updates will be sent to their linked Messenger account."
+                          : "No Messenger account is linked to this customer — job updates won't be sent. Ask Sales to link it."}
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={handleClearMatch}
+                      className="shrink-0 rounded-sm border border-primary bg-surface px-3 py-1.5 text-xs font-semibold text-primary transition-colors hover:bg-primary hover:text-white focus:outline-none focus:ring-2 focus:ring-primary/30"
+                    >
+                      Not this customer? Clear
+                    </button>
+                  </div>
+                )}
               </div>
               <div className="flex flex-col gap-1.5">
                 <label className="text-xs font-medium text-body">Contact Number <span className="text-status-delayed ml-0.5">*</span></label>
                 <input
                   type="tel"
                   value={manualContactNumber}
-                  readOnly={!!matchedCustomer && matchSource !== "phone"}
-                  onChange={(e) => { if (!matchedCustomer || matchSource === "phone") handleTriggerEdit("phone", e.target.value) }}
+                  onChange={(e) => handleTriggerEdit("phone", e.target.value)}
                   placeholder="e.g., 09XX-XXX-XXXX"
-                  className={inputCls(!!fieldErrors.contactNumber, !!matchedCustomer && matchSource !== "phone")}
+                  className={inputCls(!!fieldErrors.contactNumber)}
                 />
                 <FieldError msg={fieldErrors.contactNumber} />
               </div>
@@ -985,39 +1039,31 @@ export default function AddJobOrderForm() {
                 <input
                   type="text"
                   value={manualPlateNumber}
-                  readOnly={!!matchedCustomer && matchSource !== "plate"}
-                  onChange={(e) => { if (!matchedCustomer || matchSource === "plate") handleTriggerEdit("plate", e.target.value) }}
+                  onChange={(e) => handleTriggerEdit("plate", e.target.value)}
                   placeholder="e.g., ABC-1234"
-                  className={inputCls(!!fieldErrors.plateNumber, !!matchedCustomer && matchSource !== "plate")}
+                  className={inputCls(!!fieldErrors.plateNumber || !!plateDuplicate)}
                 />
-                <FieldError msg={fieldErrors.plateNumber} />
+                <FieldError msg={fieldErrors.plateNumber ?? (plateDuplicate ? PLATE_DUPLICATE_MSG : undefined)} />
               </div>
-              {matchedCustomer && (
-                <p className="col-span-2 text-[11px] text-status-warning bg-status-warning/10 border border-status-warning/30 rounded-md px-2 py-1 -mt-1">
-                  Existing record found (matched by {matchSource === "phone" ? "contact number" : matchSource}) — customer info auto-filled and locked.
-                </p>
-              )}
               <div className="flex flex-col gap-1.5 col-span-2">
                 <label className="text-xs font-medium text-body">Email <span className="text-status-delayed ml-0.5">*</span></label>
                 <input
                   type="email"
                   value={manualEmail}
-                  readOnly={!!matchedCustomer && matchSource !== "email"}
-                  onChange={(e) => { if (!matchedCustomer || matchSource === "email") handleTriggerEdit("email", e.target.value) }}
+                  onChange={(e) => handleTriggerEdit("email", e.target.value)}
                   placeholder="e.g., juan@email.com"
-                  className={inputCls(!!fieldErrors.email, !!matchedCustomer && matchSource !== "email")}
+                  className={inputCls(!!fieldErrors.email || !!emailDuplicate)}
                 />
-                <FieldError msg={fieldErrors.email} />
+                <FieldError msg={fieldErrors.email ?? (emailDuplicate ? EMAIL_DUPLICATE_MSG : undefined)} />
               </div>
               <div className="flex flex-col gap-1.5 col-span-2">
                 <label className="text-xs font-medium text-body">Vehicle Unit <span className="text-status-delayed ml-0.5">*</span></label>
                 <input
                   type="text"
                   value={manualVehicleUnit}
-                  readOnly={!!matchedCustomer}
-                  onChange={(e) => { if (!matchedCustomer) { setManualVehicleUnit(e.target.value); clearField("vehicleUnit") } }}
+                  onChange={(e) => { setManualVehicleUnit(e.target.value); clearField("vehicleUnit") }}
                   placeholder="e.g., Toyota Vios 2020"
-                  className={inputCls(!!fieldErrors.vehicleUnit, !!matchedCustomer)}
+                  className={inputCls(!!fieldErrors.vehicleUnit)}
                 />
                 <FieldError msg={fieldErrors.vehicleUnit} />
               </div>

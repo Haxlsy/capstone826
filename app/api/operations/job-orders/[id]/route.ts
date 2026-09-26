@@ -12,7 +12,8 @@ import { sendPushToUser } from "@/lib/push/send"
 import { sendMessengerText } from "@/lib/messenger/graph"
 import { buildReleaseMessage, buildCompletionMessage, getOperatingHoursText } from "@/lib/messenger/status-update"
 import { getRoleCaller } from "@/lib/auth/caller"
-import { resolveRecipientPsid } from "@/lib/messenger/recipient"
+import { recipientFromVehicle } from "@/lib/messenger/recipient"
+import { jobCustomer } from "@/lib/operations/job-customer"
 
 export async function GET(
   _request: Request,
@@ -281,20 +282,18 @@ export async function PATCH(
             .from("job_order")
             .select(
               `customer_record_id, plate_number, vehicle_unit, customer_name,
-               customer:customer_record_id(psid, full_name, vehicle_unit, plate_number)`
+               customer:customer_record_id(plate_number, vehicle_unit, owner:customer!customer_id(psid, full_name, contact_number), booked_by:customer!booked_by_customer_id(psid))`
             )
             .eq("id", id)
             .single()
           const cr = custRow as any
-          const psid = await resolveRecipientPsid(admin, {
-            customerRecordId: cr?.customer_record_id,
-            ownPsid: cr?.customer?.psid ?? null,
-          })
+          const psid = recipientFromVehicle(cr?.customer).psid
+          const cust = jobCustomer(cr)
 
           if (psid && process.env.META_PAGE_ACCESS_TOKEN) {
-            const customerName = cr?.customer?.full_name ?? cr?.customer_name ?? null
-            const vehicleUnit  = cr?.customer?.vehicle_unit ?? cr?.vehicle_unit ?? null
-            const plate        = cr?.customer?.plate_number ?? cr?.plate_number ?? null
+            const customerName = cust.name
+            const vehicleUnit  = cust.vehicle
+            const plate        = cust.plate
 
             const message = newStatus === "For Release"
               ? buildReleaseMessage({ customerName, vehicleUnit, plate, operatingHours: await getOperatingHoursText() })

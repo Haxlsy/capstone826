@@ -14,7 +14,7 @@ const rec: ExportableCustomerRecord = {
   email: "h@example.com",
   plateNumber: "ABC 1234",
   vehicleUnit: "Toyota Vios",
-  psid: "9999",
+  messengerLinked: true,
   createdAt: "Jan 5, 2026",
   activeJobOrderCode: "JO-1",
 }
@@ -23,11 +23,9 @@ describe("toExportRow", () => {
   it("has one value per header", () => {
     expect(toExportRow(rec)).toHaveLength(EXPORT_HEADERS.length)
   })
-  it("shows Messenger linkage as Yes/No and never exports the raw psid", () => {
-    const row = toExportRow(rec)
-    expect(row).toContain("Yes")
-    expect(row).not.toContain("9999")
-    expect(toExportRow({ ...rec, psid: null })).toContain("No")
+  it("shows Messenger linkage as Yes/No", () => {
+    expect(toExportRow(rec)).toContain("Yes")
+    expect(toExportRow({ ...rec, messengerLinked: false })).toContain("No")
   })
   it("uses a dash for a missing email or no active job", () => {
     const row = toExportRow({ ...rec, email: null, activeJobOrderCode: null })
