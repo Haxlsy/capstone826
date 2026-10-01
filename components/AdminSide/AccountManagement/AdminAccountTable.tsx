@@ -35,6 +35,7 @@ export default function AdminAccountTable() {
   const [modalOpen, setModalOpen] = useState(false)
   const [editAccount, setEditAccount] = useState<AdminAccount | undefined>(undefined)
   const [archiveTarget, setArchiveTarget] = useState<AdminAccount | null>(null)
+  const [archiving, setArchiving] = useState(false)
 
   const [resetTarget, setResetTarget] = useState<{ id: string; name: string } | null>(null)
   const [resetting, setResetting] = useState(false)
@@ -68,16 +69,21 @@ export default function AdminAccountTable() {
   useRealtimeRefetch("user_account", fetchAccounts)
 
   async function handleArchiveToggle(account: AdminAccount) {
-    setArchiveTarget(null)
     const newArchived = !account.is_archived
-    const res = await fetch("/api/admin/archive-account", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ userId: account.id, isArchived: newArchived }),
-    })
-    if (res.ok) toast.success(newArchived ? "Admin account archived." : "Admin account restored.")
-    else toast.error("Failed to update account status.")
-    fetchAccounts()
+    setArchiving(true)
+    try {
+      const res = await fetch("/api/admin/archive-account", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ userId: account.id, isArchived: newArchived }),
+      })
+      if (res.ok) toast.success(newArchived ? "Admin account archived." : "Admin account restored.")
+      else toast.error("Failed to update account status.")
+      fetchAccounts()
+    } finally {
+      setArchiving(false)
+      setArchiveTarget(null)
+    }
   }
 
   async function handleResetPassword() {
@@ -172,7 +178,10 @@ export default function AdminAccountTable() {
             <>
               <MenuItem
                 icon={Pencil}
+                disabled={a.is_archived}
+                title={a.is_archived ? "Restore this account to edit it." : undefined}
                 onClick={() => {
+                  if (a.is_archived) return
                   close()
                   setEditAccount(a)
                   setModalOpen(true)
@@ -182,7 +191,10 @@ export default function AdminAccountTable() {
               </MenuItem>
               <MenuItem
                 icon={KeyRound}
+                disabled={a.is_archived}
+                title={a.is_archived ? "Restore this account to reset its password." : undefined}
                 onClick={() => {
+                  if (a.is_archived) return
                   close()
                   setResetTarget({ id: a.id, name: a.full_name })
                 }}
@@ -197,7 +209,7 @@ export default function AdminAccountTable() {
                   setArchiveTarget(a)
                 }}
               >
-                {a.is_archived ? "Unarchive" : "Archive"}
+                {a.is_archived ? "Restore" : "Archive"}
               </MenuItem>
             </>
           )}
@@ -282,13 +294,14 @@ export default function AdminAccountTable() {
 
       <ConfirmModal
         open={archiveTarget !== null}
-        onClose={() => setArchiveTarget(null)}
+        onClose={() => !archiving && setArchiveTarget(null)}
         onConfirm={() => archiveTarget && handleArchiveToggle(archiveTarget)}
-        title={archiveTarget?.is_archived ? "Unarchive Admin" : "Archive Admin"}
-        message={`${archiveTarget?.is_archived ? "Unarchive" : "Archive"} ${archiveTarget?.full_name ?? "this admin"}?`}
-        confirmLabel="Confirm"
+        title={archiveTarget?.is_archived ? "Restore Admin" : "Archive Admin"}
+        message={`${archiveTarget?.is_archived ? "Restore" : "Archive"} ${archiveTarget?.full_name ?? "this admin"}?`}
+        confirmLabel={archiving ? (archiveTarget?.is_archived ? "Restoring…" : "Archiving…") : "Confirm"}
         tone={archiveTarget?.is_archived ? "primary" : "danger"}
-        icon={Archive}
+        loading={archiving}
+        icon={archiveTarget?.is_archived ? ArchiveRestore : Archive}
       />
 
       <Modal open={resetResult !== null} onClose={() => { setResetResult(null); setCopied(false) }} size="sm" bare>

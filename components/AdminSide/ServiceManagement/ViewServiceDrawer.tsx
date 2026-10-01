@@ -5,7 +5,6 @@ import { Clock, Layers } from "lucide-react"
 import { Drawer } from "@/components/ui/Drawer"
 import { Badge, StatusBadge } from "@/components/ui/Badge"
 import { categorySwatch } from "@/lib/ui/category-colors"
-import { minsToHHMM } from "./service-form-helpers"
 import { cn } from "@/lib/utils"
 
 interface Service {
@@ -158,7 +157,7 @@ export default function ViewServiceDrawer({ service, open, onClose }: ViewServic
                       {g.stages.map((s) => (
                         <div key={s.id} className="flex items-center justify-between text-xs">
                           <span className="text-body">{s.name}</span>
-                          <span className="font-mono text-muted">{minsToHHMM(s.stage_duration_mins)}</span>
+                          <span className="font-mono text-muted">{formatDuration(s.stage_duration_mins)}</span>
                         </div>
                       ))}
                     </div>

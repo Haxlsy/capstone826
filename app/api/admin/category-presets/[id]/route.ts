@@ -3,6 +3,7 @@ import { createAdminClient } from "@/lib/supabase/admin"
 import { getAdminCaller } from "@/lib/auth/guard"
 import { auditCallerOf } from "@/lib/auth/caller"
 import { logAuditCall } from "@/hooks/audit-helpers"
+import { findDuplicateStageName } from "@/lib/admin/service-stage-validation"
 
 // PUT /api/admin/category-presets/[id]
 export async function PUT(request: Request, { params }: { params: Promise<{ id: string }> }) {
@@ -20,6 +21,10 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
     if (!name?.trim()) return NextResponse.json({ error: "Preset name is required." }, { status: 400 })
     if (technician_role !== "detailer" && technician_role !== "installer") {
       return NextResponse.json({ error: "technician_role must be 'detailer' or 'installer'." }, { status: 400 })
+    }
+    const dup = findDuplicateStageName(Array.isArray(stages) ? stages : [])
+    if (dup) {
+      return NextResponse.json({ error: `Two stages are both named "${dup}" — stage names must be unique.` }, { status: 400 })
     }
 
     const { error: updateErr } = await admin

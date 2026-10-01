@@ -1,7 +1,7 @@
 "use client"
 
 import { useCallback, useEffect, useState } from "react"
-import { MoreHorizontal } from "lucide-react"
+import { MoreHorizontal, Archive, ArchiveRestore, Pencil } from "lucide-react"
 import AddServiceModal from "./AddServiceModal"
 import EditServiceModal from "./EditServiceModal"
 import ViewServiceDrawer from "./ViewServiceDrawer"
@@ -15,6 +15,7 @@ import { Pagination } from "@/components/ui/Pagination"
 import { Popover, MenuItem } from "@/components/ui/Popover"
 import { FilterTrigger } from "@/components/ui/FilterTrigger"
 import { Badge, StatusBadge } from "@/components/ui/Badge"
+import { ConfirmModal } from "@/components/ui/Modal"
 import { useToast } from "@/components/ui/Toast"
 import { cn } from "@/lib/utils"
 import { useRealtimeRefetch } from "@/hooks/useRealtimeRefetch"
@@ -73,6 +74,8 @@ export default function ServiceTable({ canWrite = true }: { canWrite?: boolean }
   const [presetsOpen, setPresetsOpen] = useState(false)
   const [editServiceId, setEditServiceId] = useState<string | null>(null)
   const [viewingService, setViewingService] = useState<Service | null>(null)
+  const [archiveTarget, setArchiveTarget] = useState<Service | null>(null)
+  const [archiving, setArchiving] = useState(false)
 
   useEffect(() => {
     const t = setTimeout(() => setSearch(searchInput), 300)
@@ -118,6 +121,7 @@ export default function ServiceTable({ canWrite = true }: { canWrite?: boolean }
   useRealtimeRefetch("service", fetchServices)
 
   async function handleArchiveToggle(service: Service) {
+    setArchiving(true)
     try {
       const res = await fetch(`/api/operations/services/${service.id}`, {
         method: "PATCH",
@@ -130,6 +134,9 @@ export default function ServiceTable({ canWrite = true }: { canWrite?: boolean }
       fetchServices()
     } catch {
       toast.error("Failed to update service.")
+    } finally {
+      setArchiving(false)
+      setArchiveTarget(null)
     }
   }
 
@@ -210,11 +217,18 @@ export default function ServiceTable({ canWrite = true }: { canWrite?: boolean }
                 {(close) => {
                   const inUse = s.job_order_count > 0
                   const lockedHint = `${s.job_order_count} job order${s.job_order_count === 1 ? "" : "s"} currently using this service must finish first.`
+                  const editDisabled = s.is_archived || inUse
+                  const editHint = s.is_archived
+                    ? "Restore this service to edit it."
+                    : inUse
+                      ? lockedHint
+                      : undefined
                   return (
                     <>
                       <MenuItem
-                        disabled={inUse}
-                        title={inUse ? lockedHint : undefined}
+                        icon={Pencil}
+                        disabled={editDisabled}
+                        title={editHint}
                         onClick={(e) => {
                           // Popover portals its panel to document.body, so it's
                           // a DOM sibling of the row, not a descendant — but
@@ -230,16 +244,17 @@ export default function ServiceTable({ canWrite = true }: { canWrite?: boolean }
                         Edit Service
                       </MenuItem>
                       <MenuItem
+                        icon={s.is_archived ? ArchiveRestore : Archive}
                         danger={!s.is_archived}
                         disabled={!s.is_archived && inUse}
                         title={!s.is_archived && inUse ? lockedHint : undefined}
                         onClick={(e) => {
                           e.stopPropagation()
                           close()
-                          handleArchiveToggle(s)
+                          setArchiveTarget(s)
                         }}
                       >
-                        {s.is_archived ? "Unarchive" : "Archive"}
+                        {s.is_archived ? "Restore" : "Archive"}
                       </MenuItem>
                     </>
                   )
@@ -367,6 +382,18 @@ export default function ServiceTable({ canWrite = true }: { canWrite?: boolean }
         service={viewingService}
         open={viewingService !== null}
         onClose={() => setViewingService(null)}
+      />
+
+      <ConfirmModal
+        open={archiveTarget !== null}
+        onClose={() => !archiving && setArchiveTarget(null)}
+        onConfirm={() => archiveTarget && handleArchiveToggle(archiveTarget)}
+        title={archiveTarget?.is_archived ? "Restore service?" : "Archive service?"}
+        message={`${archiveTarget?.is_archived ? "Restore" : "Archive"} "${archiveTarget?.name ?? "this service"}"?`}
+        confirmLabel={archiving ? (archiveTarget?.is_archived ? "Restoring…" : "Archiving…") : "Confirm"}
+        tone={archiveTarget?.is_archived ? "primary" : "danger"}
+        loading={archiving}
+        icon={archiveTarget?.is_archived ? ArchiveRestore : Archive}
       />
 
       <DataTable

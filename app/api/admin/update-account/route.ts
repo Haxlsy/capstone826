@@ -29,6 +29,20 @@ export async function POST(request: Request) {
 
   const admin = createAdminClient()
 
+  // An archived account is frozen — the UI already disables Edit for it, but
+  // this is the authoritative check (e.g. against a direct API call).
+  const { data: target } = await admin
+    .from("user_account")
+    .select("is_archived")
+    .eq("id", userId)
+    .single()
+  if (target?.is_archived) {
+    return NextResponse.json(
+      { error: "This account is archived and can't be edited. Restore it first." },
+      { status: 409 },
+    )
+  }
+
   // Role is fixed at creation (see create-account, which already gates the
   // Admin role to Super Admin) and intentionally NOT accepted here — this
   // endpoint only ever updates full_name/password, matching the Edit Account

@@ -1,9 +1,10 @@
 "use client"
 
 import { useEffect, useMemo, useRef, useState } from "react"
-import { Plus, Clock, X } from "lucide-react"
+import { Plus, Clock, X, ShieldCheck, Trash2 } from "lucide-react"
 import { Drawer } from "@/components/ui/Drawer"
 import { Button } from "@/components/ui/Button"
+import { ConfirmModal } from "@/components/ui/Modal"
 import {
   ServiceTypeCombobox,
   StageList,
@@ -15,6 +16,7 @@ import {
   type CategorySection,
   type PresetItem,
 } from "./service-form-helpers"
+import { findDuplicateStageIds } from "@/lib/admin/service-stage-validation"
 
 interface AddServiceModalProps {
   open: boolean
@@ -48,6 +50,11 @@ export default function AddServiceModal({ open, onClose, onSuccess }: AddService
   const [typeDeleteError, setTypeDeleteError]       = useState("")
   const [typeDeleteAffected, setTypeDeleteAffected] = useState<string[]>([])
   const [typeDeleteLiveJobs, setTypeDeleteLiveJobs] = useState<string[]>([])
+  // Confirmation before Save, and before removing a stage/section — none of
+  // these ran through any confirmation before.
+  const [saveConfirmOpen, setSaveConfirmOpen] = useState(false)
+  const [removeStageTarget, setRemoveStageTarget]     = useState<{ categoryId: string; stageId: string; name: string } | null>(null)
+  const [removeSectionTarget, setRemoveSectionTarget] = useState<{ categoryId: string; name: string } | null>(null)
 
   useEffect(() => {
     if (!open) return
@@ -58,6 +65,7 @@ export default function AddServiceModal({ open, onClose, onSuccess }: AddService
     setServerError("")
     setTypeDeleteError("")
     setTypeDeleteAffected([]); setTypeDeleteLiveJobs([])
+    setSaveConfirmOpen(false); setRemoveStageTarget(null); setRemoveSectionTarget(null)
 
     fetch("/api/admin/category-presets")
       .then((r) => r.json())
@@ -77,8 +85,13 @@ export default function AddServiceModal({ open, onClose, onSuccess }: AddService
   }
 
   // ── Section management ──────────────────────────────────────────
-  function removeSection(categoryId: string) {
+  function removeSectionNow(categoryId: string) {
     setSections((prev) => prev.filter((s) => s.categoryId !== categoryId))
+    setRemoveSectionTarget(null)
+  }
+
+  function confirmRemoveSection(categoryId: string, name: string) {
+    setRemoveSectionTarget({ categoryId, name })
   }
 
   async function handleDeleteType(type: string) {
@@ -162,7 +175,7 @@ export default function AddServiceModal({ open, onClose, onSuccess }: AddService
     setErrors((p) => ({ ...p, [`dur_${stageId}`]: undefined as unknown as string }))
   }
 
-  function removeStage(categoryId: string, stageId: string) {
+  function removeStageNow(categoryId: string, stageId: string) {
     setSections((prev) =>
       prev.map((sec) =>
         sec.categoryId === categoryId
@@ -171,6 +184,11 @@ export default function AddServiceModal({ open, onClose, onSuccess }: AddService
       )
     )
     if (editingId === stageId) setEditingId(null)
+    setRemoveStageTarget(null)
+  }
+
+  function confirmRemoveStage(categoryId: string, stageId: string, name: string) {
+    setRemoveStageTarget({ categoryId, stageId, name: name.trim() || "this stage" })
   }
 
   const totalDurationMins = useMemo(
@@ -205,22 +223,35 @@ export default function AddServiceModal({ open, onClose, onSuccess }: AddService
     if (!form.serviceType) e.serviceType = "Service type is required."
     if (!form.serviceName.trim()) e.serviceName = "Service name is required."
     if (sections.length === 0) e.sections = "At least 1 category section is required."
+
+    // Duplicate stage names are checked across the WHOLE service (every
+    // section combined), not just within one category — the same stage name
+    // appearing twice anywhere in one service's workflow is still confusing.
+    const duplicateIds = findDuplicateStageIds(
+      sections.flatMap((sec) => sec.stages.map((s) => ({ id: s.id, name: s.name }))),
+    )
+
     sections.forEach((sec) => {
       if (sec.stages.length === 0)
         e[`section_${sec.categoryId}`] = `At least 1 stage is required in "${sec.categoryName}".`
       sec.stages.forEach((s) => {
         if (!s.name.trim()) e[`stage_${s.id}`] = "Stage name cannot be empty."
+        else if (duplicateIds.has(s.id)) e[`stage_${s.id}`] = "Another stage already has this name."
         if ((s.stage_duration_mins ?? 0) < 1) e[`dur_${s.id}`] = "Duration must be at least 1 minute."
       })
     })
     return e
   }
 
-  async function handleSubmit(e: React.SyntheticEvent) {
+  function handleSubmit(e: React.SyntheticEvent) {
     e.preventDefault()
     setServerError("")
     const errs = validate()
     if (Object.keys(errs).length > 0) { setErrors(errs); scrollToTop(); return }
+    setSaveConfirmOpen(true)
+  }
+
+  async function performSubmit() {
     setSubmitting(true)
     try {
       let seq = 1
@@ -243,10 +274,17 @@ export default function AddServiceModal({ open, onClose, onSuccess }: AddService
         }),
       })
       const json = await res.json()
-      if (!res.ok) { setServerError(json.error ?? "Something went wrong."); scrollToTop(); return }
+      if (!res.ok) {
+        setSaveConfirmOpen(false)
+        setServerError(json.error ?? "Something went wrong.")
+        scrollToTop()
+        return
+      }
+      setSaveConfirmOpen(false)
       onSuccess()
       onClose()
     } catch {
+      setSaveConfirmOpen(false)
       setServerError("Network error. Please try again.")
       scrollToTop()
     } finally {
@@ -257,6 +295,7 @@ export default function AddServiceModal({ open, onClose, onSuccess }: AddService
   const usedCategoryNames = new Set(sections.map((s) => s.categoryName.toLowerCase()))
 
   return (
+    <>
     <Drawer
       open={open}
       onClose={onClose}
@@ -348,22 +387,8 @@ export default function AddServiceModal({ open, onClose, onSuccess }: AddService
             />
           </div>
 
-          {/* Estimated Duration — computed from stage durations */}
-          <div className="space-y-1.5">
-            <label className="block text-sm font-medium text-body">Estimated Duration</label>
-            <div className="flex items-center gap-2 px-3 py-2.5 border border-border rounded-sm bg-surface-subtle">
-              <Clock className="w-4 h-4 text-muted shrink-0" />
-              <span className="text-sm font-medium text-body">
-                {minsToHHMM(totalDurationMins)}
-              </span>
-              <span className="text-xs text-muted">HH : MM</span>
-            </div>
-            <p className="text-xs text-muted">
-              Auto-calculated from the sum of all stage durations below.
-            </p>
-          </div>
-
-          {/* Workflow Stages */}
+          {/* Workflow Stages — Estimated Duration (below) is computed from these,
+              so the stages that produce it are shown first. */}
           <div className="space-y-5">
             <div>
               <h3 className="text-sm font-semibold text-heading">Workflow Stages</h3>
@@ -394,7 +419,7 @@ export default function AddServiceModal({ open, onClose, onSuccess }: AddService
                       </span>
                       <button
                         type="button"
-                        onClick={() => removeSection(sec.categoryId)}
+                        onClick={() => confirmRemoveSection(sec.categoryId, sec.categoryName)}
                         className="p-1 text-muted hover:text-status-delayed transition-colors rounded"
                         title="Remove section"
                       >
@@ -409,7 +434,7 @@ export default function AddServiceModal({ open, onClose, onSuccess }: AddService
                       setEditingId={setEditingId}
                       onUpdate={(id, val) => updateStage(sec.categoryId, id, val)}
                       onUpdateDuration={(id, mins) => updateStageDuration(sec.categoryId, id, mins)}
-                      onRemove={(id) => removeStage(sec.categoryId, id)}
+                      onRemove={(id) => confirmRemoveStage(sec.categoryId, id, sec.stages.find((s) => s.id === id)?.name ?? "")}
                       onDragStart={dnd.onDragStart}
                       onDragOver={dnd.onDragOver}
                       onDragEnd={dnd.onDragEnd}
@@ -443,10 +468,59 @@ export default function AddServiceModal({ open, onClose, onSuccess }: AddService
             </div>
           </div>
 
+          {/* Estimated Duration — computed from stage durations above */}
+          <div className="space-y-1.5">
+            <label className="block text-sm font-medium text-body">Estimated Duration</label>
+            <div className="flex items-center gap-2 px-3 py-2.5 border border-border rounded-sm bg-surface-subtle">
+              <Clock className="w-4 h-4 text-muted shrink-0" />
+              <span className="text-sm font-medium text-body">
+                {minsToHHMM(totalDurationMins)}
+              </span>
+              <span className="text-xs text-muted">HH : MM</span>
+            </div>
+            <p className="text-xs text-muted">
+              Auto-calculated from the sum of all stage durations above.
+            </p>
+          </div>
+
           <p className="text-xs text-muted">
             <span className="text-status-delayed">*</span> Required field
           </p>
         </form>
     </Drawer>
+
+    <ConfirmModal
+      open={saveConfirmOpen}
+      onClose={() => !submitting && setSaveConfirmOpen(false)}
+      onConfirm={performSubmit}
+      title="Create service?"
+      message={`Create the service "${form.serviceName.trim() || "this service"}"?`}
+      confirmLabel={submitting ? "Saving…" : "Create Service"}
+      loading={submitting}
+      icon={ShieldCheck}
+    />
+
+    <ConfirmModal
+      open={removeStageTarget !== null}
+      onClose={() => setRemoveStageTarget(null)}
+      onConfirm={() => removeStageTarget && removeStageNow(removeStageTarget.categoryId, removeStageTarget.stageId)}
+      title="Remove stage?"
+      message={`Remove "${removeStageTarget?.name ?? "this stage"}" from the workflow?`}
+      confirmLabel="Remove"
+      tone="danger"
+      icon={Trash2}
+    />
+
+    <ConfirmModal
+      open={removeSectionTarget !== null}
+      onClose={() => setRemoveSectionTarget(null)}
+      onConfirm={() => removeSectionTarget && removeSectionNow(removeSectionTarget.categoryId)}
+      title="Remove section?"
+      message={`Remove the "${removeSectionTarget?.name ?? "this"}" section and all of its stages?`}
+      confirmLabel="Remove"
+      tone="danger"
+      icon={Trash2}
+    />
+    </>
   )
 }

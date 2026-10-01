@@ -5,6 +5,7 @@ import { createAdminClient } from "@/lib/supabase/admin"
 import { logAudit } from "@/hooks/audit-helpers"
 import { getLiveJobOrdersForService } from "@/lib/operations/service-usage"
 import { getRoleCaller } from "@/lib/auth/caller"
+import { findDuplicateStageName } from "@/lib/admin/service-stage-validation"
 
 // GET /api/operations/services/[id]
 // Returns a single service with its stages (including category info) for editing.
@@ -137,6 +138,27 @@ export async function PATCH(
     if (!serviceType?.trim()) {
       return NextResponse.json({ error: "Service type is required." }, { status: 400 })
     }
+    const dupStage = findDuplicateStageName(Array.isArray(stages) ? stages : [])
+    if (dupStage) {
+      return NextResponse.json(
+        { error: `Two stages are both named "${dupStage}" — stage names must be unique.` },
+        { status: 400 },
+      )
+    }
+
+    // An archived service is frozen — the UI already disables Edit for it, but
+    // this is the authoritative check (e.g. against a direct API call).
+    const { data: target } = await supabase
+      .from("service")
+      .select("is_archived")
+      .eq("id", id)
+      .single()
+    if (target?.is_archived) {
+      return NextResponse.json(
+        { error: "This service is archived and can't be edited. Restore it first." },
+        { status: 409 },
+      )
+    }
 
     // Edits are blocked wholesale while the service has live job orders — a
     // renamed stage is a live FK (job_stage_progress.service_stage_id), so it
@@ -171,16 +193,12 @@ export async function PATCH(
     type StagePayload = { dbId: string | null; name: string; category_id: string; sequence_order: number; stage_duration_mins: number }
     const stageList: StagePayload[] = Array.isArray(stages) ? stages : []
 
-    // Derive estimated_duration_mins from stage durations
-    const derivedDuration = stageList.reduce((acc, s) => acc + (s.stage_duration_mins ?? 0), 0)
-
     const { error: updateError } = await supabase
       .from("service")
       .update({
-        name:                   trimmedName,
-        service_type:           serviceType.trim(),
-        description:            description?.trim() || null,
-        estimated_duration_mins: derivedDuration,
+        name:          trimmedName,
+        service_type:  serviceType.trim(),
+        description:   description?.trim() || null,
       })
       .eq("id", id)
 
@@ -256,6 +274,24 @@ export async function PATCH(
         })))
       if (insErr) return NextResponse.json({ error: insErr.message }, { status: 500 })
     }
+
+    // Recompute estimated_duration_mins from what's actually left in
+    // service_stage now, rather than from the submitted stageList — a stage
+    // whose removal was blocked above (still referenced by an active job's
+    // progress) stays in the table even though it was dropped from the
+    // payload, and must still count toward the total.
+    const { data: finalStages, error: finalStagesError } = await supabase
+      .from("service_stage")
+      .select("stage_duration_mins")
+      .eq("service_id", id)
+    if (finalStagesError) return NextResponse.json({ error: finalStagesError.message }, { status: 500 })
+    const finalDuration = (finalStages ?? []).reduce((acc, s) => acc + (s.stage_duration_mins ?? 0), 0)
+
+    const { error: durationError } = await supabase
+      .from("service")
+      .update({ estimated_duration_mins: finalDuration })
+      .eq("id", id)
+    if (durationError) return NextResponse.json({ error: durationError.message }, { status: 500 })
 
     logAudit({
       user_id:   user.id,

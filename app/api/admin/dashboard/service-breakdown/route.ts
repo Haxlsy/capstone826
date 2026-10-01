@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server"
 import { createAdminClient } from "@/lib/supabase/admin"
 import { getRoleCaller } from "@/lib/auth/caller"
+import { SERVICE_BREAKDOWN_STATUSES, fetchServiceBreakdown } from "@/lib/admin/service-breakdown"
 
 type Period = "today" | "week" | "month" | "overall"
 
@@ -35,30 +36,11 @@ export async function GET(request: Request) {
     const admin  = createAdminClient()
     const since  = periodStart(period)
 
-    let query = admin
-      .from("job_order")
-      .select("service:service_id ( name, service_type )")
-      .eq("is_archived", false)
-      .in("status", ["Pending", "Ongoing", "For Rework", "For Release", "Released"])
-
-    if (since) {
-      query = query.gte("created_at", since)
-    }
-
-    const { data, error } = await query
-
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 })
-
-    const countMap: Record<string, number> = {}
-    for (const row of (data ?? []) as unknown as { service: { name: string; service_type?: string | null } | { name: string; service_type?: string | null }[] | null }[]) {
-      const svcObj = Array.isArray(row.service) ? row.service[0] : row.service
-      const label  = svcObj?.service_type?.trim() || svcObj?.name || "Unknown"
-      countMap[label] = (countMap[label] ?? 0) + 1
-    }
-
-    const breakdown = Object.entries(countMap)
-      .map(([service_name, count]) => ({ service_name, count }))
-      .sort((a, b) => b.count - a.count)
+    // Base status list is shared with the server-rendered first paint (see
+    // lib/admin/service-breakdown.ts) — "Overall" must reproduce it exactly;
+    // today/week/month narrow it further with `since`. Counted in Postgres
+    // (service_breakdown_counts), not fetched row-by-row.
+    const breakdown = await fetchServiceBreakdown(admin, { statuses: SERVICE_BREAKDOWN_STATUSES, since })
 
     return NextResponse.json({ breakdown })
   } catch (err: unknown) {

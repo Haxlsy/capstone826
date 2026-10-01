@@ -2,10 +2,11 @@
 
 import { useState, useRef, useEffect } from "react"
 import { useRouter } from "next/navigation"
-import { User, Lock, Eye, EyeOff, ShieldAlert } from "lucide-react"
+import { User, Lock, Eye, EyeOff, ShieldAlert, X } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { useToast } from "@/components/ui/Toast"
 import { checkAlreadySignedIn } from "@/lib/auth/already-signed-in"
+import { loginRedirectNoticeCopy, isLoginRedirectNotice, type LoginRedirectNotice } from "@/lib/auth/login-redirect-notice"
 
 // Upper bound on how long the form can be held back by the already-signed-in
 // check — a slow check may delay the form but must never block it.
@@ -32,6 +33,8 @@ export default function LoginPage() {
   const [attempts, setAttempts] = useState(0)
   const [lockUntil, setLockUntil] = useState<number | null>(null)
   const [remaining, setRemaining] = useState(0)
+  // Persistent counterpart to the toast below — see the effect that sets it.
+  const [notice, setNotice] = useState<LoginRedirectNotice | null>(null)
   const toastRef = useRef(toast)
   useEffect(() => {
     toastRef.current = toast
@@ -82,21 +85,21 @@ export default function LoginPage() {
   // (proxy.ts — single active session per account). Reads the query param
   // directly via window.location rather than useSearchParams() so this
   // doesn't need a Suspense boundary.
+  //
+  // This fires from a BACKGROUND event (a Realtime push, a poll tick, or the
+  // next request's 401 on a tab the person isn't necessarily watching) — a
+  // toast alone can appear and auto-dismiss before they ever look back at
+  // this screen, which alpha testing reported as "no message at all" even
+  // though the redirect itself was working. `notice` persists the same
+  // explanation on the page (see the banner below) until the person
+  // dismisses it or starts typing, so it can't be missed just by bad timing.
   useEffect(() => {
     const reason = new URLSearchParams(window.location.search).get("reason")
-    if (
-      reason === "signed_in_elsewhere" || reason === "session_expired" ||
-      reason === "idle_timeout" || reason === "account_archived"
-    ) {
-      toastRef.current.error(
-        reason === "signed_in_elsewhere"
-          ? "You were signed out because your account signed in on another device."
-          : reason === "idle_timeout"
-            ? "You were signed out due to inactivity."
-            : reason === "account_archived"
-              ? "This account has been archived. Please contact an administrator."
-              : "Your session has ended — please sign in again.",
-      )
+    if (isLoginRedirectNotice(reason)) {
+      toastRef.current.error(loginRedirectNoticeCopy(reason))
+      // Deferred one tick — same shape as the `gate` effect above (a .then()
+      // callback) rather than a setState call directly in the effect body.
+      queueMicrotask(() => setNotice(reason))
       if (reason === "session_expired") {
         // The server already cleared the auth cookies; drop what only the
         // browser holds (same cleanup as a normal logout, see hooks/useLogout.ts).
@@ -263,6 +266,7 @@ export default function LoginPage() {
             onChange={(e) => {
               setUsername(e.target.value)
               if (errors.username) setErrors((p) => ({ ...p, username: undefined }))
+              if (notice) setNotice(null)
             }}
             placeholder="Enter your username"
             disabled={locked}
@@ -291,6 +295,7 @@ export default function LoginPage() {
             onChange={(e) => {
               setPassword(e.target.value)
               if (errors.password) setErrors((p) => ({ ...p, password: undefined }))
+              if (notice) setNotice(null)
             }}
             placeholder="Enter your password"
             disabled={locked}
@@ -316,6 +321,24 @@ export default function LoginPage() {
           <p className="mt-1.5 text-xs font-medium text-status-delayed">{errors.password}</p>
         )}
       </div>
+
+      {/* Signed-out notice — persists (unlike the toast fired alongside it)
+          so it's still here no matter when the person looks back at this
+          tab; a background redirect, not something they just clicked. */}
+      {notice && (
+        <div className="flex items-start gap-2.5 rounded-xl bg-status-delayed/10 border border-status-delayed/20 px-3.5 py-2.5 text-xs font-medium text-status-delayed">
+          <ShieldAlert className="h-4 w-4 shrink-0 mt-0.5" />
+          <span className="flex-1">{loginRedirectNoticeCopy(notice)}</span>
+          <button
+            type="button"
+            onClick={() => setNotice(null)}
+            aria-label="Dismiss"
+            className="-mr-1 -mt-0.5 shrink-0 rounded-full p-0.5 text-status-delayed/70 hover:text-status-delayed"
+          >
+            <X className="h-3.5 w-3.5" />
+          </button>
+        </div>
+      )}
 
       {/* Lockout Alert */}
       {locked && (

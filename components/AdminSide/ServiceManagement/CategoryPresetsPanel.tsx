@@ -1,12 +1,14 @@
 "use client"
 
 import { useCallback, useEffect, useState } from "react"
-import { ArrowLeft, Pencil, Trash2, Plus } from "lucide-react"
+import { ArrowLeft, Pencil, Trash2, Plus, ShieldCheck } from "lucide-react"
 import { COLOR_OPTIONS, colorStyles, minsToHHMM, hhmmToMins } from "./service-form-helpers"
 import { Drawer } from "@/components/ui/Drawer"
 import { Button, IconButton } from "@/components/ui/Button"
+import { ConfirmModal } from "@/components/ui/Modal"
 import { HourMinuteInput } from "@/components/ui/Field"
 import { useToast } from "@/components/ui/Toast"
+import { findDuplicateStageIds } from "@/lib/admin/service-stage-validation"
 
 interface PresetStage {
   id?:                string
@@ -71,6 +73,11 @@ export default function CategoryPresetsPanel({
   const [deletingId, setDeletingId] = useState<string | null>(null)
   const [serverError, setServerError] = useState<string | null>(null)
   const toast = useToast()
+
+  // Confirmation before Save (Create/Update) and Delete — neither ran
+  // through any confirmation before.
+  const [saveConfirmOpen, setSaveConfirmOpen] = useState(false)
+  const [deleteTarget, setDeleteTarget] = useState<CategoryPreset | null>(null)
 
   // Form state
   const [fName,  setFName]   = useState("")
@@ -165,10 +172,13 @@ export default function CategoryPresetsPanel({
     if (!fName.trim()) { setNameError("Preset name is required."); valid = false }
     if (fStages.length === 0) { setStagesError("At least 1 stage is required."); valid = false }
 
+    const duplicateKeys = findDuplicateStageIds(fStages.map((s) => ({ id: s.key, name: s.name })))
+
     const newStageErrors: Record<string, { name?: string; dur?: string }> = {}
     fStages.forEach((s) => {
       const errs: { name?: string; dur?: string } = {}
       if (!s.name.trim()) errs.name = "Stage name is required."
+      else if (duplicateKeys.has(s.key)) errs.name = "Another stage already has this name."
       if (stageRowToMins(s) < 1) errs.dur = "Duration must be at least 1 minute."
       if (errs.name || errs.dur) { newStageErrors[s.key] = errs; valid = false }
     })
@@ -177,8 +187,13 @@ export default function CategoryPresetsPanel({
     return valid
   }
 
-  async function handleSave() {
+  function handleSaveClick() {
     if (!validate()) return
+    setServerError(null)
+    setSaveConfirmOpen(true)
+  }
+
+  async function handleSave() {
     setSaving(true)
     setServerError(null)
     try {
@@ -193,8 +208,9 @@ export default function CategoryPresetsPanel({
         body: JSON.stringify({ name: fName.trim(), technician_role: fRole, display_color: fColor, stages }),
       })
       const json = await res.json()
-      if (!res.ok) { setServerError(json.error ?? "Failed to save preset."); return }
+      if (!res.ok) { setServerError(json.error ?? "Failed to save preset."); setSaveConfirmOpen(false); return }
 
+      setSaveConfirmOpen(false)
       await fetchPresets()
       setMode("list")
       showToast(mode === "edit" ? "Preset updated." : "Preset created.", true)
@@ -203,7 +219,9 @@ export default function CategoryPresetsPanel({
     }
   }
 
-  async function handleDelete(id: string, name: string) {
+  async function handleDelete() {
+    if (!deleteTarget) return
+    const { id, name } = deleteTarget
     setDeletingId(id)
     try {
       const res = await fetch(`/api/admin/category-presets/${id}`, { method: "DELETE" })
@@ -216,6 +234,7 @@ export default function CategoryPresetsPanel({
       }
     } finally {
       setDeletingId(null)
+      setDeleteTarget(null)
     }
   }
 
@@ -252,7 +271,7 @@ export default function CategoryPresetsPanel({
             <Button variant="ghost" onClick={() => { setMode("list"); clearErrors() }}>
               Cancel
             </Button>
-            <Button onClick={handleSave} disabled={saving}>
+            <Button onClick={handleSaveClick} disabled={saving}>
               {saving ? "Saving…" : mode === "edit" ? "Update Preset" : "Save Preset"}
             </Button>
           </>
@@ -302,7 +321,7 @@ export default function CategoryPresetsPanel({
                             <Pencil className="w-3.5 h-3.5" />
                           </button>
                           <button
-                            onClick={() => handleDelete(preset.id, preset.name)}
+                            onClick={() => setDeleteTarget(preset)}
                             disabled={deletingId === preset.id}
                             title="Delete preset"
                             className="p-1.5 rounded-sm hover:bg-status-delayed/10 text-muted hover:text-status-delayed transition-colors disabled:opacity-40"
@@ -440,6 +459,33 @@ export default function CategoryPresetsPanel({
             </div>
           )}
         </div>
+
+    <ConfirmModal
+      open={saveConfirmOpen}
+      onClose={() => !saving && setSaveConfirmOpen(false)}
+      onConfirm={handleSave}
+      title={mode === "edit" ? "Update preset?" : "Create preset?"}
+      message={
+        mode === "edit"
+          ? `Save changes to "${fName.trim()}"?`
+          : `Create the preset "${fName.trim()}" with ${fStages.length} stage${fStages.length === 1 ? "" : "s"}?`
+      }
+      confirmLabel={saving ? "Saving…" : mode === "edit" ? "Update" : "Create"}
+      loading={saving}
+      icon={ShieldCheck}
+    />
+
+    <ConfirmModal
+      open={deleteTarget !== null}
+      onClose={() => !deletingId && setDeleteTarget(null)}
+      onConfirm={handleDelete}
+      title="Delete preset?"
+      message={`Delete "${deleteTarget?.name ?? "this preset"}"? Services already using it keep their existing stages.`}
+      confirmLabel={deletingId ? "Deleting…" : "Delete"}
+      tone="danger"
+      loading={deletingId !== null}
+      icon={Trash2}
+    />
     </Drawer>
   )
 }
