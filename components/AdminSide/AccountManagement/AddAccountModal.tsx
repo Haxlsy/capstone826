@@ -1,9 +1,10 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import { Eye, EyeOff, Lock } from "lucide-react"
+import { Eye, EyeOff, Lock, ShieldCheck } from "lucide-react"
 import { Drawer } from "@/components/ui/Drawer"
 import { Button } from "@/components/ui/Button"
+import { ConfirmModal } from "@/components/ui/Modal"
 import { validateName } from "@/lib/name"
 
 function generateUsername(fullName: string): string {
@@ -76,6 +77,9 @@ export default function AddAccountModal({
   const [errors, setErrors] = useState<Partial<typeof EMPTY_FORM>>({})
   const [submitting, setSubmitting] = useState(false)
   const [serverError, setServerError] = useState("")
+  // A confirm step before the actual create/update request — the form only
+  // got as far as validating and saving immediately before.
+  const [confirmOpen, setConfirmOpen] = useState(false)
 
   // Reset / pre-fill when modal opens
   useEffect(() => {
@@ -83,6 +87,7 @@ export default function AddAccountModal({
       setErrors({})
       setServerError("")
       setShowPassword(false)
+      setConfirmOpen(false)
 
       if (editAccount) {
         setForm({
@@ -126,7 +131,8 @@ export default function AddAccountModal({
     return e
   }
 
-  async function handleSubmit(e: React.FormEvent) {
+  // Validates, then asks for confirmation instead of saving straight away.
+  function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     setServerError("")
 
@@ -136,6 +142,10 @@ export default function AddAccountModal({
       return
     }
     setErrors({})
+    setConfirmOpen(true)
+  }
+
+  async function performSubmit() {
     setSubmitting(true)
 
     try {
@@ -166,10 +176,14 @@ export default function AddAccountModal({
       const json = await res.json()
 
       if (!res.ok) {
+        // Back to the form (not the confirm dialog) so the error is visible
+        // next to the fields it's about.
+        setConfirmOpen(false)
         setServerError(json.error ?? "Something went wrong.")
         return
       }
 
+      setConfirmOpen(false)
       onSuccess()
       onClose()
     } catch {
@@ -184,7 +198,10 @@ export default function AddAccountModal({
     if (errors[key]) setErrors((prev) => ({ ...prev, [key]: undefined }))
   }
 
+  const roleLabel = roleOptions.find((o) => o.value === form.role)?.label ?? form.role
+
   return (
+    <>
     <Drawer
       open={open}
       onClose={onClose}
@@ -319,5 +336,21 @@ export default function AddAccountModal({
           )}
         </form>
     </Drawer>
+
+    <ConfirmModal
+      open={confirmOpen}
+      onClose={() => !submitting && setConfirmOpen(false)}
+      onConfirm={performSubmit}
+      title={isEdit ? "Save changes?" : "Create account?"}
+      message={
+        isEdit
+          ? `Save changes to ${form.fullName.trim() || "this account"}'s account?`
+          : `Create a new ${roleLabel} account for ${form.fullName.trim() || "this person"}?`
+      }
+      confirmLabel={submitting ? "Saving…" : isEdit ? "Save Changes" : "Create Account"}
+      loading={submitting}
+      icon={ShieldCheck}
+    />
+    </>
   )
 }

@@ -1,5 +1,6 @@
 import { createAdminClient } from "@/lib/supabase/admin"
 import { ACTIVE_JOB_STATUSES } from "@/lib/job-delay"
+import { SERVICE_BREAKDOWN_STATUSES, fetchServiceBreakdown } from "@/lib/admin/service-breakdown"
 
 const ACTIVE_STATUSES: readonly string[] = ACTIVE_JOB_STATUSES
 
@@ -64,23 +65,11 @@ export async function getDelayedJobs() {
 export async function getServiceBreakdown() {
   const admin = createAdminClient()
 
-  const { data } = await admin
-    .from("job_order")
-    .select("service:service_id ( name )")
-    .eq("is_archived", false)
-    .in("status", [...ACTIVE_STATUSES, "Released"])
-
-  const serviceCountMap: Record<string, number> = {}
-  for (const row of (data ?? []) as unknown as { service: { name: string } | { name: string }[] | null }[]) {
-    const svc = row.service
-    const name = Array.isArray(svc) ? (svc[0]?.name ?? "Unknown") : (svc?.name ?? "Unknown")
-    serviceCountMap[name] = (serviceCountMap[name] ?? 0) + 1
-  }
-
-  return Object.entries(serviceCountMap).map(([service_name, count]) => ({
-    service_name,
-    count,
-  }))
+  // Status list and grouping are shared with the API route the chart's period
+  // tabs call (see lib/admin/service-breakdown.ts) — this is the "Overall"
+  // view before any tab is clicked, so it must compute the identical thing.
+  // Counted in Postgres (service_breakdown_counts), not fetched row-by-row.
+  return fetchServiceBreakdown(admin, { statuses: SERVICE_BREAKDOWN_STATUSES })
 }
 
 export async function getTechnicians() {

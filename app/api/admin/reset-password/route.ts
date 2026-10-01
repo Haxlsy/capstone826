@@ -27,12 +27,21 @@ export async function POST(request: Request) {
 
     const admin = createAdminClient()
 
-    // Fetch profile for audit log
+    // Fetch profile for audit log (and the archived check below)
     const { data: profile } = await admin
       .from("user_account")
-      .select("full_name, role")
+      .select("full_name, role, is_archived")
       .eq("id", userId)
       .single()
+
+    // An archived account is frozen — the UI already disables Reset Password
+    // for it, but this is the authoritative check (e.g. against a direct API call).
+    if (profile?.is_archived) {
+      return NextResponse.json(
+        { error: "This account is archived — restore it first before resetting its password." },
+        { status: 409 },
+      )
+    }
 
     const newPassword = generatePassword()
 

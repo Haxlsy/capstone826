@@ -4,6 +4,7 @@ import { createClient } from "@/lib/supabase/server"
 import { createAdminClient } from "@/lib/supabase/admin"
 import { logAudit } from "@/hooks/audit-helpers"
 import { getRoleCaller } from "@/lib/auth/caller"
+import { findDuplicateStageName } from "@/lib/admin/service-stage-validation"
 
 interface Stage {
   name:               string
@@ -45,6 +46,14 @@ export async function POST(request: Request) {
 
   const stageList: Stage[] = Array.isArray(stages) ? stages : []
   const estimatedDurationMins = stageList.reduce((acc, s) => acc + (s.stage_duration_mins ?? 0), 0)
+
+  const dupStage = findDuplicateStageName(stageList)
+  if (dupStage) {
+    return NextResponse.json(
+      { error: `Two stages are both named "${dupStage}" — stage names must be unique.` },
+      { status: 400 },
+    )
+  }
 
   const trimmedName = serviceName.trim()
 

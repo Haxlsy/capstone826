@@ -53,6 +53,8 @@ export default function AccountTable() {
   const [resetResult, setResetResult] = useState<string | null>(null)
   const [copied, setCopied] = useState(false)
   const [refetchKey, setRefetchKey] = useState(0)
+  const [archiveTarget, setArchiveTarget] = useState<Account | null>(null)
+  const [archiving, setArchiving] = useState(false)
 
   const forceRefetch = () => setRefetchKey((k) => k + 1)
 
@@ -95,17 +97,23 @@ export default function AccountTable() {
 
   async function handleArchiveToggle(account: Account) {
     const newArchived = !account.is_archived
-    const res = await fetch("/api/admin/archive-account", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ userId: account.id, isArchived: newArchived }),
-    })
-    if (!res.ok) {
-      toast.error("Failed to update account status.")
-    } else {
-      toast.success(newArchived ? "Account archived." : "Account restored.")
+    setArchiving(true)
+    try {
+      const res = await fetch("/api/admin/archive-account", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ userId: account.id, isArchived: newArchived }),
+      })
+      if (!res.ok) {
+        toast.error("Failed to update account status.")
+      } else {
+        toast.success(newArchived ? "Account archived." : "Account restored.")
+      }
+      forceRefetch()
+    } finally {
+      setArchiving(false)
+      setArchiveTarget(null)
     }
-    forceRefetch()
   }
 
   async function handleResetPassword() {
@@ -187,7 +195,10 @@ export default function AccountTable() {
             <>
               <MenuItem
                 icon={Pencil}
+                disabled={a.is_archived}
+                title={a.is_archived ? "Restore this account to edit it." : undefined}
                 onClick={() => {
+                  if (a.is_archived) return
                   close()
                   setEditingAccount(a)
                 }}
@@ -196,7 +207,10 @@ export default function AccountTable() {
               </MenuItem>
               <MenuItem
                 icon={KeyRound}
+                disabled={a.is_archived}
+                title={a.is_archived ? "Restore this account to reset its password." : undefined}
                 onClick={() => {
+                  if (a.is_archived) return
                   close()
                   setResetTarget({ id: a.id, name: a.full_name })
                 }}
@@ -208,10 +222,10 @@ export default function AccountTable() {
                 danger={!a.is_archived}
                 onClick={() => {
                   close()
-                  handleArchiveToggle(a)
+                  setArchiveTarget(a)
                 }}
               >
-                {a.is_archived ? "Unarchive" : "Archive"}
+                {a.is_archived ? "Restore" : "Archive"}
               </MenuItem>
             </>
           )}
@@ -313,6 +327,18 @@ export default function AccountTable() {
         confirmLabel="Reset"
         loading={resetting}
         icon={KeyRound}
+      />
+
+      <ConfirmModal
+        open={archiveTarget !== null}
+        onClose={() => !archiving && setArchiveTarget(null)}
+        onConfirm={() => archiveTarget && handleArchiveToggle(archiveTarget)}
+        title={archiveTarget?.is_archived ? "Restore Account" : "Archive Account"}
+        message={`${archiveTarget?.is_archived ? "Restore" : "Archive"} ${archiveTarget?.full_name ?? "this account"}?`}
+        confirmLabel={archiving ? (archiveTarget?.is_archived ? "Restoring…" : "Archiving…") : "Confirm"}
+        tone={archiveTarget?.is_archived ? "primary" : "danger"}
+        loading={archiving}
+        icon={archiveTarget?.is_archived ? ArchiveRestore : Archive}
       />
 
       <Modal open={resetResult !== null} onClose={() => { setResetResult(null); setCopied(false) }} size="sm" bare>
