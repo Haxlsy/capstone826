@@ -8,6 +8,8 @@ import { OfflineSyncProvider } from "@/components/dashboard/OperationComponents/
 import { SessionEnforcement } from "@/components/shared/SessionEnforcement"
 import { IdleTimeout } from "@/components/shared/IdleTimeout"
 import { ServiceWorkerRegistration } from "@/components/shared/ServiceWorkerRegistration"
+import ChangePasswordSettings from "@/components/shared/ChangePasswordSettings"
+import OfflineSyncSettings from "@/components/dashboard/OperationComponents/OfflineSyncSettings"
 
 /**
  * Single dashboard shell for operations / sales / admin. The nav config is
@@ -17,7 +19,7 @@ import { ServiceWorkerRegistration } from "@/components/shared/ServiceWorkerRegi
 export default function DashboardShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname()
   const area = resolveNavArea(pathname)
-  const { nav, settingsHref, fallbackName, showBell } = navFor(area)
+  const { nav, fallbackName, showBell } = navFor(area)
 
   // Only Operations shows the Concerns nav badge, and only Operations may read
   // /api/operations/job-concerns — Sales/Admin used to fire it on every page and
@@ -35,7 +37,7 @@ export default function DashboardShell({ children }: { children: React.ReactNode
   return (
     <AppShell
       nav={resolvedNav}
-      settingsHref={settingsHref}
+      settingsContent={<ChangePasswordSettings extraSection={area === "operations" ? <OfflineSyncSettings /> : undefined} />}
       fallbackName={fallbackName}
       showBell={showBell}
       showOfflineBanner={area === "operations"}

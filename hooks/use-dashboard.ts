@@ -6,6 +6,7 @@ import { useRealtimeRefetch } from "@/hooks/useRealtimeRefetch"
 
 export type OperationsDashboardData = {
   status_counts: Record<string, number>
+  jobs_by_status: Record<string, { id: string; job_order_code: string; customer_name: string; service_name: string; status: string }[]>
   concern_count: number
   recent_jobs: {
     id: string

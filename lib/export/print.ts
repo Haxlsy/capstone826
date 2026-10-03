@@ -1,10 +1,12 @@
 /**
  * Shared helpers for client-side exports: an HTML print preview (PDF via the
- * browser's print dialog) and a CSV download that opens cleanly in Excel.
+ * browser's print dialog), a CSV download that opens cleanly in Excel, and a
+ * real multi-sheet .xlsx download.
  *
  * The Job Order exports have their own inline copies of this (with a smaller
  * escape and no CSV hardening); this is the safer version for new exports.
  */
+import type ExcelJS from "exceljs"
 
 // Table colours for the print export — same values as the Job Order print.
 export const PRINT_BORDER = "#dddddd"
@@ -66,4 +68,17 @@ export function openPrintPreview(html: string): void {
   const url = URL.createObjectURL(blob)
   const win = window.open(url, "_blank")
   if (win) win.addEventListener("load", () => { win.print(); URL.revokeObjectURL(url) })
+}
+
+/** Downloads an exceljs Workbook as a real .xlsx file — the shared home for
+ *  any multi-sheet Excel export, the same way downloadCsv is for CSV. */
+export async function downloadWorkbook(filename: string, workbook: ExcelJS.Workbook): Promise<void> {
+  const buffer = await workbook.xlsx.writeBuffer()
+  const blob = new Blob([buffer], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement("a")
+  a.href = url
+  a.download = filename
+  a.click()
+  URL.revokeObjectURL(url)
 }

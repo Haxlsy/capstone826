@@ -13,7 +13,7 @@ export default function OperationsDashboard(props: OperationsDashboardData) {
   // no live updates at all; QuickAccessPanel already self-manages its own
   // freshness and keeps doing so independently.
   const { data } = useOperationsDashboard(props)
-  const { calendar_jobs, concern_count, recent_jobs, status_counts } = data ?? props
+  const { calendar_jobs, concern_count, recent_jobs, status_counts, jobs_by_status } = data ?? props
 
   return (
     <div className="space-y-5">
@@ -25,6 +25,7 @@ export default function OperationsDashboard(props: OperationsDashboardData) {
         loading={false}
         counts={status_counts ?? {}}
         concernCount={concern_count ?? 0}
+        jobsByStatus={jobs_by_status}
       />
       <div className="grid gap-5 xl:grid-cols-[1fr_320px]">
         <JobCalendarView loading={false} calendarJobs={calendar_jobs ?? []} />

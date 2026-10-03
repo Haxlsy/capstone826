@@ -64,6 +64,22 @@ export default function JobConcerns({ initialRecords }: { initialRecords: Concer
     router.replace(url.pathname + url.search)
   }, [requestedConcern, requestedRecord, queryClient, router])
 
+  // Deep-link from the Operations dashboard's Concerns summary card
+  // (?filter=Pending) — same cleanup convention as ?concern= above, but
+  // doesn't need to wait for data since the filter itself needs nothing
+  // loaded first.
+  const requestedFilter = useSearchParams().get("filter")
+  useEffect(() => {
+    if (!requestedFilter) return
+    if ((FILTERS as string[]).includes(requestedFilter)) {
+      setActiveFilter(requestedFilter as FilterType)
+    }
+    const url = new URL(window.location.href)
+    url.searchParams.delete("filter")
+    router.replace(url.pathname + url.search)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [requestedFilter])
+
   function handleResolve(id: string, note: string) {
     // Patch the list itself, not just the open drawer's local copy — while
     // offline the invalidate below is a no-op (its background refetch just
