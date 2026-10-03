@@ -34,7 +34,7 @@ export default function DashboardShell({ children }: { children: React.ReactNode
         )
       : nav
 
-  return (
+  const shell = (
     <AppShell
       nav={resolvedNav}
       settingsContent={<ChangePasswordSettings extraSection={area === "operations" ? <OfflineSyncSettings /> : undefined} />}
@@ -46,7 +46,13 @@ export default function DashboardShell({ children }: { children: React.ReactNode
       <SessionEnforcement />
       <IdleTimeout />
       <ServiceWorkerRegistration prewarm={area === "operations"} />
-      {area === "operations" ? <OfflineSyncProvider>{children}</OfflineSyncProvider> : children}
+      {children}
     </AppShell>
   )
+
+  // Must wrap the whole shell, not just `children` — the Settings modal's
+  // Operations-only OfflineSyncSettings section renders inside AppSidebar
+  // (a sibling of `children` here), so it needs to be a descendant of the
+  // provider too, not just the page content.
+  return area === "operations" ? <OfflineSyncProvider>{shell}</OfflineSyncProvider> : shell
 }
