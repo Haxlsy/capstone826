@@ -79,7 +79,7 @@ export async function POST(request: Request) {
       if (stagesErr) return NextResponse.json({ error: stagesErr.message }, { status: 500 })
     }
 
-    logAuditCall(auditCallerOf(caller), {
+    await logAuditCall(auditCallerOf(caller), {
       category: "create",
       action:   "Created workflow category preset",
       target:   preset.name,

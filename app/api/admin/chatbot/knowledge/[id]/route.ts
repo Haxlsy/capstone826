@@ -63,7 +63,7 @@ export async function PATCH(
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
-  logAuditCall(auditCallerOf(caller), {
+  await logAuditCall(auditCallerOf(caller), {
     category: "update",
     action:   "Updated knowledge entry",
     target:   parsed.data.topic ?? id,
@@ -94,7 +94,7 @@ export async function DELETE(
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
-  logAuditCall(auditCallerOf(caller), {
+  await logAuditCall(auditCallerOf(caller), {
     category: "delete",
     action:   "Deleted knowledge entry",
     target:   entry?.topic ?? id,

@@ -9,6 +9,7 @@ export type AuditRole =
 export type AuditCategory =
   | "auth"
   | "view"
+  | "export"
   | "create"
   | "update"
   | "approve"

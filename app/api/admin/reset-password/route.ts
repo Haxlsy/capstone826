@@ -59,7 +59,7 @@ export async function POST(request: Request) {
     // Actor = the admin who performed the reset (previously this was recorded
     // under the reset account itself, so it never showed up under the admin).
     // Logged even if the profile lookup failed — falls back to the user id.
-    logAuditCall(caller, {
+    await logAuditCall(caller, {
       category: "auth",
       action:   "Reset account password",
       target:   profile ? `${profile.full_name} (${profile.role})` : userId,

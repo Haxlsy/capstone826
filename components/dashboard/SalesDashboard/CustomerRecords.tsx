@@ -17,6 +17,7 @@ import { useToast } from "@/components/ui/Toast"
 import { ConfirmModal } from "@/components/ui/Modal"
 import { useOfflineLock } from "@/hooks/useOfflineLock"
 import { logView } from "@/lib/client/log-view"
+import { logExport } from "@/lib/client/log-export"
 import { cn } from "@/lib/utils"
 import { LinkAccountModal, type CustomerOption } from "./LinkAccountModal"
 import {
@@ -416,8 +417,10 @@ export default function CustomerRecords() {
       const now = new Date()
       if (type === "excel") {
         downloadCsv(exportFilename(now), buildCsv([...EXPORT_HEADERS], all.map(toCsvCells)))
+        logExport("customer_records_excel", filterNote || undefined)
       } else {
         openPrintPreview(buildPrintHtml(all, fmtDate(now.toISOString()), filterNote || null))
+        logExport("customer_records_pdf", filterNote || undefined)
       }
       setExportConfirm(null)
     } catch (err: unknown) {

@@ -171,7 +171,7 @@ export async function PATCH(request: Request) {
 
     const caller = await getAuditCaller()
     if (caller) {
-      logAuditCall(caller, {
+      await logAuditCall(caller, {
         category: "update",
         action:   "Updated technician",
         target:   techName ?? `technician ${id}`,
@@ -228,7 +228,7 @@ export async function POST(request: Request) {
 
     const caller = await getAuditCaller()
     if (caller) {
-      logAuditCall(caller, {
+      await logAuditCall(caller, {
         category: "create",
         action:   "Created technician",
         target:   data.full_name,

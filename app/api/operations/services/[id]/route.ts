@@ -55,7 +55,7 @@ export async function GET(
       }
     })
 
-    logAuditCall(auth.caller, {
+    await logAuditCall(auth.caller, {
       category: "view",
       action:   "Viewed service details",
       target:   serviceRes.data.name,

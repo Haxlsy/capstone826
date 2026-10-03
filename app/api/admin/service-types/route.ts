@@ -61,7 +61,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: error.message }, { status: 500 })
     }
 
-    logAuditCall(auditCallerOf(caller), {
+    await logAuditCall(auditCallerOf(caller), {
       category: "create",
       action:   "Created service type",
       target:   name,

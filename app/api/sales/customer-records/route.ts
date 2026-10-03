@@ -182,7 +182,7 @@ export async function POST(request: Request) {
         .select()
         .single()
       if (updErr) return NextResponse.json({ error: updErr.message }, { status: 500 })
-      logAuditCall(caller, { category: "update", action: "Updated customer record", target: full_name })
+      await logAuditCall(caller, { category: "update", action: "Updated customer record", target: full_name })
       return NextResponse.json({ record: updated, customer_id: existingVehicle.customer_id }, { status: 200 })
     }
 
@@ -221,7 +221,7 @@ export async function POST(request: Request) {
       }
       customerId = created.id as string
       bookedBy = decision.bookedByCustomerId
-      logAuditCall(caller, { category: "create", action: "Created customer", target: full_name })
+      await logAuditCall(caller, { category: "create", action: "Created customer", target: full_name })
     }
 
     const { data: vehicle, error: vehErr } = await supabase
@@ -241,7 +241,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: vehErr.message }, { status: 500 })
     }
 
-    logAuditCall(caller, { category: "create", action: "Created customer record", target: full_name })
+    await logAuditCall(caller, { category: "create", action: "Created customer record", target: full_name })
     return NextResponse.json({ record: vehicle, customer_id: customerId }, { status: 201 })
   } catch (err: unknown) {
     return NextResponse.json({ error: err instanceof Error ? err.message : String(err) }, { status: 500 })

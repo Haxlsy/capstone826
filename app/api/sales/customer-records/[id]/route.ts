@@ -81,7 +81,7 @@ export async function PATCH(
     }
 
     const owner = (Array.isArray(vehicle.customer) ? vehicle.customer[0] : vehicle.customer) as { full_name?: string } | null
-    logAuditCall(caller, {
+    await logAuditCall(caller, {
       category: "update",
       action:   "Updated vehicle",
       target:   owner?.full_name ?? `vehicle ${id}`,
@@ -131,7 +131,7 @@ export async function DELETE(
     if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
     const owner = (Array.isArray(vehicle.customer) ? vehicle.customer[0] : vehicle.customer) as { full_name?: string } | null
-    logAuditCall(caller, {
+    await logAuditCall(caller, {
       category: "delete",
       action:   "Deleted vehicle",
       target:   `${owner?.full_name ?? "customer"} — ${vehicle.plate_number as string}`,

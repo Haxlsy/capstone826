@@ -85,7 +85,7 @@ export async function POST(
 
     const caller = await getAuditCaller()
     if (caller) {
-      logAuditCall(caller, {
+      await logAuditCall(caller, {
         category: "create",
         action:   "Attached media to concern",
         target:   `${concernCustomerName ?? `concern ${concernId}`} (${isPhoto ? "photo" : "video"})`,

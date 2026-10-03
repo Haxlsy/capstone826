@@ -246,7 +246,7 @@ export async function GET(
       isDelayedMap.set(stageId, d.is_delayed)
     }
 
-    logAuditCall(auth.caller, {
+    await logAuditCall(auth.caller, {
       category: "view",
       action:   "Viewed job order details",
       target:   j.job_order_code,
@@ -409,7 +409,7 @@ export async function PATCH(
         changed_by_id: user.id,
       })
       if (caller) {
-        logAuditCall(caller, { category: "update", action: "Started job", target: jobLabel })
+        await logAuditCall(caller, { category: "update", action: "Started job", target: jobLabel })
       }
       // Operations' job pages aren't realtime — this is how they hear the job started.
       await notifyJobStatusChange(admin, { jobId, jobLabel, from: "Pending", to: "Ongoing", actorId: user.id })
@@ -570,7 +570,7 @@ export async function PATCH(
       }
 
       if (caller) {
-        logAuditCall(caller, {
+        await logAuditCall(caller, {
           category: "update",
           action:   "Marked stage as done",
           target:   `${jobLabel} — ${stageName}`,
@@ -716,7 +716,7 @@ export async function PATCH(
       const categoryName = (cat as any)?.name ?? category_id
 
       if (caller) {
-        logAuditCall(caller, {
+        await logAuditCall(caller, {
           category: "approve",
           action:   "Approved category handoff",
           target:   `${jobLabel} — ${categoryName}`,
@@ -839,7 +839,7 @@ export async function PATCH(
       if (updateErr) return NextResponse.json({ error: updateErr.message }, { status: 500 })
 
       if (caller) {
-        logAuditCall(caller, { category: "approve", action: "Passed job to operations", target: jobLabel })
+        await logAuditCall(caller, { category: "approve", action: "Passed job to operations", target: jobLabel })
       }
       await notifyJobStatusChange(admin, { jobId, jobLabel, to: "For Inspection", actorId: user.id })
 
@@ -926,7 +926,7 @@ export async function PATCH(
       })
 
       if (caller) {
-        logAuditCall(caller, {
+        await logAuditCall(caller, {
           category: "flag",
           action:   "Flagged stages for rework",
           target:   `${jobLabel} (${stage_ids.length} stage(s))`,

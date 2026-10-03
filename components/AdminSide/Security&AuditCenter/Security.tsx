@@ -13,6 +13,7 @@ import { useAuditLogs, fetchAllAuditLogs } from "@/hooks/use-audit-logs"
 import { toggleSort, type AuditSortColumn } from "@/lib/admin/audit-log-query"
 import { buildCsv, downloadCsv, openPrintPreview } from "@/lib/export/print"
 import { exportHeaders, toCsvCells, exportFilename, buildPrintHtml } from "@/lib/admin/audit-log-export"
+import { logExport } from "@/lib/client/log-export"
 import { ConfirmModal } from "@/components/ui/Modal"
 import { useToast } from "@/components/ui/Toast"
 
@@ -58,8 +59,10 @@ export default function SecurityView() {
         const now = new Date()
         if (type === "excel") {
           downloadCsv(exportFilename("security-logs", now), buildCsv([...exportHeaders(false)], all.map((e) => toCsvCells(e, false))))
+          logExport("security_logs_excel", filterNote ?? undefined)
         } else {
           openPrintPreview(buildPrintHtml("Security Logs", all, false, new Date().toLocaleString("en-US", { timeZone: "Asia/Manila" }), filterNote))
+          logExport("security_logs_pdf", filterNote ?? undefined)
         }
         setExportConfirm(null)
       } catch (err: unknown) {

@@ -1,5 +1,5 @@
 import { AuditCategory, AuditRole } from "../../../types/audit"
-import  { LogIn, Eye, Plus, RefreshCw, CheckCircle2, AlertTriangle,
+import  { LogIn, Eye, Download, Plus, RefreshCw, CheckCircle2, AlertTriangle,
   MessageSquare, Trash2 } from "lucide-react"
 import { roleStyle, roleLabel } from "@/lib/ui/roles"
 
@@ -26,6 +26,7 @@ export const ROLE_BADGE: Record<AuditRole, string> = {
 export const CATEGORY_ICON: Record<AuditCategory, React.ReactNode> = {
   auth:    <LogIn       className="w-3.5 h-3.5" />,
   view:    <Eye         className="w-3.5 h-3.5" />,
+  export:  <Download    className="w-3.5 h-3.5" />,
   create:  <Plus        className="w-3.5 h-3.5" />,
   update:  <RefreshCw   className="w-3.5 h-3.5" />,
   approve: <CheckCircle2 className="w-3.5 h-3.5" />,
@@ -41,6 +42,7 @@ export const ALL_ROLES: AuditRole[] = [
 export const CATEGORY_COLOR: Record<AuditCategory, string> = {
   auth:    "text-body  bg-surface-muted",
   view:    "text-primary  bg-primary/10",
+  export:  "text-status-ongoing  bg-status-ongoing/10",
   create:  "text-status-inspection bg-status-inspection/10",
   update:  "text-primary  bg-primary/12",
   approve: "text-status-inspection bg-status-inspection/10",

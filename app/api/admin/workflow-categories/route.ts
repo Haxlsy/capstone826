@@ -36,7 +36,7 @@ export async function POST(request: Request) {
 
     if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
-    logAuditCall(auditCallerOf(caller), {
+    await logAuditCall(auditCallerOf(caller), {
       category: "create",
       action:   "Created or updated workflow category",
       target:   data.name,
