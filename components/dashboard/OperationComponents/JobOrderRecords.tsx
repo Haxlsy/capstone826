@@ -274,7 +274,7 @@ export default function JobOrderRecords({ jobOrders: rawOrders }: { jobOrders: a
         columns={columns}
         rows={paginated}
         rowKey={(r) => r.id}
-        onRowClick={(r) => router.push(`/dashboard/job-management/${r.id}?from=records`)}
+        onRowClick={(r) => router.push(`/dashboard/job-order-records/${r.id}`)}
         emptyLabel="No released job orders found."
         footer={
           <Pagination

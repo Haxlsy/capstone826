@@ -5,7 +5,7 @@ import Link from "next/link"
 import { useRouter } from "next/navigation"
 import {
   ArrowLeft, PackageCheck, ChevronDown, Users, RefreshCw, CheckCircle2, XCircle,
-  Clock, RotateCcw, UserPlus, Loader2, Trash2, FileText, Pencil, X,
+  Clock, RotateCcw, UserPlus, Loader2, Trash2, FileText, FileSpreadsheet, Pencil, X,
 } from "lucide-react"
 import { JobOrderDetailSkeleton } from "@/app/dashboard/job-management/[id]/loading"
 import { PageHeader } from "@/components/ui/PageHeader"
@@ -16,6 +16,8 @@ import { StatusBadge, Badge } from "@/components/ui/Badge"
 import { Textarea, Input } from "@/components/ui/Field"
 import { EmptyState } from "@/components/ui/EmptyState"
 import { useToast } from "@/components/ui/Toast"
+import { openPrintPreview, downloadWorkbook } from "@/lib/export/print"
+import { buildPrintHtml, buildWorkbook, exportFilename } from "@/lib/operations/job-order-export"
 import { substituteRoleLabel } from "@/lib/substitute-label"
 import { formatOperatingHours, isWithinOperatingHours, DEFAULT_OPERATING_DAYS, DEFAULT_OPERATING_OPEN_TIME, DEFAULT_OPERATING_CLOSE_TIME, type Weekday, type Holiday } from "@/types/chatbot"
 import { alreadyOnJob } from "@/lib/operations/team-membership"
@@ -34,6 +36,7 @@ interface StageMedia {
   file_url: string
   media_type: "photo" | "video"
   rework_round?: number
+  uploaded_at?: string
 }
 
 interface Stage {
@@ -67,6 +70,7 @@ interface HistoryEntry {
   status: string
   created_at: string
   changed_by: string
+  reason: string | null
 }
 
 interface TeamMember {
@@ -230,7 +234,8 @@ export default function JobOrderDetail({
 
   const [completeConfirm, setCompleteConfirm] = useState(false)
 
-  const [exportConfirm, setExportConfirm] = useState(false)
+  const [exportConfirm, setExportConfirm] = useState<"pdf" | "excel" | null>(null)
+  const [exporting, setExporting] = useState(false)
 
   const [subModal, setSubModal] = useState(false)
   const [subRole, setSubRole] = useState<"detailer" | "installer">("detailer")
@@ -673,37 +678,21 @@ export default function JobOrderDetail({
 
   const jobData = job
 
-  function exportPDF() {
-    const esc = (v: string) =>
-      v.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
-    const rows: [string, string][] = [
-      ["Job Order ID", jobData.job_order_code],
-      ["Customer Name", jobData.customer_name],
-      ["Email", jobData.email ?? "—"],
-      ["Phone Number", jobData.contact_number],
-      ["Vehicle", jobData.vehicle_unit],
-      ["Plate Number", jobData.plate_number],
-      ["Service", jobData.service],
-    ]
-    const rowsHtml = rows
-      .map(([label, value]) => `<tr><td>${esc(label)}</td><td>${esc(value)}</td></tr>`)
-      .join("")
-    const html = `<html><head><title>Job Order ${esc(jobData.job_order_code)}</title>
-      <style>body{font-family:sans-serif;font-size:12px;color:#111;margin:32px}
-      .brand{font-size:18px;font-weight:700}.branch{margin-top:2px;font-size:12px;color:#555}
-      .meta{margin-top:10px;font-size:11px;color:#777}hr{border:none;border-top:2px solid #111;margin:14px 0 20px}
-      table{width:100%;border-collapse:collapse}
-      th,td{border:1px solid #dddddd;padding:6px 8px;text-align:left}td:first-child{font-weight:600;width:40%;background:#f7f8f8}</style>
-      </head><body>
-      <div class="brand">826 Auto Aesthetic &amp; Protection</div>
-      <div class="branch">Ortigas Extension</div>
-      <div class="meta">Generated on ${esc(new Date().toLocaleString())}</div>
-      <hr />
-      <table><tbody>${rowsHtml}</tbody></table></body></html>`
-    const blob = new Blob([html], { type: "text/html;charset=utf-8;" })
-    const url = URL.createObjectURL(blob)
-    const win = window.open(url, "_blank")
-    if (win) win.addEventListener("load", () => { win.print(); URL.revokeObjectURL(url) })
+  async function runExport(kind: "pdf" | "excel") {
+    setExporting(true)
+    try {
+      const now = new Date()
+      if (kind === "pdf") {
+        openPrintPreview(buildPrintHtml(jobData, now.toLocaleString("en-US", { timeZone: "Asia/Manila" })))
+      } else {
+        await downloadWorkbook(exportFilename(jobData.job_order_code, "xlsx", now), buildWorkbook(jobData))
+      }
+      setExportConfirm(null)
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to export job order.")
+    } finally {
+      setExporting(false)
+    }
   }
 
   const categoryGroups = job.stages.reduce((acc, s) => {
@@ -744,11 +733,17 @@ export default function JobOrderDetail({
           {backLabel}
         </Link>
         <div className="flex flex-wrap items-center gap-2">
-          {job.status !== "Released" && (
-            <Button variant="secondary" onClick={() => setExportConfirm(true)}>
-              <FileText className="h-4 w-4" />
-              Export PDF
-            </Button>
+          {job.status === "Released" && (
+            <>
+              <Button variant="secondary" onClick={() => setExportConfirm("pdf")}>
+                <FileText className="h-4 w-4" />
+                Export PDF
+              </Button>
+              <Button variant="secondary" onClick={() => setExportConfirm("excel")}>
+                <FileSpreadsheet className="h-4 w-4" />
+                Export Excel
+              </Button>
+            </>
           )}
           {job.status === "Pending" && (
             <Button variant="danger" onClick={() => setCancelConfirm(true)} {...lockProps}>
@@ -1055,20 +1050,21 @@ export default function JobOrderDetail({
         </CardBody>
       </Card>
 
-      {/* Export PDF Confirmation */}
+      {/* Export Confirmation */}
       <ConfirmModal
-        open={exportConfirm}
-        onClose={() => setExportConfirm(false)}
-        onConfirm={() => {
-          setExportConfirm(false)
-          exportPDF()
-        }}
-        title="Export Job Order as PDF"
-        message={`Export ${job.customer_name}'s job order? This opens a print preview in a new tab.`}
-        confirmLabel="Export"
+        open={exportConfirm !== null}
+        onClose={() => !exporting && setExportConfirm(null)}
+        onConfirm={() => { if (exportConfirm) runExport(exportConfirm) }}
+        title={exportConfirm === "excel" ? "Export Job Order as Excel" : "Export Job Order as PDF"}
+        message={
+          `Export ${job.customer_name}'s full job order record — status history, stages, and photos?` +
+          (exportConfirm === "excel" ? " Downloads as a .xlsx file." : " This opens a print preview in a new tab.")
+        }
+        confirmLabel={exporting ? "Exporting…" : "Export"}
         cancelLabel="Cancel"
         tone="primary"
-        icon={FileText}
+        loading={exporting}
+        icon={exportConfirm === "excel" ? FileSpreadsheet : FileText}
       />
 
       {/* Mark as Completed Confirmation */}

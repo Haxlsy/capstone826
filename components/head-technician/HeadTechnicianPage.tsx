@@ -6,6 +6,7 @@ import { Status } from "./components/types"
 import { HeadTechJobCard } from "./components/HeadTechJobCard"
 import { BottomNav } from "./components/BottomNav"
 import { StatCard } from "@/components/ui/StatCard"
+import { Modal } from "@/components/ui/Modal"
 import { Tabs } from "@/components/ui/Tabs"
 import { Popover } from "@/components/ui/Popover"
 import { FilterTrigger } from "@/components/ui/FilterTrigger"
@@ -37,6 +38,7 @@ export default function HeadTechnicianPage({
   const loading = isPending
   const [searchQuery, setSearchQuery] = useState("")
   const [statusFilter, setStatusFilter] = useState("all")
+  const [statusModal, setStatusModal] = useState<"Total" | "Ongoing" | "For Rework" | "Delayed" | null>(null)
 
   const filteredJobs = jobs.filter((job) => {
     // Compares against the DISPLAY status (job.status re-resolved through
@@ -66,6 +68,20 @@ export default function HeadTechnicianPage({
   // here used to miss every never-started overdue job.
   const delayedCount = jobs.filter((j) => j.is_overdue).length
   const isFiltered   = statusFilter !== "all" || searchQuery.trim() !== ""
+
+  // The jobs a clicked summary card's modal lists — deliberately mirrors each
+  // count variable's own predicate above (not displayJobStatus, which would
+  // undercount Ongoing/Rework here: it reclassifies an overdue job as
+  // "Delayed" regardless of raw status, but ongoingCount/reworkCount don't
+  // exclude overdue jobs) — so the modal's list length always equals the
+  // number on the card it was opened from.
+  const modalJobs = statusModal === null
+    ? []
+    : statusModal === "Total"
+      ? jobs
+      : statusModal === "Delayed"
+        ? jobs.filter((j) => j.is_overdue)
+        : jobs.filter((j) => j.status === statusModal)
 
   return (
     <>
@@ -133,10 +149,10 @@ export default function HeadTechnicianPage({
         {/* ── Stat cards ──────────────────────────────────────────── */}
         {!loading && jobs.length > 0 && (
           <div className="grid grid-cols-2 gap-2">
-            <StatCard label="Total" value={jobs.length} icon={Layers} tone="total" />
-            <StatCard label="Ongoing" value={ongoingCount} icon={Wrench} tone="ongoing" />
-            <StatCard label="Rework" value={reworkCount} icon={RefreshCw} tone="rework" />
-            <StatCard label="Delayed" value={delayedCount} icon={AlertCircle} tone="delayed" />
+            <StatCard label="Total" value={jobs.length} icon={Layers} tone="total" onClick={() => setStatusModal("Total")} />
+            <StatCard label="Ongoing" value={ongoingCount} icon={Wrench} tone="ongoing" onClick={() => setStatusModal("Ongoing")} />
+            <StatCard label="Rework" value={reworkCount} icon={RefreshCw} tone="rework" onClick={() => setStatusModal("For Rework")} />
+            <StatCard label="Delayed" value={delayedCount} icon={AlertCircle} tone="delayed" onClick={() => setStatusModal("Delayed")} />
           </div>
         )}
 
@@ -179,6 +195,22 @@ export default function HeadTechnicianPage({
           )}
         </div>
       </main>
+
+      <Modal
+        open={statusModal !== null}
+        onClose={() => setStatusModal(null)}
+        title={statusModal ? `${statusModal === "Total" ? "All" : statusModal} Jobs (${modalJobs.length})` : ""}
+        size="sm"
+      >
+        <div className="space-y-3">
+          {modalJobs.map((job) => (
+            <HeadTechJobCard key={job.job_id} job={job as any} />
+          ))}
+          {modalJobs.length === 0 && (
+            <p className="py-8 text-center text-sm text-muted">No jobs in this status.</p>
+          )}
+        </div>
+      </Modal>
 
       <BottomNav active="jobs" />
     </>

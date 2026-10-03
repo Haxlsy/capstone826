@@ -3,6 +3,33 @@ import {createAdminClient} from '@/lib/supabase/admin'
 import { ACTIVE_JOB_STATUSES, isJobDelayed, computeStageDelays, hasAnyStageDelayed, type StageForDelay } from '@/lib/job-delay'
 import { loadWorkSchedule } from '@/lib/operating-hours'
 
+export interface JobSummary {
+  id: string
+  job_order_code: string
+  customer_name: string
+  service_name: string
+  status: string
+}
+
+/**
+ * Pure — which jobs_by_status bucket key(s) a row belongs to: its own raw
+ * status, plus "delayed" too when it's active-but-overdue. Mirrors
+ * status_counts["delayed"]'s own combined rule below exactly (status==="Delayed"
+ * OR computed-overdue), so a card's modal list always has the same length as
+ * the number printed on the card.
+ */
+export function statusKeysForRow(
+  row: { id: string; status: string },
+  overdueJobIds: Set<string>,
+  statusLabelToKey: Record<string, string>,
+): string[] {
+  const keys: string[] = []
+  const ownKey = statusLabelToKey[row.status]
+  if (ownKey) keys.push(ownKey)
+  if (overdueJobIds.has(row.id) && !keys.includes("delayed")) keys.push("delayed")
+  return keys
+}
+
 export async function getDashboardData(){
        const supabase = createAdminClient()
 
@@ -137,6 +164,26 @@ export async function getDashboardData(){
 
     for (const _ of overdueJobIds) status_counts["delayed"]++
 
+    // Per-status job lists for the dashboard's clickable summary cards — built
+    // from the exact same `rows` already fetched above for the counts, so
+    // this costs no extra query, and statusKeysForRow guarantees each
+    // bucket's length matches its status_counts entry.
+    const jobs_by_status: Record<string, JobSummary[]> = Object.fromEntries(
+      Object.values(STATUS_LABEL_TO_KEY).map((k) => [k, [] as JobSummary[]])
+    )
+    for (const row of rows as any[]) {
+      const keys = statusKeysForRow(row, overdueJobIds, STATUS_LABEL_TO_KEY)
+      if (keys.length === 0) continue
+      const summary: JobSummary = {
+        id: row.id,
+        job_order_code: row.job_order_code,
+        customer_name: jobCustomer(row).name ?? "Manual Entry",
+        service_name: row.service?.name ?? "—",
+        status: row.status,
+      }
+      for (const key of keys) jobs_by_status[key].push(summary)
+    }
+
     // Recent jobs — last touched (updated_at), not last created, and excludes
     // jobs that are already finished (nothing left to keep an eye on there).
     const FINISHED_STATUSES = ["Released", "Cancelled"]
@@ -175,6 +222,7 @@ export async function getDashboardData(){
 
     return {
       status_counts,
+      jobs_by_status,
       concern_count: concern_count ?? 0,
       recent_jobs,
       calendar_jobs,

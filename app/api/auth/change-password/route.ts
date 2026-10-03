@@ -41,6 +41,13 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Current password is incorrect." }, { status: 400 })
     }
 
+    if (newPassword === currentPassword) {
+      return NextResponse.json(
+        { error: "New password must be different from your current password." },
+        { status: 400 },
+      )
+    }
+
     // Fresh, untouched client — guaranteed to still use the service-role key.
     const admin = createAdminClient()
 

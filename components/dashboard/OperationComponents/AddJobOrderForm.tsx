@@ -336,16 +336,25 @@ export default function AddJobOrderForm() {
   const nameSuggestions = useMemo(() => {
     const q = manualCustomerName.trim().toLowerCase()
     if (!useManualCustomer || matchedCustomer || q.length < 2) return []
-    const seen = new Set<string>()
-    const results: CustomerRecord[] = []
+    // A customer can have several vehicle rows, and only one is picked to
+    // represent them here — but messenger_via is computed per-vehicle
+    // (lib/messenger/recipient.ts falls back to who booked THAT vehicle when
+    // the customer has no Messenger account of their own), so an arbitrary
+    // row could under-report a link that a sibling vehicle actually has.
+    // Prefer the customer's own account ("own", true for every one of their
+    // rows alike) over a booking-specific link ("booked_by") over no link at
+    // all, so the picked row never claims "no Messenger" when another of
+    // their vehicles proves otherwise.
+    const linkRank = (via: CustomerRecord["messenger_via"]) => (via === "own" ? 0 : via === "booked_by" ? 1 : 2)
+    const bestPerCustomer = new Map<string, CustomerRecord>()
     for (const c of customers) {
-      if (seen.has(c.customer_id)) continue
-      if (c.full_name.toLowerCase().includes(q)) {
-        seen.add(c.customer_id)
-        results.push(c)
+      if (!c.full_name.toLowerCase().includes(q)) continue
+      const current = bestPerCustomer.get(c.customer_id)
+      if (!current || linkRank(c.messenger_via) < linkRank(current.messenger_via)) {
+        bestPerCustomer.set(c.customer_id, c)
       }
     }
-    return results
+    return [...bestPerCustomer.values()]
   }, [manualCustomerName, customers, matchedCustomer, useManualCustomer])
 
   // Confirms "this is the same person" — fills identity fields from them, but

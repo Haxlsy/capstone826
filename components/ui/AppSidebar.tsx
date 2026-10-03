@@ -16,7 +16,7 @@ import {
 import { cn } from "@/lib/utils"
 import { useLogoutConfirm } from "@/hooks/useLogout"
 import { useOnlineStatus } from "@/hooks/useOnlineStatus"
-import { ConfirmModal } from "@/components/ui/Modal"
+import { Modal, ConfirmModal } from "@/components/ui/Modal"
 
 export interface NavChild {
   label: string
@@ -73,19 +73,21 @@ function isActive(pathname: string, href: string, exact?: boolean) {
 
 export function AppSidebar({
   nav,
-  settingsHref,
+  settingsContent,
   brand = "826 Auto Care",
   lockSettingsOffline = false,
 }: {
   nav: NavItem[]
-  settingsHref: string
+  /** Rendered inside the Settings popup modal — see AppShell. */
+  settingsContent: React.ReactNode
   brand?: string
-  /** Grey out the Settings link while offline (Operations only). */
+  /** Grey out the Settings button while offline (Operations only). */
   lockSettingsOffline?: boolean
 }) {
   const pathname = usePathname()
   const [collapsed, toggle] = useCollapsed()
   const isOnline = useOnlineStatus()
+  const [settingsOpen, setSettingsOpen] = React.useState(false)
   const { confirming, loading, requestLogout, cancel, confirm } = useLogoutConfirm()
 
   return (
@@ -133,13 +135,10 @@ export function AppSidebar({
 
         {/* Footer */}
         <div className="space-y-1 border-t border-shell-border px-3 py-4">
-          <SidebarLink
-            href={settingsHref}
-            icon={Settings}
-            label="Settings"
-            active={isActive(pathname, settingsHref)}
+          <SettingsButton
             collapsed={collapsed}
             disabledOffline={lockSettingsOffline}
+            onClick={() => setSettingsOpen(true)}
           />
           <button
             type="button"
@@ -167,6 +166,10 @@ export function AppSidebar({
         loading={loading}
         icon={LogOut}
       />
+
+      <Modal open={settingsOpen} onClose={() => setSettingsOpen(false)} title="Settings" size="md">
+        {settingsContent}
+      </Modal>
     </aside>
   )
 }
@@ -405,5 +408,61 @@ function SidebarLink({
       )}
       <LinkPendingIndicator collapsed={collapsed} />
     </Link>
+  )
+}
+
+/** Opens the Settings modal — same look as SidebarLink, but a button (not a
+ *  navigation) since Settings no longer has its own page. */
+function SettingsButton({
+  collapsed,
+  disabledOffline,
+  onClick,
+}: {
+  collapsed: boolean
+  disabledOffline?: boolean
+  onClick: () => void
+}) {
+  const isOnline = React.useContext(SidebarOnlineContext)
+  const locked = !!disabledOffline && !isOnline
+
+  if (locked) {
+    return (
+      <div
+        aria-disabled="true"
+        title={collapsed ? "Settings — available when you're back online" : "Available when you're back online"}
+        className={cn(
+          "group relative flex items-center gap-3 rounded-sm px-3 py-2.5 text-sm font-medium",
+          collapsed ? "justify-center px-0" : "",
+          "cursor-not-allowed text-white/30",
+        )}
+      >
+        <Settings className="h-4 w-4 shrink-0" />
+        {!collapsed && <span className="flex-1 truncate">Settings</span>}
+        {!collapsed ? (
+          <WifiOff className="h-3.5 w-3.5 shrink-0" />
+        ) : (
+          <WifiOff className="absolute right-1 top-1 h-2.5 w-2.5" />
+        )}
+      </div>
+    )
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      title={collapsed ? "Settings" : undefined}
+      className={cn(
+        // Browsers default <button> to text-align:center, unlike the <a>-based
+        // SidebarLink rows above it — text-left overrides that so the label
+        // doesn't center itself inside the flex-1 span's wide box.
+        "flex w-full items-center gap-3 rounded-sm px-3 py-2.5 text-left text-sm font-medium transition-colors",
+        collapsed && "justify-center px-0",
+        "text-white/60 hover:bg-white/10 hover:text-white",
+      )}
+    >
+      <Settings className="h-4 w-4 shrink-0" />
+      {!collapsed && <span className="flex-1 truncate">Settings</span>}
+    </button>
   )
 }

@@ -14,7 +14,7 @@ export async function getJobDetailData(id: string) {
   const [
     { data: job, error },
     { data: team },
-    { data: history },
+    { data: history, error: historyError },
     { data: stages, error: stagesError },
     schedule,
   ] = await Promise.all([
@@ -34,7 +34,7 @@ export async function getJobDetailData(id: string) {
       .eq("job_order_id", id),
     supabase
       .from("job_order_history")
-      .select("status, created_at, changed_by:changed_by_id(full_name)")
+      .select("status, created_at, reason, changed_by:changed_by_id(full_name)")
       .eq("job_order_id", id)
       .order("created_at", { ascending: true }),
     supabase
@@ -44,7 +44,7 @@ export async function getJobDetailData(id: string) {
          messenger_sent, messenger_sent_at,
          custom_name, custom_sequence_order, custom_stage_category, stage_duration_mins,
          service_stage_id, current_rework_round,
-         media:stage_media(id, file_url, media_type, rework_round)`
+         media:stage_media(id, file_url, media_type, rework_round, uploaded_at)`
       )
       .eq("job_order_id", id)
       .order("custom_sequence_order"),
@@ -57,6 +57,11 @@ export async function getJobDetailData(id: string) {
   // used to just render an empty "Service Stage Progress" section with no
   // indication anything was wrong. Surface it loudly instead.
   if (stagesError) throw new Error(`Failed to load stages: ${stagesError.message}`)
+  // Same failure mode as above, applied to this query too — a schema
+  // mismatch here previously rendered Status History as silently empty
+  // instead of surfacing the actual problem (see the reason-column incident
+  // this exact comment is about).
+  if (historyError) throw new Error(`Failed to load status history: ${historyError.message}`)
 
   const ssIds = [...new Set((stages ?? []).map((s: any) => s.service_stage_id as string).filter(Boolean))]
   let ssRows: any[] = []
@@ -241,6 +246,7 @@ export async function getJobDetailData(id: string) {
         status: h.status,
         created_at: h.created_at,
         changed_by: h.changed_by?.full_name ?? "System",
+        reason: h.reason ?? null,
       })),
       stages: mappedStages,
     },

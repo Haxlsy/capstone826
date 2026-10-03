@@ -91,6 +91,7 @@ export default function TechnicianAvailability() {
   const [formError, setFormError] = useState<string | null>(null)
   const [duplicate, setDuplicate] = useState<Technician | null>(null)
 
+  const [formConfirm, setFormConfirm] = useState<"add" | "edit" | null>(null)
   const [archiveTarget, setArchiveTarget] = useState<Technician | null>(null)
   const [archiving, setArchiving] = useState(false)
   const [archiveError, setArchiveError] = useState<string | null>(null)
@@ -147,6 +148,7 @@ export default function TechnicianAvailability() {
     setForm(EMPTY_FORM)
     setFormError(null)
     setDuplicate(null)
+    setFormConfirm(null)
     setAddOpen(true)
   }
 
@@ -162,10 +164,11 @@ export default function TechnicianAvailability() {
     })
     setFormError(null)
     setDuplicate(null)
+    setFormConfirm(null)
     setEditOpen(true)
   }
 
-  async function submitForm(isEdit: boolean) {
+  function confirmSubmit(isEdit: boolean) {
     const firstName = normalizeName(form.firstName)
     const lastName = normalizeName(form.lastName)
     const nameError = validateName(firstName, "First name") ?? validateName(lastName, "Last name")
@@ -187,9 +190,17 @@ export default function TechnicianAvailability() {
       setDuplicate(dup)
       return
     }
-    setSubmitting(true)
     setFormError(null)
     setDuplicate(null)
+    setFormConfirm(isEdit ? "edit" : "add")
+  }
+
+  async function submitForm(isEdit: boolean) {
+    const firstName = normalizeName(form.firstName)
+    const lastName = normalizeName(form.lastName)
+    const fullName = `${firstName} ${lastName}`
+    setSubmitting(true)
+    setFormError(null)
     try {
       const body = isEdit
         ? {
@@ -216,6 +227,7 @@ export default function TechnicianAvailability() {
       })
       const json = await res.json()
       if (!res.ok) throw new Error(json?.error ?? "Failed to save technician")
+      setFormConfirm(null)
       if (isEdit) {
         setTechnicians((prev) =>
           prev.map((t) =>
@@ -242,6 +254,7 @@ export default function TechnicianAvailability() {
       }
       setEditingId(null)
     } catch (err: unknown) {
+      setFormConfirm(null)
       setFormError(err instanceof Error ? err.message : String(err))
     } finally {
       setSubmitting(false)
@@ -552,7 +565,7 @@ export default function TechnicianAvailability() {
         roleLabel={ROLE_LABEL}
         submitting={submitting}
         submitLabel="Add"
-        onSubmit={() => submitForm(false)}
+        onSubmit={() => confirmSubmit(false)}
       />
       <TechFormModal
         open={editOpen}
@@ -569,7 +582,22 @@ export default function TechnicianAvailability() {
         roleLabel={ROLE_LABEL}
         submitting={submitting}
         submitLabel="Save Changes"
-        onSubmit={() => submitForm(true)}
+        onSubmit={() => confirmSubmit(true)}
+      />
+
+      <ConfirmModal
+        open={formConfirm !== null}
+        onClose={() => !submitting && setFormConfirm(null)}
+        onConfirm={() => submitForm(formConfirm === "edit")}
+        title={formConfirm === "edit" ? "Save changes to this technician?" : "Add this technician?"}
+        message={
+          formConfirm === "edit"
+            ? `Save changes to ${normalizeName(form.firstName)} ${normalizeName(form.lastName)}'s availability?`
+            : `Add ${normalizeName(form.firstName)} ${normalizeName(form.lastName)} as a ${ROLE_LABEL[form.role]}?`
+        }
+        confirmLabel={submitting ? "Saving…" : formConfirm === "edit" ? "Save Changes" : "Add"}
+        loading={submitting}
+        icon={UserCheck}
       />
 
       <ConfirmModal
