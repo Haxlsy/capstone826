@@ -6,6 +6,7 @@ import { Drawer } from "@/components/ui/Drawer"
 import { Button } from "@/components/ui/Button"
 import { ConfirmModal } from "@/components/ui/Modal"
 import { validateName } from "@/lib/name"
+import { logView } from "@/lib/client/log-view"
 
 function generateUsername(fullName: string): string {
   const parts = fullName.trim().split(/\s+/).filter(Boolean)
@@ -96,6 +97,7 @@ export default function AddAccountModal({
           password: "",
           role:     editAccount.role,
         })
+        logView("account", editAccount.full_name)
       } else {
         setForm({
           ...EMPTY_FORM,

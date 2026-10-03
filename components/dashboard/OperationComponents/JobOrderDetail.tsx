@@ -17,7 +17,7 @@ import { Textarea, Input } from "@/components/ui/Field"
 import { EmptyState } from "@/components/ui/EmptyState"
 import { useToast } from "@/components/ui/Toast"
 import { substituteRoleLabel } from "@/lib/substitute-label"
-import { formatOperatingHours, isWithinOperatingHours, DEFAULT_OPERATING_DAYS, DEFAULT_OPERATING_OPEN_TIME, DEFAULT_OPERATING_CLOSE_TIME, type Weekday } from "@/types/chatbot"
+import { formatOperatingHours, isWithinOperatingHours, DEFAULT_OPERATING_DAYS, DEFAULT_OPERATING_OPEN_TIME, DEFAULT_OPERATING_CLOSE_TIME, type Weekday, type Holiday } from "@/types/chatbot"
 import { alreadyOnJob } from "@/lib/operations/team-membership"
 import { cn } from "@/lib/utils"
 import { statusStyle } from "@/lib/ui/status"
@@ -272,10 +272,12 @@ export default function JobOrderDetail({
     operating_days: Weekday[]
     operating_open_time: string
     operating_close_time: string
+    holidays: Holiday[]
   }>({
     operating_days: DEFAULT_OPERATING_DAYS,
     operating_open_time: DEFAULT_OPERATING_OPEN_TIME,
     operating_close_time: DEFAULT_OPERATING_CLOSE_TIME,
+    holidays: [],
   })
   const [schedulePreview, setSchedulePreview] = useState<string | null>(null)
   const [savingSchedule, setSavingSchedule] = useState(false)
@@ -567,6 +569,7 @@ export default function JobOrderDetail({
             operating_days: hours.operating_days ?? DEFAULT_OPERATING_DAYS,
             operating_open_time: hours.operating_open_time ?? DEFAULT_OPERATING_OPEN_TIME,
             operating_close_time: hours.operating_close_time ?? DEFAULT_OPERATING_CLOSE_TIME,
+            holidays: hours.holidays ?? [],
           })
         }
       })
@@ -608,6 +611,10 @@ export default function JobOrderDetail({
       return
     }
     const check = isWithinOperatingHours(operatingHours, selected)
+    if (check.reason === "holiday") {
+      setScheduleError(`That date is closed for ${check.holidayLabel}.`)
+      return
+    }
     if (check.reason === "closed_day") {
       setScheduleError(`That date is closed. Open days: ${formatOperatingHours(operatingHours)}`)
       return

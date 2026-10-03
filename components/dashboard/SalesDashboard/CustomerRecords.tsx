@@ -16,6 +16,7 @@ import { EmptyState } from "@/components/ui/EmptyState"
 import { useToast } from "@/components/ui/Toast"
 import { ConfirmModal } from "@/components/ui/Modal"
 import { useOfflineLock } from "@/hooks/useOfflineLock"
+import { logView } from "@/lib/client/log-view"
 import { cn } from "@/lib/utils"
 import { LinkAccountModal, type CustomerOption } from "./LinkAccountModal"
 import {
@@ -520,7 +521,11 @@ export default function CustomerRecords() {
                   "flex flex-wrap items-center gap-3 px-5 py-3.5",
                   isMulti && "cursor-pointer hover:bg-surface-muted/50 transition-colors",
                 )}
-                onClick={isMulti ? () => setExpanded((p) => ({ ...p, [customer.id]: !p[customer.id] })) : undefined}
+                onClick={isMulti ? () => {
+                  const next = !expanded[customer.id]
+                  if (next) logView("customer_record", customer.fullName)
+                  setExpanded((p) => ({ ...p, [customer.id]: next }))
+                } : undefined}
               >
                 <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-surface-muted text-xs font-bold text-body">
                   {getInitials(customer.fullName)}

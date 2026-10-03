@@ -115,6 +115,13 @@ export type Weekday = z.infer<typeof weekdaySchema>
 
 export const WEEKDAYS: Weekday[] = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"]
 
+/** A single admin-entered closed date — e.g. { date: "2026-12-25", label: "Christmas Day" }. */
+export const holidaySchema = z.object({
+  date:  z.string(),
+  label: z.string(),
+})
+export type Holiday = z.infer<typeof holidaySchema>
+
 /** Matches the shop's actual current hours — the default so nothing changes
  *  in production until an admin edits the new Operating Hours setting. */
 export const DEFAULT_OPERATING_DAYS: Weekday[] = ["tue", "wed", "thu", "fri", "sat", "sun"]
@@ -134,6 +141,12 @@ export const chatbotSettingsSchema = z.object({
   operating_days:                z.array(weekdaySchema).default(DEFAULT_OPERATING_DAYS),
   operating_open_time:           z.string().default(DEFAULT_OPERATING_OPEN_TIME),
   operating_close_time:          z.string().default(DEFAULT_OPERATING_CLOSE_TIME),
+  // Specific closed calendar dates (one-off — not an auto-recurring rule), on
+  // top of the weekly operating_days. Treated as a real closed day everywhere
+  // open-ness is checked, not just in customer-facing wording — see
+  // hooks/time-utils.ts's WorkSchedule.holidayDates and
+  // isWithinOperatingHours's "holiday" reason.
+  holidays:                      z.array(holidaySchema).default([]),
   vehicle_status_message_en:       z.string().max(2000),
   vehicle_status_message_fil:      z.string().max(2000),
   link_verification_message_en:    z.string().max(2000),
@@ -163,6 +176,7 @@ const TEMPLATE_FIELDS = [
 ] as const
 
 const HHMM = /^([01]\d|2[0-3]):[0-5]\d$/
+const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/
 
 /**
  * Save-time rules for the admin AI Configuration form. Returns `{ field: message }`
@@ -197,6 +211,15 @@ export function validateChatbotSettings(s: Partial<ChatbotSettings>): Record<str
   if (!HHMM.test(close)) errors.operating_close_time = "Enter a valid closing time."
   if (!errors.operating_open_time && !errors.operating_close_time && open >= close) {
     errors.operating_close_time = "Closing time must be after opening time."
+  }
+
+  const holidays = s.holidays ?? []
+  const seenDates = new Set<string>()
+  for (const h of holidays) {
+    if (!ISO_DATE.test(h.date ?? "")) { errors.holidays = "Enter a valid date for every holiday."; break }
+    if (!h.label?.trim()) { errors.holidays = "Enter a label for every holiday."; break }
+    if (seenDates.has(h.date)) { errors.holidays = "Two holidays can't share the same date."; break }
+    seenDates.add(h.date)
   }
 
   return errors
@@ -251,6 +274,16 @@ export function fmtTime12h(hhmm: string): string {
   return m === 0 ? `${h12}:00 ${period}` : `${h12}:${String(m).padStart(2, "0")} ${period}`
 }
 
+const SHORT_MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
+
+/** "2026-12-25" -> "Dec 25, 2026". Parses the parts directly (never via `new
+ *  Date(iso)`) so this can't shift a day off from timezone parsing of a plain
+ *  calendar date that was never an instant to begin with. */
+export function fmtHolidayDate(iso: string): string {
+  const [y, m, d] = iso.split("-").map(Number)
+  return `${SHORT_MONTHS[(m || 1) - 1]} ${d}, ${y}`
+}
+
 /**
  * Turns the structured Operating Hours setting into the same sentence shape
  * customers/the AI previously saw as free-text knowledge-base content — e.g.
@@ -259,9 +292,14 @@ export function fmtTime12h(hhmm: string): string {
  * client's live preview and every server-side caller (chatbot prompt, "For
  * Release" customer message) share one implementation and can never drift
  * into disagreeing wording.
+ *
+ * `now` (defaults to the real current time) scopes the holiday clause to
+ * ones that haven't passed yet, so the sentence doesn't grow forever as old
+ * holidays pile up in the saved list.
  */
 export function formatOperatingHours(
-  s: Pick<ChatbotSettings, "operating_days" | "operating_open_time" | "operating_close_time">,
+  s: Pick<ChatbotSettings, "operating_days" | "operating_open_time" | "operating_close_time"> & { holidays?: Holiday[] },
+  now: Date = new Date(),
 ): string {
   const openDays = s.operating_days ?? []
   if (openDays.length === 0) return "Operating hours have not been set yet."
@@ -290,6 +328,17 @@ export function formatOperatingHours(
     text += ` Closed on ${closedDays.map((d) => `${WEEKDAY_LABELS[d]}s`).join(" and ")}.`
   }
 
+  // Same en-CA/ISO-date trick used elsewhere (e.g. customer-records-export.ts)
+  // to get a plain YYYY-MM-DD string in the shop's own timezone.
+  const todayKey = new Intl.DateTimeFormat("en-CA", { timeZone: TIME_ZONE }).format(now)
+  const upcoming = (s.holidays ?? [])
+    .filter((h) => h.date >= todayKey)
+    .sort((a, b) => a.date.localeCompare(b.date))
+    .slice(0, 3)
+  if (upcoming.length > 0) {
+    text += ` Also closed ${upcoming.map((h) => `${fmtHolidayDate(h.date)} for ${h.label}`).join("; ")}.`
+  }
+
   return text
 }
 
@@ -303,7 +352,7 @@ export function formatOperatingHours(
 // day/hour/minute in the shop's own timezone instead, matching
 // lib/time-display.ts's TIME_ZONE convention, so this gives the same answer
 // no matter which timezone the calling code happens to run in.
-function partsInBusinessTimeZone(date: Date): { weekday: Weekday; hour: number; minute: number } {
+function partsInBusinessTimeZone(date: Date): { weekday: Weekday; hour: number; minute: number; dateKey: string } {
   const parts = new Intl.DateTimeFormat("en-US", {
     timeZone: TIME_ZONE,
     weekday: "short",
@@ -319,13 +368,18 @@ function partsInBusinessTimeZone(date: Date): { weekday: Weekday; hour: number; 
     weekday: get("weekday").toLowerCase().slice(0, 3) as Weekday,
     hour: Number(get("hour")),
     minute: Number(get("minute")),
+    // Same en-CA/ISO-date trick as formatOperatingHours, for matching against
+    // a saved holiday's plain YYYY-MM-DD string.
+    dateKey: new Intl.DateTimeFormat("en-CA", { timeZone: TIME_ZONE }).format(date),
   }
 }
 
 export interface OperatingHoursCheck {
   ok: boolean
   /** Only set when `ok` is false. */
-  reason?: "closed_day" | "outside_hours"
+  reason?: "closed_day" | "outside_hours" | "holiday"
+  /** Only set when `reason` is "holiday" — the matched holiday's label. */
+  holidayLabel?: string
 }
 
 /**
@@ -338,11 +392,15 @@ export interface OperatingHoursCheck {
  * again, authoritatively, once it is).
  */
 export function isWithinOperatingHours(
-  s: Pick<ChatbotSettings, "operating_days" | "operating_open_time" | "operating_close_time">,
+  s: Pick<ChatbotSettings, "operating_days" | "operating_open_time" | "operating_close_time"> & { holidays?: Holiday[] },
   date: Date,
 ): OperatingHoursCheck {
   const openDays = s.operating_days && s.operating_days.length > 0 ? s.operating_days : DEFAULT_OPERATING_DAYS
-  const { weekday, hour, minute } = partsInBusinessTimeZone(date)
+  const { weekday, hour, minute, dateKey } = partsInBusinessTimeZone(date)
+
+  const holiday = (s.holidays ?? []).find((h) => h.date === dateKey)
+  if (holiday) return { ok: false, reason: "holiday", holidayLabel: holiday.label }
+
   if (!openDays.includes(weekday)) return { ok: false, reason: "closed_day" }
 
   const toMins = (hhmm: string) => {

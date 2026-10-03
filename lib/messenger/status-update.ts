@@ -5,6 +5,7 @@ import {
   DEFAULT_OPERATING_OPEN_TIME,
   DEFAULT_OPERATING_CLOSE_TIME,
   type Weekday,
+  type Holiday,
 } from "@/types/chatbot"
 
 /**
@@ -100,12 +101,14 @@ export async function getOperatingHoursText(): Promise<string | null> {
       operating_days?: Weekday[]
       operating_open_time?: string
       operating_close_time?: string
+      holidays?: Holiday[]
     }
 
     return formatOperatingHours({
       operating_days: settings.operating_days ?? DEFAULT_OPERATING_DAYS,
       operating_open_time: settings.operating_open_time ?? DEFAULT_OPERATING_OPEN_TIME,
       operating_close_time: settings.operating_close_time ?? DEFAULT_OPERATING_CLOSE_TIME,
+      holidays: settings.holidays ?? [],
     })
   } catch (err) {
     console.error("[status-update] operating hours lookup failed:", err)

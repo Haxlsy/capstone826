@@ -1,34 +1,80 @@
 "use client"
 
-import { useState, useCallback, useEffect } from 'react';
-import { ApiLog } from  "@/types/audit"
+import { useCallback } from "react"
+import { useQuery, useQueryClient, keepPreviousData } from "@tanstack/react-query"
+import type { ApiLog, AuditRole, AuditCategory, TimePeriod } from "@/types/audit"
+import type { AuditScope, AuditSortColumn, AuditSortDir } from "@/lib/admin/audit-log-query"
 import { useRealtimeRefetch } from "@/hooks/useRealtimeRefetch"
-export function useAuditLogs(initialLogs?: ApiLog[]) {
-      const [logs,    setLogs]    = useState<ApiLog[]>(initialLogs ?? [])
-      const [loading, setLoading] = useState(!initialLogs)
-      const [fetchErr, setFetchErr] = useState<string | null>(null)
 
-      const load = useCallback(async (opts?: { silent?: boolean }) => {
-        if (!opts?.silent) setLoading(true)
-        setFetchErr(null)
-        try {
-          const res  = await fetch("/api/admin/audit-log?limit=500")
-          const json = await res.json()
-          if (!res.ok) throw new Error(json?.error ?? "Failed to load audit log")
-          setLogs(json.logs ?? [])
-        } catch (err: unknown) {
-          setFetchErr(err instanceof Error ? err.message : String(err))
-        } finally {
-          if (!opts?.silent) setLoading(false)
-        }
-      }, [])
+export interface AuditLogParams {
+  scope:    AuditScope
+  role:     AuditRole | "all"
+  category: AuditCategory | "all"
+  action:   string | "all"
+  period:   TimePeriod
+  sortBy:   AuditSortColumn
+  sortDir:  AuditSortDir
+  page:     number
+  pageSize: number
+}
 
-      useEffect(() => { if (!initialLogs) load() }, [load, initialLogs])
+export function buildAuditLogSearchParams(params: AuditLogParams): URLSearchParams {
+  const qs = new URLSearchParams({
+    scope:    params.scope,
+    period:   params.period,
+    sortBy:   params.sortBy,
+    sortDir:  params.sortDir,
+    page:     String(params.page),
+    pageSize: String(params.pageSize),
+  })
+  if (params.role !== "all")     qs.set("role", params.role)
+  if (params.category !== "all") qs.set("category", params.category)
+  if (params.action !== "all")   qs.set("action", params.action)
+  return qs
+}
 
-      // audit_log is written on nearly every action across the whole app
-      // (logins, job updates, resolves…) — silent, so this doesn't flash the
-      // loading state on every single one while someone's reading the log.
-      useRealtimeRefetch("audit_log", useCallback(() => load({ silent: true }), [load]))
+async function fetchAuditLogs(params: AuditLogParams): Promise<{ logs: ApiLog[]; total: number; hasMore: boolean }> {
+  const res  = await fetch(`/api/admin/audit-log?${buildAuditLogSearchParams(params)}`)
+  const json = await res.json()
+  if (!res.ok) throw new Error(json?.error ?? "Failed to load audit log")
+  return { logs: json.logs ?? [], total: json.total ?? 0, hasMore: json.hasMore ?? false }
+}
 
-      return { logs, loading, fetchErr, reload: load };
+export function useAuditLogs(params: AuditLogParams) {
+  const queryClient = useQueryClient()
+
+  const query = useQuery({
+    queryKey: ["audit-log", params],
+    queryFn:  () => fetchAuditLogs(params),
+    placeholderData: keepPreviousData,
+  })
+
+  // audit_log is written on nearly every action across the whole app (logins,
+  // job updates, resolves…) — invalidate-and-background-refetch so this
+  // doesn't flash the loading state on every single one while someone's
+  // reading the log.
+  useRealtimeRefetch("audit_log", useCallback(
+    () => queryClient.invalidateQueries({ queryKey: ["audit-log"] }),
+    [queryClient],
+  ))
+
+  return {
+    logs:     query.data?.logs ?? [],
+    total:    query.data?.total ?? 0,
+    loading:  query.isPending,
+    fetchErr: query.isError ? (query.error instanceof Error ? query.error.message : String(query.error)) : null,
+    reload:   () => queryClient.invalidateQueries({ queryKey: ["audit-log"] }),
+  }
+}
+
+/** Fetches every page matching `params` (ignoring its page/pageSize), for export. */
+export async function fetchAllAuditLogs(params: Omit<AuditLogParams, "page" | "pageSize">): Promise<ApiLog[]> {
+  const EXPORT_PAGE_SIZE = 200
+  const all: ApiLog[] = []
+  for (let page = 1; ; page++) {
+    const { logs, hasMore } = await fetchAuditLogs({ ...params, page, pageSize: EXPORT_PAGE_SIZE })
+    all.push(...logs)
+    if (!hasMore) break
+  }
+  return all
 }

@@ -224,6 +224,7 @@ describe("buildSystemPrompt — booking guardrails (Testing Notes #8, #10)", () 
     operating_days: ["tue", "wed", "thu", "fri", "sat", "sun"],
     operating_open_time: "08:00",
     operating_close_time: "20:00",
+    holidays: [],
     vehicle_status_message_en: "Please share your plate number.",
     vehicle_status_message_fil: "Pakisama ang iyong plate number.",
     link_verification_message_en: "Couldn't verify.",

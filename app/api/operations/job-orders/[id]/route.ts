@@ -3,7 +3,7 @@ import { NextResponse } from "next/server"
 import { cookies } from "next/headers"
 import { createClient } from "@/lib/supabase/server"
 import { createAdminClient } from "@/lib/supabase/admin"
-import { logAudit } from "@/hooks/audit-helpers"
+import { logAudit, logAuditCall } from "@/hooks/audit-helpers"
 import { getJobDetailData } from "@/lib/operations/job-detail-data"
 import { totalStageDurationMins, computeExpectedCompletion } from "@/lib/job-estimates"
 import { loadWorkSchedule, loadOperatingHoursSettings } from "@/lib/operating-hours"
@@ -28,6 +28,13 @@ export async function GET(
 
     const { id } = await params
     const data = await getJobDetailData(id)
+
+    logAuditCall(auth.caller, {
+      category: "view",
+      action:   "Viewed job order details",
+      target:   data.job.job_order_code,
+    })
+
     return NextResponse.json({ job: data.job })
   } catch (err: any) {
     const msg = err?.message ?? String(err)
@@ -114,9 +121,11 @@ export async function PATCH(
       const hours = await loadOperatingHoursSettings(admin)
       const check = isWithinOperatingHours(hours, new Date(scheduled_at))
       if (!check.ok) {
-        const reason = check.reason === "closed_day"
-          ? `That date is closed. Open days: ${formatOperatingHours(hours)}`
-          : `Start time must be within working hours (${formatOperatingHours(hours)})`
+        const reason = check.reason === "holiday"
+          ? `That date is closed for ${check.holidayLabel}.`
+          : check.reason === "closed_day"
+            ? `That date is closed. Open days: ${formatOperatingHours(hours)}`
+            : `Start time must be within working hours (${formatOperatingHours(hours)})`
         return NextResponse.json({ error: reason }, { status: 400 })
       }
     }

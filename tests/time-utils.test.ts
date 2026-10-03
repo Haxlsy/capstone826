@@ -83,4 +83,26 @@ describe("addWorkingMins — custom schedule", () => {
     expect(DEFAULT_SCHEDULE.openMinutes).toBe(8 * 60)
     expect(DEFAULT_SCHEDULE.closeMinutes).toBe(20 * 60)
   })
+
+  it("skips a holiday exactly like a closed weekday, even though its weekday is otherwise open", () => {
+    // Every day open, but Thursday Jan 8 2026 is a one-off holiday.
+    const schedule: WorkSchedule = {
+      openDays: new Set([0, 1, 2, 3, 4, 5, 6]),
+      openMinutes: 8 * 60,
+      closeMinutes: 20 * 60,
+      holidayDates: new Set(["2026-01-08"]),
+    }
+    const result = addWorkingMins(new Date(WED_5PM_MANILA), 6 * 60, schedule) // 3h left Wed, 3h into Thu (holiday)
+    const w = manilaWallClock(result.toISOString())
+    expect(w.day).toBe(5) // rolled past the holiday straight to Friday
+    expect(w.hh).toBe(11) // 3h remaining from Friday's 8 AM opening
+  })
+
+  it("a WorkSchedule with no holidayDates behaves exactly as before (optional field)", () => {
+    const schedule: WorkSchedule = { openDays: new Set([0, 1, 2, 3, 4, 5, 6]), openMinutes: 8 * 60, closeMinutes: 20 * 60 }
+    const result = addWorkingMins(new Date(WED_2PM_MANILA), 120, schedule)
+    const w = manilaWallClock(result.toISOString())
+    expect(w.day).toBe(3)
+    expect(w.hh).toBe(16)
+  })
 })

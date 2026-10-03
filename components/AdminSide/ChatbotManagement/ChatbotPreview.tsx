@@ -210,7 +210,7 @@ export default function ChatbotPreview({ settings }: { settings: ChatbotSettings
         <Bot className="w-3.5 h-3.5 text-primary mt-0.5 shrink-0" />
         <p className="text-[11px] text-primary leading-relaxed">
           <strong>Preview uses your current settings.</strong>{" "}
-          Changes apply instantly — no need to save first.
+          Changes apply instantly. You do not need to save first.
         </p>
       </div>
     </div>
