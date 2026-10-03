@@ -16,6 +16,7 @@ import { avatarColor, initials } from "@/lib/ui/avatar"
 import ConcernDetailsDrawer from "./ConcernDetailsDrawer"
 import { useConcerns } from "@/hooks/use-concerns"
 import type { ConcernRecord } from "@/lib/operations/concern-record"
+import { logView } from "@/lib/client/log-view"
 
 type FilterType = "All" | "Pending" | "Resolved"
 const FILTERS: FilterType[] = ["All", "Pending", "Resolved"]
@@ -29,6 +30,11 @@ export default function JobConcerns({ initialRecords }: { initialRecords: Concer
   const [currentPage, setCurrentPage] = useState(1)
   const [pageSize, setPageSize] = useState(15)
   const [selected, setSelected] = useState<ConcernRecord | null>(null)
+
+  useEffect(() => {
+    if (selected) logView("job_concern", selected.jobId)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selected?.id])
 
   // Deep-link from a notification (?concern=<id>) — works on arrival and when
   // already on this page. Waits for the record to be in the list (a concern

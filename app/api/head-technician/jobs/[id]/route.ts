@@ -246,6 +246,12 @@ export async function GET(
       isDelayedMap.set(stageId, d.is_delayed)
     }
 
+    logAuditCall(auth.caller, {
+      category: "view",
+      action:   "Viewed job order details",
+      target:   j.job_order_code,
+    })
+
     return NextResponse.json({
       job: {
         job_id:                j.job_order_code,

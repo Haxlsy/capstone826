@@ -83,9 +83,11 @@ export async function POST(request: Request) {
         const hours = await loadOperatingHoursSettings(admin)
         const check = isWithinOperatingHours(hours, d)
         if (!check.ok) {
-          const reason = check.reason === "closed_day"
-            ? `That date is closed. Open days: ${formatOperatingHours(hours)}`
-            : `Start time must be within working hours (${formatOperatingHours(hours)})`
+          const reason = check.reason === "holiday"
+            ? `That date is closed for ${check.holidayLabel}.`
+            : check.reason === "closed_day"
+              ? `That date is closed. Open days: ${formatOperatingHours(hours)}`
+              : `Start time must be within working hours (${formatOperatingHours(hours)})`
           return NextResponse.json({ error: reason }, { status: 400 })
         }
       }

@@ -62,6 +62,32 @@ describe("validateChatbotSettings", () => {
     expect(validateChatbotSettings({ ...valid, operating_open_time: "08:00", operating_close_time: "08:00" } as never).operating_close_time).toBeTruthy()
   })
 
+  it("accepts an empty or well-formed holiday list", () => {
+    expect(validateChatbotSettings({ ...valid, holidays: [] } as never).holidays).toBeUndefined()
+    expect(validateChatbotSettings({
+      ...valid,
+      holidays: [{ date: "2026-12-25", label: "Christmas Day" }, { date: "2027-01-01", label: "New Year's Day" }],
+    } as never).holidays).toBeUndefined()
+  })
+
+  it("rejects a holiday with a malformed date", () => {
+    expect(validateChatbotSettings({ ...valid, holidays: [{ date: "12/25/2026", label: "Christmas" }] } as never).holidays).toBeTruthy()
+  })
+
+  it("rejects a holiday with an empty or whitespace-only label", () => {
+    for (const label of ["", "   "]) {
+      expect(validateChatbotSettings({ ...valid, holidays: [{ date: "2026-12-25", label }] } as never).holidays).toBeTruthy()
+    }
+  })
+
+  it("rejects two holidays sharing the same date", () => {
+    const errs = validateChatbotSettings({
+      ...valid,
+      holidays: [{ date: "2026-12-25", label: "Christmas Day" }, { date: "2026-12-25", label: "Also Christmas" }],
+    } as never)
+    expect(errs.holidays).toBeTruthy()
+  })
+
   it("keeps the read schema lenient about blank templates (stored/legacy rows, preview)", () => {
     const blank = { ...valid, vehicle_status_message_en: "", booking_message_fil: "" }
     expect(chatbotSettingsSchema.safeParse(blank).success).toBe(true)
@@ -113,5 +139,17 @@ describe("isWithinOperatingHours", () => {
   it("accepts a normal morning booking regardless of the server's own timezone (UTC)", () => {
     const morning = new Date(Date.UTC(2026, 0, 6, 2, 3)) // 10:03 AM Manila = 02:03 UTC
     expect(isWithinOperatingHours(hours, morning)).toEqual({ ok: true })
+  })
+
+  it("flags a holiday on an otherwise-open weekday, ahead of the regular hours check", () => {
+    const withHoliday = { ...hours, holidays: [{ date: "2026-01-06", label: "Special Closure" }] }
+    // Tuesday Jan 6 2026, 9 AM Manila — would normally be open.
+    expect(isWithinOperatingHours(withHoliday, tuesday(9, 0)))
+      .toEqual({ ok: false, reason: "holiday", holidayLabel: "Special Closure" })
+  })
+
+  it("ignores a holiday that doesn't match the given date", () => {
+    const withHoliday = { ...hours, holidays: [{ date: "2026-12-25", label: "Christmas Day" }] }
+    expect(isWithinOperatingHours(withHoliday, tuesday(9, 0))).toEqual({ ok: true })
   })
 })

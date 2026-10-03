@@ -1,6 +1,6 @@
 import type { createAdminClient } from "@/lib/supabase/admin"
 import { DEFAULT_SCHEDULE, type WorkSchedule } from "@/hooks/time-utils"
-import { WEEKDAYS, DEFAULT_OPERATING_DAYS, DEFAULT_OPERATING_OPEN_TIME, DEFAULT_OPERATING_CLOSE_TIME, type Weekday } from "@/types/chatbot"
+import { WEEKDAYS, DEFAULT_OPERATING_DAYS, DEFAULT_OPERATING_OPEN_TIME, DEFAULT_OPERATING_CLOSE_TIME, type Weekday, type Holiday } from "@/types/chatbot"
 
 // Date#getUTCDay() convention: 0=Sun .. 6=Sat.
 const WEEKDAY_TO_JS_DAY: Record<Weekday, number> = {
@@ -48,13 +48,17 @@ export async function loadWorkSchedule(
   )
   if (closeMinutes <= openMinutes) return DEFAULT_SCHEDULE // guard against a corrupt saved range
 
-  return { openDays, openMinutes, closeMinutes }
+  const rawHolidays = Array.isArray(settings?.holidays) ? (settings!.holidays as Holiday[]) : []
+  const holidayDates = new Set(rawHolidays.map((h) => h.date).filter((d): d is string => typeof d === "string"))
+
+  return { openDays, openMinutes, closeMinutes, holidayDates }
 }
 
 export interface OperatingHoursSettings {
   operating_days: Weekday[]
   operating_open_time: string
   operating_close_time: string
+  holidays: Holiday[]
 }
 
 /**
@@ -81,6 +85,7 @@ export async function loadOperatingHoursSettings(
   const operating_close_time = typeof settings?.operating_close_time === "string"
     ? settings.operating_close_time
     : DEFAULT_OPERATING_CLOSE_TIME
+  const holidays = Array.isArray(settings?.holidays) ? (settings!.holidays as Holiday[]) : []
 
-  return { operating_days, operating_open_time, operating_close_time }
+  return { operating_days, operating_open_time, operating_close_time, holidays }
 }

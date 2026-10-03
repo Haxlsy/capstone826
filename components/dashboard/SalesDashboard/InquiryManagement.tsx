@@ -23,6 +23,7 @@ import { cn } from "@/lib/utils"
 import { inquiryTypeStyle } from "@/lib/ui/status"
 import { newInquiryIds, resolveSelectedId, newInquiryToast, escalationHeading, canRecordCustomerDetails, resolveConfirmMessage } from "@/lib/sales/inquiry-list"
 import { LinkAccountModal } from "./LinkAccountModal"
+import { logView } from "@/lib/client/log-view"
 
 type InquiryStatus = "open" | "resolved" | "recorded"
 type InquiryType   = "Booking" | "Human Response" | "Report"
@@ -281,6 +282,12 @@ export default function InquiryManagement() {
     : tabFiltered
 
   const selected      = inquiries.find((i) => i.id === selectedId) ?? null
+
+  useEffect(() => {
+    if (selected) logView("inquiry", selected.extractedName || selected.messengerName)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selected?.id])
+
   const totalCount    = inquiries.length
   const openCount     = inquiries.filter((i) => i.status === "open").length
   const recCount      = inquiries.filter((i) => i.status === "recorded").length

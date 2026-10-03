@@ -14,7 +14,7 @@ import { useOnlineStatus } from "@/hooks/useOnlineStatus"
 import { enqueue, get as getQueued } from "@/lib/offline/outbox"
 import { useToast } from "@/components/ui/Toast"
 import { isTechnicianAvailableToday } from "@/lib/technician-availability"
-import { formatOperatingHours, isWithinOperatingHours, fmtTime12h, DEFAULT_OPERATING_DAYS, DEFAULT_OPERATING_OPEN_TIME, DEFAULT_OPERATING_CLOSE_TIME, type Weekday } from "@/types/chatbot"
+import { formatOperatingHours, isWithinOperatingHours, fmtTime12h, DEFAULT_OPERATING_DAYS, DEFAULT_OPERATING_OPEN_TIME, DEFAULT_OPERATING_CLOSE_TIME, type Weekday, type Holiday } from "@/types/chatbot"
 
 interface CustomerRecord {
   /** The vehicle's id (customer_record). */
@@ -172,10 +172,12 @@ export default function AddJobOrderForm() {
     operating_days: Weekday[]
     operating_open_time: string
     operating_close_time: string
+    holidays: Holiday[]
   }>({
     operating_days: DEFAULT_OPERATING_DAYS,
     operating_open_time: DEFAULT_OPERATING_OPEN_TIME,
     operating_close_time: DEFAULT_OPERATING_CLOSE_TIME,
+    holidays: [],
   })
 
   const [useManualCustomer,    setUseManualCustomer]    = useState(false)
@@ -189,6 +191,12 @@ export default function AddJobOrderForm() {
   // Which field actually found the match — that one field stays editable (so
   // it can be corrected/cleared to search again); everything else locks.
   const [matchSource,          setMatchSource]          = useState<MatchField | null>(null)
+  // Set when matchedCustomer came from clicking a name suggestion rather than
+  // the shared phone/plate/email auto-match trigger (lib/operations/customer-match.ts
+  // deliberately never matches on name) — see nameSuggestions below. Kept
+  // separate from matchSource instead of widening its type, since that type
+  // is shared with the matching module's own contract.
+  const [isNameMatch,          setIsNameMatch]          = useState(false)
 
   const [selectedServiceType,     setSelectedServiceType]     = useState<string | null>(null)
   const [selectedServiceId,       setSelectedServiceId]       = useState<string | null>(null)
@@ -265,6 +273,7 @@ export default function AddJobOrderForm() {
             operating_days: hoursRes.operating_days ?? DEFAULT_OPERATING_DAYS,
             operating_open_time: hoursRes.operating_open_time ?? DEFAULT_OPERATING_OPEN_TIME,
             operating_close_time: hoursRes.operating_close_time ?? DEFAULT_OPERATING_CLOSE_TIME,
+            holidays: hoursRes.holidays ?? [],
           })
         } // else keep the shop's actual current-hours default already in state
       } catch {
@@ -315,7 +324,43 @@ export default function AddJobOrderForm() {
     setManualEmail(blank.fields.email)
     setManualPlateNumber(blank.fields.plate)
     setManualVehicleUnit(blank.fields.vehicle)
+    setIsNameMatch(false)
     setFieldErrors({})
+  }
+
+  // Name is deliberately never an auto-match trigger (see handleTriggerEdit) —
+  // two different customers can share a name, so this only ever *suggests*
+  // candidates for staff to confirm with a click, never locks anything by
+  // itself. Grouped by customer so someone with several vehicles on file
+  // appears once, same as the "Select from records" search below.
+  const nameSuggestions = useMemo(() => {
+    const q = manualCustomerName.trim().toLowerCase()
+    if (!useManualCustomer || matchedCustomer || q.length < 2) return []
+    const seen = new Set<string>()
+    const results: CustomerRecord[] = []
+    for (const c of customers) {
+      if (seen.has(c.customer_id)) continue
+      if (c.full_name.toLowerCase().includes(q)) {
+        seen.add(c.customer_id)
+        results.push(c)
+      }
+    }
+    return results
+  }, [manualCustomerName, customers, matchedCustomer, useManualCustomer])
+
+  // Confirms "this is the same person" — fills identity fields from them, but
+  // leaves Plate/Vehicle blank since the whole point is a brand-new vehicle,
+  // unlike handleTriggerEdit's phone/plate/email match (which fills every
+  // field, since that trigger implies the exact vehicle might already exist).
+  function selectNameSuggestion(c: CustomerRecord) {
+    setMatchedCustomer(c)
+    setIsNameMatch(true)
+    setManualCustomerName(c.full_name)
+    setManualContactNumber(c.contact_number)
+    setManualEmail(c.email ?? "")
+    clearField("customerName")
+    clearField("contactNumber")
+    clearField("email")
   }
 
   function clearField(key: keyof FieldErrors) {
@@ -468,7 +513,9 @@ export default function AddJobOrderForm() {
           // weekday for a browser whose local offset crosses midnight.
           const [y, m, d] = scheduledAt.split("-").map(Number)
           const check = isWithinOperatingHours(operatingHours, new Date(y, (m ?? 1) - 1, d ?? 1))
-          if (check.reason === "closed_day") {
+          if (check.reason === "holiday") {
+            errs.scheduledAt = `That date is closed for ${check.holidayLabel}.`
+          } else if (check.reason === "closed_day") {
             errs.scheduledAt = `That date is closed. Open days: ${formatOperatingHours(operatingHours)}`
           }
         }
@@ -478,7 +525,9 @@ export default function AddJobOrderForm() {
           errs.scheduledAt = "Scheduled date and time cannot be in the past."
         } else {
           const check = isWithinOperatingHours(operatingHours, selected)
-          if (check.reason === "closed_day") {
+          if (check.reason === "holiday") {
+            errs.scheduledAt = `That date is closed for ${check.holidayLabel}.`
+          } else if (check.reason === "closed_day") {
             errs.scheduledAt = `That date is closed. Open days: ${formatOperatingHours(operatingHours)}`
           } else if (check.reason === "outside_hours") {
             errs.scheduledAt = `Start time must be within working hours (${formatOperatingHours(operatingHours)})`
@@ -852,7 +901,7 @@ export default function AddJobOrderForm() {
                   <label className="text-xs font-medium text-body">Customer <span className="text-status-delayed ml-0.5">*</span></label>
                   <button
                     type="button"
-                    onClick={() => { setUseManualCustomer(true); setSelectedCustomerId(null); setFieldErrors({}); setMatchedCustomer(null); setMatchSource(null); setManualPlateNumber(""); setManualCustomerName(""); setManualContactNumber(""); setManualEmail(""); setManualVehicleUnit("") }}
+                    onClick={() => { setUseManualCustomer(true); setSelectedCustomerId(null); setFieldErrors({}); setMatchedCustomer(null); setMatchSource(null); setIsNameMatch(false); setManualPlateNumber(""); setManualCustomerName(""); setManualContactNumber(""); setManualEmail(""); setManualVehicleUnit("") }}
                     className="text-xs text-primary hover:underline"
                   >
                     Enter manually
@@ -982,7 +1031,7 @@ export default function AddJobOrderForm() {
                   <label className="text-xs font-medium text-body">Customer Name *</label>
                   <button
                     type="button"
-                    onClick={() => { setUseManualCustomer(false); setFieldErrors({}); setMatchedCustomer(null); setMatchSource(null) }}
+                    onClick={() => { setUseManualCustomer(false); setFieldErrors({}); setMatchedCustomer(null); setMatchSource(null); setIsNameMatch(false) }}
                     className="text-xs text-primary hover:underline"
                   >
                     Select from records
@@ -996,6 +1045,27 @@ export default function AddJobOrderForm() {
                   placeholder="e.g., Juan dela Cruz"
                   className={inputCls(!!fieldErrors.customerName, !!matchedCustomer)}
                 />
+                {nameSuggestions.length > 0 && (
+                  <div className="rounded-sm border border-border bg-surface shadow-pop">
+                    <p className="px-3 pt-2 pb-1 text-[11px] font-medium text-muted">
+                      Did you mean an existing customer?
+                    </p>
+                    <ul>
+                      {nameSuggestions.map((c) => (
+                        <li key={c.customer_id}>
+                          <button
+                            type="button"
+                            onClick={() => selectNameSuggestion(c)}
+                            className="flex w-full items-center justify-between gap-2 px-3 py-2 text-left text-sm hover:bg-surface-muted"
+                          >
+                            <span className="font-medium text-body">{c.full_name}</span>
+                            <span className="text-xs text-muted">{c.contact_number}</span>
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
                 <FieldError msg={fieldErrors.customerName} />
                 {matchedCustomer && (
                   <div className="flex items-center justify-between gap-3 rounded-sm border border-primary/30 bg-primary/10 px-3 py-2.5 text-[11px] text-primary">
@@ -1003,8 +1073,10 @@ export default function AddJobOrderForm() {
                       <p className="flex items-start gap-1.5">
                         <Info className="mt-px h-3.5 w-3.5 shrink-0" />
                         <span>
-                          Existing customer found (matched by {matchSource === "phone" ? "contact number" : matchSource}) — the name is locked.
-                          Edit the plate, contact, email or vehicle to book another vehicle for this customer.
+                          {isNameMatch
+                            ? "Existing customer selected by name — the name is locked. Enter the new vehicle's plate and unit below."
+                            : <>Existing customer found (matched by {matchSource === "phone" ? "contact number" : matchSource}) — the name is locked.
+                               Edit the plate, contact, email or vehicle to book another vehicle for this customer.</>}
                         </span>
                       </p>
                       <p className={`pl-5 font-semibold ${matchedCustomer.messenger_via ? "" : "text-status-delayed"}`}>

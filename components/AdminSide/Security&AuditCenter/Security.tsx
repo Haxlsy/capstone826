@@ -1,38 +1,75 @@
 "use client"
 
-import { useState} from "react"
+import { useState } from "react"
 import {
- RefreshCw, Filter, Loader2
+ RefreshCw, Filter, Loader2, FileText, FileSpreadsheet
 } from "lucide-react"
 import {AuditRole, TimePeriod, PageSize} from "../../../types/audit"
 import {ROLE_LABEL, ALL_ROLES} from "../Constants/config"
 import PaginationBar from "./PaginationBar"
-import { startOfPeriod} from "@/hooks/audit-helpers"
+import SortableTh from "./SortableTh"
 import renderRow from "./renderRow"
-import { useAuditLogs } from "@/hooks/use-audit-logs"
+import { useAuditLogs, fetchAllAuditLogs } from "@/hooks/use-audit-logs"
+import { toggleSort, type AuditSortColumn } from "@/lib/admin/audit-log-query"
+import { buildCsv, downloadCsv, openPrintPreview } from "@/lib/export/print"
+import { exportHeaders, toCsvCells, exportFilename, buildPrintHtml } from "@/lib/admin/audit-log-export"
+import { ConfirmModal } from "@/components/ui/Modal"
+import { useToast } from "@/components/ui/Toast"
 
-export default function SecurityView({ initialLogs }: { initialLogs: any[] }) {
+export default function SecurityView() {
+    const toast = useToast()
     const [authRoleFilter,   setAuthRoleFilter]   = useState<AuditRole | "all">("all")
     const [authEventFilter,  setAuthEventFilter]  = useState<string>("all")
     const [authPeriodFilter, setAuthPeriodFilter] = useState<TimePeriod>("all")
     const [authPageSize,     setAuthPageSize]     = useState<PageSize>(10)
     const [authPage,         setAuthPage]         = useState(1)
-    const { logs, loading, fetchErr, reload }     = useAuditLogs(initialLogs)
+    const [sortBy,           setSortBy]           = useState<AuditSortColumn>("created_at")
+    const [sortDir,          setSortDir]          = useState<"asc" | "desc">("desc")
+    const [exportConfirm,    setExportConfirm]    = useState<"pdf" | "excel" | null>(null)
+    const [exporting,        setExporting]        = useState(false)
 
-    const sorted = [...logs].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
-    const authPeriodStart = startOfPeriod(authPeriodFilter)
-    const authAll = sorted.filter((e) => e.action === "Logged in" || e.action === "Logged out")
+    const params = {
+      scope: "security" as const, role: authRoleFilter, category: "all" as const, action: authEventFilter,
+      period: authPeriodFilter, sortBy, sortDir, page: authPage, pageSize: authPageSize,
+    }
+    const { logs: authEntries, total, loading, fetchErr, reload } = useAuditLogs(params)
 
-     const filteredAuth = authAll
-    .filter((e) => authRoleFilter   === "all" || e.role   === authRoleFilter)
-    .filter((e) => authEventFilter  === "all" || e.action === authEventFilter)
-    .filter((e) => !authPeriodStart || new Date(e.created_at) >= authPeriodStart)
-    
-    const authTotalPages = Math.max(1, Math.ceil(filteredAuth.length / authPageSize))
-    const authSafePage   = Math.min(authPage, authTotalPages)
-    const authStart      = (authSafePage - 1) * authPageSize
-    const authEntries = filteredAuth.slice(authStart, authStart + authPageSize)
-    
+    function handleSort(column: AuditSortColumn) {
+      const next = toggleSort({ sortBy, sortDir }, column)
+      setSortBy(next.sortBy)
+      setSortDir(next.sortDir)
+      setAuthPage(1)
+    }
+
+    const filterNote = [
+      authRoleFilter !== "all" ? ROLE_LABEL[authRoleFilter] : null,
+      authEventFilter !== "all" ? authEventFilter : null,
+      authPeriodFilter !== "all" ? authPeriodFilter : null,
+    ].filter(Boolean).join(", ") || null
+
+    async function runExport(type: "pdf" | "excel") {
+      setExporting(true)
+      try {
+        const all = await fetchAllAuditLogs(params)
+        if (all.length === 0) {
+          toast.error("Nothing to export.")
+          return
+        }
+        const now = new Date()
+        if (type === "excel") {
+          downloadCsv(exportFilename("security-logs", now), buildCsv([...exportHeaders(false)], all.map((e) => toCsvCells(e, false))))
+        } else {
+          openPrintPreview(buildPrintHtml("Security Logs", all, false, new Date().toLocaleString("en-US", { timeZone: "Asia/Manila" }), filterNote))
+        }
+        setExportConfirm(null)
+      } catch (err: unknown) {
+        toast.error(err instanceof Error ? err.message : String(err))
+        setExportConfirm(null)
+      } finally {
+        setExporting(false)
+      }
+    }
+
     const SELECT_CLS = "text-xs border border-border rounded-sm px-2.5 py-1.5 bg-surface text-body focus:outline-none focus:ring-2 focus:ring-gray-200"
     return(
         <div>
@@ -42,7 +79,7 @@ export default function SecurityView({ initialLogs }: { initialLogs: any[] }) {
                     <div>
                     <h2 className="text-base font-semibold text-heading">Login / Logout Attempts</h2>
                     <p className="text-xs text-muted mt-0.5">
-                        Auth events · {loading ? "…" : `${filteredAuth.length} entries`}
+                        Auth events · {loading ? "…" : `${total} entries`}
                     </p>
                     </div>
                     <button type="button" onClick={() => reload()} disabled={loading} title="Refresh"
@@ -52,6 +89,16 @@ export default function SecurityView({ initialLogs }: { initialLogs: any[] }) {
                     </button>
                 </div>
                 <div className="flex items-center gap-2 flex-wrap">
+                    <button type="button" onClick={() => setExportConfirm("pdf")}
+                      className="flex items-center gap-1.5 text-xs font-medium px-2.5 py-1.5 rounded-sm border border-border text-body hover:bg-surface-muted transition-colors"
+                    >
+                      <FileText className="h-3.5 w-3.5" /> Export PDF
+                    </button>
+                    <button type="button" onClick={() => setExportConfirm("excel")}
+                      className="flex items-center gap-1.5 text-xs font-medium px-2.5 py-1.5 rounded-sm border border-border text-body hover:bg-surface-muted transition-colors"
+                    >
+                      <FileSpreadsheet className="h-3.5 w-3.5" /> Export Excel
+                    </button>
                     <Filter className="w-3.5 h-3.5 text-muted shrink-0" />
                     <select aria-label="Role filter" value={authRoleFilter}
                     onChange={(e) => { setAuthRoleFilter(e.target.value as AuditRole | "all"); setAuthPage(1) }}
@@ -82,9 +129,10 @@ export default function SecurityView({ initialLogs }: { initialLogs: any[] }) {
                 <table className="w-full text-sm">
                     <thead>
                     <tr className="border-b border-border-subtle">
-                        {["Time", "User", "Role", "Event"].map((h) => (
-                        <th key={h} className="text-left pb-2.5 text-xs font-semibold text-muted uppercase tracking-wide pr-4 last:pr-0">{h}</th>
-                        ))}
+                        <SortableTh label="Time"  column="created_at" sortBy={sortBy} sortDir={sortDir} onSort={handleSort} kind="time" />
+                        <SortableTh label="User"  column="user_name"  sortBy={sortBy} sortDir={sortDir} onSort={handleSort} />
+                        <SortableTh label="Role"  column="role"       sortBy={sortBy} sortDir={sortDir} onSort={handleSort} />
+                        <SortableTh label="Event" column="action"     sortBy={sortBy} sortDir={sortDir} onSort={handleSort} />
                     </tr>
                     </thead>
                     <tbody className="divide-y divide-border-subtle">
@@ -98,8 +146,22 @@ export default function SecurityView({ initialLogs }: { initialLogs: any[] }) {
                     </tbody>
                 </table>
                 </div>
-                <PaginationBar total={filteredAuth.length} pageSize={authPageSize} setPageSize={setAuthPageSize} page={authPage} setPage={setAuthPage} />
+                <PaginationBar total={total} pageSize={authPageSize} setPageSize={setAuthPageSize} page={authPage} setPage={setAuthPage} />
             </div>
+
+            <ConfirmModal
+              open={exportConfirm !== null}
+              onClose={() => !exporting && setExportConfirm(null)}
+              onConfirm={() => { if (exportConfirm) runExport(exportConfirm) }}
+              title={exportConfirm === "excel" ? "Export as Excel" : "Export as PDF"}
+              message={
+                (filterNote ? `Export every security log entry matching ${filterNote}` : "Export every security log entry") +
+                (exportConfirm === "excel" ? " to a CSV file that opens in Excel?" : "? This opens a print preview in a new tab.")
+              }
+              confirmLabel="Export"
+              loading={exporting}
+              icon={exportConfirm === "excel" ? FileSpreadsheet : FileText}
+            />
         </div>
     )
 }

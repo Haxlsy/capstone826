@@ -1,9 +1,10 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { Paperclip, CheckCircle, ArrowRight } from "lucide-react"
 import type { ConcernRecord } from "@/lib/operations/concern-record"
 import { useConcerns } from "@/hooks/use-concerns"
+import { logView } from "@/lib/client/log-view"
 import { PageHeader } from "@/components/ui/PageHeader"
 import { SearchBar } from "@/components/ui/SearchBar"
 import { Tabs } from "@/components/ui/Tabs"
@@ -119,6 +120,11 @@ export default function SalesConcerns({ initialRecords }: { initialRecords: Conc
   const [currentPage, setCurrentPage] = useState(1)
   const [pageSize, setPageSize] = useState(15)
   const [selected, setSelected] = useState<ConcernRecord | null>(null)
+
+  useEffect(() => {
+    if (selected) logView("job_concern", selected.jobId)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selected?.id])
 
   const filtered = records.filter((r) => {
     const matchFilter = activeFilter === "All" || r.status === activeFilter

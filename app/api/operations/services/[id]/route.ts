@@ -2,7 +2,7 @@ import { NextResponse } from "next/server"
 import { cookies } from "next/headers"
 import { createClient } from "@/lib/supabase/server"
 import { createAdminClient } from "@/lib/supabase/admin"
-import { logAudit } from "@/hooks/audit-helpers"
+import { logAudit, logAuditCall } from "@/hooks/audit-helpers"
 import { getLiveJobOrdersForService } from "@/lib/operations/service-usage"
 import { getRoleCaller } from "@/lib/auth/caller"
 import { findDuplicateStageName } from "@/lib/admin/service-stage-validation"
@@ -53,6 +53,12 @@ export async function GET(
         category_role:       cat?.technician_role ?? null,
         category_color:      cat?.display_color ?? null,
       }
+    })
+
+    logAuditCall(auth.caller, {
+      category: "view",
+      action:   "Viewed service details",
+      target:   serviceRes.data.name,
     })
 
     return NextResponse.json({

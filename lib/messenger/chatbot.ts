@@ -384,6 +384,7 @@ function buildRuntimeSystemPrompt(
     operating_days: DEFAULT_OPERATING_DAYS,
     operating_open_time: DEFAULT_OPERATING_OPEN_TIME,
     operating_close_time: DEFAULT_OPERATING_CLOSE_TIME,
+    holidays: [],
     vehicle_status_message_en: DEFAULT_VEHICLE_STATUS_MESSAGE_EN,
     vehicle_status_message_fil: DEFAULT_VEHICLE_STATUS_MESSAGE_FIL,
     link_verification_message_en: DEFAULT_LINK_VERIFICATION_MESSAGE_EN,

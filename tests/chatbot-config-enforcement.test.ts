@@ -25,6 +25,7 @@ const settings: ChatbotSettings = {
   operating_days: ["tue", "wed", "thu", "fri", "sat", "sun"],
   operating_open_time: "08:00",
   operating_close_time: "20:00",
+  holidays: [],
   vehicle_status_message_en: "Not linked.",
   vehicle_status_message_fil: "Hindi naka-link.",
   link_verification_message_en: "Couldn't verify.",

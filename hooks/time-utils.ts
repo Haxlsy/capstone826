@@ -5,6 +5,10 @@ export interface WorkSchedule {
   openMinutes: number
   /** Minutes since midnight, e.g. 1200 for 8:00 PM. */
   closeMinutes: number
+  /** Specific closed calendar dates (Manila-local "YYYY-MM-DD"), on top of the
+   *  weekly openDays — e.g. a one-off holiday. Optional so existing callers
+   *  that build a WorkSchedule literal without one still compile. */
+  holidayDates?: Set<string>
 }
 
 /** Today's hours, every day — the schedule every caller used before this was
@@ -20,7 +24,15 @@ export const DEFAULT_SCHEDULE: WorkSchedule = {
 // so the working-hours math is identical regardless of the server's timezone.
 const MANILA_OFFSET_MS = 8 * 60 * 60 * 1000
 
+/** `d`'s Manila-local calendar date as "YYYY-MM-DD" — `d` is expected to
+ *  already be the Manila-shifted Date every caller here passes around, so its
+ *  UTC getters read as the Manila wall-clock date. */
+function manilaDateKey(d: Date): string {
+  return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}-${String(d.getUTCDate()).padStart(2, "0")}`
+}
+
 function isOpenDay(d: Date, schedule: WorkSchedule): boolean {
+  if (schedule.holidayDates?.has(manilaDateKey(d))) return false
   return schedule.openDays.has(d.getUTCDay())
 }
 
