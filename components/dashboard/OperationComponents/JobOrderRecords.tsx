@@ -13,6 +13,7 @@ import { Pagination } from "@/components/ui/Pagination"
 import { Select, FieldLabel } from "@/components/ui/Field"
 import { fmtDateTime } from "@/lib/time-display"
 import { isWithinRecordDateRange } from "@/lib/operations/job-records-filter"
+import { logExport } from "@/lib/client/log-export"
 
 interface JobRecord {
   id: string
@@ -115,6 +116,7 @@ export default function JobOrderRecords({ jobOrders: rawOrders }: { jobOrders: a
     a.download = "job-order-records.csv"
     a.click()
     URL.revokeObjectURL(url)
+    logExport("job_order_records_excel", `${filtered.length} record${filtered.length !== 1 ? "s" : ""}`)
   }
 
   function exportPDF() {
@@ -153,6 +155,7 @@ export default function JobOrderRecords({ jobOrders: rawOrders }: { jobOrders: a
     const url = URL.createObjectURL(blob)
     const win = window.open(url, "_blank")
     if (win) win.addEventListener("load", () => { win.print(); URL.revokeObjectURL(url) })
+    logExport("job_order_records_pdf", `${filtered.length} record${filtered.length !== 1 ? "s" : ""}`)
   }
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize))

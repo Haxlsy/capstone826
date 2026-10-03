@@ -28,6 +28,7 @@ import { isTechnicianAvailableToday } from "@/lib/technician-availability"
 import { categorySwatch } from "@/lib/ui/category-colors"
 import { fmtDateTime } from "@/lib/time-display"
 import { useOfflineLock, OfflinePausedNote, OFFLINE_ACTION_HINT } from "@/hooks/useOfflineLock"
+import { logExport } from "@/lib/client/log-export"
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -684,8 +685,10 @@ export default function JobOrderDetail({
       const now = new Date()
       if (kind === "pdf") {
         openPrintPreview(buildPrintHtml(jobData, now.toLocaleString("en-US", { timeZone: "Asia/Manila" })))
+        logExport("job_order_detail_pdf", jobData.job_order_code)
       } else {
         await downloadWorkbook(exportFilename(jobData.job_order_code, "xlsx", now), buildWorkbook(jobData))
+        logExport("job_order_detail_excel", jobData.job_order_code)
       }
       setExportConfirm(null)
     } catch (err) {

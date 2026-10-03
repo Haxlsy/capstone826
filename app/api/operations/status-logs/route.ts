@@ -141,7 +141,7 @@ export async function POST(request: Request) {
 
     const caller = await getAuditCaller();
     if (caller) {
-      logAuditCall(caller, {
+      await logAuditCall(caller, {
         category: "update",
         action:   `Changed job status to ${new_status}`,
         target:   remarks ?? `job ${job_order_id} (${old_status ?? "?"} → ${new_status})`,

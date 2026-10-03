@@ -10,6 +10,7 @@ import { useAuditLogs, fetchAllAuditLogs } from "@/hooks/use-audit-logs"
 import { toggleSort, type AuditSortColumn } from "@/lib/admin/audit-log-query"
 import { buildCsv, downloadCsv, openPrintPreview } from "@/lib/export/print"
 import { exportHeaders, toCsvCells, exportFilename, buildPrintHtml } from "@/lib/admin/audit-log-export"
+import { logExport } from "@/lib/client/log-export"
 import { ConfirmModal } from "@/components/ui/Modal"
 import { useToast } from "@/components/ui/Toast"
 
@@ -55,8 +56,10 @@ export default function UserActivity() {
         const now = new Date()
         if (type === "excel") {
           downloadCsv(exportFilename("audit-trail", now), buildCsv([...exportHeaders(true)], all.map((e) => toCsvCells(e, true))))
+          logExport("audit_trail_excel", filterNote ?? undefined)
         } else {
           openPrintPreview(buildPrintHtml("Audit Trail", all, true, new Date().toLocaleString("en-US", { timeZone: "Asia/Manila" }), filterNote))
+          logExport("audit_trail_pdf", filterNote ?? undefined)
         }
         setExportConfirm(null)
       } catch (err: unknown) {
@@ -103,6 +106,7 @@ export default function UserActivity() {
               <option value="all">All actions</option>
               <option value="auth">Password reset</option>
               <option value="view">View</option>
+              <option value="export">Export</option>
               <option value="create">Create</option>
               <option value="update">Update</option>
               <option value="approve">Approve</option>

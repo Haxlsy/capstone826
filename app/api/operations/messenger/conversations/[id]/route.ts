@@ -142,7 +142,7 @@ export async function PATCH(
 
     const caller = await getAuditCaller();
     if (caller) {
-      logAuditCall(caller, {
+      await logAuditCall(caller, {
         category: "update",
         action:   "Updated messenger conversation",
         target:   `${(data as any)?.customer_name ?? `conversation ${id}`} (${status ?? "status change"})`,

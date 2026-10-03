@@ -107,7 +107,7 @@ export async function PATCH(
     // "Resolved concern" entry for what was really one action.
     const caller = await getAuditCaller()
     if (caller && status === "Resolved" && !alreadyResolved) {
-      logAuditCall(caller, {
+      await logAuditCall(caller, {
         category: "approve",
         action:   "Resolved concern",
         target:   concernJobLabel ?? `concern ${id}`,

@@ -126,7 +126,7 @@ export async function PATCH(
     // verification on an account that lost its link needs clearing.
     if (psidChange === "unlinked" && current.psid) await resetLinkFlags(supabase, current.psid as string)
 
-    logAuditCall(caller, {
+    await logAuditCall(caller, {
       category: "update",
       action: psidChange === "linked"
         ? "Linked Messenger account to customer"
@@ -175,7 +175,7 @@ export async function DELETE(
 
     if (customer.psid) await resetLinkFlags(supabase, customer.psid as string)
 
-    logAuditCall(caller, { category: "delete", action: "Deleted customer", target: customer.full_name as string })
+    await logAuditCall(caller, { category: "delete", action: "Deleted customer", target: customer.full_name as string })
     return NextResponse.json({ success: true })
   } catch (err: unknown) {
     return NextResponse.json({ error: err instanceof Error ? err.message : String(err) }, { status: 500 })

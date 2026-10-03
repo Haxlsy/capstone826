@@ -53,7 +53,7 @@ export async function PATCH(request: Request) {
 
     if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
-    logAuditCall(auditCallerOf(caller), {
+    await logAuditCall(auditCallerOf(caller), {
       category: "update",
       action:   "Updated shop capacity",
       target:   `max_capacity = ${parsed.data.max_capacity}`,

@@ -3,7 +3,7 @@ import { createAdminClient } from "@/lib/supabase/admin"
 import { TimePeriod } from "@/types/audit"
 import type { AuditCaller } from "@/lib/auth/caller"
 
-export type AuditCategory = "auth" | "view" | "create" | "update" | "approve" | "flag" | "delete" | "message"
+export type AuditCategory = "auth" | "view" | "export" | "create" | "update" | "approve" | "flag" | "delete" | "message"
 
 interface AuditParams {
   user_id:   string | null
@@ -14,9 +14,15 @@ interface AuditParams {
   target?:   string
 }
 
-export function logAudit(params: AuditParams): void {
+// Returns the insert's promise so callers in a serverless route handler can
+// `await` it before responding — an unawaited fire-and-forget write here can
+// get silently dropped if the function freezes/recycles right after return
+// (see app/api/auth/login/route.ts's comment on the same issue). Callers that
+// don't care about completion (e.g. client-side fetch helpers) may still
+// leave it unawaited; this is purely additive.
+export function logAudit(params: AuditParams): PromiseLike<void> {
   const admin = createAdminClient()
-  admin
+  return admin
     .from("audit_log")
     .insert({ ...params, target: params.target ?? "" })
     .then(
@@ -32,13 +38,13 @@ export function logAudit(params: AuditParams): void {
 /**
  * Convenience wrapper that fills in user_id / user_name / role from the
  * already-resolved caller (see `getAuditCaller` in lib/auth/caller), so
- * routes can audit with a single call: `logAuditCall(caller, opts)`.
+ * routes can audit with a single call: `await logAuditCall(caller, opts)`.
  */
 export function logAuditCall(
   caller: AuditCaller,
   opts: { category: AuditCategory; action: string; target?: string }
-): void {
-  logAudit({
+): PromiseLike<void> {
+  return logAudit({
     user_id:   caller.id,
     user_name: caller.full_name,
     role:      caller.role,

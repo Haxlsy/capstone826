@@ -22,6 +22,13 @@ describe("logAudit", () => {
     expect(insert).toHaveBeenCalledWith({ ...params, target: "" })
   })
 
+  it("returns a thenable so callers in a route handler can await the write", async () => {
+    insert.mockReturnValue(Promise.resolve({ error: null }))
+    const result = logAudit(params)
+    expect(typeof result.then).toBe("function")
+    await result
+  })
+
   it("reports a failed insert (resolved { error }) without throwing", async () => {
     const spy = vi.spyOn(console, "error").mockImplementation(() => {})
     insert.mockReturnValue(Promise.resolve({ error: { message: "boom" } }))

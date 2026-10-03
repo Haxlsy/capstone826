@@ -103,7 +103,7 @@ export async function POST(request: Request) {
 
     const caller = await getAuditCaller();
     if (caller) {
-      logAuditCall(caller, {
+      await logAuditCall(caller, {
         category: "create",
         action:   "Created message template",
         target:   template_name,

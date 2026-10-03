@@ -75,7 +75,7 @@ async function saveRaw(
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
-  logAuditCall(auditCallerOf(caller), {
+  await logAuditCall(auditCallerOf(caller), {
     category: "update",
     action:   settings ? "Updated chatbot settings" : "Updated chatbot system prompt",
   })

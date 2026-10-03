@@ -1,13 +1,13 @@
 import { NextResponse } from "next/server"
 import { requireAuditCaller } from "@/lib/auth/caller"
 import { logAuditCall } from "@/hooks/audit-helpers"
-import { isViewType, VIEW_TYPE_ACTIONS } from "@/lib/audit/view-types"
+import { isExportType, EXPORT_TYPE_ACTIONS } from "@/lib/audit/export-types"
 
-// POST /api/audit/log-view
-// Body: { viewType: keyof VIEW_TYPE_ACTIONS, target?: string }
-// Any signed-in role may call this — it only ever logs "I viewed this kind of
-// thing." user_id/user_name/role come from the caller's own session and
-// category/action come from the fixed VIEW_TYPE_ACTIONS map, never from the
+// POST /api/audit/log-export
+// Body: { exportType: keyof EXPORT_TYPE_ACTIONS, target?: string }
+// Any signed-in role may call this — it only ever logs "I exported this kind
+// of thing." user_id/user_name/role come from the caller's own session and
+// category/action come from the fixed EXPORT_TYPE_ACTIONS map, never from the
 // request body, so a client can't forge an arbitrary audit entry this way.
 export async function POST(request: Request) {
   try {
@@ -15,15 +15,15 @@ export async function POST(request: Request) {
     if ("error" in result) return result.error
 
     const body = await request.json().catch(() => ({}))
-    const { viewType, target } = body as { viewType?: unknown; target?: unknown }
+    const { exportType, target } = body as { exportType?: unknown; target?: unknown }
 
-    if (!isViewType(viewType)) {
-      return NextResponse.json({ error: "Unknown view type." }, { status: 400 })
+    if (!isExportType(exportType)) {
+      return NextResponse.json({ error: "Unknown export type." }, { status: 400 })
     }
 
     await logAuditCall(result.caller, {
-      category: "view",
-      action:   VIEW_TYPE_ACTIONS[viewType],
+      category: "export",
+      action:   EXPORT_TYPE_ACTIONS[exportType],
       target:   typeof target === "string" ? target.slice(0, 200) : undefined,
     })
 

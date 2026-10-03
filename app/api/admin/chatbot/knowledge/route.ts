@@ -69,7 +69,7 @@ export async function POST(request: Request) {
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
-  logAuditCall(auditCallerOf(caller), {
+  await logAuditCall(auditCallerOf(caller), {
     category: "create",
     action:   "Added knowledge entry",
     target:   topic,

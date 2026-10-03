@@ -55,7 +55,7 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
       if (stagesErr) return NextResponse.json({ error: stagesErr.message }, { status: 500 })
     }
 
-    logAuditCall(auditCallerOf(caller), {
+    await logAuditCall(auditCallerOf(caller), {
       category: "update",
       action:   "Updated workflow category preset",
       target:   name.trim(),
@@ -86,7 +86,7 @@ export async function DELETE(_request: Request, { params }: { params: Promise<{ 
     const { error } = await admin.from("category_preset").delete().eq("id", id)
     if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
-    logAuditCall(auditCallerOf(caller), {
+    await logAuditCall(auditCallerOf(caller), {
       category: "delete",
       action:   "Deleted workflow category preset",
       target:   preset?.name ?? `preset ${id}`,

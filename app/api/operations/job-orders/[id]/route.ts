@@ -29,7 +29,7 @@ export async function GET(
     const { id } = await params
     const data = await getJobDetailData(id)
 
-    logAuditCall(auth.caller, {
+    await logAuditCall(auth.caller, {
       category: "view",
       action:   "Viewed job order details",
       target:   data.job.job_order_code,
