@@ -4,10 +4,12 @@ import { z } from "zod"
 import { createClient } from "@/lib/supabase/server"
 import { createAdminClient } from "@/lib/supabase/admin"
 import { logAudit } from "@/hooks/audit-helpers"
+import { verifyTurnstileToken } from "@/lib/auth/turnstile"
 
 const LoginSchema = z.object({
   username: z.string().trim().min(1, "Username required").max(100),
   password: z.string().min(1, "Password required").max(128),
+  captchaToken: z.string().optional(),
 })
 
 const LOCKOUT_THRESHOLD = 3
@@ -21,7 +23,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: parsed.error.issues[0].message }, { status: 400 })
     }
 
-    const { username, password } = parsed.data
+    const { username, password, captchaToken } = parsed.data
 
     const cookieStore = await cookies()
     const supabase = createClient(cookieStore)
@@ -34,9 +36,8 @@ export async function POST(request: Request) {
       admin.rpc("get_user_email_by_username", { p_username: username }),
       admin
         .from("user_account")
-        .select("id, full_name, role, must_change_password, failed_login_count, failed_login_at")
+        .select("id, full_name, role, must_change_password, failed_login_count, failed_login_at, is_archived")
         .eq("username", username)
-        .eq("is_archived", false)
         .single(),
     ])
 
@@ -56,6 +57,23 @@ export async function POST(request: Request) {
         { error: "Too many failed attempts. Please wait 1 minute.", retryAfterSeconds: 60 },
         { status: 423 }
       )
+    }
+
+    // Once an account has tripped the lockout once, every subsequent attempt
+    // requires a passed CAPTCHA first — persists until a successful login
+    // resets failed_login_count to 0 (step 4-7 below), covering every future
+    // lockout cycle, not just the one right after the first. Checked before
+    // ever attempting the password: a missing/failed CAPTCHA isn't a password
+    // guess, so it must never touch the failed-attempt counter.
+    const requiresCaptcha = account.failed_login_count >= LOCKOUT_THRESHOLD
+    if (requiresCaptcha) {
+      const passed = !!captchaToken && (await verifyTurnstileToken(captchaToken, request.headers.get("x-forwarded-for") ?? undefined))
+      if (!passed) {
+        return NextResponse.json(
+          { error: "Please complete the verification challenge.", requireCaptcha: true },
+          { status: 400 }
+        )
+      }
     }
 
     // 2. Sign in — alongside a check for an existing active session on this
@@ -84,12 +102,26 @@ export async function POST(request: Request) {
         failed_login_at:    new Date().toISOString(),
       }).eq("id", account.id)
 
+      // Every failed attempt gets its own entry — not just the one that
+      // trips the lockout — so Security Logs shows the full picture. The
+      // attempt count lives in `target`, not templated into `action`, so the
+      // Security Logs filter can match it with a plain equality check like
+      // every other event.
+      await logAudit({
+        user_id:   account.id,
+        user_name: account.full_name,
+        role:      account.role,
+        category:  "auth",
+        action:    "Failed login attempt",
+        target:    `${username} — attempt ${nextCount}/${LOCKOUT_THRESHOLD}`,
+      })
+
       if (nextCount >= LOCKOUT_THRESHOLD) {
-        logAudit({
+        await logAudit({
           user_id:   account.id,
           user_name: account.full_name,
           role:      account.role,
-          category:  "flag",
+          category:  "auth",
           action:    "Account locked out after 3 failed login attempts",
           target:    username,
         })
@@ -99,6 +131,34 @@ export async function POST(request: Request) {
         )
       }
 
+      return NextResponse.json({ error: "Invalid credentials" }, { status: 401 })
+    }
+
+    // Archived accounts never get a session, even with the correct password —
+    // checked here, after credential verification, not folded into the
+    // earlier lookup, so an archived account and a wrong password are
+    // genuinely indistinguishable from outside (same response, same status,
+    // same code path up to this point). A correct password against an
+    // archived account is a strong probing signal worth its own log entry —
+    // deliberately not touching the failed-attempt counter, since the
+    // credentials themselves were right.
+    if (account.is_archived) {
+      // signInWithPassword above already minted a real Supabase session for
+      // this correct password — revoke it immediately (scope "global": every
+      // session this user has, not just this one) so an archived account
+      // never ends up with a dangling valid session we just never told our
+      // own cookies/active-session table about.
+      if (authData.session) {
+        await admin.auth.admin.signOut(authData.session.access_token, "global")
+      }
+      await logAudit({
+        user_id:   account.id,
+        user_name: account.full_name,
+        role:      account.role,
+        category:  "auth",
+        action:    "Login attempt on archived account with correct password",
+        target:    username,
+      })
       return NextResponse.json({ error: "Invalid credentials" }, { status: 401 })
     }
 
@@ -150,13 +210,12 @@ export async function POST(request: Request) {
     // A security-relevant event worth its own visible entry — same category
     // the lockout event above uses — so it doesn't just look like an
     // ordinary "Logged in" alongside it in the Security & Audit Center.
-    // Fire-and-forget, same as the lockout call — never blocks the response.
     if (hadExistingSession) {
-      logAudit({
+      await logAudit({
         user_id:   authData.user.id,
         user_name: profile.full_name,
         role:      profile.role,
-        category:  "flag",
+        category:  "auth",
         action:    "Logged in — ended a previous active session on another device",
         target:    profile.full_name,
       })
@@ -203,7 +262,7 @@ async function createAuditLog(admin: any, userId: string, profile: any, action: 
       role:      profile.role,
       category:  "auth",
       action:    action,
-      target:    "",
+      target:    profile.username ?? "",
     })
   } catch (e) {
     console.error("Failed to write audit log:", e)

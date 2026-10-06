@@ -41,7 +41,7 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
     (message: string, tone: ToastTone = "info") => {
       const id = Date.now() + Math.random()
       setItems((prev) => [...prev, { id, tone, message }])
-      setTimeout(() => remove(id), 4000)
+      setTimeout(() => remove(id), 5000)
     },
     [remove],
   )
