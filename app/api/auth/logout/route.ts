@@ -44,7 +44,7 @@ async function createAuditLogEntry(admin: any, userId: string) {
   try {
     const { data: profile, error: profileError } = await admin
       .from("user_account")
-      .select("full_name, role")
+      .select("full_name, role, username")
       .eq("id", userId)
       .single()
 
@@ -59,7 +59,7 @@ async function createAuditLogEntry(admin: any, userId: string) {
       role:      profile.role,
       category:  "auth",
       action:    "Logged out",
-      target:    "",
+      target:    profile.username ?? "",
     })
 
     if (insertError) throw insertError

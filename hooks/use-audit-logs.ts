@@ -62,6 +62,12 @@ export function useAuditLogs(params: AuditLogParams) {
     logs:     query.data?.logs ?? [],
     total:    query.data?.total ?? 0,
     loading:  query.isPending,
+    // isPending only covers the very first load — with placeholderData:
+    // keepPreviousData, every later refetch (including a manual Refresh
+    // click) keeps serving cached data while it reloads, so isPending never
+    // goes true again and a Refresh button driven by `loading` alone would
+    // never visibly spin. isFetching covers both cases.
+    refreshing: query.isFetching,
     fetchErr: query.isError ? (query.error instanceof Error ? query.error.message : String(query.error)) : null,
     reload:   () => queryClient.invalidateQueries({ queryKey: ["audit-log"] }),
   }

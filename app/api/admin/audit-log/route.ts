@@ -4,7 +4,7 @@ import { getRoleCaller } from "@/lib/auth/caller"
 import { startOfPeriod } from "@/hooks/audit-helpers"
 import type { TimePeriod } from "@/types/audit"
 import {
-  isAuditSortColumn, isAuditSortDir, isAuditScope, SECURITY_EVENT_ACTIONS,
+  isAuditSortColumn, isAuditSortDir, isAuditScope, SECURITY_CATEGORY,
 } from "@/lib/admin/audit-log-query"
 
 // ── GET /api/admin/audit-log ──────────────────────────────────────────────────
@@ -48,10 +48,10 @@ export async function GET(request: Request) {
     query = query.order("id", { ascending: true })
 
     if (scope === "activity") {
-      query = query.not("action", "in", `(${SECURITY_EVENT_ACTIONS.map((a) => `"${a}"`).join(",")})`)
+      query = query.neq("category", SECURITY_CATEGORY)
       if (category) query = query.eq("category", category)
     } else {
-      query = query.in("action", SECURITY_EVENT_ACTIONS as unknown as string[])
+      query = query.eq("category", SECURITY_CATEGORY)
       if (action) query = query.eq("action", action)
     }
 

@@ -1,6 +1,6 @@
 "use client"
 import { useState } from "react"
-import { Filter, Loader2, FileText, FileSpreadsheet } from "lucide-react"
+import { Filter, Loader2, FileText, FileSpreadsheet, RefreshCw } from "lucide-react"
 import { AuditRole, TimePeriod, PageSize, AuditCategory } from "../../../types/audit"
 import { ROLE_LABEL, ALL_ROLES } from "../Constants/config"
 import PaginationBar from "./PaginationBar"
@@ -30,7 +30,7 @@ export default function UserActivity() {
       scope: "activity" as const, role: actRoleFilter, category: actCatFilter, action: "all" as const,
       period: actPeriodFilter, sortBy, sortDir, page: actPage, pageSize: actPageSize,
     }
-    const { logs: actEntries, total, loading, fetchErr } = useAuditLogs(params)
+    const { logs: actEntries, total, loading, refreshing, fetchErr, reload } = useAuditLogs(params)
 
     function handleSort(column: AuditSortColumn) {
       const next = toggleSort({ sortBy, sortDir }, column)
@@ -74,11 +74,18 @@ export default function UserActivity() {
     return (
         <div className="bg-surface rounded-card border border-border-subtle p-6">
         <div className="flex items-start justify-between mb-4 gap-4 flex-wrap">
-          <div>
-            <h2 className="text-base font-semibold text-heading">Audit Trail</h2>
-            <p className="text-xs text-muted mt-0.5">
-              User activity · {loading ? "…" : `${total} entries`}
-            </p>
+          <div className="flex items-center gap-3">
+            <div>
+              <h2 className="text-base font-semibold text-heading">Audit Trail</h2>
+              <p className="text-xs text-muted mt-0.5">
+                User activity · {loading ? "…" : `${total} entries`}
+              </p>
+            </div>
+            <button type="button" onClick={() => reload()} disabled={refreshing} title="Refresh"
+              className="p-1.5 rounded-sm text-muted hover:text-body hover:bg-surface-muted transition-colors disabled:opacity-40"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 ${refreshing ? "animate-spin" : ""}`} />
+            </button>
           </div>
           <div className="flex items-center gap-2 flex-wrap">
             <button type="button" onClick={() => setExportConfirm("pdf")}
@@ -104,7 +111,6 @@ export default function UserActivity() {
               className={SELECT_CLS}
             >
               <option value="all">All actions</option>
-              <option value="auth">Password reset</option>
               <option value="view">View</option>
               <option value="export">Export</option>
               <option value="create">Create</option>

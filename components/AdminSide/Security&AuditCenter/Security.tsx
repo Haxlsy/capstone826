@@ -33,7 +33,7 @@ export default function SecurityView() {
       scope: "security" as const, role: authRoleFilter, category: "all" as const, action: authEventFilter,
       period: authPeriodFilter, sortBy, sortDir, page: authPage, pageSize: authPageSize,
     }
-    const { logs: authEntries, total, loading, fetchErr, reload } = useAuditLogs(params)
+    const { logs: authEntries, total, loading, refreshing, fetchErr, reload } = useAuditLogs(params)
 
     function handleSort(column: AuditSortColumn) {
       const next = toggleSort({ sortBy, sortDir }, column)
@@ -80,15 +80,15 @@ export default function SecurityView() {
                 <div className="flex items-start justify-between mb-4 gap-4 flex-wrap">
                 <div className="flex items-center gap-3">
                     <div>
-                    <h2 className="text-base font-semibold text-heading">Login / Logout Attempts</h2>
+                    <h2 className="text-base font-semibold text-heading">Security Events</h2>
                     <p className="text-xs text-muted mt-0.5">
-                        Auth events · {loading ? "…" : `${total} entries`}
+                        Security events · {loading ? "…" : `${total} entries`}
                     </p>
                     </div>
-                    <button type="button" onClick={() => reload()} disabled={loading} title="Refresh"
+                    <button type="button" onClick={() => reload()} disabled={refreshing} title="Refresh"
                     className="p-1.5 rounded-sm text-muted hover:text-body hover:bg-surface-muted transition-colors disabled:opacity-40"
                     >
-                    <RefreshCw className={`w-3.5 h-3.5 ${loading ? "animate-spin" : ""}`} />
+                    <RefreshCw className={`w-3.5 h-3.5 ${refreshing ? "animate-spin" : ""}`} />
                     </button>
                 </div>
                 <div className="flex items-center gap-2 flex-wrap">
@@ -117,6 +117,12 @@ export default function SecurityView() {
                     <option value="all">All events</option>
                     <option value="Logged in">Logged in</option>
                     <option value="Logged out">Logged out</option>
+                    <option value="Logged in — ended a previous active session on another device">Ended previous session</option>
+                    <option value="Account locked out after 3 failed login attempts">Account locked out</option>
+                    <option value="Failed login attempt">Failed login attempt</option>
+                    <option value="Login attempt on archived account with correct password">Archived-account attempt</option>
+                    <option value="Reset account password">Password reset</option>
+                    <option value="Changed own password">Changed own password</option>
                     </select>
                     <select aria-label="Period filter" value={authPeriodFilter}
                     onChange={(e) => { setAuthPeriodFilter(e.target.value as TimePeriod); setAuthPage(1) }}
@@ -132,20 +138,21 @@ export default function SecurityView() {
                 <table className="w-full text-sm">
                     <thead>
                     <tr className="border-b border-border-subtle">
-                        <SortableTh label="Time"  column="created_at" sortBy={sortBy} sortDir={sortDir} onSort={handleSort} kind="time" />
-                        <SortableTh label="User"  column="user_name"  sortBy={sortBy} sortDir={sortDir} onSort={handleSort} />
-                        <SortableTh label="Role"  column="role"       sortBy={sortBy} sortDir={sortDir} onSort={handleSort} />
-                        <SortableTh label="Event" column="action"     sortBy={sortBy} sortDir={sortDir} onSort={handleSort} />
+                        <SortableTh label="Time"   column="created_at" sortBy={sortBy} sortDir={sortDir} onSort={handleSort} kind="time" />
+                        <SortableTh label="User"   column="user_name"  sortBy={sortBy} sortDir={sortDir} onSort={handleSort} />
+                        <SortableTh label="Role"   column="role"       sortBy={sortBy} sortDir={sortDir} onSort={handleSort} />
+                        <SortableTh label="Event"  column="action"     sortBy={sortBy} sortDir={sortDir} onSort={handleSort} />
+                        <SortableTh label="Target" column="target"     sortBy={sortBy} sortDir={sortDir} onSort={handleSort} />
                     </tr>
                     </thead>
                     <tbody className="divide-y divide-border-subtle">
                     {loading ? (
-                        <tr><td colSpan={4} className="py-12 text-center"><Loader2 className="w-5 h-5 text-muted animate-spin mx-auto" /></td></tr>
+                        <tr><td colSpan={5} className="py-12 text-center"><Loader2 className="w-5 h-5 text-muted animate-spin mx-auto" /></td></tr>
                     ) : fetchErr ? (
-                        <tr><td colSpan={4} className="py-10 text-center text-sm text-status-delayed">{fetchErr}</td></tr>
+                        <tr><td colSpan={5} className="py-10 text-center text-sm text-status-delayed">{fetchErr}</td></tr>
                     ) : authEntries.length === 0 ? (
-                        <tr><td colSpan={4} className="py-10 text-center text-sm text-muted">No entries match the selected filters.</td></tr>
-                    ) : authEntries.map((e) => renderRow(e, false))}
+                        <tr><td colSpan={5} className="py-10 text-center text-sm text-muted">No entries match the selected filters.</td></tr>
+                    ) : authEntries.map((e) => renderRow(e, true))}
                     </tbody>
                 </table>
                 </div>

@@ -22,8 +22,14 @@ export function isAuditScope(value: unknown): value is AuditScope {
   return value === "activity" || value === "security"
 }
 
-/** The two literal event actions Security Logs scopes itself to. */
-export const SECURITY_EVENT_ACTIONS = ["Logged in", "Logged out"] as const
+/**
+ * Security Logs vs. Audit Trail is a category split, not an action-text
+ * allow-list: every authentication/account-security event (login, logout,
+ * lockout, failed attempts, password reset/change, …) is tagged category
+ * "auth" — Security Logs shows only those rows, Audit Trail shows everything
+ * else. See app/api/admin/audit-log/route.ts.
+ */
+export const SECURITY_CATEGORY = "auth"
 
 /** Clicking a new column sorts it ascending; clicking the active column flips direction. */
 export function toggleSort(

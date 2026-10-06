@@ -2,11 +2,24 @@
 
 import { useState, useRef, useEffect } from "react"
 import { useRouter } from "next/navigation"
+import Script from "next/script"
 import { User, Lock, Eye, EyeOff, ShieldAlert, X } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { useToast } from "@/components/ui/Toast"
 import { checkAlreadySignedIn } from "@/lib/auth/already-signed-in"
 import { loginRedirectNoticeCopy, isLoginRedirectNotice, type LoginRedirectNotice } from "@/lib/auth/login-redirect-notice"
+
+// Minimal shape of the global the Turnstile script attaches — just what this
+// page calls.
+declare global {
+  interface Window {
+    turnstile?: {
+      render: (container: HTMLElement, options: Record<string, unknown>) => string
+      remove: (widgetId: string) => void
+      reset: (widgetId: string) => void
+    }
+  }
+}
 
 // Upper bound on how long the form can be held back by the already-signed-in
 // check — a slow check may delay the form but must never block it.
@@ -33,6 +46,14 @@ export default function LoginPage() {
   const [attempts, setAttempts] = useState(0)
   const [lockUntil, setLockUntil] = useState<number | null>(null)
   const [remaining, setRemaining] = useState(0)
+  // Post-lockout CAPTCHA — the server is authoritative on whether this
+  // account needs one (see app/api/auth/login/route.ts); this just reflects
+  // what it told us on the last failed attempt.
+  const [needsCaptcha, setNeedsCaptcha] = useState(false)
+  const [captchaToken, setCaptchaToken] = useState<string | null>(null)
+  const [captchaScriptReady, setCaptchaScriptReady] = useState(false)
+  const captchaContainerRef = useRef<HTMLDivElement>(null)
+  const captchaWidgetId = useRef<string | null>(null)
   // Persistent counterpart to the toast below — see the effect that sets it.
   const [notice, setNotice] = useState<LoginRedirectNotice | null>(null)
   const toastRef = useRef(toast)
@@ -157,6 +178,20 @@ export default function LoginPage() {
   // own Date.now() comparison, which isn't safe to call during render.
   const locked = lockUntil !== null
 
+  // Render the Turnstile widget once both the server has told us this
+  // account needs one and the script has finished loading. Re-renders are a
+  // no-op (widgetId already set) — reset() below (in handleSubmit) clears
+  // the token on a failed challenge without tearing the widget down.
+  useEffect(() => {
+    if (!needsCaptcha || !captchaScriptReady || captchaWidgetId.current) return
+    if (!captchaContainerRef.current || !window.turnstile) return
+    captchaWidgetId.current = window.turnstile.render(captchaContainerRef.current, {
+      sitekey: process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY ?? "",
+      callback: (token: string) => setCaptchaToken(token),
+      "expired-callback": () => setCaptchaToken(null),
+    })
+  }, [needsCaptcha, captchaScriptReady])
+
   function validate() {
     const e: { username?: string; password?: string } = {}
     if (!username.trim()) e.username = "Username is required."
@@ -188,7 +223,11 @@ export default function LoginPage() {
       const res = await fetch("/api/auth/login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ username: username.trim(), password }),
+        body: JSON.stringify({
+          username: username.trim(),
+          password,
+          ...(needsCaptcha && captchaToken ? { captchaToken } : {}),
+        }),
       })
       const data = await res.json()
 
@@ -204,6 +243,20 @@ export default function LoginPage() {
           setLockUntil(until)
           localStorage.setItem("826_login_attempts", JSON.stringify({ attempts: 3, lockUntil: until }))
           toastRef.current.error(data.error ?? "Too many failed attempts. Please wait 1 minute.")
+          setIsLoading(false)
+          return
+        }
+
+        // Not a failed credential guess — the server never even checked the
+        // password — so this must never touch the attempt counter. Render
+        // (or reset) the widget and ask for it before resubmitting.
+        if (data.requireCaptcha) {
+          setNeedsCaptcha(true)
+          setCaptchaToken(null)
+          if (captchaWidgetId.current && window.turnstile) {
+            window.turnstile.reset(captchaWidgetId.current)
+          }
+          toastRef.current.error(data.error ?? "Please complete the verification challenge.")
           setIsLoading(false)
           return
         }
@@ -340,6 +393,17 @@ export default function LoginPage() {
         </div>
       )}
 
+      {/* Post-lockout verification — only rendered once the server has told
+          us this account needs it (see handleSubmit's requireCaptcha branch).
+          No proactive "does this account need a captcha" check before the
+          first submit — that would itself be a new way to probe which
+          accounts exist. */}
+      {needsCaptcha && (
+        <div className="flex justify-center">
+          <div ref={captchaContainerRef} />
+        </div>
+      )}
+
       {/* Lockout Alert */}
       {locked && (
         <div className="flex items-center gap-2.5 rounded-xl bg-status-delayed/10 border border-status-delayed/20 px-3.5 py-2.5 text-xs font-medium text-status-delayed">
@@ -353,7 +417,7 @@ export default function LoginPage() {
       {/* Submit Button */}
       <button
         type="submit"
-        disabled={isLoading || locked}
+        disabled={isLoading || locked || (needsCaptcha && !captchaToken)}
         className={cn(
           "h-12 w-full rounded-full bg-linear-to-b from-accent to-primary text-sm font-semibold text-white shadow-md cursor-pointer transition-all duration-200",
           "hover:-translate-y-0.5 hover:shadow-lg hover:shadow-teal-500/25 active:translate-y-0 active:shadow-xs",
@@ -367,6 +431,15 @@ export default function LoginPage() {
 
   return (
     <div className="relative flex min-h-screen flex-col bg-surface-subtle md:overflow-hidden md:bg-surface">
+    {/* Loaded unconditionally but lazily — the widget itself only renders
+        once the server says this account needs it, but the script needs a
+        head start so it's ready by then instead of adding a visible delay
+        right when the person is already mid-retry. */}
+    <Script
+      src="https://challenges.cloudflare.com/turnstile/v0/api.js"
+      strategy="lazyOnload"
+      onLoad={() => setCaptchaScriptReady(true)}
+    />
     {/* Desktop background art — 826 car illustration */}
       <picture className="pointer-events-none absolute inset-0 hidden md:block">
         <source srcSet="/assets/826_car_asset.png" type="image/png" />
