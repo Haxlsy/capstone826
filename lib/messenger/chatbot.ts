@@ -307,6 +307,7 @@ export function buildSystemPrompt(s: ChatbotSettings): string {
   lines.push("- NEVER state whether a plate number or phone number does or does not have a job order. You were given no such information.")
   lines.push("- NEVER invent a job order, status, stage, or completion date. Only ever relay status details supplied to you.")
   lines.push("- Do NOT ask the customer for their plate number or phone number for a status check — our system handles identity and asks for those itself when they are needed.")
+  lines.push("- If a customer's question sounds like it could be about their vehicle's status but you were not handed status details, do NOT say you don't have access to records or can't check — that's not true, our system can; simply ask them to ask about their vehicle's \"status\" so our system picks it up and looks it up for them.")
 
   lines.push("")
   lines.push("LANGUAGE: Detect the customer's language from their message and respond in the same language. If they write in English, reply in English. If they write in Filipino/Tagalog, reply in Filipino. If mixed, match their dominant language. Only ever reply in English or Filipino — even if the customer writes in a different language, respond in whichever of English or Filipino is the closer fit, never a third language. If the knowledge base content below is in a different language than your reply, translate it rather than quoting it verbatim.")
@@ -541,6 +542,45 @@ const STATUS_INTENT_PATTERNS = [
   /\bkumusta\s+(?:ang|na)\b/i,
   /\bbalak\s+ko\s+lang\s+itsek\b/i,
   /\bpaki-?(?:check|tingnan)\b/i,
+  // Natural phrasings that don't happen to contain any of the keywords
+  // above — e.g. "do I have a car in service right now?" previously fell
+  // through to Gemini with no vehicle context at all, producing an
+  // improvised (and sometimes wrong) reply instead of a real lookup.
+  /\bdo\s+i\s+have\s+(?:a\s+)?(?:car|vehicle)\b/i,
+  /\bis\s+my\s+(?:car|vehicle)\b/i,
+  /\bwhere.?s\s+my\s+(?:car|vehicle)\b/i,
+  /\bhow.?s\s+my\s+(?:car|vehicle)\b/i,
+  /\b(?:car|vehicle)\s+in\s+service\b/i,
+  /\bmay\s+sasakyan\s+(?:ba\s+)?ako\b/i,
+  /\bmeron\s+(?:ba\s+)?akong\s+sasakyan\b/i,
+  /\bnasaan\s+(?:na\s+)?(?:ang\s+)?(?:aking\s+)?(?:sasakyan|kotse)\s+ko\b/i,
+  /\bkailan\s+(?:ba\s+)?matatapos\b/i,
+  // Further natural phrasings — each still tied to a vehicle word (or, for
+  // the couple of Tagalog phrases specific enough on their own, a small
+  // bounded word-gap) so this stays targeted and doesn't start matching
+  // unrelated chatter.
+  /\bwhen\s+will\s+(?:my\s+)?(?:car|vehicle)\s+be\s+(?:done|ready|finished)\b/i,
+  /\b(?:car|vehicle)\s+(?:is\s+)?(?:done|ready|finished)\b/i,
+  /\bwhat.?s\s+happening\s+(?:with\s+)?my\s+(?:car|vehicle)\b/i,
+  /\bstill\s+working\s+on\s+(?:my\s+)?(?:car|vehicle)\b/i,
+  /\bhow\s+far\s+along\b/i,
+  /\b(?:car|vehicle)\s+with\s+you\b/i,
+  /\bmy\s+(?:car|vehicle)\s+still\s+(?:with|at)\b/i,
+  /\bany\s+news\s+(?:on|about)\s+my\s+(?:car|vehicle)\b/i,
+  /\bnasa\s+(?:inyo|shop)\s+(?:pa\s+)?ba\b/i,
+  /\bnandiyan\s+(?:pa\s+)?ba\b[\s\S]{0,15}\b(?:sasakyan|kotse)\b/i,
+  /\bpwede\s+ko\s+na\s+ba\s+kunin\b/i,
+  /\bilang\s+(?:stage|yugto)\s+na\b/i,
+  // "ganap"/the common "ganpap" typo — Tagalog slang for "what's up/going
+  // on," unambiguous enough in this shop's chat context to stand alone.
+  /\bgan(?:a|pa)p\b/i,
+  /\bano\s+(?:ang\s+)?(?:kwento|lagay)\s+(?:ng|sa)\b/i,
+  /\bbalita\b[\s\S]{0,20}\b(?:kotse|sasakyan|car|vehicle)\b/i,
+  /\b(?:kotse|sasakyan|car|vehicle)\b[\s\S]{0,20}\bbalita\b/i,
+  /\bservice\s+pa\s+ba\b[\s\S]{0,20}\b(?:kotse|sasakyan)\b/i,
+  /\b(?:kotse|sasakyan)\b[\s\S]{0,20}\bservice\s+pa\s+ba\b/i,
+  /\bwhat.?s\s+(?:the\s+)?(?:deal|latest|scoop|word)\s+(?:with|on)\s+my\s+(?:car|vehicle)\b/i,
+  /\bwhat.?s\s+going\s+on\s+with\s+my\s+(?:car|vehicle)\b/i,
 ]
 
 /** True when the message expresses intent to book a service. */
@@ -613,6 +653,25 @@ const CANCEL_INTENT_PATTERNS = [
   /\bhindi\s+na\s+(lang|ako|po)?\b/i,
   /\bskip\s+na\s+lang\b/i,
   /\bnext\s+time\s+na\s+lang\b/i,
+  // Bare "cancel"/"stop" ("Cancel." / "Stop.") previously didn't match — the
+  // pattern above requires something (whitespace, then an optional word) to
+  // follow it, which a message that's just the word itself doesn't have.
+  // Safe standalone here: this function is only ever consulted while the
+  // customer is mid-draft, per the docstring below.
+  /\b(?:cancel|kansel|stop)\b/i,
+  // More natural / slang ways to abandon an in-progress draft.
+  /\bi.?m\s+good\b/i,
+  /\bno\s+need\b/i,
+  /\bi.?ll\s+pass\b/i,
+  /\bscratch\s+that\b/i,
+  /\bi.?m\s+out\b/i,
+  /\bnot\s+interested\b/i,
+  /\bhindi\s+(?:na\s+)?interested\b/i,
+  /\bbale\s*wala\s+na\s+lang\b/i,
+  /\btama\s+na\b/i,
+  /\bsayang\s+na\s+lang\b/i,
+  /\bbalik\s+na\s+lang\b/i,
+  /\bdi\s+na\s+bale\b/i,
 ]
 
 /**

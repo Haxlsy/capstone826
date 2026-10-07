@@ -165,6 +165,7 @@ export async function getJobDetailData(id: string) {
         category_id: cat?.id ?? null,
         category_name: cat?.name ?? null,
         category_color: cat?.display_color ?? null,
+        category_role: cat?.technician_role ?? null,
         status: s.status,
         rework_instructions: s.rework_instructions,
         handoff_notes: s.handoff_notes,
