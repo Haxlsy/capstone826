@@ -21,6 +21,7 @@ import { buildPrintHtml, buildWorkbook, exportFilename } from "@/lib/operations/
 import { substituteRoleLabel } from "@/lib/substitute-label"
 import { formatOperatingHours, isWithinOperatingHours, DEFAULT_OPERATING_DAYS, DEFAULT_OPERATING_OPEN_TIME, DEFAULT_OPERATING_CLOSE_TIME, type Weekday, type Holiday } from "@/types/chatbot"
 import { alreadyOnJob } from "@/lib/operations/team-membership"
+import { requiredTeamRoles } from "@/lib/operations/required-team"
 import { cn } from "@/lib/utils"
 import { statusStyle } from "@/lib/ui/status"
 import { displayJobStatus } from "@/lib/job-delay"
@@ -47,6 +48,7 @@ interface Stage {
   category_id: string | null
   category_name: string | null
   category_color: string | null
+  category_role: "detailer" | "installer" | null
   status: "pending" | "in_progress" | "done" | "for_rework"
   rework_instructions: string | null
   handoff_notes: string | null
@@ -217,6 +219,12 @@ export default function JobOrderDetail({
   // and silently revalidate in the background instead (below).
   const [loading, setLoading] = useState(!initialJob)
   const [error, setError] = useState<string | null>(null)
+
+  // Which roles this job's own stages actually need (e.g. a detailer-only
+  // service has no installer stages at all) — substitutes shouldn't be
+  // offered for a role the job has no work for. Mirrors the same check the
+  // original job-creation form already does.
+  const needs = requiredTeamRoles(job?.stages ?? [])
 
   const [releasing, setReleasing] = useState(false)
   const [settingForRelease, setSettingForRelease] = useState(false)
@@ -410,7 +418,7 @@ export default function JobOrderDetail({
 
   async function openSubModal() {
     setSubModal(true)
-    setSubRole("detailer")
+    setSubRole(needs.detailer ? "detailer" : "installer")
     setSelectedSubId(null)
     setSubError(null)
     setSubTechsLoading(true)
@@ -460,7 +468,7 @@ export default function JobOrderDetail({
 
   async function openHeadSubModal() {
     setHeadSubModal(true)
-    setHeadSubRole("head_detailer")
+    setHeadSubRole(needs.detailer ? "head_detailer" : "head_installer")
     setSelectedHeadSubId(null)
     setHeadSubError(null)
     setHeadSubsLoading(true)
@@ -750,7 +758,7 @@ export default function JobOrderDetail({
           )}
           {job.status === "Pending" && (
             <Button variant="danger" onClick={() => setCancelConfirm(true)} {...lockProps}>
-              <Trash2 className="h-4 w-4" />
+              <XCircle className="h-4 w-4" />
               Cancel Job
             </Button>
           )}
@@ -792,7 +800,10 @@ export default function JobOrderDetail({
               <p className="mt-0.5 text-sm text-body">{job.contact_number}</p>
               {job.email && <p className="mt-0.5 text-sm text-body">{job.email}</p>}
             </div>
-            <StatusBadge status={displayJobStatus(job.status, job.is_overdue)} />
+            <StatusBadge
+              status={displayJobStatus(job.status, job.is_overdue)}
+              className="px-3.5 py-1 text-xl"
+            />
           </div>
 
           {/* Grouped into separate boxes — Vehicle/Timeline/Team each keep to their
@@ -859,12 +870,12 @@ export default function JobOrderDetail({
               />
               {job.status !== "Released" && (
                 <div className="flex flex-col gap-2 border-t border-border-subtle pt-3">
-                  <div className="flex flex-wrap gap-2">
-                    <Button variant="secondary" size="sm" onClick={openHeadSubModal} {...lockProps}>
+                  <div className="flex flex-col gap-2">
+                    <Button variant="secondary" size="sm" fullWidth onClick={openHeadSubModal} {...lockProps}>
                       <UserPlus className="h-3.5 w-3.5" />
                       Add Substitute Head Technician
                     </Button>
-                    <Button variant="secondary" size="sm" onClick={openSubModal} {...lockProps}>
+                    <Button variant="secondary" size="sm" fullWidth onClick={openSubModal} {...lockProps}>
                       <UserPlus className="h-3.5 w-3.5" />
                       Add Substitute Technician
                     </Button>
@@ -1104,7 +1115,7 @@ export default function JobOrderDetail({
         cancelLabel="Go Back"
         tone="danger"
         loading={cancelling}
-        icon={Trash2}
+        icon={XCircle}
       />
 
       {/* Substitute Technician Modal */}
@@ -1129,10 +1140,14 @@ export default function JobOrderDetail({
         }
       >
         <div className="mb-4 flex gap-2">
-          {(["detailer", "installer"] as const).map((r) => (
+          {(["detailer", "installer"] as const).map((r) => {
+            const roleNeeded = r === "detailer" ? needs.detailer : needs.installer
+            return (
             <button
               key={r}
               type="button"
+              disabled={!roleNeeded}
+              title={roleNeeded ? undefined : `This service has no ${r} stages — there's no work for this role on this job.`}
               onClick={() => {
                 setSubRole(r)
                 setSelectedSubId(null)
@@ -1140,11 +1155,13 @@ export default function JobOrderDetail({
               className={cn(
                 "flex-1 rounded-sm py-1.5 text-xs font-semibold capitalize transition-colors",
                 subRole === r ? "bg-primary text-white" : "bg-surface-muted text-body hover:text-heading",
+                !roleNeeded && "cursor-not-allowed opacity-40 hover:text-body",
               )}
             >
               {r}
             </button>
-          ))}
+            )
+          })}
         </div>
 
         <div className="max-h-52 space-y-1 overflow-y-auto">
@@ -1222,22 +1239,29 @@ export default function JobOrderDetail({
         }
       >
         <div className="mb-4 flex gap-2">
-          {(["head_detailer", "head_installer"] as const).map((r) => (
-            <button
-              key={r}
-              type="button"
-              onClick={() => {
-                setHeadSubRole(r)
-                setSelectedHeadSubId(null)
-              }}
-              className={cn(
-                "flex-1 rounded-sm py-1.5 text-xs font-semibold transition-colors",
-                headSubRole === r ? "bg-primary text-white" : "bg-surface-muted text-body hover:text-heading",
-              )}
-            >
-              {r === "head_detailer" ? "Head Detailer" : "Head Installer"}
-            </button>
-          ))}
+          {(["head_detailer", "head_installer"] as const).map((r) => {
+            const roleNeeded = r === "head_detailer" ? needs.detailer : needs.installer
+            const roleWord = r === "head_detailer" ? "detailer" : "installer"
+            return (
+              <button
+                key={r}
+                type="button"
+                disabled={!roleNeeded}
+                title={roleNeeded ? undefined : `This service has no ${roleWord} stages — there's no work for this role on this job.`}
+                onClick={() => {
+                  setHeadSubRole(r)
+                  setSelectedHeadSubId(null)
+                }}
+                className={cn(
+                  "flex-1 rounded-sm py-1.5 text-xs font-semibold transition-colors",
+                  headSubRole === r ? "bg-primary text-white" : "bg-surface-muted text-body hover:text-heading",
+                  !roleNeeded && "cursor-not-allowed opacity-40 hover:text-body",
+                )}
+              >
+                {r === "head_detailer" ? "Head Detailer" : "Head Installer"}
+              </button>
+            )
+          })}
         </div>
 
         <div className="max-h-52 space-y-1 overflow-y-auto">
