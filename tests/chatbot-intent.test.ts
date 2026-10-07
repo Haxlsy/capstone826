@@ -6,6 +6,7 @@ import {
   continuesStatusInquiry,
   hasExistingBookingIntent,
   hasFieldCorrectionIntent,
+  hasCancelIntent,
   confirmRequested,
   isPureConfirmation,
   missingBookingFields,
@@ -261,5 +262,128 @@ describe("buildSystemPrompt — booking guardrails (Testing Notes #8, #10)", () 
 
   it("forbids claiming the booking is confirmed before Sales finalizes it (#10)", () => {
     expect(buildSystemPrompt(settings)).toContain("Do NOT tell the customer their booking is confirmed")
+  })
+
+  it("forbids claiming no access to records when a status question slips through uncaught", () => {
+    // "I cannot check your vehicle status as I do not have access to your
+    // personal records" was a real, misleading reply the model improvised —
+    // the system DOES have access, Gemini specifically doesn't. The guardrail
+    // must steer it toward asking the customer to say "status" instead of
+    // denying the capability outright.
+    expect(buildSystemPrompt(settings)).toMatch(/do not say you don.t have access to records/i)
+  })
+})
+
+describe("hasStatusIntent — natural phrasings beyond the original keyword list", () => {
+  it("catches the exact phrasings that previously fell through to Gemini unhandled", () => {
+    expect(hasStatusIntent("do I have a car in service right now?")).toBe(true)
+    expect(hasStatusIntent("May sasakyan ba ako ngayon sa inyo?")).toBe(true)
+  })
+
+  it("catches other natural English phrasings", () => {
+    expect(hasStatusIntent("is my car ready yet")).toBe(true)
+    expect(hasStatusIntent("where's my vehicle")).toBe(true)
+    expect(hasStatusIntent("how's my car doing")).toBe(true)
+    expect(hasStatusIntent("do I have a vehicle with you")).toBe(true)
+  })
+
+  it("catches other natural Tagalog phrasings", () => {
+    expect(hasStatusIntent("meron ba akong sasakyan diyan")).toBe(true)
+    expect(hasStatusIntent("nasaan na ang sasakyan ko")).toBe(true)
+    expect(hasStatusIntent("kailan matatapos yung kotse ko")).toBe(true)
+  })
+
+  it("still ignores unrelated messages", () => {
+    expect(hasStatusIntent("What services do you offer?")).toBe(false)
+    expect(hasStatusIntent("Magkano ang oil change?")).toBe(false)
+  })
+
+  it("catches a further round of natural English phrasings", () => {
+    expect(hasStatusIntent("when will my car be done?")).toBe(true)
+    expect(hasStatusIntent("is my vehicle ready")).toBe(true)
+    expect(hasStatusIntent("what's happening with my car")).toBe(true)
+    expect(hasStatusIntent("are you still working on my vehicle")).toBe(true)
+    expect(hasStatusIntent("how far along is it")).toBe(true)
+    expect(hasStatusIntent("is my car with you still")).toBe(true)
+    expect(hasStatusIntent("is my vehicle still at the shop")).toBe(true)
+    expect(hasStatusIntent("any news on my car?")).toBe(true)
+  })
+
+  it("catches a further round of natural Tagalog phrasings", () => {
+    expect(hasStatusIntent("nasa shop pa ba ang sasakyan ko")).toBe(true)
+    expect(hasStatusIntent("nandiyan pa ba yung kotse ko")).toBe(true)
+    expect(hasStatusIntent("nandiyan ba kotse ko")).toBe(true)
+    expect(hasStatusIntent("pwede ko na ba kunin yung sasakyan ko")).toBe(true)
+    expect(hasStatusIntent("ilang stage na yung kotse ko")).toBe(true)
+  })
+
+  it("still ignores unrelated messages after the second round of additions", () => {
+    expect(hasStatusIntent("Can I book an appointment tomorrow?")).toBe(false)
+    expect(hasStatusIntent("Magkano po ang booking?")).toBe(false)
+  })
+
+  it("catches a third round of real tester-submitted phrasings verbatim", () => {
+    expect(hasStatusIntent("yung kotse ko nasa inyo ba?")).toBe(true)
+    expect(hasStatusIntent("sini service pa ba kotse ko?")).toBe(true)
+    expect(hasStatusIntent("ano na ganap sa kotse ko?")).toBe(true)
+    expect(hasStatusIntent("what is the ganpap to my car?")).toBe(true)
+    expect(hasStatusIntent("ano na balita sa car ko?")).toBe(true)
+    expect(hasStatusIntent("send mo nga update ng car ko?")).toBe(true)
+    expect(hasStatusIntent("bigay mo nga sa akin status ng kotse ko?")).toBe(true)
+    expect(hasStatusIntent("yung kotse ko ano na nangyayari sa status ko?")).toBe(true)
+  })
+
+  it("catches further similar slang/natural phrasings in both languages", () => {
+    expect(hasStatusIntent("ano lagay ng kotse ko")).toBe(true)
+    expect(hasStatusIntent("ano kwento sa sasakyan ko")).toBe(true)
+    expect(hasStatusIntent("may balita ka ba sa kotse ko")).toBe(true)
+    expect(hasStatusIntent("what's the latest on my car")).toBe(true)
+    expect(hasStatusIntent("what's the deal with my vehicle")).toBe(true)
+    expect(hasStatusIntent("what's going on with my car")).toBe(true)
+  })
+
+  it("still ignores unrelated messages after the third round of additions", () => {
+    expect(hasStatusIntent("What's the deal with your operating hours?")).toBe(false)
+    expect(hasStatusIntent("Anong balita sa promo niyo?")).toBe(false)
+  })
+})
+
+describe("hasCancelIntent — abandoning an in-progress booking draft, including slang", () => {
+  it("catches the original phrasings", () => {
+    expect(hasCancelIntent("never mind")).toBe(true)
+    expect(hasCancelIntent("nvm")).toBe(true)
+    expect(hasCancelIntent("forget it")).toBe(true)
+    expect(hasCancelIntent("I changed my mind")).toBe(true)
+    expect(hasCancelIntent("wag na")).toBe(true)
+    expect(hasCancelIntent("ayoko na")).toBe(true)
+  })
+
+  it("catches a bare 'cancel'/'stop' with nothing following — previously missed", () => {
+    expect(hasCancelIntent("Cancel.")).toBe(true)
+    expect(hasCancelIntent("Stop")).toBe(true)
+    expect(hasCancelIntent("kansel")).toBe(true)
+  })
+
+  it("catches more natural/slang English phrasings", () => {
+    expect(hasCancelIntent("I'm good")).toBe(true)
+    expect(hasCancelIntent("no need")).toBe(true)
+    expect(hasCancelIntent("I'll pass")).toBe(true)
+    expect(hasCancelIntent("scratch that")).toBe(true)
+    expect(hasCancelIntent("I'm out")).toBe(true)
+    expect(hasCancelIntent("not interested")).toBe(true)
+  })
+
+  it("catches more natural/slang Tagalog phrasings", () => {
+    expect(hasCancelIntent("hindi interested")).toBe(true)
+    expect(hasCancelIntent("bale wala na lang")).toBe(true)
+    expect(hasCancelIntent("tama na")).toBe(true)
+    expect(hasCancelIntent("sayang na lang")).toBe(true)
+    expect(hasCancelIntent("balik na lang ako")).toBe(true)
+    expect(hasCancelIntent("di na bale")).toBe(true)
+  })
+
+  it("still ignores unrelated messages", () => {
+    expect(hasCancelIntent("What services do you offer?")).toBe(false)
+    expect(hasCancelIntent("My name is Juan Dela Cruz")).toBe(false)
   })
 })
