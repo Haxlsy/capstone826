@@ -173,6 +173,12 @@ export default function TwoFactorAuthSettings() {
               <img
                 src={enroll.qrCodeUrl}
                 alt="Authenticator QR code"
+                // Chromium's automatic lazy-load intervention can measure this
+                // image's visibility wrong while the Settings modal is still
+                // mounting and never re-evaluate once it's actually on
+                // screen, leaving it stuck unloaded forever. loading="eager"
+                // opts it out of that heuristic.
+                loading="eager"
                 className="w-40 h-40 border border-border rounded-sm"
               />
             </div>
