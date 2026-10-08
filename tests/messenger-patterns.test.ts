@@ -113,6 +113,14 @@ describe("PLATE_PATTERN", () => {
   it("still finds a real plate elsewhere in a sentence containing those words", () => {
     expect(plate("is my plate ABC 1234 on file?")).toBe("ABC 1234")
   })
+
+  // Regression: "why are you unavaible on Nov 20?" was misread as containing a
+  // plate ("Nov 20"), hijacking the reply into the booking-continuation prompt
+  // instead of letting the AI answer the actual holiday-hours question.
+  it("does not misread a month abbreviation before a day number as a plate", () => {
+    expect(plate("why are you unavaible on Nov 20?")).toBeNull()
+    expect(plate("are you open on Dec 25?")).toBeNull()
+  })
 })
 
 describe("EMAIL_PATTERN", () => {

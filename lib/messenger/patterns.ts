@@ -31,6 +31,9 @@ const PLATE_FALSE_POSITIVE_WORDS = [
   "only", "over", "under", "about", "near", "give", "need", "want", "have",
   "like", "said", "says", "make", "made", "call", "chat", "text", "send",
   "sent", "with", "them", "were", "will", "does",
+  // Month abbreviations — "Nov 20", "Dec 25" otherwise misread the same way
+  // ("is 25" did before these words were added above).
+  "jan", "feb", "mar", "apr", "jun", "jul", "aug", "sep", "sept", "oct", "nov", "dec",
 ]
 
 /**
