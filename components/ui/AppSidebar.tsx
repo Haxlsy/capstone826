@@ -90,6 +90,16 @@ export function AppSidebar({
   const [settingsOpen, setSettingsOpen] = React.useState(false)
   const { confirming, loading, requestLogout, cancel, confirm } = useLogoutConfirm()
 
+  // Lets a component elsewhere in the tree (MfaEmailReminder.tsx's "Set Up
+  // Now" button) open this modal without threading new shared state through
+  // the shell — Settings only exists as this in-sidebar modal for
+  // Admin/Operations/Sales, not a route.
+  React.useEffect(() => {
+    const open = () => setSettingsOpen(true)
+    window.addEventListener("826:open-settings", open)
+    return () => window.removeEventListener("826:open-settings", open)
+  }, [])
+
   return (
     <aside
       data-collapsed={collapsed}

@@ -2,6 +2,7 @@
 
 import { useState, useRef, useEffect } from "react"
 import { useRouter } from "next/navigation"
+import Link from "next/link"
 import Script from "next/script"
 import { User, Lock, Eye, EyeOff, ShieldAlert, X } from "lucide-react"
 import { cn } from "@/lib/utils"
@@ -56,6 +57,18 @@ export default function LoginPage() {
   const captchaWidgetId = useRef<string | null>(null)
   // Persistent counterpart to the toast below — see the effect that sets it.
   const [notice, setNotice] = useState<LoginRedirectNotice | null>(null)
+
+  // MFA step — entered once the password has been verified (see
+  // handleSubmit). mfaMethod "totp" shows an authenticator-code prompt with
+  // a "use email instead" fallback; "email" shows a code-we-emailed prompt.
+  const [step, setStep] = useState<"credentials" | "mfa">("credentials")
+  const [mfaMethod, setMfaMethod] = useState<"email" | "totp" | null>(null)
+  const [challengeId, setChallengeId] = useState<string | null>(null)
+  const [mfaCode, setMfaCode] = useState("")
+  const [mfaError, setMfaError] = useState<string | null>(null)
+  const [mfaSubmitting, setMfaSubmitting] = useState(false)
+  const [switchingMethod, setSwitchingMethod] = useState(false)
+
   const toastRef = useRef(toast)
   useEffect(() => {
     toastRef.current = toast
@@ -280,27 +293,113 @@ export default function LoginPage() {
       localStorage.removeItem("826_login_attempts")
       setAttempts(0)
       setLockUntil(null)
-      try {
-        localStorage.setItem("826_user", JSON.stringify(data.user))
-      } catch {
-        /* ignore */
+
+      // MFA is mandatory for every account — the login route never returns
+      // `user` directly anymore, only a challenge to resolve next.
+      if (data.mfaRequired) {
+        setMfaMethod(data.method)
+        setChallengeId(data.challengeId)
+        setMfaCode("")
+        setMfaError(null)
+        setStep("mfa")
+        setIsLoading(false)
+        return
       }
 
-      // Intentionally leave isLoading=true here — router.push() only starts
-      // the navigation (the destination's auth/layout/data chain still has to
-      // resolve after this call returns), so resetting it now made the
-      // button flicker "Signing in…" -> "Login" -> (actual page) instead of
-      // reading as one continuous wait. This page is being replaced either
-      // way, so there's nothing to re-enable the button for.
-      if (data.user?.must_change_password) {
-        router.push("/change-password-required")
-      } else {
-        router.push(ROLE_ROUTES[data.user?.role ?? ""] ?? "/")
-      }
+      finishLogin(data.user)
     } catch {
       toastRef.current.error("Network error. Please try again.")
       setIsLoading(false)
     }
+  }
+
+  // Shared by the (no longer reachable, kept defensively) direct-success path
+  // above and handleVerifyMfa below — stores the signed-in user and routes to
+  // their dashboard, or to the forced password-change page first.
+  function finishLogin(user: { role?: string; must_change_password?: boolean; email?: string | null }) {
+    try {
+      localStorage.setItem("826_user", JSON.stringify(user))
+    } catch {
+      /* ignore */
+    }
+    // Intentionally leave isLoading=true here — router.push() only starts
+    // the navigation (the destination's auth/layout/data chain still has to
+    // resolve after this call returns), so resetting it now made the
+    // button flicker "Signing in…" -> "Login" -> (actual page) instead of
+    // reading as one continuous wait. This page is being replaced either
+    // way, so there's nothing to re-enable the button for.
+    if (user?.must_change_password) {
+      router.push("/change-password-required")
+    } else {
+      const dest = ROLE_ROUTES[user?.role ?? ""] ?? "/"
+      // One-shot signal for MfaEmailReminder.tsx (mounted in the dashboard
+      // shells) to show its "no MFA set up" nudge exactly once per fresh
+      // login — same technique SessionEnforcement.tsx already uses for its
+      // own one-shot query param, not a new mechanism. Skipped entirely
+      // (not just hidden) when the account already has an email, so there's
+      // nothing for that component to even check on a normal login.
+      router.push(user?.email ? dest : `${dest}?justLoggedIn=1`)
+    }
+  }
+
+  async function handleVerifyMfa(e: React.FormEvent) {
+    e.preventDefault()
+    if (!mfaCode.trim()) {
+      setMfaError("Enter the 6-digit code.")
+      return
+    }
+    setMfaError(null)
+    setMfaSubmitting(true)
+    try {
+      const res = await fetch("/api/auth/verify-mfa", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ challengeId, code: mfaCode.trim() }),
+      })
+      const data = await res.json()
+      if (!res.ok) {
+        setMfaError(data.error ?? "Incorrect code. Please try again.")
+        setMfaSubmitting(false)
+        return
+      }
+      finishLogin(data.user)
+    } catch {
+      setMfaError("Network error. Please try again.")
+      setMfaSubmitting(false)
+    }
+  }
+
+  async function handleSwitchToEmail() {
+    setSwitchingMethod(true)
+    setMfaError(null)
+    try {
+      const res = await fetch("/api/auth/verify-mfa", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ challengeId, switchToEmail: true }),
+      })
+      const data = await res.json()
+      if (!res.ok) {
+        setMfaError(data.error ?? "Couldn't send an email code. Please try again.")
+        return
+      }
+      setMfaMethod(data.method)
+      setChallengeId(data.challengeId)
+      setMfaCode("")
+      toastRef.current.success("A verification code has been emailed to you.")
+    } catch {
+      setMfaError("Network error. Please try again.")
+    } finally {
+      setSwitchingMethod(false)
+    }
+  }
+
+  function handleBackToCredentials() {
+    setStep("credentials")
+    setMfaMethod(null)
+    setChallengeId(null)
+    setMfaCode("")
+    setMfaError(null)
   }
 
   const form = (
@@ -373,6 +472,11 @@ export default function LoginPage() {
         {errors.password && (
           <p className="mt-1.5 text-xs font-medium text-status-delayed">{errors.password}</p>
         )}
+        <div className="mt-1.5 text-right">
+          <Link href="/forgot-password" className="text-xs font-semibold text-accent hover:underline">
+            Forgot password?
+          </Link>
+        </div>
       </div>
 
       {/* Signed-out notice — persists (unlike the toast fired alongside it)
@@ -429,6 +533,76 @@ export default function LoginPage() {
     </form>
   )
 
+  const mfaForm = (
+    <form onSubmit={handleVerifyMfa} noValidate className="w-full space-y-5">
+      <div>
+        <label htmlFor="mfa-code" className="mb-1.5 block text-xs font-semibold uppercase tracking-wider text-heading">
+          {mfaMethod === "totp" ? "Authenticator Code" : "Verification Code"}
+        </label>
+        <div className="group relative">
+          <ShieldAlert className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-muted transition-colors group-focus-within:text-accent" />
+          <input
+            id="mfa-code"
+            type="text"
+            inputMode="numeric"
+            autoComplete="one-time-code"
+            value={mfaCode}
+            onChange={(e) => {
+              setMfaCode(e.target.value.replace(/\D/g, "").slice(0, 6))
+              if (mfaError) setMfaError(null)
+            }}
+            placeholder="123456"
+            autoFocus
+            className={cn(
+              "h-12 w-full rounded-full border bg-surface pl-11 pr-4 text-center text-lg tracking-[0.3em] text-heading transition-all duration-200",
+              "placeholder:text-muted/60 placeholder:tracking-normal placeholder:text-sm focus:outline-none focus:ring-2 focus:ring-accent/30 focus:border-accent hover:border-slate-300",
+              mfaError ? "border-status-delayed text-status-delayed" : "border-slate-200",
+            )}
+          />
+        </div>
+        <p className="mt-1.5 text-xs text-muted">
+          {mfaMethod === "totp"
+            ? "Enter the code from your authenticator app."
+            : "Enter the 6-digit code we emailed you. It expires in 10 minutes."}
+        </p>
+        {mfaError && <p className="mt-1.5 text-xs font-medium text-status-delayed">{mfaError}</p>}
+      </div>
+
+      <button
+        type="submit"
+        disabled={mfaSubmitting || switchingMethod}
+        className={cn(
+          "h-12 w-full rounded-full bg-linear-to-b from-accent to-primary text-sm font-semibold text-white shadow-md cursor-pointer transition-all duration-200",
+          "hover:-translate-y-0.5 hover:shadow-lg hover:shadow-teal-500/25 active:translate-y-0 active:shadow-xs",
+          "disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:translate-y-0",
+        )}
+      >
+        {mfaSubmitting ? "Verifying…" : "Verify"}
+      </button>
+
+      <div className="flex flex-col items-center gap-2">
+        {mfaMethod === "totp" && (
+          <button
+            type="button"
+            onClick={handleSwitchToEmail}
+            disabled={switchingMethod || mfaSubmitting}
+            className="text-xs font-semibold text-accent hover:underline disabled:opacity-50"
+          >
+            {switchingMethod ? "Sending…" : "Use email instead"}
+          </button>
+        )}
+        <button
+          type="button"
+          onClick={handleBackToCredentials}
+          disabled={mfaSubmitting || switchingMethod}
+          className="text-xs font-semibold text-muted hover:text-heading disabled:opacity-50"
+        >
+          Back to login
+        </button>
+      </div>
+    </form>
+  )
+
   return (
     <div className="relative flex min-h-screen flex-col bg-surface-subtle md:overflow-hidden md:bg-surface">
     {/* Loaded unconditionally but lazily — the widget itself only renders
@@ -480,21 +654,21 @@ export default function LoginPage() {
           
           <div className="mb-6 border-b border-slate-100 pb-5">
             <h1 className="text-2xl font-bold uppercase tracking-wide text-slate-900">
-              Welcome Back!
+              {step === "mfa" ? "Verify It's You" : "Welcome Back!"}
             </h1>
             <p className="mt-1 text-xs font-medium text-slate-400 uppercase tracking-wider">
-              Enter your credentials
+              {step === "mfa" ? "One more step" : "Enter your credentials"}
             </p>
           </div>
 
           {/* Form — held back until the already-signed-in check has answered */}
-          {gate === "open" ? form : (
+          {gate !== "open" ? (
             <div aria-busy="true" aria-label="Checking your session" className="w-full animate-pulse space-y-5">
               <div className="h-11 rounded-lg bg-slate-100" />
               <div className="h-11 rounded-lg bg-slate-100" />
               <div className="h-11 rounded-lg bg-slate-200" />
             </div>
-          )}
+          ) : step === "mfa" ? mfaForm : form}
 
         </div>
       </div>

@@ -124,24 +124,36 @@ export async function proxy(request: NextRequest) {
   // this alone can't (an idle tab that never navigates) via a Realtime push
   // instead. See supabase/migrations/20260910000002_user_active_session.sql
   // and 20260910000003_user_active_session_realtime.sql.
-  if (user && isProtectedArea) {
-    const sessionToken = request.cookies.get("826_session_token")?.value ?? null;
-    const current = await isSessionCurrent(supabase, user.id, sessionToken);
+  //
+  // Also what tells apart a FULLY signed-in visitor from one mid-MFA: since
+  // app/api/auth/login/route.ts, signInWithPassword() already gives Supabase
+  // its own valid session (so `user` is truthy) before MFA is verified — our
+  // own 826_role/826_session_token cookies are only set afterward, by
+  // completeLogin() (app/api/auth/verify-mfa/route.ts). So `user` truthy
+  // alone no longer means "fully logged in"; isSessionCurrent (which
+  // requires a matching session token) does.
+  const sessionToken = request.cookies.get("826_session_token")?.value ?? null;
+  const current = user ? await isSessionCurrent(supabase, user.id, sessionToken) : false;
 
-    if (!current) {
-      const redirectUrl = new URL("/login", request.url);
-      redirectUrl.searchParams.set("reason", "signed_in_elsewhere");
-      const response = NextResponse.redirect(redirectUrl);
-      response.cookies.set("826_role", "", { maxAge: 0, path: "/" });
-      response.cookies.set("826_session_token", "", { maxAge: 0, path: "/" });
-      return response;
-    }
+  if (user && isProtectedArea && !current) {
+    const redirectUrl = new URL("/login", request.url);
+    redirectUrl.searchParams.set("reason", "signed_in_elsewhere");
+    const response = NextResponse.redirect(redirectUrl);
+    response.cookies.set("826_role", "", { maxAge: 0, path: "/" });
+    response.cookies.set("826_session_token", "", { maxAge: 0, path: "/" });
+    return response;
   }
 
-  if (user && isAuthPage) {
+  if (user && isAuthPage && current) {
     const destination = ROLE_HOMES[role] ?? "/dashboard";
     return NextResponse.redirect(new URL(destination, request.url));
   }
+  // user is truthy but current is false and this is /login or / — an
+  // MFA-pending (or otherwise incomplete) session. Falls through and renders
+  // normally instead of bouncing away, so the visitor can finish MFA or sign
+  // in fresh. This is also what stops the redirect loop a stale "signed in"
+  // read would otherwise cause: /login -> (looks signed in) -> /dashboard ->
+  // (not current) -> /login -> ... forever.
 
   if (user) {
     // getUser() above already did the one network-verified check this request

@@ -5,6 +5,8 @@ import { createClient } from "@/lib/supabase/server"
 import { createAdminClient } from "@/lib/supabase/admin"
 import { logAudit } from "@/hooks/audit-helpers"
 import { validateName } from "@/lib/name"
+import { validateEmail, normalizeEmail } from "@/lib/email/validation"
+import { sendAccountCreatedEmail } from "@/lib/email/mailer"
 import { getRoleCaller } from "@/lib/auth/caller"
 
 const ALLOWED_ROLES = [
@@ -26,6 +28,11 @@ const CreateAccountSchema = z.object({
       const err = validateName(v, "Last name")
       if (err) ctx.addIssue({ code: "custom", message: err })
     }),
+  email: z.string().trim().max(254)
+    .superRefine((v, ctx) => {
+      const err = validateEmail(v, "Email")
+      if (err) ctx.addIssue({ code: "custom", message: err })
+    }),
   username: z.string().trim().min(3, "Username must be at least 3 characters").max(50)
     .regex(
       /^[a-zA-Z0-9_]+\.[a-zA-Z0-9_]+$/,
@@ -45,8 +52,9 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: parsed.error.issues[0].message }, { status: 400 })
   }
 
-  const { firstName, lastName, username, password, role } = parsed.data
+  const { firstName, lastName, email, username, password, role } = parsed.data
   const fullName = `${firstName} ${lastName}`
+  const normalizedEmail = normalizeEmail(email)
 
   const cookieStore = await cookies()
   const userClient  = createClient(cookieStore)
@@ -84,12 +92,22 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Username is already taken." }, { status: 409 })
   }
 
-  // Internal email derived from username
-  const email = `${username.toLowerCase().trim()}@826autocare.internal`
+  // Check contact-email uniqueness (case-insensitive) — a friendlier
+  // pre-check ahead of the DB's own normalized unique index, same pattern
+  // already used for service/category-preset names.
+  const { data: existingAccounts } = await supabase.from("user_account").select("email")
+  if ((existingAccounts ?? []).some((a) => a.email && normalizeEmail(a.email) === normalizedEmail)) {
+    return NextResponse.json({ error: "That email is already in use by another account." }, { status: 409 })
+  }
+
+  // Internal email derived from username — the Supabase Auth sign-in
+  // identity, kept separate from the real contact email above (which is
+  // not a valid mailbox for auth purposes and isn't meant to be).
+  const authEmail = `${username.toLowerCase().trim()}@826autocare.internal`
 
   // Create Supabase Auth user — handle_new_user trigger creates user_account row
   const { data: authData, error: authError } = await supabase.auth.admin.createUser({
-    email,
+    email: authEmail,
     password,
     email_confirm: true,
     user_metadata: {
@@ -113,6 +131,7 @@ export async function POST(request: Request) {
       first_name: firstName,
       last_name: lastName,
       full_name: fullName.trim(),
+      email: normalizedEmail,
       must_change_password: true,
     })
     .eq("id", authData.user.id)
@@ -134,5 +153,17 @@ export async function POST(request: Request) {
     })
   }
 
-  return NextResponse.json({ success: true })
+  // Best-effort — account creation has already succeeded and must not be
+  // rolled back over a transient email-provider issue. The admin still sees
+  // the password on screen either way.
+  const emailResult = await sendAccountCreatedEmail(normalizedEmail, {
+    fullName: fullName.trim(),
+    username: username.trim(),
+    password,
+  })
+  if (!emailResult.ok) {
+    console.error("sendAccountCreatedEmail failed:", emailResult.error)
+  }
+
+  return NextResponse.json({ success: true, emailSent: emailResult.ok })
 }

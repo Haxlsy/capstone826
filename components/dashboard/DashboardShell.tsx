@@ -7,6 +7,7 @@ import { resolveNavArea, navFor } from "@/lib/ui/nav"
 import { OfflineSyncProvider } from "@/components/dashboard/OperationComponents/OfflineSyncContext"
 import { SessionEnforcement } from "@/components/shared/SessionEnforcement"
 import { IdleTimeout } from "@/components/shared/IdleTimeout"
+import { MfaEmailReminder } from "@/components/shared/MfaEmailReminder"
 import { ServiceWorkerRegistration } from "@/components/shared/ServiceWorkerRegistration"
 import ChangePasswordSettings from "@/components/shared/ChangePasswordSettings"
 import OfflineSyncSettings from "@/components/dashboard/OperationComponents/OfflineSyncSettings"
@@ -45,6 +46,7 @@ export default function DashboardShell({ children }: { children: React.ReactNode
     >
       <SessionEnforcement />
       <IdleTimeout />
+      <MfaEmailReminder />
       <ServiceWorkerRegistration prewarm={area === "operations"} />
       {children}
     </AppShell>

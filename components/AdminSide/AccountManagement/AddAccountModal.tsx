@@ -5,7 +5,9 @@ import { Eye, EyeOff, Lock, ShieldCheck } from "lucide-react"
 import { Drawer } from "@/components/ui/Drawer"
 import { Button } from "@/components/ui/Button"
 import { ConfirmModal } from "@/components/ui/Modal"
+import { useToast } from "@/components/ui/Toast"
 import { validateName } from "@/lib/name"
+import { validateEmail } from "@/lib/email/validation"
 import { logView } from "@/lib/client/log-view"
 
 // Strips all whitespace (not just leading/trailing) so a multi-word name
@@ -36,6 +38,7 @@ interface AccountData {
   full_name: string
   first_name: string | null
   last_name: string | null
+  email: string | null
   username: string
   role: UserRole
 }
@@ -63,6 +66,7 @@ const ADMIN_ROLE_OPTIONS: { value: UserRole; label: string }[] = [
 const EMPTY_FORM = {
   firstName: "",
   lastName: "",
+  email: "",
   username: "",
   password: "",
   role: "operations" as UserRole,
@@ -75,6 +79,7 @@ export default function AddAccountModal({
   editAccount,
   mode = "staff",
 }: AddAccountModalProps) {
+  const toast = useToast()
   const isEdit = !!editAccount
   const roleOptions = mode === "admin" ? ADMIN_ROLE_OPTIONS : STAFF_ROLE_OPTIONS
 
@@ -102,6 +107,7 @@ export default function AddAccountModal({
         setForm({
           firstName: editAccount.first_name ?? "",
           lastName:  editAccount.last_name ?? "",
+          email:     editAccount.email ?? "",
           username:  editAccount.username,
           password:  "",
           role:      editAccount.role,
@@ -133,6 +139,8 @@ export default function AddAccountModal({
     if (firstError) e.firstName = firstError
     const lastError = validateName(form.lastName, "Last name")
     if (lastError) e.lastName = lastError
+    const emailError = validateEmail(form.email, "Email")
+    if (emailError) e.email = emailError
     if (!isEdit) {
       if (!form.username.trim()) e.username = "Username is required."
       else if (!/^[a-zA-Z0-9_]+\.[a-zA-Z0-9_]+$/.test(form.username.trim()))
@@ -171,6 +179,7 @@ export default function AddAccountModal({
             userId:    editAccount!.id,
             firstName: form.firstName.trim(),
             lastName:  form.lastName.trim(),
+            email:     form.email.trim(),
           }),
         })
       } else {
@@ -180,6 +189,7 @@ export default function AddAccountModal({
           body: JSON.stringify({
             firstName: form.firstName.trim(),
             lastName:  form.lastName.trim(),
+            email:     form.email.trim(),
             username:  form.username.trim(),
             password:  form.password,
             role:      form.role,
@@ -195,6 +205,10 @@ export default function AddAccountModal({
         setConfirmOpen(false)
         setServerError(json.error ?? "Something went wrong.")
         return
+      }
+
+      if (!isEdit && json.emailSent === false) {
+        toast.error("Account created, but the email couldn't be sent — the password above is still valid, share it directly.")
       }
 
       setConfirmOpen(false)
@@ -274,6 +288,26 @@ export default function AddAccountModal({
               />
               {errors.lastName && <p className="text-xs text-status-delayed">{errors.lastName}</p>}
             </div>
+          </div>
+
+          {/* Email */}
+          <div className="space-y-1.5">
+            <label className="block text-sm font-medium text-body">
+              Email <span className="text-status-delayed">*</span>
+            </label>
+            <input
+              type="email"
+              value={form.email}
+              onChange={(e) => setField("email", e.target.value)}
+              className={`w-full px-3 py-2.5 text-sm border rounded-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-colors ${
+                errors.email ? "border-status-delayed bg-status-delayed/10" : "border-border"
+              }`}
+              placeholder="e.g. juan.delacruz@gmail.com"
+            />
+            {!isEdit && (
+              <p className="text-xs text-muted">We&apos;ll email the account&apos;s username and password here.</p>
+            )}
+            {errors.email && <p className="text-xs text-status-delayed">{errors.email}</p>}
           </div>
 
           {/* Username */}

@@ -4,6 +4,7 @@ import { createClient } from "@/lib/supabase/server"
 import { createAdminClient } from "@/lib/supabase/admin"
 import { logAudit } from "@/hooks/audit-helpers"
 import { normalizeName, validateName } from "@/lib/name"
+import { normalizeEmail, validateEmail } from "@/lib/email/validation"
 import { getRoleCaller } from "@/lib/auth/caller"
 
 export async function POST(request: Request) {
@@ -11,10 +12,10 @@ export async function POST(request: Request) {
   if ("error" in auth) return auth.error
 
   const body = await request.json()
-  const { userId, firstName, lastName, password } = body
+  const { userId, firstName, lastName, email, password } = body
 
-  if (!userId || !firstName || !lastName) {
-    return NextResponse.json({ error: "userId, firstName and lastName are required." }, { status: 400 })
+  if (!userId || !firstName || !lastName || !email) {
+    return NextResponse.json({ error: "userId, firstName, lastName and email are required." }, { status: 400 })
   }
 
   const cleanFirst = normalizeName(firstName)
@@ -24,6 +25,12 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: nameError }, { status: 400 })
   }
   const cleanName = `${cleanFirst} ${cleanLast}`
+
+  const cleanEmail = normalizeEmail(email)
+  const emailError = validateEmail(cleanEmail, "Email")
+  if (emailError) {
+    return NextResponse.json({ error: emailError }, { status: 400 })
+  }
 
   const cookieStore = await cookies()
   const userClient  = createClient(cookieStore)
@@ -47,13 +54,21 @@ export async function POST(request: Request) {
 
   // Role is fixed at creation (see create-account, which already gates the
   // Admin role to Super Admin) and intentionally NOT accepted here — this
-  // endpoint only ever updates first_name/last_name/password, matching the
-  // Edit Account form, which shows Role as a read-only field.
+  // endpoint only ever updates first_name/last_name/email/password, matching
+  // the Edit Account form, which shows Role as a read-only field.
   const supabase = admin
+
+  // Contact-email uniqueness (case-insensitive), scoped to exclude this
+  // account's own current row so saving it unchanged doesn't false-positive —
+  // same pattern already used for service/category-preset name edits.
+  const { data: otherAccounts } = await supabase.from("user_account").select("email").neq("id", userId)
+  if ((otherAccounts ?? []).some((a) => a.email && normalizeEmail(a.email) === cleanEmail)) {
+    return NextResponse.json({ error: "That email is already in use by another account." }, { status: 409 })
+  }
 
   const { error: profileError } = await supabase
     .from("user_account")
-    .update({ first_name: cleanFirst, last_name: cleanLast, full_name: cleanName })
+    .update({ first_name: cleanFirst, last_name: cleanLast, full_name: cleanName, email: cleanEmail })
     .eq("id", userId)
 
   if (profileError) {

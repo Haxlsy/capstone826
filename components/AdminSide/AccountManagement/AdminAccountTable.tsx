@@ -21,6 +21,7 @@ interface AdminAccount {
   full_name: string
   first_name: string | null
   last_name: string | null
+  email: string | null
   username: string
   role: "admin"
   is_archived: boolean
