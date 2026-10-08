@@ -19,6 +19,8 @@ export default function UserActivity() {
     const [actRoleFilter,   setActRoleFilter]   = useState<AuditRole | "all">("all")
     const [actCatFilter,    setActCatFilter]    = useState<AuditCategory | "all">("all")
     const [actPeriodFilter, setActPeriodFilter] = useState<TimePeriod>("all")
+    const [actDateFrom,     setActDateFrom]     = useState("")
+    const [actDateTo,       setActDateTo]       = useState("")
     const [actPageSize,     setActPageSize]     = useState<PageSize>(10)
     const [actPage,         setActPage]         = useState(1)
     const [sortBy,          setSortBy]          = useState<AuditSortColumn>("created_at")
@@ -28,7 +30,8 @@ export default function UserActivity() {
 
     const params = {
       scope: "activity" as const, role: actRoleFilter, category: actCatFilter, action: "all" as const,
-      period: actPeriodFilter, sortBy, sortDir, page: actPage, pageSize: actPageSize,
+      period: actPeriodFilter, dateFrom: actDateFrom || null, dateTo: actDateTo || null,
+      sortBy, sortDir, page: actPage, pageSize: actPageSize,
     }
     const { logs: actEntries, total, loading, refreshing, fetchErr, reload } = useAuditLogs(params)
 
@@ -39,10 +42,16 @@ export default function UserActivity() {
       setActPage(1)
     }
 
+    const dateRangeNote =
+      actDateFrom && actDateTo ? `${actDateFrom} – ${actDateTo}`
+      : actDateFrom            ? `from ${actDateFrom}`
+      : actDateTo              ? `through ${actDateTo}`
+      : null
+
     const filterNote = [
       actRoleFilter !== "all" ? ROLE_LABEL[actRoleFilter] : null,
       actCatFilter !== "all" ? actCatFilter : null,
-      actPeriodFilter !== "all" ? actPeriodFilter : null,
+      dateRangeNote ?? (actPeriodFilter !== "all" ? actPeriodFilter : null),
     ].filter(Boolean).join(", ") || null
 
     async function runExport(type: "pdf" | "excel") {
@@ -87,7 +96,8 @@ export default function UserActivity() {
               <RefreshCw className={`w-3.5 h-3.5 ${refreshing ? "animate-spin" : ""}`} />
             </button>
           </div>
-          <div className="flex items-center gap-2 flex-wrap">
+          <div className="flex flex-col items-end gap-2">
+          <div className="flex items-center gap-2">
             <button type="button" onClick={() => setExportConfirm("pdf")}
               className="flex items-center gap-1.5 text-xs font-medium px-2.5 py-1.5 rounded-sm border border-border text-body hover:bg-surface-muted transition-colors"
             >
@@ -98,15 +108,17 @@ export default function UserActivity() {
             >
               <FileSpreadsheet className="h-3.5 w-3.5" /> Export Excel
             </button>
+          </div>
+          <div className="flex items-center justify-end gap-2 flex-wrap">
             <Filter className="w-3.5 h-3.5 text-muted shrink-0" />
-            <select aria-label="Role filter" value={actRoleFilter}
+            <select aria-label="Role filter" title="Filter by the user's role" value={actRoleFilter}
               onChange={(e) => { setActRoleFilter(e.target.value as AuditRole | "all"); setActPage(1) }}
               className={SELECT_CLS}
             >
               <option value="all">All roles</option>
               {ALL_ROLES.map((r) => <option key={r} value={r}>{ROLE_LABEL[r]}</option>)}
             </select>
-            <select aria-label="Action filter" value={actCatFilter}
+            <select aria-label="Action filter" title="Filter by action type" value={actCatFilter}
               onChange={(e) => { setActCatFilter(e.target.value as AuditCategory | "all"); setActPage(1) }}
               className={SELECT_CLS}
             >
@@ -119,14 +131,48 @@ export default function UserActivity() {
               <option value="flag">Flag / Rework</option>
               <option value="delete">Delete / Archive</option>
             </select>
-            <select aria-label="Period filter" value={actPeriodFilter}
-              onChange={(e) => { setActPeriodFilter(e.target.value as TimePeriod); setActPage(1) }}
-              className={SELECT_CLS}
+            <select aria-label="Period filter"
+              title={actDateFrom || actDateTo
+                ? "Unavailable while a specific date range is set"
+                : "Filter by a preset time range"}
+              value={actPeriodFilter}
+              disabled={!!actDateFrom || !!actDateTo}
+              onChange={(e) => {
+                setActPeriodFilter(e.target.value as TimePeriod)
+                setActDateFrom(""); setActDateTo("")
+                setActPage(1)
+              }}
+              className={`${SELECT_CLS} disabled:opacity-50 disabled:cursor-not-allowed`}
             >
               <option value="all">All time</option>
               <option value="week">This week</option>
               <option value="month">This month</option>
             </select>
+            <div className="flex items-center gap-1.5">
+              <label htmlFor="audit-trail-date-from" className="text-xs text-muted whitespace-nowrap">From</label>
+              <input id="audit-trail-date-from" type="date" title="Show entries on or after this date"
+                value={actDateFrom} max={actDateTo || undefined}
+                onChange={(e) => {
+                  setActDateFrom(e.target.value)
+                  if (e.target.value) setActPeriodFilter("all")
+                  setActPage(1)
+                }}
+                className={SELECT_CLS}
+              />
+            </div>
+            <div className="flex items-center gap-1.5">
+              <label htmlFor="audit-trail-date-to" className="text-xs text-muted whitespace-nowrap">To</label>
+              <input id="audit-trail-date-to" type="date" title="Show entries on or before this date"
+                value={actDateTo} min={actDateFrom || undefined}
+                onChange={(e) => {
+                  setActDateTo(e.target.value)
+                  if (e.target.value) setActPeriodFilter("all")
+                  setActPage(1)
+                }}
+                className={SELECT_CLS}
+              />
+            </div>
+          </div>
           </div>
         </div>
         <div className="overflow-x-auto overflow-y-hidden">

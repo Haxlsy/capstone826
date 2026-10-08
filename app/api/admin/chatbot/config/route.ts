@@ -5,6 +5,7 @@ import { auditCallerOf } from "@/lib/auth/caller"
 import { logAuditCall } from "@/hooks/audit-helpers"
 import { buildSystemPrompt } from "@/lib/messenger/chatbot"
 import { chatbotSettingsSaveSchema, type ChatbotSettings } from "@/types/chatbot"
+import { describeChatbotSettingsChanges } from "@/lib/admin/chatbot-settings-diff"
 
 export async function GET() {
   const auth = await getAdminCaller()
@@ -55,7 +56,7 @@ async function saveRaw(
 
   const { data: config } = await supabase
     .from("chatbot_config")
-    .select("id")
+    .select("id, settings")
     .limit(1)
     .single()
 
@@ -78,6 +79,9 @@ async function saveRaw(
   await logAuditCall(auditCallerOf(caller), {
     category: "update",
     action:   settings ? "Updated chatbot settings" : "Updated chatbot system prompt",
+    target:   settings
+      ? describeChatbotSettingsChanges(config.settings as ChatbotSettings | null, settings)
+      : undefined,
   })
 
   return NextResponse.json({ success: true })

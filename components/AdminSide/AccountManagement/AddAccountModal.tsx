@@ -8,19 +8,24 @@ import { ConfirmModal } from "@/components/ui/Modal"
 import { validateName } from "@/lib/name"
 import { logView } from "@/lib/client/log-view"
 
-function generateUsername(fullName: string): string {
-  const parts = fullName.trim().split(/\s+/).filter(Boolean)
-  if (parts.length === 0) return ""
-  const first = parts[0].toLowerCase()
-  const last = parts.length > 1 ? parts[parts.length - 1].toLowerCase() : parts[0].toLowerCase()
+// Strips all whitespace (not just leading/trailing) so a multi-word name
+// part like "Dela Cruz" can't leak a space into the generated username/
+// password — neither field allows spaces.
+function slug(name: string): string {
+  return name.replace(/\s+/g, "").toLowerCase()
+}
+
+function generateUsername(firstName: string, lastName: string): string {
+  const first = slug(firstName)
+  const last = slug(lastName)
+  if (!first || !last) return ""
   return `${first}.${last}`
 }
 
-function generatePassword(fullName: string): string {
-  const parts = fullName.trim().split(/\s+/).filter(Boolean)
-  if (parts.length === 0) return ""
-  const first = parts[0].toLowerCase()
-  const last = parts.length > 1 ? parts[parts.length - 1].toLowerCase() : parts[0].toLowerCase()
+function generatePassword(firstName: string, lastName: string): string {
+  const first = slug(firstName)
+  const last = slug(lastName)
+  if (!first || !last) return ""
   return `${first}_826_${last}`
 }
 
@@ -29,6 +34,8 @@ type UserRole = "admin" | "operations" | "sales" | "head_detailer" | "head_insta
 interface AccountData {
   id: string
   full_name: string
+  first_name: string | null
+  last_name: string | null
   username: string
   role: UserRole
 }
@@ -54,7 +61,8 @@ const ADMIN_ROLE_OPTIONS: { value: UserRole; label: string }[] = [
 ]
 
 const EMPTY_FORM = {
-  fullName: "",
+  firstName: "",
+  lastName: "",
   username: "",
   password: "",
   role: "operations" as UserRole,
@@ -92,10 +100,11 @@ export default function AddAccountModal({
 
       if (editAccount) {
         setForm({
-          fullName: editAccount.full_name,
-          username: editAccount.username,
-          password: "",
-          role:     editAccount.role,
+          firstName: editAccount.first_name ?? "",
+          lastName:  editAccount.last_name ?? "",
+          username:  editAccount.username,
+          password:  "",
+          role:      editAccount.role,
         })
         logView("account", editAccount.full_name)
       } else {
@@ -107,22 +116,23 @@ export default function AddAccountModal({
     }
   }, [open, editAccount, mode])
 
-  // Auto-generate username and password from full name (new accounts only)
+  // Auto-generate username and password from name (new accounts only)
   useEffect(() => {
     if (!isEdit) {
       setForm((prev) => ({
         ...prev,
-        username: generateUsername(form.fullName),
-        password: generatePassword(form.fullName),
+        username: generateUsername(form.firstName, form.lastName),
+        password: generatePassword(form.firstName, form.lastName),
       }))
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [form.fullName, isEdit])
+  }, [form.firstName, form.lastName, isEdit])
 
   function validate() {
     const e: Partial<typeof EMPTY_FORM> = {}
-    const nameError = validateName(form.fullName, "Full name")
-    if (nameError) e.fullName = nameError
+    const firstError = validateName(form.firstName, "First name")
+    if (firstError) e.firstName = firstError
+    const lastError = validateName(form.lastName, "Last name")
+    if (lastError) e.lastName = lastError
     if (!isEdit) {
       if (!form.username.trim()) e.username = "Username is required."
       else if (!/^[a-zA-Z0-9_]+\.[a-zA-Z0-9_]+$/.test(form.username.trim()))
@@ -158,8 +168,9 @@ export default function AddAccountModal({
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            userId:   editAccount!.id,
-            fullName: form.fullName.trim(),
+            userId:    editAccount!.id,
+            firstName: form.firstName.trim(),
+            lastName:  form.lastName.trim(),
           }),
         })
       } else {
@@ -167,10 +178,11 @@ export default function AddAccountModal({
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            fullName: form.fullName.trim(),
-            username: form.username.trim(),
-            password: form.password,
-            role:     form.role,
+            firstName: form.firstName.trim(),
+            lastName:  form.lastName.trim(),
+            username:  form.username.trim(),
+            password:  form.password,
+            role:      form.role,
           }),
         })
       }
@@ -201,6 +213,7 @@ export default function AddAccountModal({
   }
 
   const roleLabel = roleOptions.find((o) => o.value === form.role)?.label ?? form.role
+  const fullNameDisplay = `${form.firstName.trim()} ${form.lastName.trim()}`.trim()
 
   return (
     <>
@@ -229,21 +242,38 @@ export default function AddAccountModal({
 
           <p className="text-xs text-muted"><span className="text-status-delayed">*</span> Required fields</p>
 
-          {/* Full Name */}
-          <div className="space-y-1.5">
-            <label className="block text-sm font-medium text-body">
-              Full Name <span className="text-status-delayed">*</span>
-            </label>
-            <input
-              type="text"
-              value={form.fullName}
-              onChange={(e) => setField("fullName", e.target.value)}
-              className={`w-full px-3 py-2.5 text-sm border rounded-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-colors ${
-                errors.fullName ? "border-status-delayed bg-status-delayed/10" : "border-border"
-              }`}
-              placeholder="e.g. Juan Dela Cruz"
-            />
-            {errors.fullName && <p className="text-xs text-status-delayed">{errors.fullName}</p>}
+          {/* Name */}
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-1.5">
+              <label className="block text-sm font-medium text-body">
+                First Name <span className="text-status-delayed">*</span>
+              </label>
+              <input
+                type="text"
+                value={form.firstName}
+                onChange={(e) => setField("firstName", e.target.value)}
+                className={`w-full px-3 py-2.5 text-sm border rounded-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-colors ${
+                  errors.firstName ? "border-status-delayed bg-status-delayed/10" : "border-border"
+                }`}
+                placeholder="e.g. Juan"
+              />
+              {errors.firstName && <p className="text-xs text-status-delayed">{errors.firstName}</p>}
+            </div>
+            <div className="space-y-1.5">
+              <label className="block text-sm font-medium text-body">
+                Last Name <span className="text-status-delayed">*</span>
+              </label>
+              <input
+                type="text"
+                value={form.lastName}
+                onChange={(e) => setField("lastName", e.target.value)}
+                className={`w-full px-3 py-2.5 text-sm border rounded-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-colors ${
+                  errors.lastName ? "border-status-delayed bg-status-delayed/10" : "border-border"
+                }`}
+                placeholder="e.g. Dela Cruz"
+              />
+              {errors.lastName && <p className="text-xs text-status-delayed">{errors.lastName}</p>}
+            </div>
           </div>
 
           {/* Username */}
@@ -264,10 +294,10 @@ export default function AddAccountModal({
                   ? "border-status-delayed bg-status-delayed/10 focus:ring-2 focus:ring-primary/20 focus:border-primary"
                   : "border-border focus:ring-2 focus:ring-primary/20 focus:border-primary"
               }`}
-              placeholder="Auto-filled from full name"
+              placeholder="Auto-filled from name"
             />
             {!isEdit && (
-              <p className="text-xs text-primary">Auto-generated from full name (editable)</p>
+              <p className="text-xs text-primary">Auto-generated from name (editable)</p>
             )}
             {errors.username && <p className="text-xs text-status-delayed">{errors.username}</p>}
           </div>
@@ -296,7 +326,7 @@ export default function AddAccountModal({
                 </button>
               </div>
               <p className="text-xs text-primary">
-                Auto-generated from full name: <span className="font-mono">{form.password || "—"}</span>
+                Auto-generated from name: <span className="font-mono">{form.password || "—"}</span>
               </p>
               {errors.password && <p className="text-xs text-status-delayed">{errors.password}</p>}
             </div>
@@ -346,8 +376,8 @@ export default function AddAccountModal({
       title={isEdit ? "Save changes?" : "Create account?"}
       message={
         isEdit
-          ? `Save changes to ${form.fullName.trim() || "this account"}'s account?`
-          : `Create a new ${roleLabel} account for ${form.fullName.trim() || "this person"}?`
+          ? `Save changes to ${fullNameDisplay || "this account"}'s account?`
+          : `Create a new ${roleLabel} account for ${fullNameDisplay || "this person"}?`
       }
       confirmLabel={submitting ? "Saving…" : isEdit ? "Save Changes" : "Create Account"}
       loading={submitting}

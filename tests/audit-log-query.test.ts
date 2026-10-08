@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest"
 import {
-  isAuditSortColumn, isAuditSortDir, isAuditScope, toggleSort,
+  isAuditSortColumn, isAuditSortDir, isAuditScope, toggleSort, dateRangeBounds,
 } from "@/lib/admin/audit-log-query"
 import { isViewType, VIEW_TYPE_ACTIONS } from "@/lib/audit/view-types"
 
@@ -48,6 +48,37 @@ describe("toggleSort", () => {
       .toEqual({ sortBy: "role", sortDir: "desc" })
     expect(toggleSort({ sortBy: "role", sortDir: "desc" }, "role"))
       .toEqual({ sortBy: "role", sortDir: "asc" })
+  })
+})
+
+describe("dateRangeBounds", () => {
+  it("returns no bounds when neither date is given", () => {
+    expect(dateRangeBounds(null, null)).toEqual({})
+  })
+
+  it("sets gte to the start of the from-date in UTC", () => {
+    expect(dateRangeBounds("2026-10-05", null)).toEqual({
+      gte: "2026-10-05T00:00:00.000Z",
+    })
+  })
+
+  it("sets lt to the start of the day AFTER the to-date, making it inclusive", () => {
+    expect(dateRangeBounds(null, "2026-10-05")).toEqual({
+      lt: "2026-10-06T00:00:00.000Z",
+    })
+  })
+
+  it("sets both bounds when given a full range", () => {
+    expect(dateRangeBounds("2026-10-01", "2026-10-08")).toEqual({
+      gte: "2026-10-01T00:00:00.000Z",
+      lt:  "2026-10-09T00:00:00.000Z",
+    })
+  })
+
+  it("rolls the inclusive upper bound correctly across a month boundary", () => {
+    expect(dateRangeBounds(null, "2026-10-31")).toEqual({
+      lt: "2026-11-01T00:00:00.000Z",
+    })
   })
 })
 

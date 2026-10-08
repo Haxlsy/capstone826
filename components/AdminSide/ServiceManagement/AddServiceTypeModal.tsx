@@ -5,6 +5,7 @@ import { Trash2, Pencil, Check, X, Plus, Loader2, ShieldCheck } from "lucide-rea
 import { Modal, ConfirmModal } from "@/components/ui/Modal"
 import { Button } from "@/components/ui/Button"
 import { Badge } from "@/components/ui/Badge"
+import { FieldHint } from "@/components/ui/FieldHint"
 import { statusStyle } from "@/lib/ui/status"
 
 interface Props {
@@ -150,8 +151,34 @@ export default function AddServiceTypeModal({ open, onClose, onSuccess }: Props)
 
   return (
     <Modal open={open} onClose={handleClose} title="Manage Service Types" size="md">
+        {/* Add new type form */}
+        <div className="space-y-3">
+          <p className="text-xs font-medium text-body">Add New Type</p>
+
+          <form onSubmit={startAdd} className="flex gap-2">
+            <div className="relative group flex-1 space-y-1">
+              <input
+                autoFocus
+                type="text"
+                value={newName}
+                onChange={(e) => { setNewName(e.target.value); setAddError("") }}
+                placeholder="e.g. Paint Protection Film"
+                className={`w-full rounded-sm border px-3 py-2 text-sm transition-colors focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary ${
+                  addError ? "border-status-delayed bg-status-delayed/10" : "border-border"
+                }`}
+              />
+              <FieldHint>Any characters allowed. Duplicates are blocked regardless of capitalization or spacing.</FieldHint>
+              {addError && <p className="text-xs text-status-delayed">{addError}</p>}
+            </div>
+            <Button type="submit">
+              <Plus className="h-3.5 w-3.5" />
+              Add
+            </Button>
+          </form>
+        </div>
+
         {/* List */}
-        <div className="py-1">
+        <div className="mt-3 border-t border-border-subtle pt-4">
           {loadingList ? (
             <div className="flex justify-center py-8">
               <Loader2 className="w-5 h-5 animate-spin text-muted" />
@@ -164,16 +191,19 @@ export default function AddServiceTypeModal({ open, onClose, onSuccess }: Props)
                   <li key={t.name} className="rounded-sm border border-border-subtle overflow-hidden">
                     {editingName === t.name ? (
                       <div className="flex items-center gap-2 px-3 py-2">
-                        <input
-                          autoFocus
-                          type="text"
-                          value={editValue}
-                          onChange={(e) => { setEditValue(e.target.value); setEditError("") }}
-                          onKeyDown={(e) => { if (e.key === "Enter") startRename(t.name); if (e.key === "Escape") cancelEdit() }}
-                          className={`flex-1 rounded-sm border px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary ${
-                            editError ? "border-status-delayed bg-status-delayed/10" : "border-border"
-                          }`}
-                        />
+                        <div className="relative group flex-1">
+                          <input
+                            autoFocus
+                            type="text"
+                            value={editValue}
+                            onChange={(e) => { setEditValue(e.target.value); setEditError("") }}
+                            onKeyDown={(e) => { if (e.key === "Enter") startRename(t.name); if (e.key === "Escape") cancelEdit() }}
+                            className={`w-full rounded-sm border px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary ${
+                              editError ? "border-status-delayed bg-status-delayed/10" : "border-border"
+                            }`}
+                          />
+                          <FieldHint>Any characters allowed. Must be unique (case and spacing don&apos;t count).</FieldHint>
+                        </div>
                         <button
                           type="button"
                           onClick={() => startRename(t.name)}
@@ -225,35 +255,6 @@ export default function AddServiceTypeModal({ open, onClose, onSuccess }: Props)
               ))}
             </ul>
           )}
-        </div>
-
-        {/* Add new type form */}
-        <div className="mt-3 space-y-3 border-t border-border-subtle pt-4">
-          <p className="text-xs font-medium text-body">Add New Type</p>
-
-          <form onSubmit={startAdd} className="flex gap-2">
-            <div className="flex-1 space-y-1">
-              <input
-                autoFocus
-                type="text"
-                value={newName}
-                onChange={(e) => { setNewName(e.target.value); setAddError("") }}
-                placeholder="e.g. Paint Protection Film"
-                className={`w-full rounded-sm border px-3 py-2 text-sm transition-colors focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary ${
-                  addError ? "border-status-delayed bg-status-delayed/10" : "border-border"
-                }`}
-              />
-              {addError && <p className="text-xs text-status-delayed">{addError}</p>}
-            </div>
-            <Button type="submit">
-              <Plus className="h-3.5 w-3.5" />
-              Add
-            </Button>
-          </form>
-
-          <p className="text-xs text-muted">
-            Duplicates are blocked regardless of capitalization or spacing.
-          </p>
         </div>
 
         {confirmCopy && (

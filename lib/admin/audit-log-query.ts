@@ -31,6 +31,27 @@ export function isAuditScope(value: unknown): value is AuditScope {
  */
 export const SECURITY_CATEGORY = "auth"
 
+/**
+ * "YYYY-MM-DD" date-input strings → Postgres-ready bounds for a created_at
+ * filter, as whole UTC days. Matches this route's existing period math
+ * (startOfPeriod in hooks/audit-helpers.ts) rather than the Asia/Manila-pinned
+ * convention lib/sales/customer-records-filter.ts uses for Customer Records —
+ * kept consistent with how this file already treats created_at.
+ */
+export function dateRangeBounds(
+  dateFrom: string | null,
+  dateTo: string | null,
+): { gte?: string; lt?: string } {
+  const bounds: { gte?: string; lt?: string } = {}
+  if (dateFrom) bounds.gte = new Date(`${dateFrom}T00:00:00.000Z`).toISOString()
+  if (dateTo) {
+    const end = new Date(`${dateTo}T00:00:00.000Z`)
+    end.setUTCDate(end.getUTCDate() + 1)
+    bounds.lt = end.toISOString()
+  }
+  return bounds
+}
+
 /** Clicking a new column sorts it ascending; clicking the active column flips direction. */
 export function toggleSort(
   current: { sortBy: AuditSortColumn; sortDir: AuditSortDir },

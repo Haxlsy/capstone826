@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react"
 import { GripVertical, Trash2, Pencil, Plus, ChevronDown, ChevronUp, Check, X } from "lucide-react"
 import { HourMinuteInput } from "@/components/ui/Field"
+import { FieldHint } from "@/components/ui/FieldHint"
 
 export type ServiceType = string
 
@@ -222,20 +223,23 @@ export function StageList({
               </div>
               <span className="text-sm text-muted w-5 shrink-0 text-right">{index + 1}.</span>
 
-              <div className="flex-1 min-w-0">
+              <div className="relative group flex-1 min-w-0">
                 {isEditing ? (
-                  <input
-                    autoFocus
-                    type="text"
-                    value={stage.name}
-                    onChange={(e) => onUpdate(stage.id, e.target.value)}
-                    onBlur={() => setEditingId(null)}
-                    onKeyDown={(e) => { if (e.key === "Enter") setEditingId(null) }}
-                    placeholder={placeholder}
-                    className={`w-full px-3 py-2 text-sm border rounded-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-colors ${
-                      errors[`stage_${stage.id}`] ? "border-status-delayed bg-status-delayed/10" : "border-border"
-                    }`}
-                  />
+                  <>
+                    <input
+                      autoFocus
+                      type="text"
+                      value={stage.name}
+                      onChange={(e) => onUpdate(stage.id, e.target.value)}
+                      onBlur={() => setEditingId(null)}
+                      onKeyDown={(e) => { if (e.key === "Enter") setEditingId(null) }}
+                      placeholder={placeholder}
+                      className={`w-full px-3 py-2 text-sm border rounded-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-colors ${
+                        errors[`stage_${stage.id}`] ? "border-status-delayed bg-status-delayed/10" : "border-border"
+                      }`}
+                    />
+                    <FieldHint>Stage names must be unique within this service. Any characters allowed.</FieldHint>
+                  </>
                 ) : (
                   <div
                     className={`flex items-center justify-between px-3 py-2 text-sm border rounded-sm bg-surface-subtle cursor-text ${

@@ -23,6 +23,8 @@ type UserRole = "operations" | "sales" | "head_detailer" | "head_installer"
 interface Account {
   id: string
   full_name: string
+  first_name: string | null
+  last_name: string | null
   username: string
   role: UserRole
   is_archived: boolean

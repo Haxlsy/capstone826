@@ -22,6 +22,8 @@ export default function SecurityView() {
     const [authRoleFilter,   setAuthRoleFilter]   = useState<AuditRole | "all">("all")
     const [authEventFilter,  setAuthEventFilter]  = useState<string>("all")
     const [authPeriodFilter, setAuthPeriodFilter] = useState<TimePeriod>("all")
+    const [authDateFrom,     setAuthDateFrom]     = useState("")
+    const [authDateTo,       setAuthDateTo]       = useState("")
     const [authPageSize,     setAuthPageSize]     = useState<PageSize>(10)
     const [authPage,         setAuthPage]         = useState(1)
     const [sortBy,           setSortBy]           = useState<AuditSortColumn>("created_at")
@@ -31,7 +33,8 @@ export default function SecurityView() {
 
     const params = {
       scope: "security" as const, role: authRoleFilter, category: "all" as const, action: authEventFilter,
-      period: authPeriodFilter, sortBy, sortDir, page: authPage, pageSize: authPageSize,
+      period: authPeriodFilter, dateFrom: authDateFrom || null, dateTo: authDateTo || null,
+      sortBy, sortDir, page: authPage, pageSize: authPageSize,
     }
     const { logs: authEntries, total, loading, refreshing, fetchErr, reload } = useAuditLogs(params)
 
@@ -42,10 +45,16 @@ export default function SecurityView() {
       setAuthPage(1)
     }
 
+    const dateRangeNote =
+      authDateFrom && authDateTo ? `${authDateFrom} – ${authDateTo}`
+      : authDateFrom             ? `from ${authDateFrom}`
+      : authDateTo               ? `through ${authDateTo}`
+      : null
+
     const filterNote = [
       authRoleFilter !== "all" ? ROLE_LABEL[authRoleFilter] : null,
       authEventFilter !== "all" ? authEventFilter : null,
-      authPeriodFilter !== "all" ? authPeriodFilter : null,
+      dateRangeNote ?? (authPeriodFilter !== "all" ? authPeriodFilter : null),
     ].filter(Boolean).join(", ") || null
 
     async function runExport(type: "pdf" | "excel") {
@@ -91,7 +100,8 @@ export default function SecurityView() {
                     <RefreshCw className={`w-3.5 h-3.5 ${refreshing ? "animate-spin" : ""}`} />
                     </button>
                 </div>
-                <div className="flex items-center gap-2 flex-wrap">
+                <div className="flex flex-col items-end gap-2">
+                <div className="flex items-center gap-2">
                     <button type="button" onClick={() => setExportConfirm("pdf")}
                       className="flex items-center gap-1.5 text-xs font-medium px-2.5 py-1.5 rounded-sm border border-border text-body hover:bg-surface-muted transition-colors"
                     >
@@ -102,15 +112,17 @@ export default function SecurityView() {
                     >
                       <FileSpreadsheet className="h-3.5 w-3.5" /> Export Excel
                     </button>
+                </div>
+                <div className="flex items-center justify-end gap-2 flex-wrap">
                     <Filter className="w-3.5 h-3.5 text-muted shrink-0" />
-                    <select aria-label="Role filter" value={authRoleFilter}
+                    <select aria-label="Role filter" title="Filter by the user's role" value={authRoleFilter}
                     onChange={(e) => { setAuthRoleFilter(e.target.value as AuditRole | "all"); setAuthPage(1) }}
                     className={SELECT_CLS}
                     >
                     <option value="all">All roles</option>
                     {ALL_ROLES.map((r) => <option key={r} value={r}>{ROLE_LABEL[r]}</option>)}
                     </select>
-                    <select aria-label="Event filter" value={authEventFilter}
+                    <select aria-label="Event filter" title="Filter by security event type" value={authEventFilter}
                     onChange={(e) => { setAuthEventFilter(e.target.value); setAuthPage(1) }}
                     className={SELECT_CLS}
                     >
@@ -124,14 +136,48 @@ export default function SecurityView() {
                     <option value="Reset account password">Password reset</option>
                     <option value="Changed own password">Changed own password</option>
                     </select>
-                    <select aria-label="Period filter" value={authPeriodFilter}
-                    onChange={(e) => { setAuthPeriodFilter(e.target.value as TimePeriod); setAuthPage(1) }}
-                    className={SELECT_CLS}
+                    <select aria-label="Period filter"
+                    title={authDateFrom || authDateTo
+                      ? "Unavailable while a specific date range is set"
+                      : "Filter by a preset time range"}
+                    value={authPeriodFilter}
+                    disabled={!!authDateFrom || !!authDateTo}
+                    onChange={(e) => {
+                      setAuthPeriodFilter(e.target.value as TimePeriod)
+                      setAuthDateFrom(""); setAuthDateTo("")
+                      setAuthPage(1)
+                    }}
+                    className={`${SELECT_CLS} disabled:opacity-50 disabled:cursor-not-allowed`}
                     >
                     <option value="all">All time</option>
                     <option value="week">This week</option>
                     <option value="month">This month</option>
                     </select>
+                    <div className="flex items-center gap-1.5">
+                      <label htmlFor="security-logs-date-from" className="text-xs text-muted whitespace-nowrap">From</label>
+                      <input id="security-logs-date-from" type="date" title="Show entries on or after this date"
+                      value={authDateFrom} max={authDateTo || undefined}
+                      onChange={(e) => {
+                        setAuthDateFrom(e.target.value)
+                        if (e.target.value) setAuthPeriodFilter("all")
+                        setAuthPage(1)
+                      }}
+                      className={SELECT_CLS}
+                      />
+                    </div>
+                    <div className="flex items-center gap-1.5">
+                      <label htmlFor="security-logs-date-to" className="text-xs text-muted whitespace-nowrap">To</label>
+                      <input id="security-logs-date-to" type="date" title="Show entries on or before this date"
+                      value={authDateTo} min={authDateFrom || undefined}
+                      onChange={(e) => {
+                        setAuthDateTo(e.target.value)
+                        if (e.target.value) setAuthPeriodFilter("all")
+                        setAuthPage(1)
+                      }}
+                      className={SELECT_CLS}
+                      />
+                    </div>
+                </div>
                 </div>
                 </div>
                 <div className="overflow-x-auto overflow-y-hidden">

@@ -11,17 +11,19 @@ export async function POST(request: Request) {
   if ("error" in auth) return auth.error
 
   const body = await request.json()
-  const { userId, fullName, password } = body
+  const { userId, firstName, lastName, password } = body
 
-  if (!userId || !fullName) {
-    return NextResponse.json({ error: "userId and fullName are required." }, { status: 400 })
+  if (!userId || !firstName || !lastName) {
+    return NextResponse.json({ error: "userId, firstName and lastName are required." }, { status: 400 })
   }
 
-  const cleanName = normalizeName(fullName)
-  const nameError = validateName(cleanName, "Full name")
+  const cleanFirst = normalizeName(firstName)
+  const cleanLast = normalizeName(lastName)
+  const nameError = validateName(cleanFirst, "First name") ?? validateName(cleanLast, "Last name")
   if (nameError) {
     return NextResponse.json({ error: nameError }, { status: 400 })
   }
+  const cleanName = `${cleanFirst} ${cleanLast}`
 
   const cookieStore = await cookies()
   const userClient  = createClient(cookieStore)
@@ -45,13 +47,13 @@ export async function POST(request: Request) {
 
   // Role is fixed at creation (see create-account, which already gates the
   // Admin role to Super Admin) and intentionally NOT accepted here — this
-  // endpoint only ever updates full_name/password, matching the Edit Account
-  // form, which shows Role as a read-only field.
+  // endpoint only ever updates first_name/last_name/password, matching the
+  // Edit Account form, which shows Role as a read-only field.
   const supabase = admin
 
   const { error: profileError } = await supabase
     .from("user_account")
-    .update({ full_name: cleanName })
+    .update({ first_name: cleanFirst, last_name: cleanLast, full_name: cleanName })
     .eq("id", userId)
 
   if (profileError) {

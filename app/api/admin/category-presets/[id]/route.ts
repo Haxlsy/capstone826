@@ -27,14 +27,26 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
       return NextResponse.json({ error: `Two stages are both named "${dup}" — stage names must be unique.` }, { status: 400 })
     }
 
+    const trimmedName = name.trim()
+
+    // Pre-check for a friendlier message than the 23505 the unique index
+    // below would otherwise raise — normalized the same way the index is
+    // (case/space-insensitive), scoped to exclude this preset's own current
+    // row so renaming it back to its unchanged name doesn't false-positive.
+    const normalize = (s: string) => s.toLowerCase().replace(/\s+/g, "")
+    const { data: otherPresets } = await admin.from("category_preset").select("name").neq("id", id)
+    if ((otherPresets ?? []).some((p) => normalize(p.name as string) === normalize(trimmedName))) {
+      return NextResponse.json({ error: `A preset named "${trimmedName}" already exists.` }, { status: 409 })
+    }
+
     const { error: updateErr } = await admin
       .from("category_preset")
-      .update({ name: name.trim(), technician_role, display_color: display_color ?? "blue" })
+      .update({ name: trimmedName, technician_role, display_color: display_color ?? "blue" })
       .eq("id", id)
 
     if (updateErr) {
       if (updateErr.code === "23505") {
-        return NextResponse.json({ error: `A preset named "${name.trim()}" already exists.` }, { status: 409 })
+        return NextResponse.json({ error: `A preset named "${trimmedName}" already exists.` }, { status: 409 })
       }
       return NextResponse.json({ error: updateErr.message }, { status: 500 })
     }
@@ -58,7 +70,7 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
     await logAuditCall(auditCallerOf(caller), {
       category: "update",
       action:   "Updated workflow category preset",
-      target:   name.trim(),
+      target:   trimmedName,
     })
 
     return NextResponse.json({ ok: true })

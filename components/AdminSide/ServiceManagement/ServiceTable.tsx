@@ -1,7 +1,7 @@
 "use client"
 
 import { useCallback, useEffect, useState } from "react"
-import { MoreHorizontal, Archive, ArchiveRestore, Pencil } from "lucide-react"
+import { MoreHorizontal, Archive, ArchiveRestore, Pencil, Tag, Layers, Wrench } from "lucide-react"
 import AddServiceModal from "./AddServiceModal"
 import EditServiceModal from "./EditServiceModal"
 import ViewServiceDrawer from "./ViewServiceDrawer"
@@ -273,13 +273,15 @@ export default function ServiceTable({ canWrite = true }: { canWrite?: boolean }
         actions={
           canWrite ? (
             <>
-              <Button variant="secondary" onClick={() => setPresetsOpen(true)}>
-                + Category Presets
-              </Button>
               <Button variant="secondary" onClick={() => setAddTypeModalOpen(true)}>
-                + Add Service Type
+                <Tag className="h-3.5 w-3.5" /> Add Service Type
               </Button>
-              <Button onClick={() => setAddModalOpen(true)}>+ Add Service</Button>
+              <Button variant="secondary" onClick={() => setPresetsOpen(true)}>
+                <Layers className="h-3.5 w-3.5" /> Category Presets
+              </Button>
+              <Button onClick={() => setAddModalOpen(true)}>
+                <Wrench className="h-3.5 w-3.5" /> Add Service
+              </Button>
             </>
           ) : undefined
         }

@@ -16,9 +16,14 @@ const ALLOWED_ROLES = [
 ] as const
 
 const CreateAccountSchema = z.object({
-  fullName: z.string().trim().min(1, "Full name required").max(100)
+  firstName: z.string().trim().min(1, "First name required").max(50)
     .superRefine((v, ctx) => {
-      const err = validateName(v, "Full name")
+      const err = validateName(v, "First name")
+      if (err) ctx.addIssue({ code: "custom", message: err })
+    }),
+  lastName: z.string().trim().min(1, "Last name required").max(50)
+    .superRefine((v, ctx) => {
+      const err = validateName(v, "Last name")
       if (err) ctx.addIssue({ code: "custom", message: err })
     }),
   username: z.string().trim().min(3, "Username must be at least 3 characters").max(50)
@@ -40,7 +45,8 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: parsed.error.issues[0].message }, { status: 400 })
   }
 
-  const { fullName, username, password, role } = parsed.data
+  const { firstName, lastName, username, password, role } = parsed.data
+  const fullName = `${firstName} ${lastName}`
 
   const cookieStore = await cookies()
   const userClient  = createClient(cookieStore)
@@ -104,6 +110,8 @@ export async function POST(request: Request) {
     .from("user_account")
     .update({
       role,
+      first_name: firstName,
+      last_name: lastName,
       full_name: fullName.trim(),
       must_change_password: true,
     })

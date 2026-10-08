@@ -52,15 +52,27 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: `Two stages are both named "${dup}" — stage names must be unique.` }, { status: 400 })
     }
 
+    const trimmedName = name.trim()
+
+    // Pre-check for a friendlier message than the 23505 the unique index
+    // below would otherwise raise — normalized the same way the index is
+    // (case/space-insensitive), so "Installer Triplet" and "installer
+    // triplet" are caught here too, not just an exact match.
+    const normalize = (s: string) => s.toLowerCase().replace(/\s+/g, "")
+    const { data: existingPresets } = await admin.from("category_preset").select("name")
+    if ((existingPresets ?? []).some((p) => normalize(p.name as string) === normalize(trimmedName))) {
+      return NextResponse.json({ error: `A preset named "${trimmedName}" already exists.` }, { status: 409 })
+    }
+
     const { data: preset, error: presetErr } = await admin
       .from("category_preset")
-      .insert({ name: name.trim(), technician_role, display_color: display_color ?? "blue" })
+      .insert({ name: trimmedName, technician_role, display_color: display_color ?? "blue" })
       .select("id, name, technician_role, display_color, created_at")
       .single()
 
     if (presetErr) {
       if (presetErr.code === "23505") {
-        return NextResponse.json({ error: `A preset named "${name.trim()}" already exists.` }, { status: 409 })
+        return NextResponse.json({ error: `A preset named "${trimmedName}" already exists.` }, { status: 409 })
       }
       return NextResponse.json({ error: presetErr.message }, { status: 500 })
     }

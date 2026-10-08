@@ -5,6 +5,7 @@ import { Plus, Clock, X, ShieldCheck, Trash2 } from "lucide-react"
 import { Drawer } from "@/components/ui/Drawer"
 import { Button } from "@/components/ui/Button"
 import { ConfirmModal } from "@/components/ui/Modal"
+import { FieldHint } from "@/components/ui/FieldHint"
 import {
   ServiceTypeCombobox,
   StageList,
@@ -359,7 +360,7 @@ export default function AddServiceModal({ open, onClose, onSuccess }: AddService
           </div>
 
           {/* Service Name */}
-          <div className="space-y-1.5">
+          <div className="relative group space-y-1.5">
             <label className="block text-sm font-medium text-body">
               Service Name <span className="text-status-delayed">*</span>
             </label>
@@ -372,6 +373,7 @@ export default function AddServiceModal({ open, onClose, onSuccess }: AddService
                 errors.serviceName ? "border-status-delayed bg-status-delayed/10" : "border-border"
               }`}
             />
+            <FieldHint>Any characters allowed. Must be unique among active services.</FieldHint>
             {errors.serviceName && <p className="text-xs text-status-delayed">{errors.serviceName}</p>}
           </div>
 

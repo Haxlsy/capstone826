@@ -25,7 +25,7 @@ export default function JobConcerns({ initialRecords }: { initialRecords: Concer
   const queryClient = useQueryClient()
   const { data: recordsData = [], isPending: loading, error: fetchError } = useConcerns(initialRecords)
 
-  const [activeFilter, setActiveFilter] = useState<FilterType>("All")
+  const [activeFilter, setActiveFilter] = useState<FilterType>("Pending")
   const [searchQuery, setSearchQuery] = useState("")
   const [currentPage, setCurrentPage] = useState(1)
   const [pageSize, setPageSize] = useState(15)

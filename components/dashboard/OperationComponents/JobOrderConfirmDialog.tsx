@@ -39,8 +39,8 @@ interface Props {
 function Row({ label, value }: { label: string; value: string }) {
   return (
     <div className="flex justify-between gap-4 border-b border-border-subtle py-1.5 last:border-0">
-      <span className="shrink-0 text-xs text-muted">{label}</span>
-      <span className="text-right text-xs font-medium text-body">{value || "—"}</span>
+      <span className="shrink-0 text-sm text-body">{label}</span>
+      <span className="text-right text-sm font-semibold text-heading">{value || "—"}</span>
     </div>
   )
 }
@@ -58,7 +58,7 @@ function Section({
     <div className="rounded-sm bg-surface-subtle p-4">
       <div className="mb-2 flex items-center gap-2">
         <Icon className="h-3.5 w-3.5 text-muted" />
-        <p className="text-[10px] font-semibold uppercase tracking-wide text-muted">{title}</p>
+        <p className="text-xs font-semibold uppercase tracking-wide text-body">{title}</p>
       </div>
       {children}
     </div>
@@ -70,8 +70,8 @@ export default function JobOrderConfirmDialog({ summary, submitting, onConfirm, 
     <Modal
       open
       onClose={submitting ? undefined : onBack}
-      title="Confirm Job Order"
-      description="Review details before creating."
+      title={<span className="text-xl font-bold text-heading">Confirm Job Order</span>}
+      description={<span className="text-base font-medium text-heading">Review details before creating.</span>}
       size="md"
       footer={
         <>
@@ -100,12 +100,12 @@ export default function JobOrderConfirmDialog({ summary, submitting, onConfirm, 
           />
           {summary.stages.length > 0 && (
             <div className="mt-2 flex flex-col gap-1">
-              <p className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-muted">
+              <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-body">
                 Workflow Stages
               </p>
               {summary.stages.map((s, i) => (
                 <div key={i} className="flex items-center gap-2">
-                  <span className="w-4 shrink-0 text-[10px] text-muted">{i + 1}.</span>
+                  <span className="w-4 shrink-0 text-xs text-body">{i + 1}.</span>
                   <span
                     className={cn(
                       "shrink-0 rounded-pill px-1.5 py-0.5 text-[9px] font-semibold",
@@ -114,7 +114,7 @@ export default function JobOrderConfirmDialog({ summary, submitting, onConfirm, 
                   >
                     {s.category_name ?? "—"}
                   </span>
-                  <span className="text-xs text-body">{s.name}</span>
+                  <span className="text-sm text-body">{s.name}</span>
                 </div>
               ))}
             </div>

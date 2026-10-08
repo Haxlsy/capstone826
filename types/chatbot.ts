@@ -166,7 +166,7 @@ export const chatbotSettingsSchema = z.object({
 
 export type ChatbotSettings = z.infer<typeof chatbotSettingsSchema>
 
-const TEMPLATE_FIELDS = [
+export const TEMPLATE_FIELDS = [
   ["first_time", "First Time Message"],
   ["vehicle_status", "Vehicle Status"],
   ["link_verification", "Link Verification"],

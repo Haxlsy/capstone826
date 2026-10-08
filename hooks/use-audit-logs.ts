@@ -12,6 +12,9 @@ export interface AuditLogParams {
   category: AuditCategory | "all"
   action:   string | "all"
   period:   TimePeriod
+  /** Specific date range (YYYY-MM-DD), takes priority over `period` when set. */
+  dateFrom?: string | null
+  dateTo?:   string | null
   sortBy:   AuditSortColumn
   sortDir:  AuditSortDir
   page:     number
@@ -30,6 +33,8 @@ export function buildAuditLogSearchParams(params: AuditLogParams): URLSearchPara
   if (params.role !== "all")     qs.set("role", params.role)
   if (params.category !== "all") qs.set("category", params.category)
   if (params.action !== "all")   qs.set("action", params.action)
+  if (params.dateFrom)           qs.set("dateFrom", params.dateFrom)
+  if (params.dateTo)             qs.set("dateTo", params.dateTo)
   return qs
 }
 

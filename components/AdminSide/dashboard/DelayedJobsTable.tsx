@@ -11,6 +11,7 @@ import { statusStyle } from "@/lib/ui/status"
 
 interface DelayedJob {
   id: string
+  job_order_code: string
   status: string
   expected_completion_at: string | null
   service: { name: string } | null
@@ -28,10 +29,6 @@ function formatDelayedBy(expectedAt: string | null): string {
   const days = Math.floor(hours / 24)
   const remHours = hours % 24
   return remHours > 0 ? `${days}d ${remHours}h` : `${days}d`
-}
-
-function shortId(id: string): string {
-  return id.slice(0, 8).toUpperCase()
 }
 
 export function DelayedJobsTable({ initialData }: { initialData?: DelayedJob[] }) {
@@ -93,7 +90,7 @@ export function DelayedJobsTable({ initialData }: { initialData?: DelayedJob[] }
                 return (
                   <tr key={job.id} className="hover:bg-surface-muted transition-colors">
                     <td className="py-2 pr-3">
-                      <span className="font-mono text-xs text-body">{shortId(job.id)}</span>
+                      <span className="font-mono text-xs text-body">{job.job_order_code}</span>
                     </td>
                     <td className="py-2 pr-3 text-body">{job.service?.name ?? "—"}</td>
                     <td className="py-2 pr-3 text-body text-xs">

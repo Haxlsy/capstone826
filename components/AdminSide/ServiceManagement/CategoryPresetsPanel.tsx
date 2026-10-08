@@ -4,10 +4,11 @@ import { useCallback, useEffect, useState } from "react"
 import { ArrowLeft, Pencil, Trash2, Plus, ShieldCheck } from "lucide-react"
 import { COLOR_OPTIONS, colorStyles, minsToHHMM, hhmmToMins } from "./service-form-helpers"
 import { Drawer } from "@/components/ui/Drawer"
-import { Button, IconButton } from "@/components/ui/Button"
+import { Button } from "@/components/ui/Button"
 import { ConfirmModal } from "@/components/ui/Modal"
 import { HourMinuteInput } from "@/components/ui/Field"
 import { useToast } from "@/components/ui/Toast"
+import { FieldHint } from "@/components/ui/FieldHint"
 import { findDuplicateStageIds } from "@/lib/admin/service-stage-validation"
 
 interface PresetStage {
@@ -260,9 +261,9 @@ export default function CategoryPresetsPanel({
       description={mode === "list" ? "Reusable templates for workflow categories" : undefined}
       headerActions={
         mode === "list" ? (
-          <IconButton aria-label="New preset" size="sm" onClick={openCreate}>
-            <Plus className="h-4 w-4" />
-          </IconButton>
+          <Button variant="secondary" size="sm" onClick={openCreate}>
+            <Plus className="h-3.5 w-3.5" /> New Preset
+          </Button>
         ) : undefined
       }
       footer={
@@ -355,7 +356,7 @@ export default function CategoryPresetsPanel({
           {(mode === "create" || mode === "edit") && (
             <div className="p-5 space-y-5">
               {/* Name */}
-              <div className="space-y-1.5">
+              <div className="relative group space-y-1.5">
                 <label className="text-xs font-semibold text-body uppercase tracking-wide">
                   Preset Name <span className="text-status-delayed">*</span>
                 </label>
@@ -368,6 +369,7 @@ export default function CategoryPresetsPanel({
                     nameError ? "border-status-delayed bg-status-delayed/10" : "border-border"
                   }`}
                 />
+                <FieldHint>Any characters allowed. Must be unique (case and spacing don&apos;t count).</FieldHint>
                 {nameError && <p className="text-xs text-status-delayed">{nameError}</p>}
               </div>
 
@@ -406,15 +408,18 @@ export default function CategoryPresetsPanel({
                       <div key={stage.key} className="space-y-1 pb-3">
                         <div className="flex items-center gap-2">
                           <span className="text-xs text-muted w-5 shrink-0 text-right">{idx + 1}.</span>
-                          <input
-                            type="text"
-                            value={stage.name}
-                            onChange={(e) => updateStage(stage.key, "name", e.target.value)}
-                            placeholder="Stage name"
-                            className={`flex-1 min-w-0 px-3 py-2 text-sm border rounded-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-colors ${
-                              stageErr?.name ? "border-status-delayed bg-status-delayed/10" : "border-border"
-                            }`}
-                          />
+                          <div className="relative group flex-1 min-w-0">
+                            <input
+                              type="text"
+                              value={stage.name}
+                              onChange={(e) => updateStage(stage.key, "name", e.target.value)}
+                              placeholder="Stage name"
+                              className={`w-full px-3 py-2 text-sm border rounded-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-colors ${
+                                stageErr?.name ? "border-status-delayed bg-status-delayed/10" : "border-border"
+                              }`}
+                            />
+                            <FieldHint>Stage names must be unique within this preset. Any characters allowed.</FieldHint>
+                          </div>
                           <HourMinuteInput
                             hours={parseInt(stage.hh, 10) || 0}
                             minutes={parseInt(stage.mm, 10) || 0}
