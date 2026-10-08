@@ -19,6 +19,8 @@ import { useRealtimeRefetch } from "@/hooks/useRealtimeRefetch"
 interface AdminAccount {
   id: string
   full_name: string
+  first_name: string | null
+  last_name: string | null
   username: string
   role: "admin"
   is_archived: boolean

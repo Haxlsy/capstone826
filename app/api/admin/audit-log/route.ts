@@ -4,14 +4,15 @@ import { getRoleCaller } from "@/lib/auth/caller"
 import { startOfPeriod } from "@/hooks/audit-helpers"
 import type { TimePeriod } from "@/types/audit"
 import {
-  isAuditSortColumn, isAuditSortDir, isAuditScope, SECURITY_CATEGORY,
+  isAuditSortColumn, isAuditSortDir, isAuditScope, SECURITY_CATEGORY, dateRangeBounds,
 } from "@/lib/admin/audit-log-query"
 
 // ── GET /api/admin/audit-log ──────────────────────────────────────────────────
 // Query params: scope (activity|security, default activity), role, category
 // (activity scope), action (security scope, exact match), period
-// (all|week|month, default all), sortBy, sortDir (default created_at desc),
-// page, pageSize (default 1 / 10).
+// (all|week|month, default all), dateFrom/dateTo (YYYY-MM-DD — a specific
+// date range, takes priority over period when either is set), sortBy,
+// sortDir (default created_at desc), page, pageSize (default 1 / 10).
 // Used by the admin AuditLog dashboard component (Audit Trail + Security Logs
 // tabs) via hooks/use-audit-logs.ts.
 export async function GET(request: Request) {
@@ -25,6 +26,8 @@ export async function GET(request: Request) {
     const category = url.searchParams.get("category") || null
     const action   = url.searchParams.get("action")   || null
     const period   = (url.searchParams.get("period") ?? "all") as TimePeriod
+    const dateFrom = url.searchParams.get("dateFrom") || null
+    const dateTo   = url.searchParams.get("dateTo")   || null
     const sortBy   = isAuditSortColumn(url.searchParams.get("sortBy")) ? url.searchParams.get("sortBy")! : "created_at"
     const sortDir  = isAuditSortDir(url.searchParams.get("sortDir")) ? url.searchParams.get("sortDir")! : "desc"
     const page     = Math.max(1, parseInt(url.searchParams.get("page") ?? "1", 10))
@@ -57,8 +60,18 @@ export async function GET(request: Request) {
 
     if (role) query = query.eq("role", role)
 
-    const since = startOfPeriod(period)
-    if (since) query = query.gte("created_at", since.toISOString())
+    // A specific date range (dateFrom/dateTo) always wins over the preset
+    // Period dropdown, even against a raw API call — the UI disables Period
+    // once a date range is set, but this keeps that invariant true server-
+    // side too, not just as a client affordance.
+    if (dateFrom || dateTo) {
+      const { gte, lt } = dateRangeBounds(dateFrom, dateTo)
+      if (gte) query = query.gte("created_at", gte)
+      if (lt)  query = query.lt("created_at", lt)
+    } else {
+      const since = startOfPeriod(period)
+      if (since) query = query.gte("created_at", since.toISOString())
+    }
 
     const from = (page - 1) * pageSize
     query = query.range(from, from + pageSize - 1)

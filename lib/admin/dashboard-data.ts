@@ -45,7 +45,7 @@ export async function getDelayedJobs() {
   const { data } = await admin
     .from("job_order")
     .select(`
-      id, status, expected_completion_at,
+      id, job_order_code, status, expected_completion_at,
       service:service_id ( name )
     `)
     .or(
@@ -56,6 +56,7 @@ export async function getDelayedJobs() {
 
   return (data ?? []) as unknown as {
     id: string
+    job_order_code: string
     status: string
     expected_completion_at: string | null
     service: { name: string } | null

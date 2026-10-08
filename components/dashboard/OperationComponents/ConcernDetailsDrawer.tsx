@@ -4,6 +4,7 @@ import { useState } from "react"
 import { CheckCircle, Paperclip } from "lucide-react"
 import { Drawer } from "@/components/ui/Drawer"
 import { Button } from "@/components/ui/Button"
+import { ConfirmModal } from "@/components/ui/Modal"
 import { Badge } from "@/components/ui/Badge"
 import { Textarea } from "@/components/ui/Field"
 import { useToast } from "@/components/ui/Toast"
@@ -23,8 +24,14 @@ export default function ConcernDetailsDrawer({ record, onClose, onResolve }: Con
   const [responseNote, setResponseNote] = useState("")
   const [resolving, setResolving] = useState(false)
   const [resolveError, setResolveError] = useState<string | null>(null)
+  const [confirmOpen, setConfirmOpen] = useState(false)
 
   const isResolved = record?.status === "Resolved"
+
+  function openConfirm() {
+    setResolveError(null)
+    setConfirmOpen(true)
+  }
 
   async function handleResolve() {
     if (!record) return
@@ -80,6 +87,7 @@ export default function ConcernDetailsDrawer({ record, onClose, onResolve }: Con
   }
 
   return (
+    <>
     <Drawer
       open={record !== null}
       onClose={onClose}
@@ -93,7 +101,7 @@ export default function ConcernDetailsDrawer({ record, onClose, onResolve }: Con
               Resolved
             </div>
           ) : (
-            <Button fullWidth onClick={handleResolve} disabled={resolving}>
+            <Button fullWidth onClick={openConfirm} disabled={resolving}>
               {resolving ? "Resolving…" : "Mark as Resolved"}
             </Button>
           )
@@ -169,6 +177,20 @@ export default function ConcernDetailsDrawer({ record, onClose, onResolve }: Con
         </div>
       )}
     </Drawer>
+
+    <ConfirmModal
+      open={confirmOpen}
+      onClose={() => !resolving && setConfirmOpen(false)}
+      onConfirm={() => {
+        setConfirmOpen(false)
+        handleResolve()
+      }}
+      title="Mark as Resolved?"
+      message="Mark this concern as resolved? Your response note will be saved, and the concern will move out of the Pending list."
+      confirmLabel="Mark as Resolved"
+      icon={CheckCircle}
+    />
+    </>
   )
 }
 

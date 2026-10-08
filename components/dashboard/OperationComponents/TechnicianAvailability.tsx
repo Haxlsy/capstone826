@@ -272,27 +272,19 @@ export default function TechnicianAvailability() {
     setTechnicians((prev) => prev.map((t) => (t.id === tech.id ? { ...t, is_archived: archived } : t)))
   }
 
-  async function confirmArchive() {
+  async function confirmArchiveToggle() {
     if (!archiveTarget) return
+    const restoring = archiveTarget.is_archived
     setArchiving(true)
     setArchiveError(null)
     try {
-      await setArchived(archiveTarget, true)
+      await setArchived(archiveTarget, !restoring)
       setArchiveTarget(null)
-      toast.success("Technician archived.")
+      toast.success(restoring ? "Technician restored." : "Technician archived.")
     } catch (err: unknown) {
       setArchiveError(err instanceof Error ? err.message : String(err))
     } finally {
       setArchiving(false)
-    }
-  }
-
-  async function restore(tech: Technician) {
-    try {
-      await setArchived(tech, false)
-      toast.success("Technician restored.")
-    } catch (err: unknown) {
-      toast.error(err instanceof Error ? err.message : String(err))
     }
   }
 
@@ -492,7 +484,10 @@ export default function TechnicianAvailability() {
                               aria-label="Restore technician"
                               size="sm"
                               variant="ghost"
-                              onClick={() => restore(tech)}
+                              onClick={() => {
+                                setArchiveTarget(tech)
+                                setArchiveError(null)
+                              }}
                               title={isOnline ? "Restore to the active roster" : OFFLINE_ACTION_HINT}
                               {...lockProps}
                             >
@@ -606,16 +601,20 @@ export default function TechnicianAvailability() {
           setArchiveTarget(null)
           setArchiveError(null)
         }}
-        onConfirm={confirmArchive}
-        title="Archive Technician"
+        onConfirm={confirmArchiveToggle}
+        title={archiveTarget?.is_archived ? "Restore Technician" : "Archive Technician"}
         message={
           archiveError ??
-          `Archive ${archiveTarget?.full_name ?? "this technician"}? They'll be removed from assignment and the roster, but their past job records stay intact. You can restore them from the Archived filter.`
+          (archiveTarget?.is_archived
+            ? `Restore ${archiveTarget?.full_name ?? "this technician"} to the active roster?`
+            : `Archive ${archiveTarget?.full_name ?? "this technician"}? They'll be removed from assignment and the roster, but their past job records stay intact. You can restore them from the Archived filter.`)
         }
-        confirmLabel="Archive"
-        tone="danger"
+        confirmLabel={archiving
+          ? (archiveTarget?.is_archived ? "Restoring…" : "Archiving…")
+          : (archiveTarget?.is_archived ? "Restore" : "Archive")}
+        tone={archiveTarget?.is_archived ? "primary" : "danger"}
         loading={archiving}
-        icon={Archive}
+        icon={archiveTarget?.is_archived ? ArchiveRestore : Archive}
       />
     </div>
   )

@@ -53,6 +53,7 @@ export async function GET() {
         .from("job_order")
         .select(`
           id,
+          job_order_code,
           status,
           expected_completion_at,
           service:service_id ( name )
