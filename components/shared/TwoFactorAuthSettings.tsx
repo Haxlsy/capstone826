@@ -17,7 +17,7 @@ interface EnrollState {
  * Optional TOTP upgrade — email-code MFA already works for every account
  * with no setup (see app/api/auth/login/route.ts). This lets a user enroll
  * an authenticator app as a faster alternative; login then prefers it but
- * still offers "use email instead" as a fallback. 
+ * still offers "use email instead" as a fallback.
  */
 export default function TwoFactorAuthSettings() {
   const toast = useToast()
