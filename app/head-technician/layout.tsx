@@ -3,6 +3,7 @@ import { MobileTopBar } from "@/components/ui/MobileTopBar"
 import { PushRegistration } from "@/components/head-technician/PushRegistration"
 import { SessionEnforcement } from "@/components/shared/SessionEnforcement"
 import { IdleTimeout } from "@/components/shared/IdleTimeout"
+import { MfaEmailReminder } from "@/components/shared/MfaEmailReminder"
 
 export default async function HeadTechnicianLayout({
   children,
@@ -15,6 +16,7 @@ export default async function HeadTechnicianLayout({
     <div className="min-h-screen bg-surface-subtle">
       <SessionEnforcement />
       <IdleTimeout />
+      <MfaEmailReminder />
       <PushRegistration />
       <MobileTopBar />
       {children}

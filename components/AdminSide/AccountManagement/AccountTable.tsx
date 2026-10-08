@@ -25,6 +25,7 @@ interface Account {
   full_name: string
   first_name: string | null
   last_name: string | null
+  email: string | null
   username: string
   role: UserRole
   is_archived: boolean

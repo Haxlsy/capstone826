@@ -17,7 +17,7 @@ export async function GET() {
     const admin = createAdminClient()
     const { data: profile, error } = await admin
       .from("user_account")
-      .select("full_name, username, role, created_at")
+      .select("full_name, username, role, email, created_at")
       .eq("id", user.id)
       .single()
 

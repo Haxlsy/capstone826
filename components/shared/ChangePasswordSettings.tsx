@@ -6,6 +6,8 @@ import { Modal } from "@/components/ui/Modal"
 import { Button } from "@/components/ui/Button"
 import { useLogout } from "@/hooks/useLogout"
 import AccountInfoCard from "./AccountInfoCard"
+import ConnectEmailSettings from "./ConnectEmailSettings"
+import TwoFactorAuthSettings from "./TwoFactorAuthSettings"
 
 const LOGOUT_DELAY_MS = 2500
 
@@ -25,6 +27,14 @@ export default function ChangePasswordSettings({ extraSection }: { extraSection?
   const [serverError, setServerError] = useState("")
   const [submitting, setSubmitting] = useState(false)
   const [showLogoutNotice, setShowLogoutNotice] = useState(false)
+
+  // MFA step — set once the current password has been verified (see
+  // handleSubmit); the password isn't actually changed until the code below
+  // is verified too (app/api/auth/change-password/route.ts, phase 2).
+  const [mfaChallenge, setMfaChallenge] = useState<{ challengeId: string; method: "email" | "totp" } | null>(null)
+  const [mfaCode, setMfaCode] = useState("")
+  const [mfaError, setMfaError] = useState("")
+  const [mfaSubmitting, setMfaSubmitting] = useState(false)
 
   // Once the password is changed, the session is stale for security — show a
   // brief notice, then log out automatically (or immediately if the user
@@ -76,12 +86,52 @@ export default function ChangePasswordSettings({ extraSection }: { extraSection?
         setServerError(json.error ?? "Something went wrong.")
         return
       }
+      if (json.mfaRequired) {
+        setMfaChallenge({ challengeId: json.challengeId, method: json.method })
+        setMfaCode("")
+        setMfaError("")
+        return
+      }
       setForm({ currentPassword: "", newPassword: "", confirmPassword: "" })
       setShowLogoutNotice(true)
     } catch {
       setServerError("Network error. Please try again.")
     } finally {
       setSubmitting(false)
+    }
+  }
+
+  async function handleVerifyMfa(e: React.FormEvent) {
+    e.preventDefault()
+    if (!mfaChallenge) return
+    if (!mfaCode.trim()) {
+      setMfaError("Enter the 6-digit code.")
+      return
+    }
+    setMfaError("")
+    setMfaSubmitting(true)
+    try {
+      const res = await fetch("/api/auth/change-password", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          challengeId: mfaChallenge.challengeId,
+          code:        mfaCode.trim(),
+          newPassword: form.newPassword,
+        }),
+      })
+      const json = await res.json()
+      if (!res.ok) {
+        setMfaError(json.error ?? "Incorrect code. Please try again.")
+        return
+      }
+      setMfaChallenge(null)
+      setForm({ currentPassword: "", newPassword: "", confirmPassword: "" })
+      setShowLogoutNotice(true)
+    } catch {
+      setMfaError("Network error. Please try again.")
+    } finally {
+      setMfaSubmitting(false)
     }
   }
 
@@ -221,6 +271,45 @@ export default function ChangePasswordSettings({ extraSection }: { extraSection?
           </div>
         </form>
       </div>
+
+      <ConnectEmailSettings />
+      <TwoFactorAuthSettings />
+
+      <Modal
+        open={mfaChallenge !== null}
+        onClose={() => !mfaSubmitting && setMfaChallenge(null)}
+        title="Verify It's You"
+        size="sm"
+        footer={
+          <Button type="submit" form="mfa-verify-form" disabled={mfaSubmitting} fullWidth>
+            {mfaSubmitting ? "Verifying…" : "Verify"}
+          </Button>
+        }
+      >
+        <form id="mfa-verify-form" onSubmit={handleVerifyMfa} className="space-y-3">
+          <p className="text-sm text-body">
+            {mfaChallenge?.method === "totp"
+              ? "Enter the code from your authenticator app to confirm this change."
+              : "Enter the 6-digit code we emailed you to confirm this change. It expires in 10 minutes."}
+          </p>
+          <input
+            type="text"
+            inputMode="numeric"
+            autoComplete="one-time-code"
+            autoFocus
+            value={mfaCode}
+            onChange={(e) => {
+              setMfaCode(e.target.value.replace(/\D/g, "").slice(0, 6))
+              if (mfaError) setMfaError("")
+            }}
+            placeholder="123456"
+            className={`w-full px-3 py-2.5 text-center text-lg tracking-[0.3em] border rounded-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-colors ${
+              mfaError ? "border-status-delayed bg-status-delayed/10" : "border-border"
+            }`}
+          />
+          {mfaError && <p className="text-xs text-status-delayed">{mfaError}</p>}
+        </form>
+      </Modal>
 
       <Modal
         open={showLogoutNotice}
