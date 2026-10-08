@@ -28,6 +28,14 @@ export default function ForcedChangePasswordForm({ role }: { role: string }) {
   const [serverError, setServerError] = useState("")
   const [submitting, setSubmitting] = useState(false)
 
+  // MFA step — set once the current password has been verified (see
+  // handleSubmit); the password isn't actually changed until the code below
+  // is verified too (app/api/auth/change-password/route.ts, phase 2).
+  const [mfaChallenge, setMfaChallenge] = useState<{ challengeId: string; method: "email" | "totp" } | null>(null)
+  const [mfaCode, setMfaCode] = useState("")
+  const [mfaError, setMfaError] = useState("")
+  const [mfaSubmitting, setMfaSubmitting] = useState(false)
+
   function setField(key: keyof typeof form, value: string) {
     setForm((prev) => ({ ...prev, [key]: value }))
     if (errors[key]) setErrors((prev) => ({ ...prev, [key]: undefined }))
@@ -67,11 +75,49 @@ export default function ForcedChangePasswordForm({ role }: { role: string }) {
         setServerError(json.error ?? "Something went wrong.")
         return
       }
+      if (json.mfaRequired) {
+        setMfaChallenge({ challengeId: json.challengeId, method: json.method })
+        setMfaCode("")
+        setMfaError("")
+        return
+      }
       router.push(ROLE_ROUTES[role] ?? "/")
     } catch {
       setServerError("Network error. Please try again.")
     } finally {
       setSubmitting(false)
+    }
+  }
+
+  async function handleVerifyMfa(e: React.FormEvent) {
+    e.preventDefault()
+    if (!mfaChallenge) return
+    if (!mfaCode.trim()) {
+      setMfaError("Enter the 6-digit code.")
+      return
+    }
+    setMfaError("")
+    setMfaSubmitting(true)
+    try {
+      const res = await fetch("/api/auth/change-password", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          challengeId: mfaChallenge.challengeId,
+          code:        mfaCode.trim(),
+          newPassword: form.newPassword,
+        }),
+      })
+      const json = await res.json()
+      if (!res.ok) {
+        setMfaError(json.error ?? "Incorrect code. Please try again.")
+        return
+      }
+      router.push(ROLE_ROUTES[role] ?? "/")
+    } catch {
+      setMfaError("Network error. Please try again.")
+    } finally {
+      setMfaSubmitting(false)
     }
   }
 
@@ -88,6 +134,38 @@ export default function ForcedChangePasswordForm({ role }: { role: string }) {
           </div>
         </div>
 
+        {mfaChallenge ? (
+          <form onSubmit={handleVerifyMfa} className="px-6 py-5 space-y-5">
+            <p className="text-sm text-body">
+              {mfaChallenge.method === "totp"
+                ? "Enter the code from your authenticator app to confirm this change."
+                : "Enter the 6-digit code we emailed you to confirm this change. It expires in 10 minutes."}
+            </p>
+            <input
+              type="text"
+              inputMode="numeric"
+              autoComplete="one-time-code"
+              autoFocus
+              value={mfaCode}
+              onChange={(e) => {
+                setMfaCode(e.target.value.replace(/\D/g, "").slice(0, 6))
+                if (mfaError) setMfaError("")
+              }}
+              placeholder="123456"
+              className={`w-full px-3 py-2.5 text-center text-lg tracking-[0.3em] border rounded-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-colors ${
+                mfaError ? "border-status-delayed bg-status-delayed/10" : "border-border"
+              }`}
+            />
+            {mfaError && <p className="text-xs text-status-delayed">{mfaError}</p>}
+            <button
+              type="submit"
+              disabled={mfaSubmitting}
+              className="w-full flex items-center justify-center gap-2 px-5 py-2.5 bg-primary text-white text-sm font-medium rounded-sm hover:bg-shell-alt transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {mfaSubmitting ? "Verifying…" : "Verify"}
+            </button>
+          </form>
+        ) : (
         <form onSubmit={handleSubmit} className="px-6 py-5 space-y-5">
           {serverError && (
             <div className="bg-status-delayed/10 border border-status-delayed/30 text-status-delayed text-sm rounded-sm px-4 py-3">
@@ -183,6 +261,7 @@ export default function ForcedChangePasswordForm({ role }: { role: string }) {
             )}
           </button>
         </form>
+        )}
       </div>
     </div>
   )
