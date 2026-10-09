@@ -438,39 +438,61 @@ export default function CustomerRecords() {
     <div className="flex flex-col gap-5">
       <PageHeader title="Customer Records" subtitle="Confirmed customers and their vehicles from booking inquiries." />
 
-      <Card className="flex flex-wrap items-end gap-4 p-5">
-        <div className="relative group">
-          <FieldLabel>From</FieldLabel>
-          <input
-            aria-label="Date added on or after"
-            type="date"
-            value={pendingFrom}
-            max={pendingTo || undefined}
-            onChange={(e) => setPendingFrom(e.target.value)}
-            className="h-10 rounded-sm border border-border bg-surface px-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
-          />
-          <FieldHint>Shows customers added on or after this date. Leave empty for no lower limit.</FieldHint>
-        </div>
-        <div className="relative group">
-          <FieldLabel>To</FieldLabel>
-          <input
-            aria-label="Date added on or before"
-            type="date"
-            value={pendingTo}
-            min={pendingFrom || undefined}
-            onChange={(e) => setPendingTo(e.target.value)}
-            className="h-10 rounded-sm border border-border bg-surface px-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
-          />
-          <FieldHint>Shows customers added on or before this date. Leave empty for no upper limit.</FieldHint>
-        </div>
-        <div className="flex items-center gap-2">
-          <Button onClick={applyDateFilter}>Apply Filters</Button>
-          <Button variant="ghost" onClick={resetDateFilter}>Reset</Button>
+      <Card className="flex flex-col gap-4 p-5">
+        <div className="flex flex-wrap items-end justify-between gap-4">
+          <div className="flex flex-wrap items-end gap-4">
+            <div className="relative group">
+              <FieldLabel>From</FieldLabel>
+              <input
+                aria-label="Date added on or after"
+                type="date"
+                value={pendingFrom}
+                max={pendingTo || undefined}
+                onChange={(e) => setPendingFrom(e.target.value)}
+                className="h-10 rounded-sm border border-border bg-surface px-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
+              />
+              <FieldHint>Shows customers added on or after this date. Leave empty for no lower limit.</FieldHint>
+            </div>
+            <div className="relative group">
+              <FieldLabel>To</FieldLabel>
+              <input
+                aria-label="Date added on or before"
+                type="date"
+                value={pendingTo}
+                min={pendingFrom || undefined}
+                onChange={(e) => setPendingTo(e.target.value)}
+                className="h-10 rounded-sm border border-border bg-surface px-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
+              />
+              <FieldHint>Shows customers added on or before this date. Leave empty for no upper limit.</FieldHint>
+            </div>
+            <div className="flex items-center gap-2">
+              <Button onClick={applyDateFilter}>Apply Filters</Button>
+              <Button variant="ghost" onClick={resetDateFilter}>Reset</Button>
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            <Button
+              variant="secondary"
+              onClick={() => setExportConfirm("pdf")}
+              disabled={loading || customers.length === 0}
+              {...lockProps}
+            >
+              <FileText className="h-4 w-4" /> Export PDF
+            </Button>
+            <Button
+              variant="secondary"
+              onClick={() => setExportConfirm("excel")}
+              disabled={loading || customers.length === 0}
+              {...lockProps}
+            >
+              <FileSpreadsheet className="h-4 w-4" /> Export Excel
+            </Button>
+          </div>
         </div>
         {dateErr ? (
-          <p className="basis-full text-xs text-status-delayed">{dateErr}</p>
+          <p className="text-xs text-status-delayed">{dateErr}</p>
         ) : (
-          <p className="basis-full text-xs text-muted">
+          <p className="text-xs text-muted">
             {rangeLabel
               ? `Showing customers with date added: ${rangeLabel}`
               : "Filter by the date a customer was added. Leave one side empty for no limit."}
@@ -478,31 +500,13 @@ export default function CustomerRecords() {
         )}
       </Card>
 
-      <div className="flex flex-wrap items-center justify-between gap-3">
+      <div className="flex flex-wrap items-center gap-3">
         <SearchBar
           value={search}
           onChange={setSearch}
           placeholder="Search by name, plate, or contact…"
           containerClassName="max-w-sm flex-1"
         />
-        <div className="flex items-center gap-2">
-          <Button
-            variant="secondary"
-            onClick={() => setExportConfirm("pdf")}
-            disabled={loading || customers.length === 0}
-            {...lockProps}
-          >
-            <FileText className="h-4 w-4" /> Export PDF
-          </Button>
-          <Button
-            variant="secondary"
-            onClick={() => setExportConfirm("excel")}
-            disabled={loading || customers.length === 0}
-            {...lockProps}
-          >
-            <FileSpreadsheet className="h-4 w-4" /> Export Excel
-          </Button>
-        </div>
       </div>
 
       {loading ? (
