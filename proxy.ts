@@ -80,18 +80,28 @@ export async function proxy(request: NextRequest) {
   const isAuthPage = path === "/login" || path === "/";
 
   if (sessionDead) {
-    if (isProtectedArea) {
+    if (isProtectedArea || isAuthPage) {
       // One hop to /login. That request arrives with no auth cookies (cleared
       // here), so it skips Supabase above and /login only redirects when a
-      // user exists — no way to loop.
+      // user exists — no way to loop. Also fires for isAuthPage itself (not
+      // just a protected route) — otherwise a tab whose *next* real request
+      // is straight to /login or / (closed and reopened, a bookmark, …)
+      // instead of a protected page never gets a reason computed at all, and
+      // silently lands on a bare /login with no explanation.
       const redirectUrl = new URL("/login", request.url);
-      redirectUrl.searchParams.set("reason", "session_expired");
+      // Disambiguate same as the !user branch below — signOut(token,
+      // "others") doesn't reliably surface as a recognized dead-session error
+      // shape, so when it's "sessionDead" here instead, the real cause can
+      // still have been a kick-out, not a plain expiry.
+      const sessionToken = request.cookies.get("826_session_token")?.value ?? null;
+      const stillCurrent = await resolveStaleSessionCurrency(supabase, sessionToken);
+      redirectUrl.searchParams.set("reason", stillCurrent === false ? "signed_in_elsewhere" : "session_expired");
       return clearAuthCookies(request, NextResponse.redirect(redirectUrl));
     }
     return clearAuthCookies(request, supabaseResponse);
   }
 
-  if (!user && isProtectedArea && !authCheckFailed) {
+  if (!user && (isProtectedArea || isAuthPage) && !authCheckFailed) {
     // getUser() failed, but NOT in a way isDeadSessionError() recognized
     // above (sessionDead was false) — that doesn't mean this visitor was
     // never logged in. A signOut(token, "others") from another device's
@@ -116,7 +126,17 @@ export async function proxy(request: NextRequest) {
       redirectUrl.searchParams.set("reason", stillCurrent === false ? "signed_in_elsewhere" : "session_expired");
       return clearAuthCookies(request, NextResponse.redirect(redirectUrl));
     }
-    return NextResponse.redirect(new URL("/login", request.url));
+    // No auth cookie at all — genuinely never logged in, nothing to explain.
+    // Only redirect when this was a protected route (kick an anonymous
+    // visitor to /login); isAuthPage alone must NOT redirect here — this
+    // branch is reachable for a plain, cookie-less /login visit now that
+    // isAuthPage is included above, and redirecting "/login" -> "/login"
+    // unconditionally is an infinite loop. Falling through renders /login
+    // normally instead (and "/" still gets to /login via app/page.tsx's own
+    // redirect either way).
+    if (isProtectedArea) {
+      return NextResponse.redirect(new URL("/login", request.url));
+    }
   }
 
   // Single active session per account — checked on every navigation here as
@@ -135,7 +155,16 @@ export async function proxy(request: NextRequest) {
   const sessionToken = request.cookies.get("826_session_token")?.value ?? null;
   const current = user ? await isSessionCurrent(supabase, user.id, sessionToken) : false;
 
-  if (user && isProtectedArea && !current) {
+  // isAuthPage is included here too (same "kicked-out tab's next request
+  // lands straight on /login" gap as the two branches above), but ONLY when
+  // sessionToken is present — isSessionCurrent() returns false both for a
+  // stale/mismatched token AND for no token at all, and the latter is the
+  // ordinary mid-MFA case (signInWithPassword already makes `user` truthy
+  // before completeLogin() ever sets this cookie). Without this guard every
+  // mid-MFA visitor sitting on /login would be misread as "signed in
+  // elsewhere" and bounced — the exact redirect loop the fallthrough comment
+  // below already exists to prevent.
+  if (user && !current && (isProtectedArea || (isAuthPage && sessionToken))) {
     const redirectUrl = new URL("/login", request.url);
     redirectUrl.searchParams.set("reason", "signed_in_elsewhere");
     const response = NextResponse.redirect(redirectUrl);

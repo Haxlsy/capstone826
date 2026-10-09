@@ -12,11 +12,17 @@ export interface HrefNotification {
  *
  * - "concern" (Operations, from a head tech's report) → that concern's drawer
  *   (older rows without a concern_id open the Concerns list).
+ * - "concern_resolved" (head tech, once Operations resolves their report) →
+ *   that concern on the head tech's own Concerns page (older rows without a
+ *   concern_id open the Concerns list).
  * - "inquiry" (Sales, Messenger escalation) → that inquiry, else the Sales page.
  */
 export function getNotificationHref(n: HrefNotification, role: string): string | null {
   if (n.type === "concern") {
     return n.concern_id ? `/dashboard/concerns?concern=${n.concern_id}` : "/dashboard/concerns"
+  }
+  if (n.type === "concern_resolved") {
+    return n.concern_id ? `/head-technician/concerns?concernId=${n.concern_id}` : "/head-technician/concerns"
   }
   if (n.job_order_id) {
     if (role === "sales") return `/dashboard/sales/jobs/${n.job_order_id}`

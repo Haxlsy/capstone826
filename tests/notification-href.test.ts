@@ -17,8 +17,12 @@ describe("getNotificationHref", () => {
     expect(getNotificationHref(n, "sales")).toBe("/dashboard/sales/jobs/j1")
     expect(getNotificationHref(n, "head_detailer")).toBe("/head-technician/j1")
   })
-  it("a resolved concern (sent to the head tech) still opens the job", () => {
-    expect(getNotificationHref({ ...base, type: "concern_resolved", job_order_id: "j1" }, "head_installer")).toBe("/head-technician/j1")
+  it("a resolved concern (sent to the head tech) opens the concern, not the job", () => {
+    const n = { ...base, type: "concern_resolved", job_order_id: "j1", concern_id: "c1" }
+    expect(getNotificationHref(n, "head_installer")).toBe("/head-technician/concerns?concernId=c1")
+  })
+  it("an older resolved-concern notification without an id opens the Concerns list", () => {
+    expect(getNotificationHref({ ...base, type: "concern_resolved", job_order_id: "j1" }, "head_installer")).toBe("/head-technician/concerns")
   })
   it("inquiries deep-link, with a fallback", () => {
     expect(getNotificationHref({ ...base, type: "inquiry", inquiry_id: "i1" }, "sales")).toBe("/dashboard/sales?inquiry=i1")

@@ -19,8 +19,9 @@ const RECHECK_DELAY_MS = 2_000
 
 const wait = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms))
 
-async function fetchStatus(): Promise<SessionStatus | null> {
-  const res = await fetch("/api/auth/session-status", { cache: "no-store" })
+async function fetchStatus(userId: string | null): Promise<SessionStatus | null> {
+  const qs = userId ? `?userId=${encodeURIComponent(userId)}` : ""
+  const res = await fetch(`/api/auth/session-status${qs}`, { cache: "no-store" })
   if (!res.ok) return null
   return (await res.json()) as SessionStatus
 }
@@ -33,13 +34,17 @@ async function fetchStatus(): Promise<SessionStatus | null> {
 // actual answer comes from /api/auth/session-status.
 export function useSessionEnforcement() {
   const [userId, setUserId] = useState<string | null>(null)
+  // Mirrors `userId` in a ref so checkStatus can read the latest value
+  // without needing it in its own dependency array — same stable-callback
+  // pattern as onChangeRef/onReconcileRef in useRealtimeRefetch.ts.
+  const userIdRef = useRef<string | null>(null)
   const loggingOutRef = useRef(false)
   const isOnline = useOnlineStatus()
 
   const checkStatus = useCallback(async () => {
     if (loggingOutRef.current) return
     try {
-      const json = await fetchStatus()
+      const json = await fetchStatus(userIdRef.current)
       if (!json) return // transient failure — not a confirmed stale session, don't act
       if (json?.valid === false) {
         // A "mismatch" is only acted on if it survives a short re-check. In a
@@ -47,7 +52,7 @@ export function useSessionEnforcement() {
         // before the new (shared) cookies land, so its first look is stale —
         // and acting on it makes proxy.ts delete the shared cookies, logging
         // out BOTH tabs. See lib/auth/confirm-kick.ts.
-        if (json.reason === "mismatch" && !(await confirmSuperseded(json, fetchStatus, wait, RECHECK_DELAY_MS))) return
+        if (json.reason === "mismatch" && !(await confirmSuperseded(json, () => fetchStatus(userIdRef.current), wait, RECHECK_DELAY_MS))) return
         loggingOutRef.current = true
         // "no_session" is just as much the normal shape of a deliberate
         // logout (this check can fire mid-logout, before that flow's own
@@ -92,7 +97,10 @@ export function useSessionEnforcement() {
           window.location.href = "/login?reason=session_expired"
           return
         }
-        if (session?.user) setUserId(session.user.id)
+        if (session?.user) {
+          userIdRef.current = session.user.id
+          setUserId(session.user.id)
+        }
       }).catch(() => {})
     }
     checkStatus()

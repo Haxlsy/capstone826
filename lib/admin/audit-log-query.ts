@@ -33,19 +33,21 @@ export const SECURITY_CATEGORY = "auth"
 
 /**
  * "YYYY-MM-DD" date-input strings → Postgres-ready bounds for a created_at
- * filter, as whole UTC days. Matches this route's existing period math
- * (startOfPeriod in hooks/audit-helpers.ts) rather than the Asia/Manila-pinned
- * convention lib/sales/customer-records-filter.ts uses for Customer Records —
- * kept consistent with how this file already treats created_at.
+ * filter, as whole Asia/Manila days (the shop's timezone) — same convention
+ * lib/sales/customer-records-filter.ts's dateAddedBounds() uses for Customer
+ * Records. A plain UTC day here previously dropped anything added before
+ * 08:00 Manila on the "from" day (e.g. setting From to today and applying
+ * could miss everything added so far that morning, Manila time). The
+ * Philippines has no DST, so a fixed +08:00 offset is exact.
  */
 export function dateRangeBounds(
   dateFrom: string | null,
   dateTo: string | null,
 ): { gte?: string; lt?: string } {
   const bounds: { gte?: string; lt?: string } = {}
-  if (dateFrom) bounds.gte = new Date(`${dateFrom}T00:00:00.000Z`).toISOString()
+  if (dateFrom) bounds.gte = new Date(`${dateFrom}T00:00:00+08:00`).toISOString()
   if (dateTo) {
-    const end = new Date(`${dateTo}T00:00:00.000Z`)
+    const end = new Date(`${dateTo}T00:00:00+08:00`)
     end.setUTCDate(end.getUTCDate() + 1)
     bounds.lt = end.toISOString()
   }
