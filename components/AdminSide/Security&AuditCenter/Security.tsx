@@ -18,6 +18,7 @@ import { ConfirmModal } from "@/components/ui/Modal"
 import { useToast } from "@/components/ui/Toast"
 import { Card } from "@/components/ui/Card"
 import { Button } from "@/components/ui/Button"
+import { FieldLabel } from "@/components/ui/Field"
 
 export default function SecurityView() {
     const toast = useToast()
@@ -28,6 +29,8 @@ export default function SecurityView() {
     const [authDateTo,       setAuthDateTo]       = useState("")
     const [authPageSize,     setAuthPageSize]     = useState<PageSize>(10)
     const [authPage,         setAuthPage]         = useState(1)
+    const [pendingDateFrom,  setPendingDateFrom]  = useState("")
+    const [pendingDateTo,    setPendingDateTo]    = useState("")
     const [sortBy,           setSortBy]           = useState<AuditSortColumn>("created_at")
     const [sortDir,          setSortDir]          = useState<"asc" | "desc">("desc")
     const [exportConfirm,    setExportConfirm]    = useState<"pdf" | "excel" | null>(null)
@@ -44,6 +47,21 @@ export default function SecurityView() {
       const next = toggleSort({ sortBy, sortDir }, column)
       setSortBy(next.sortBy)
       setSortDir(next.sortDir)
+      setAuthPage(1)
+    }
+
+    function handleApplyFilters() {
+      setAuthDateFrom(pendingDateFrom)
+      setAuthDateTo(pendingDateTo)
+      if (pendingDateFrom || pendingDateTo) setAuthPeriodFilter("all")
+      setAuthPage(1)
+    }
+
+    function handleResetDateFilter() {
+      setPendingDateFrom("")
+      setPendingDateTo("")
+      setAuthDateFrom("")
+      setAuthDateTo("")
       setAuthPage(1)
     }
 
@@ -84,91 +102,31 @@ export default function SecurityView() {
       }
     }
 
-    const SELECT_CLS = "h-10 rounded-sm border border-border bg-surface px-3 text-sm text-body focus:outline-none focus:ring-2 focus:ring-primary/30"
+    const OLD_SELECT_CLS = "text-xs border border-border rounded-sm px-2.5 py-1.5 bg-surface text-body focus:outline-none focus:ring-2 focus:ring-gray-200"
+    const DATE_INPUT_CLS = "h-10 rounded-sm border border-border bg-surface px-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
     return(
         <div className="flex flex-col gap-5">
-            <div className="flex items-center gap-3">
-                <div>
-                <h2 className="text-base font-semibold text-heading">Security Events</h2>
-                <p className="text-xs text-muted mt-0.5">
-                    Security events · {loading ? "…" : `${total} entries`}
-                </p>
-                </div>
-                <button type="button" onClick={() => reload()} disabled={refreshing} title="Refresh"
-                className="p-1.5 rounded-sm text-muted hover:text-body hover:bg-surface-muted transition-colors disabled:opacity-40"
-                >
-                <RefreshCw className={`w-3.5 h-3.5 ${refreshing ? "animate-spin" : ""}`} />
-                </button>
-            </div>
-
-            <Card className="flex flex-wrap items-start justify-between gap-4 p-5">
-                <div className="flex flex-col gap-3">
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <Filter className="w-3.5 h-3.5 text-muted shrink-0" />
-                    <select aria-label="Role filter" title="Filter by the user's role" value={authRoleFilter}
-                    onChange={(e) => { setAuthRoleFilter(e.target.value as AuditRole | "all"); setAuthPage(1) }}
-                    className={SELECT_CLS}
-                    >
-                    <option value="all">All roles</option>
-                    {ALL_ROLES.map((r) => <option key={r} value={r}>{ROLE_LABEL[r]}</option>)}
-                    </select>
-                    <select aria-label="Event filter" title="Filter by security event type" value={authEventFilter}
-                    onChange={(e) => { setAuthEventFilter(e.target.value); setAuthPage(1) }}
-                    className={SELECT_CLS}
-                    >
-                    <option value="all">All events</option>
-                    <option value="Logged in">Logged in</option>
-                    <option value="Logged out">Logged out</option>
-                    <option value="Logged in — ended a previous active session on another device">Ended previous session</option>
-                    <option value="Account locked out after 3 failed login attempts">Account locked out</option>
-                    <option value="Failed login attempt">Failed login attempt</option>
-                    <option value="Login attempt on archived account with correct password">Archived-account attempt</option>
-                    <option value="Reset account password">Password reset</option>
-                    <option value="Changed own password">Changed own password</option>
-                    </select>
-                    <select aria-label="Period filter"
-                    title={authDateFrom || authDateTo
-                      ? "Unavailable while a specific date range is set"
-                      : "Filter by a preset time range"}
-                    value={authPeriodFilter}
-                    disabled={!!authDateFrom || !!authDateTo}
-                    onChange={(e) => {
-                      setAuthPeriodFilter(e.target.value as TimePeriod)
-                      setAuthDateFrom(""); setAuthDateTo("")
-                      setAuthPage(1)
-                    }}
-                    className={`${SELECT_CLS} disabled:opacity-50 disabled:cursor-not-allowed`}
-                    >
-                    <option value="all">All time</option>
-                    <option value="week">This week</option>
-                    <option value="month">This month</option>
-                    </select>
+            <Card className="flex flex-wrap items-end justify-between gap-4 p-5">
+                <div className="flex flex-wrap items-end gap-4">
+                  <div>
+                    <FieldLabel>From</FieldLabel>
+                    <input type="date" title="Show entries on or after this date"
+                    value={pendingDateFrom} max={pendingDateTo || undefined}
+                    onChange={(e) => setPendingDateFrom(e.target.value)}
+                    className={DATE_INPUT_CLS}
+                    />
                   </div>
-                  <div className="flex items-center gap-3 flex-wrap">
-                    <div className="flex items-center gap-1.5">
-                      <label htmlFor="security-logs-date-from" className="text-xs text-muted whitespace-nowrap">From</label>
-                      <input id="security-logs-date-from" type="date" title="Show entries on or after this date"
-                      value={authDateFrom} max={authDateTo || undefined}
-                      onChange={(e) => {
-                        setAuthDateFrom(e.target.value)
-                        if (e.target.value) setAuthPeriodFilter("all")
-                        setAuthPage(1)
-                      }}
-                      className={SELECT_CLS}
-                      />
-                    </div>
-                    <div className="flex items-center gap-1.5">
-                      <label htmlFor="security-logs-date-to" className="text-xs text-muted whitespace-nowrap">To</label>
-                      <input id="security-logs-date-to" type="date" title="Show entries on or before this date"
-                      value={authDateTo} min={authDateFrom || undefined}
-                      onChange={(e) => {
-                        setAuthDateTo(e.target.value)
-                        if (e.target.value) setAuthPeriodFilter("all")
-                        setAuthPage(1)
-                      }}
-                      className={SELECT_CLS}
-                      />
-                    </div>
+                  <div>
+                    <FieldLabel>To</FieldLabel>
+                    <input type="date" title="Show entries on or before this date"
+                    value={pendingDateTo} min={pendingDateFrom || undefined}
+                    onChange={(e) => setPendingDateTo(e.target.value)}
+                    className={DATE_INPUT_CLS}
+                    />
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Button onClick={handleApplyFilters}>Apply Filters</Button>
+                    <Button variant="ghost" onClick={handleResetDateFilter}>Reset</Button>
                   </div>
                 </div>
                 <div className="flex items-center gap-2">
@@ -182,6 +140,63 @@ export default function SecurityView() {
             </Card>
 
             <Card className="p-6">
+                <div className="flex items-center justify-between gap-4 flex-wrap mb-4 pb-4 border-b border-border-subtle">
+                    <div className="flex items-center gap-3">
+                    <div>
+                    <h2 className="text-base font-semibold text-heading">Security Events</h2>
+                    <p className="text-xs text-muted mt-0.5">
+                        Security events · {loading ? "…" : `${total} entries`}
+                    </p>
+                    </div>
+                    <button type="button" onClick={() => reload()} disabled={refreshing} title="Refresh"
+                    className="p-1.5 rounded-sm text-muted hover:text-body hover:bg-surface-muted transition-colors disabled:opacity-40"
+                    >
+                    <RefreshCw className={`w-3.5 h-3.5 ${refreshing ? "animate-spin" : ""}`} />
+                    </button>
+                    </div>
+                    <div className="flex items-center gap-2 flex-wrap">
+                        <Filter className="w-3.5 h-3.5 text-muted shrink-0" />
+                        <select aria-label="Role filter" title="Filter by the user's role" value={authRoleFilter}
+                        onChange={(e) => { setAuthRoleFilter(e.target.value as AuditRole | "all"); setAuthPage(1) }}
+                        className={OLD_SELECT_CLS}
+                        >
+                        <option value="all">All roles</option>
+                        {ALL_ROLES.map((r) => <option key={r} value={r}>{ROLE_LABEL[r]}</option>)}
+                        </select>
+                        <select aria-label="Event filter" title="Filter by security event type" value={authEventFilter}
+                        onChange={(e) => { setAuthEventFilter(e.target.value); setAuthPage(1) }}
+                        className={OLD_SELECT_CLS}
+                        >
+                        <option value="all">All events</option>
+                        <option value="Logged in">Logged in</option>
+                        <option value="Logged out">Logged out</option>
+                        <option value="Logged in — ended a previous active session on another device">Ended previous session</option>
+                        <option value="Account locked out after 3 failed login attempts">Account locked out</option>
+                        <option value="Failed login attempt">Failed login attempt</option>
+                        <option value="Login attempt on archived account with correct password">Archived-account attempt</option>
+                        <option value="Reset account password">Password reset</option>
+                        <option value="Changed own password">Changed own password</option>
+                        </select>
+                        <select aria-label="Period filter"
+                        title={authDateFrom || authDateTo
+                          ? "Unavailable while a specific date range is set"
+                          : "Filter by a preset time range"}
+                        value={authPeriodFilter}
+                        disabled={!!authDateFrom || !!authDateTo}
+                        onChange={(e) => {
+                          setAuthPeriodFilter(e.target.value as TimePeriod)
+                          setAuthDateFrom(""); setAuthDateTo("")
+                          setPendingDateFrom(""); setPendingDateTo("")
+                          setAuthPage(1)
+                        }}
+                        className={`${OLD_SELECT_CLS} disabled:opacity-50 disabled:cursor-not-allowed`}
+                        >
+                        <option value="all">All time</option>
+                        <option value="week">This week</option>
+                        <option value="month">This month</option>
+                        </select>
+                    </div>
+                </div>
                 <div className="overflow-x-auto overflow-y-hidden">
                 <table className="w-full text-sm">
                     <thead>

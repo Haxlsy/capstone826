@@ -206,54 +206,65 @@ export default function JobOrderRecords({ jobOrders: rawOrders }: { jobOrders: a
         subtitle="Completed and released units."
       />
 
-      <Card className="flex flex-wrap items-end gap-4 p-5">
-        <div>
-          <FieldLabel>Start Date</FieldLabel>
-          <input
-            aria-label="Start Date (Scheduled Start)"
-            title="Filters by Scheduled Start"
-            type="date"
-            value={pendingStart}
-            onChange={(e) => setPendingStart(e.target.value)}
-            className="h-10 rounded-sm border border-border bg-surface px-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
-          />
-        </div>
-        <div>
-          <FieldLabel>End Date</FieldLabel>
-          <input
-            aria-label="End Date (Released)"
-            title="Filters by Released date"
-            type="date"
-            value={pendingEnd}
-            onChange={(e) => setPendingEnd(e.target.value)}
-            className="h-10 rounded-sm border border-border bg-surface px-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
-          />
-        </div>
-        <div>
-          <FieldLabel>Service Type</FieldLabel>
-          <Select
-            aria-label="Service Type"
-            value={pendingService}
-            onChange={(e) => setPendingService(e.target.value)}
-            className="w-44"
-          >
-            <option value="All">All</option>
-            {serviceOptions.map((s) => (
-              <option key={s} value={s}>
-                {s}
-              </option>
-            ))}
-          </Select>
+      <Card className="flex flex-wrap items-end justify-between gap-4 p-5">
+        <div className="flex flex-wrap items-end gap-4">
+          <div>
+            <FieldLabel>Start Date</FieldLabel>
+            <input
+              aria-label="Start Date (Scheduled Start)"
+              title="Filters by Scheduled Start"
+              type="date"
+              value={pendingStart}
+              onChange={(e) => setPendingStart(e.target.value)}
+              className="h-10 rounded-sm border border-border bg-surface px-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
+            />
+          </div>
+          <div>
+            <FieldLabel>End Date</FieldLabel>
+            <input
+              aria-label="End Date (Released)"
+              title="Filters by Released date"
+              type="date"
+              value={pendingEnd}
+              onChange={(e) => setPendingEnd(e.target.value)}
+              className="h-10 rounded-sm border border-border bg-surface px-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
+            />
+          </div>
+          <div>
+            <FieldLabel>Service</FieldLabel>
+            <Select
+              aria-label="Service Type"
+              title={pendingService}
+              value={pendingService}
+              onChange={(e) => setPendingService(e.target.value)}
+              className="w-28 truncate"
+            >
+              <option value="All">All</option>
+              {serviceOptions.map((s) => (
+                <option key={s} value={s}>
+                  {s}
+                </option>
+              ))}
+            </Select>
+          </div>
+          <div className="flex items-center gap-2">
+            <Button onClick={handleApplyFilters}>Apply Filters</Button>
+            <Button variant="ghost" onClick={handleReset}>
+              Reset
+            </Button>
+          </div>
         </div>
         <div className="flex items-center gap-2">
-          <Button onClick={handleApplyFilters}>Apply Filters</Button>
-          <Button variant="ghost" onClick={handleReset}>
-            Reset
+          <Button variant="secondary" onClick={() => setExportConfirm("pdf")}>
+            <FileText className="h-4 w-4" /> Export PDF
+          </Button>
+          <Button variant="secondary" onClick={() => setExportConfirm("excel")}>
+            <FileSpreadsheet className="h-4 w-4" /> Export Excel
           </Button>
         </div>
       </Card>
 
-      <div className="flex flex-wrap items-center justify-between gap-3">
+      <div className="flex flex-wrap items-center gap-3">
         <SearchBar
           value={searchQuery}
           onChange={(v) => {
@@ -263,14 +274,6 @@ export default function JobOrderRecords({ jobOrders: rawOrders }: { jobOrders: a
           placeholder="Search by customer, plate, vehicle, service, technician, or Job ID…"
           containerClassName="max-w-sm flex-1"
         />
-        <div className="flex items-center gap-2">
-          <Button variant="secondary" onClick={() => setExportConfirm("pdf")}>
-            <FileText className="h-4 w-4" /> Export PDF
-          </Button>
-          <Button variant="secondary" onClick={() => setExportConfirm("excel")}>
-            <FileSpreadsheet className="h-4 w-4" /> Export Excel
-          </Button>
-        </div>
       </div>
 
       <DataTable
