@@ -5,6 +5,15 @@ import Link from "next/link"
 import { Lock, Eye, EyeOff, ArrowLeft, CheckCircle2, ShieldAlert } from "lucide-react"
 import { cn } from "@/lib/utils"
 
+const ROLE_HOMES: Record<string, string> = {
+  super_admin: "/dashboard/admin",
+  admin: "/dashboard/admin",
+  operations: "/dashboard/operations",
+  sales: "/dashboard/sales",
+  head_detailer: "/head-technician",
+  head_installer: "/head-technician",
+}
+
 export default function ResetPasswordPage() {
   // Read directly from window.location rather than useSearchParams(), same
   // convention LoginPage already uses for its own query param — avoids a
@@ -45,6 +54,15 @@ export default function ResetPasswordPage() {
       const data = await res.json().catch(() => null)
       if (!res.ok) {
         setError(data?.error ?? "Something went wrong. Please try again.")
+        return
+      }
+      if (data?.user) {
+        // Hard redirect, not router.push() — same reason as
+        // ForcedChangePasswordForm.tsx's own post-password-change
+        // navigation: a soft transition risks replaying a stale Client
+        // Router Cache entry instead of fetching this fresh, newly
+        // authenticated session.
+        window.location.href = ROLE_HOMES[data.user.role] ?? "/login"
         return
       }
       setDone(true)

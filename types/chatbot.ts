@@ -442,7 +442,9 @@ export const kbEntrySchema = z.object({
 export type KBEntry = z.infer<typeof kbEntrySchema>
 
 export const kbCreateSchema = z.object({
-  topic:    z.string().trim().min(1, "Topic is required.").max(255),
+  // Comma-joined list of phrasings (see components/ui/TagInput.tsx) rather
+  // than a single question — 255 was enough for one phrase, not several.
+  topic:    z.string().trim().min(1, "Topic is required.").max(2000),
   content:  z.string().min(1, "Content is required.").max(10000),
   category: kbCategorySchema.default("FAQ"),
 })
@@ -450,7 +452,7 @@ export type KBEntryCreate = z.infer<typeof kbCreateSchema>
 
 export const kbUpdateSchema = z
   .object({
-    topic:    z.string().trim().min(1, "Topic is required.").max(255).optional(),
+    topic:    z.string().trim().min(1, "Topic is required.").max(2000).optional(),
     content:  z.string().min(1, "Content is required.").max(10000).optional(),
     category: kbCategorySchema.optional(),
   })

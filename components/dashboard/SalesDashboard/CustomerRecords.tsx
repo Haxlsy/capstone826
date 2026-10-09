@@ -11,6 +11,7 @@ import { PageHeader } from "@/components/ui/PageHeader"
 import { SearchBar } from "@/components/ui/SearchBar"
 import { Button } from "@/components/ui/Button"
 import { Input, FieldLabel } from "@/components/ui/Field"
+import { FieldHint } from "@/components/ui/FieldHint"
 import { Card } from "@/components/ui/Card"
 import { EmptyState } from "@/components/ui/EmptyState"
 import { useToast } from "@/components/ui/Toast"
@@ -438,8 +439,8 @@ export default function CustomerRecords() {
       <PageHeader title="Customer Records" subtitle="Confirmed customers and their vehicles from booking inquiries." />
 
       <Card className="flex flex-wrap items-end gap-4 p-5">
-        <div>
-          <FieldLabel>Added on or after</FieldLabel>
+        <div className="relative group">
+          <FieldLabel>From</FieldLabel>
           <input
             aria-label="Date added on or after"
             type="date"
@@ -448,9 +449,10 @@ export default function CustomerRecords() {
             onChange={(e) => setPendingFrom(e.target.value)}
             className="h-10 rounded-sm border border-border bg-surface px-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
           />
+          <FieldHint>Shows customers added on or after this date. Leave empty for no lower limit.</FieldHint>
         </div>
-        <div>
-          <FieldLabel>Added on or before</FieldLabel>
+        <div className="relative group">
+          <FieldLabel>To</FieldLabel>
           <input
             aria-label="Date added on or before"
             type="date"
@@ -459,6 +461,7 @@ export default function CustomerRecords() {
             onChange={(e) => setPendingTo(e.target.value)}
             className="h-10 rounded-sm border border-border bg-surface px-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
           />
+          <FieldHint>Shows customers added on or before this date. Leave empty for no upper limit.</FieldHint>
         </div>
         <div className="flex items-center gap-2">
           <Button onClick={applyDateFilter}>Apply Filters</Button>
@@ -469,13 +472,13 @@ export default function CustomerRecords() {
         ) : (
           <p className="basis-full text-xs text-muted">
             {rangeLabel
-              ? `Showing customers — date added: ${rangeLabel}`
-              : "Filter by the date a customer was added — leave one side empty for no limit."}
+              ? `Showing customers with date added: ${rangeLabel}`
+              : "Filter by the date a customer was added. Leave one side empty for no limit."}
           </p>
         )}
       </Card>
 
-      <div className="flex flex-wrap items-center gap-3">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <SearchBar
           value={search}
           onChange={setSearch}

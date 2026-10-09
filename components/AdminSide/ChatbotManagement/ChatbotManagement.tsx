@@ -10,6 +10,8 @@ import {
 import MessageTemplates from "./MessageTemplates"
 import { Modal, ConfirmModal } from "@/components/ui/Modal"
 import { Button } from "@/components/ui/Button"
+import { TagInput } from "@/components/ui/TagInput"
+import { FieldHint } from "@/components/ui/FieldHint"
 import ChatbotPreview from "./ChatbotPreview"
 import { useToast } from "@/components/ui/Toast"
 import { logView } from "@/lib/client/log-view"
@@ -388,12 +390,12 @@ export default function ChatbotManagement() {
   return (
     <div className="flex flex-col gap-5">
       <div>
-        <h1 className="text-xl font-bold text-heading">AI Configuration</h1>
+        <h1 className="text-xl font-bold text-heading">AI Configurations</h1>
         <p className="text-sm text-muted mt-0.5">Configure how your chatbot interacts with customers.</p>
       </div>
 
       <div className="flex border-b border-border gap-1">
-        <TabButton active={activeTab === "settings"} onClick={() => setActiveTab("settings")} icon={<Settings className="w-4 h-4" />} label="AI Settings" />
+        <TabButton active={activeTab === "settings"} onClick={() => setActiveTab("settings")} icon={<Settings className="w-4 h-4" />} label="AI Configuration" />
         <TabButton active={activeTab === "knowledge_base"} onClick={() => setActiveTab("knowledge_base")} icon={<BookOpen className="w-4 h-4" />} label="Knowledge Base" />
         <TabButton active={activeTab === "message_templates"} onClick={() => setActiveTab("message_templates")} icon={<MessageSquare className="w-4 h-4" />} label="Message Templates" />
       </div>
@@ -797,16 +799,18 @@ export default function ChatbotManagement() {
                   ))}
                 </select>
               </div>
-              <div className="flex flex-col gap-1.5">
+              <div className="relative group flex flex-col gap-1.5">
                 <label className="text-xs font-medium text-body">Question / Topic</label>
-                <input
-                  type="text"
+                <TagInput
                   autoFocus={!editId}
-                  value={form.topic}
-                  onChange={(e) => setForm((f) => ({ ...f, topic: e.target.value }))}
+                  value={form.topic ? form.topic.split(",").map((t) => t.trim()).filter(Boolean) : []}
+                  onChange={(tags) => setForm((f) => ({ ...f, topic: tags.join(", ") }))}
                   placeholder="e.g., What are your business hours?"
-                  className="border border-border rounded-sm px-3 py-2 text-sm text-body focus:outline-none focus:ring-2 focus:ring-primary/30"
                 />
+                <FieldHint>
+                  Add every way a customer might ask this. Press comma or Enter after each phrase, and the
+                  chatbot will match any of them.
+                </FieldHint>
               </div>
               <div className="flex flex-col gap-1.5">
                 <label className="text-xs font-medium text-body">Answer</label>

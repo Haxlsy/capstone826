@@ -158,6 +158,21 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Invalid credentials" }, { status: 401 })
     }
 
+    if (account.must_change_password) {
+      // Mandatory password change still ahead — that screen requires its own
+      // MFA verification before the new password takes effect
+      // (app/api/auth/change-password/route.ts). Challenging for MFA here
+      // too would mean checking email/authenticator twice for one login;
+      // skip it here and let the change-password step be the single
+      // checkpoint.
+      return completeLogin(
+        admin,
+        supabase,
+        authData.user.id,
+        "Logged in — MFA deferred to mandatory password change",
+      )
+    }
+
     // 3. Credentials are good — MFA is mandatory for every account, so this
     // never issues this app's own session cookies directly. TOTP is
     // preferred when the account has a verified authenticator factor
@@ -182,15 +197,12 @@ export async function POST(request: Request) {
       // Complete the login directly instead, same as before MFA existed —
       // logged explicitly so it's visible, not a silent gap. An admin can
       // add this account's email from Account Management any time after.
-      await logAudit({
-        user_id:   authData.user.id,
-        user_name: account.full_name,
-        role:      account.role,
-        category:  "auth",
-        action:    "Logged in without MFA — no verification method on file",
-        target:    username,
-      })
-      return completeLogin(admin, supabase, authData.user.id, username)
+      return completeLogin(
+        admin,
+        supabase,
+        authData.user.id,
+        "Logged in without MFA — no verification method on file",
+      )
     }
 
     const { challengeId, method, emailSent } = await createEmailChallenge(
