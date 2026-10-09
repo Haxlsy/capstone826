@@ -56,28 +56,31 @@ describe("dateRangeBounds", () => {
     expect(dateRangeBounds(null, null)).toEqual({})
   })
 
-  it("sets gte to the start of the from-date in UTC", () => {
+  it("sets gte to the start of the from-date in Asia/Manila (+08:00), not UTC", () => {
+    // A plain UTC day would drop anything added before 08:00 Manila on this
+    // day — see lib/sales/customer-records-filter.ts's dateAddedBounds(),
+    // the same convention this now matches.
     expect(dateRangeBounds("2026-10-05", null)).toEqual({
-      gte: "2026-10-05T00:00:00.000Z",
+      gte: "2026-10-04T16:00:00.000Z",
     })
   })
 
-  it("sets lt to the start of the day AFTER the to-date, making it inclusive", () => {
+  it("sets lt to the start of the day AFTER the to-date (Manila), making it inclusive", () => {
     expect(dateRangeBounds(null, "2026-10-05")).toEqual({
-      lt: "2026-10-06T00:00:00.000Z",
+      lt: "2026-10-05T16:00:00.000Z",
     })
   })
 
   it("sets both bounds when given a full range", () => {
     expect(dateRangeBounds("2026-10-01", "2026-10-08")).toEqual({
-      gte: "2026-10-01T00:00:00.000Z",
-      lt:  "2026-10-09T00:00:00.000Z",
+      gte: "2026-09-30T16:00:00.000Z",
+      lt:  "2026-10-08T16:00:00.000Z",
     })
   })
 
   it("rolls the inclusive upper bound correctly across a month boundary", () => {
     expect(dateRangeBounds(null, "2026-10-31")).toEqual({
-      lt: "2026-11-01T00:00:00.000Z",
+      lt: "2026-10-31T16:00:00.000Z",
     })
   })
 })

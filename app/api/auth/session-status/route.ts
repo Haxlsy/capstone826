@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server"
+import { NextRequest, NextResponse } from "next/server"
 import { cookies } from "next/headers"
 import { createClient } from "@/lib/supabase/server"
 import { createAdminClient } from "@/lib/supabase/admin"
@@ -11,11 +11,20 @@ import { isSessionCurrent, resolveStaleSessionCurrency } from "@/lib/auth/sessio
 // so this is the server-side confirmation step. proxy.ts runs the same
 // check on every navigation; this covers the gap that alone can't (an idle
 // tab that never navigates).
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
     const cookieStore = await cookies()
     const supabase = createClient(cookieStore)
     const sessionToken = cookieStore.get("826_session_token")?.value ?? null
+    // Known, trustworthy before this session ever went stale — it's the same
+    // id hooks/useSessionEnforcement.ts already uses to filter its Realtime
+    // subscription. Only affects which EXPLANATION text gets shown below
+    // (isSessionCurrent only ever reports true/false for whichever user_id is
+    // asked about — nothing privileged), not any actual access decision, so
+    // trusting it here is low-risk and lets the check below skip decoding a
+    // session that, as of the comment a few lines down, may already be too
+    // dead to decode.
+    const clientUserId = request.nextUrl.searchParams.get("userId")
 
     if (!sessionToken) {
       // No cookie at all — the shape of a deliberate logout
@@ -55,11 +64,19 @@ export async function GET() {
     // device" and "genuinely logged out" both look identical to getUser().
     // The cookie is still present here (checked above), which a deliberate
     // logout would have cleared — so this really is the "kicked out
-    // elsewhere" case, not a false positive. resolveStaleSessionCurrency
-    // recovers whose cookie this was locally (no live check) and confirms
-    // against the DB, so it still works even though the session itself is
-    // dead.
-    const valid = await resolveStaleSessionCurrency(supabase, sessionToken)
+    // elsewhere" case, not a false positive.
+    //
+    // Prefer the client-supplied userId when present: it sidesteps needing to
+    // decode this now-dead session at all. The signOut(..., "others") call
+    // above can revoke the access token too, not just the refresh token — so
+    // resolveStaleSessionCurrency's local decode (reading whatever's still in
+    // this request's own cookie) doesn't always succeed in the same narrow
+    // window the revocation itself happens in, which was observed to
+    // misreport a genuine kick-out as "no_session" (no toast shown) rather
+    // than the correct "mismatch".
+    const valid = clientUserId
+      ? await isSessionCurrent(createAdminClient(), clientUserId, sessionToken)
+      : await resolveStaleSessionCurrency(supabase, sessionToken)
 
     if (valid === null) {
       return NextResponse.json({ valid: false, reason: "no_session" }, { headers: { "Cache-Control": "no-store" } })

@@ -122,12 +122,13 @@ export async function PATCH(
           type:         "concern_resolved",
           message:      response_note ?? "Your concern has been resolved.",
           job_order_id: concernJobId,
+          concern_id:   id,
           is_read:      false,
         })
         await sendPushToUser(submitterId, {
           title: "Concern resolved",
           body:  response_note ?? "Your concern has been resolved.",
-          url:   concernJobId ? `/head-technician/${concernJobId}` : "/head-technician",
+          url:   `/head-technician/concerns?concernId=${id}`,
         })
       } catch (notifErr) {
         console.error("[job-concerns] resolve notification failed:", notifErr)

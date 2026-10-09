@@ -57,14 +57,23 @@ function InlineError({ msg }: { msg?: string }) {
 }
 
 // ── Expandable concern card ───────────────────────────────────────────────────
-function ConcernCard({ concern }: { concern: Concern }) {
-  const [open, setOpen]       = useState(false)
+function ConcernCard({ concern, defaultOpen }: { concern: Concern; defaultOpen?: boolean }) {
+  const [open, setOpen]       = useState(!!defaultOpen)
   const [preview, setPreview] = useState<{ url: string; type: string } | null>(null)
   const isPending = concern.status === "Pending"
+  const cardRef = useRef<HTMLDivElement>(null)
+
+  // Arrived via a "concern resolved" notification deep link — bring this
+  // specific card into view already expanded, instead of leaving the user to
+  // scroll through the whole list to find it.
+  useEffect(() => {
+    if (defaultOpen) cardRef.current?.scrollIntoView({ behavior: "smooth", block: "center" })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   return (
     <>
-      <div className={`bg-surface rounded-card overflow-hidden border transition-colors duration-150 ${
+      <div ref={cardRef} className={`bg-surface rounded-card overflow-hidden border transition-colors duration-150 ${
         open ? "border-border shadow-[0_2px_12px_-4px_rgba(0,0,0,0.06)]" : "border-border-subtle"
       }`}>
         {/* Header row — always visible */}
@@ -252,6 +261,11 @@ export default function HeadTechConcernsPage() {
       setSelectedJobLabel(match.label)
     }
   }, [searchParams, jobs])
+
+  // Arrived via a "concern resolved" notification deep link
+  // (/head-technician/concerns?concernId=<id>) — the matching card expands
+  // and scrolls itself into view once concerns have loaded (see ConcernCard).
+  const targetConcernId = searchParams.get("concernId")
 
   // Load stages when a job is selected
   useEffect(() => {
@@ -609,7 +623,7 @@ export default function HeadTechConcernsPage() {
           )}
 
           {!loading && concerns.map((c) => (
-            <ConcernCard key={c.id} concern={c} />
+            <ConcernCard key={c.id} concern={c} defaultOpen={c.id === targetConcernId} />
           ))}
         </div>
 

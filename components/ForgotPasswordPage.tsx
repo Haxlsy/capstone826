@@ -81,8 +81,9 @@ export default function ForgotPasswordPage() {
               <div className="flex items-start gap-2.5 rounded-xl bg-status-release/10 border border-status-release/20 px-3.5 py-3 text-sm text-body">
                 <CheckCircle2 className="h-5 w-5 shrink-0 text-status-release" />
                 <span>
-                  If that email is on file, we&apos;ve sent a password reset link. It&apos;s valid for
-                  30 minutes.
+                  If an account exists for that email, we&apos;ve sent a password reset link. It&apos;s valid
+                  for 30 minutes. If you haven&apos;t connected an email to your account yet, contact your
+                  administrator to reset your password for you.
                 </span>
               </div>
               <Link
