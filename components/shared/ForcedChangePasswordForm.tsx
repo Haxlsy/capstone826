@@ -1,7 +1,6 @@
 "use client"
 
 import { useState } from "react"
-import { useRouter } from "next/navigation"
 import { Eye, EyeOff, Check, ShieldAlert } from "lucide-react"
 
 const ROLE_ROUTES: Record<string, string> = {
@@ -21,7 +20,6 @@ const ROLE_ROUTES: Record<string, string> = {
  * sends the user straight into their role home.
  */
 export default function ForcedChangePasswordForm({ role }: { role: string }) {
-  const router = useRouter()
   const [form, setForm] = useState({ currentPassword: "", newPassword: "", confirmPassword: "" })
   const [show, setShow] = useState({ current: false, new: false, confirm: false })
   const [errors, setErrors] = useState<Partial<typeof form>>({})
@@ -81,7 +79,11 @@ export default function ForcedChangePasswordForm({ role }: { role: string }) {
         setMfaError("")
         return
       }
-      router.push(ROLE_ROUTES[role] ?? "/")
+      // Hard redirect, not router.push() — a soft client-side transition can
+      // replay a stale Client Router Cache entry for this URL from an
+      // earlier, since-invalidated session (see hooks/useLogout.ts's `hard`
+      // option, which exists for the same reason).
+      window.location.href = ROLE_ROUTES[role] ?? "/"
     } catch {
       setServerError("Network error. Please try again.")
     } finally {
@@ -113,7 +115,7 @@ export default function ForcedChangePasswordForm({ role }: { role: string }) {
         setMfaError(json.error ?? "Incorrect code. Please try again.")
         return
       }
-      router.push(ROLE_ROUTES[role] ?? "/")
+      window.location.href = ROLE_ROUTES[role] ?? "/"
     } catch {
       setMfaError("Network error. Please try again.")
     } finally {

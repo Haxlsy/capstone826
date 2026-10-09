@@ -1,7 +1,9 @@
 import { NextResponse } from "next/server"
+import { cookies } from "next/headers"
 import { createAdminClient } from "@/lib/supabase/admin"
+import { createClient } from "@/lib/supabase/server"
 import { hashToken } from "@/lib/auth/token-hash"
-import { logAudit } from "@/hooks/audit-helpers"
+import { completeLogin } from "@/lib/auth/complete-login"
 
 // POST /api/auth/reset-password
 // Body: { token, newPassword }
@@ -36,7 +38,7 @@ export async function POST(request: Request) {
 
     const { data: account } = await admin
       .from("user_account")
-      .select("full_name, role, is_archived")
+      .select("username, full_name, role, is_archived")
       .eq("id", resetToken.user_id)
       .single()
 
@@ -64,15 +66,24 @@ export async function POST(request: Request) {
       .update({ must_change_password: false })
       .eq("id", resetToken.user_id)
 
-    logAudit({
-      user_id:   resetToken.user_id,
-      user_name: account.full_name,
-      role:      account.role,
-      category:  "auth",
-      action:    "Reset own password via email link",
-      target:    account.full_name,
+    // Auto-login with the password just set, instead of sending the user
+    // back to /login to type everything again — the reset link itself
+    // (only usable by whoever has access to the account's email inbox)
+    // already proves the same thing an email-MFA code would, so no separate
+    // MFA step is added here.
+    const cookieStore = await cookies()
+    const supabase    = createClient(cookieStore)
+    const { error: signInError } = await supabase.auth.signInWithPassword({
+      email:    `${account.username.toLowerCase()}@826autocare.internal`,
+      password: newPassword,
     })
+    if (!signInError) {
+      return completeLogin(admin, supabase, resetToken.user_id, "Reset own password via email link")
+    }
 
+    // Unexpected — the password was already changed successfully either
+    // way, so don't fail the request over this. Fall back to the old
+    // behavior; ResetPasswordPage.tsx shows its "Go to Login" screen.
     return NextResponse.json({ success: true })
   } catch (err: unknown) {
     return NextResponse.json(

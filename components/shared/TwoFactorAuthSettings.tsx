@@ -69,16 +69,22 @@ export default function TwoFactorAuthSettings() {
         toast.error(error?.message ?? "Failed to start authenticator setup.")
         return
       }
+      // Supabase's own SDK type comments disagree with each other on what
+      // qr_code actually contains: one says raw SVG markup needing a
+      // data:image/svg+xml;... prefix we build ourselves, another's code
+      // sample passes it straight into an <img src> with no encoding at all
+      // — implying it may already be a ready-to-use data: URI. Handle both:
+      // only encode it ourselves if it isn't already one, so a value that's
+      // already a data: URI doesn't get base64-wrapped a second time (which
+      // produces a garbled, unparseable src the browser can't render).
+      const rawQrCode = data.totp.qr_code
+      const qrCodeUrl = rawQrCode.startsWith("data:")
+        ? rawQrCode
+        : `data:image/svg+xml;base64,${btoa(unescape(encodeURIComponent(rawQrCode)))}`
       setEnroll({
-        factorId:  data.id,
-        // Base64 is far more reliably rendered as a data: URI across browsers
-        // than the `;utf-8,<url-encoded>` form Supabase's own type comment
-        // suggests — no special characters in the SVG markup need escaping.
-        // btoa() is Latin1-only, so the UTF-8 string has to be re-encoded
-        // through escape/encodeURIComponent first (the standard browser
-        // trick for UTF-8-safe base64).
-        qrCodeUrl: `data:image/svg+xml;base64,${btoa(unescape(encodeURIComponent(data.totp.qr_code)))}`,
-        secret:    data.totp.secret,
+        factorId: data.id,
+        qrCodeUrl,
+        secret:   data.totp.secret,
       })
       setCode("")
       setVerifyError("")

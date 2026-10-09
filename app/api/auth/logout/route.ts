@@ -49,7 +49,7 @@ async function createAuditLogEntry(admin: any, userId: string) {
       .single()
 
     if (profileError || !profile) {
-      console.warn(`Audit Log: Could not find profile for ${userId}`)
+      console.warn(`Audit Log: Could not find profile for ${userId}:`, profileError)
       return
     }
 

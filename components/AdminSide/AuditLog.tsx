@@ -24,9 +24,7 @@ export default function AuditLog() {
         </button>
       </div>
 
-      <div className="bg-surface rounded-card border border-border-subtle">
-        {activeTab === 'audit' ? <UserActivity/> :<Security/>}
-      </div>
+      {activeTab === 'audit' ? <UserActivity/> : <Security/>}
     </div>
   )
 }

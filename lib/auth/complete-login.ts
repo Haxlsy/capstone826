@@ -19,11 +19,11 @@ export async function completeLogin(
   admin: AdminClient,
   supabase: SupabaseClient,
   userId: string,
-  username: string,
+  auditAction: string = "Logged in",
 ): Promise<NextResponse> {
   const { data: account, error: acctError } = await admin
     .from("user_account")
-    .select("full_name, role, email, must_change_password")
+    .select("username, full_name, role, email, must_change_password")
     .eq("id", userId)
     .single()
 
@@ -32,11 +32,11 @@ export async function completeLogin(
   }
 
   const profile = {
-    username,
-    full_name:            account.full_name,
-    role:                 account.role,
-    email:                account.email,
-    must_change_password: account.must_change_password,
+    username:              account.username,
+    full_name:             account.full_name,
+    role:                  account.role,
+    email:                 account.email,
+    must_change_password:  account.must_change_password,
   }
 
   const [{ data: { session } }, { data: existingSession }] = await Promise.all([
@@ -64,8 +64,8 @@ export async function completeLogin(
       user_name: profile.full_name,
       role:      profile.role,
       category:  "auth",
-      action:    "Logged in",
-      target:    username,
+      action:    auditAction,
+      target:    profile.username,
     }),
   ])
 

@@ -94,13 +94,7 @@ export async function POST(request: Request) {
 
     await admin.from("login_mfa_challenge").update({ used_at: new Date().toISOString() }).eq("id", challenge.id)
 
-    const { data: account } = await admin
-      .from("user_account")
-      .select("username")
-      .eq("id", challenge.user_id)
-      .single()
-
-    return await completeLogin(admin, supabase, challenge.user_id, account?.username ?? "")
+    return await completeLogin(admin, supabase, challenge.user_id)
   } catch (err: unknown) {
     console.error("verify-mfa route error:", err)
     return NextResponse.json({ error: "Internal Server Error" }, { status: 500 })

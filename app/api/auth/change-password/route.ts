@@ -10,7 +10,12 @@ type AdminClient = ReturnType<typeof createAdminClient>
 
 /** Actually changes the password — shared by the MFA-verified path and the
  *  no-verification-method-available fallback below. */
-async function performPasswordChange(admin: AdminClient, userId: string, newPassword: string): Promise<NextResponse> {
+async function performPasswordChange(
+  admin: AdminClient,
+  userId: string,
+  newPassword: string,
+  auditAction: string = "Changed own password",
+): Promise<NextResponse> {
   const { error: updateError } = await admin.auth.admin.updateUserById(userId, { password: newPassword })
   if (updateError) {
     return NextResponse.json({ error: updateError.message }, { status: 500 })
@@ -26,7 +31,7 @@ async function performPasswordChange(admin: AdminClient, userId: string, newPass
 
   const caller = await getAuditCaller()
   if (caller) {
-    await logAuditCall(caller, { category: "auth", action: "Changed own password" })
+    await logAuditCall(caller, { category: "auth", action: auditAction })
   }
 
   return NextResponse.json({ success: true })
@@ -165,11 +170,12 @@ export async function POST(request: Request) {
       // rather than permanently blocking it. Current password was already
       // verified above, so this isn't skipping authentication, only the
       // extra factor. Logged explicitly for visibility.
-      const caller = await getAuditCaller()
-      if (caller) {
-        await logAuditCall(caller, { category: "auth", action: "Changed own password without MFA — no verification method on file" })
-      }
-      return performPasswordChange(admin, user.id, newPassword)
+      return performPasswordChange(
+        admin,
+        user.id,
+        newPassword,
+        "Changed own password without MFA — no verification method on file",
+      )
     }
 
     const { challengeId: id, method, emailSent } = await createEmailChallenge(admin, user.id, account.email, account.full_name)
