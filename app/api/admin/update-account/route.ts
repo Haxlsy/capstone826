@@ -5,6 +5,7 @@ import { createAdminClient } from "@/lib/supabase/admin"
 import { logAudit } from "@/hooks/audit-helpers"
 import { normalizeName, validateName } from "@/lib/name"
 import { normalizeEmail, validateEmail } from "@/lib/email/validation"
+import { sendEmailChangedOldAddressEmail, sendEmailChangedNewAddressEmail } from "@/lib/email/mailer"
 import { getRoleCaller } from "@/lib/auth/caller"
 
 export async function POST(request: Request) {
@@ -42,7 +43,7 @@ export async function POST(request: Request) {
   // this is the authoritative check (e.g. against a direct API call).
   const { data: target } = await admin
     .from("user_account")
-    .select("is_archived")
+    .select("is_archived, email, full_name, username")
     .eq("id", userId)
     .single()
   if (target?.is_archived) {
@@ -80,6 +81,20 @@ export async function POST(request: Request) {
     if (pwError) {
       return NextResponse.json({ error: pwError.message }, { status: 500 })
     }
+  }
+
+  // Heads-up emails for an admin-initiated email change — only when the
+  // email actually changed, since the form always submits one even when the
+  // admin only edited the name. Best-effort: the account update above is
+  // already committed, so a failed send here must never affect the response.
+  const oldEmail = target?.email ? normalizeEmail(target.email) : null
+  if (target && oldEmail !== cleanEmail) {
+    if (target.email) {
+      const oldResult = await sendEmailChangedOldAddressEmail(target.email, { fullName: cleanName, username: target.username })
+      if (!oldResult.ok) console.error("sendEmailChangedOldAddressEmail failed:", oldResult.error)
+    }
+    const newResult = await sendEmailChangedNewAddressEmail(cleanEmail, { fullName: cleanName, username: target.username })
+    if (!newResult.ok) console.error("sendEmailChangedNewAddressEmail failed:", newResult.error)
   }
 
   if (caller) {
