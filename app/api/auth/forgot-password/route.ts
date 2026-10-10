@@ -5,9 +5,7 @@ import { generateToken, hashToken } from "@/lib/auth/token-hash"
 import { sendPasswordResetEmail } from "@/lib/email/mailer"
 import { logAudit } from "@/hooks/audit-helpers"
 
-const GENERIC_MESSAGE =
-  "If an account exists for that email, we've sent a password reset link. If you haven't connected an email " +
-  "to your account yet, contact your administrator to reset your password for you."
+const GENERIC_MESSAGE = "If an account exists for that email, we've sent a password reset link."
 const TOKEN_TTL_MS = 30 * 60 * 1000
 
 // POST /api/auth/forgot-password
