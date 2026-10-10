@@ -101,6 +101,48 @@ export async function sendMfaCodeEmail(
   )
 }
 
+/**
+ * Notifies the previous contact email that an admin changed it away from
+ * this address (app/api/admin/update-account/route.ts). Best-effort — the
+ * account update it describes has already been committed by the time this
+ * is called, so a failed send never rolls anything back.
+ */
+export async function sendEmailChangedOldAddressEmail(
+  to: string,
+  { fullName, username }: { fullName: string; username: string },
+): Promise<SendResult> {
+  return send(
+    to,
+    "Your 826 Auto Care account email was changed",
+    `Hi ${fullName},\n\n` +
+      `An administrator changed the email address connected to your 826 Auto Care account (username: ${username}) to a different one.\n\n` +
+      `If this doesn't look right, please contact 826 Auto Care right away.`,
+    `<p>Hi ${escapeHtml(fullName)},</p>` +
+      `<p>An administrator changed the email address connected to your 826 Auto Care account (username: ${escapeHtml(username)}) to a different one.</p>` +
+      `<p>If this doesn't look right, please contact 826 Auto Care right away.</p>`,
+  )
+}
+
+/**
+ * Notifies the newly set contact email that an admin just connected it to
+ * this account. Best-effort, same as sendEmailChangedOldAddressEmail.
+ */
+export async function sendEmailChangedNewAddressEmail(
+  to: string,
+  { fullName, username }: { fullName: string; username: string },
+): Promise<SendResult> {
+  return send(
+    to,
+    "Your 826 Auto Care account email was updated",
+    `Hi ${fullName},\n\n` +
+      `An administrator set this address as the email connected to your 826 Auto Care account (username: ${username}).\n\n` +
+      `If this doesn't look right, please contact 826 Auto Care right away.`,
+    `<p>Hi ${escapeHtml(fullName)},</p>` +
+      `<p>An administrator set this address as the email connected to your 826 Auto Care account (username: ${escapeHtml(username)}).</p>` +
+      `<p>If this doesn't look right, please contact 826 Auto Care right away.</p>`,
+  )
+}
+
 /** Minimal HTML-escaping for values interpolated into an email body. */
 function escapeHtml(s: string): string {
   return s
