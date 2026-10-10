@@ -68,6 +68,11 @@ export default function LoginPage() {
   const [mfaError, setMfaError] = useState<string | null>(null)
   const [mfaSubmitting, setMfaSubmitting] = useState(false)
   const [switchingMethod, setSwitchingMethod] = useState(false)
+  // Lockout after too many wrong MFA codes (see app/api/auth/verify-mfa/route.ts) —
+  // mirrors the credentials step's own lockUntil/remaining pair below, kept
+  // separate since this is a different step with its own UI.
+  const [mfaLockUntil, setMfaLockUntil] = useState<number | null>(null)
+  const [mfaLockRemaining, setMfaLockRemaining] = useState(0)
 
   const toastRef = useRef(toast)
   useEffect(() => {
@@ -190,6 +195,28 @@ export default function LoginPage() {
   // changes, before the 1s interval even starts) — so this doesn't need its
   // own Date.now() comparison, which isn't safe to call during render.
   const locked = lockUntil !== null
+
+  // Countdown ticker for the MFA lockout — once it expires, drop back to the
+  // credentials step instead of leaving a dead code-entry form on screen
+  // (handleBackToCredentials is a function declaration, so it's hoisted and
+  // safe to call here even though it's defined further down this component).
+  useEffect(() => {
+    if (!mfaLockUntil) return
+    const tick = () => {
+      const secs = Math.ceil((mfaLockUntil - Date.now()) / 1000)
+      if (secs <= 0) {
+        setMfaLockUntil(null)
+        setMfaLockRemaining(0)
+        handleBackToCredentials()
+      } else {
+        setMfaLockRemaining(secs)
+      }
+    }
+    tick()
+    const id = setInterval(tick, 1000)
+    return () => clearInterval(id)
+  }, [mfaLockUntil])
+  const mfaLocked = mfaLockUntil !== null
 
   // Render the Turnstile widget once both the server has told us this
   // account needs one and the script has finished loading. Re-renders are a
@@ -358,6 +385,13 @@ export default function LoginPage() {
       })
       const data = await res.json()
       if (!res.ok) {
+        if (res.status === 423) {
+          const secs = data.retryAfterSeconds ?? 60
+          setMfaLockUntil(Date.now() + secs * 1000)
+          toastRef.current.error(data.error ?? "Too many failed attempts. Please wait 1 minute.")
+          setMfaSubmitting(false)
+          return
+        }
         setMfaError(data.error ?? "Incorrect code. Please try again.")
         setMfaSubmitting(false)
         return
@@ -400,6 +434,8 @@ export default function LoginPage() {
     setChallengeId(null)
     setMfaCode("")
     setMfaError(null)
+    setMfaLockUntil(null)
+    setMfaLockRemaining(0)
   }
 
   const form = (
@@ -553,9 +589,11 @@ export default function LoginPage() {
             }}
             placeholder="123456"
             autoFocus
+            disabled={mfaLocked}
             className={cn(
               "h-12 w-full rounded-full border bg-surface pl-11 pr-4 text-center text-lg tracking-[0.3em] text-heading transition-all duration-200",
               "placeholder:text-muted/60 placeholder:tracking-normal placeholder:text-sm focus:outline-none focus:ring-2 focus:ring-accent/30 focus:border-accent hover:border-slate-300",
+              "disabled:cursor-not-allowed disabled:opacity-50",
               mfaError ? "border-status-delayed text-status-delayed" : "border-slate-200",
             )}
           />
@@ -568,16 +606,26 @@ export default function LoginPage() {
         {mfaError && <p className="mt-1.5 text-xs font-medium text-status-delayed">{mfaError}</p>}
       </div>
 
+      {/* MFA Lockout Alert */}
+      {mfaLocked && (
+        <div className="flex items-center gap-2.5 rounded-xl bg-status-delayed/10 border border-status-delayed/20 px-3.5 py-2.5 text-xs font-medium text-status-delayed">
+          <ShieldAlert className="h-4 w-4 shrink-0" />
+          <span>
+            Too many failed attempts. Returning to login in <strong>{mfaLockRemaining}s</strong>.
+          </span>
+        </div>
+      )}
+
       <button
         type="submit"
-        disabled={mfaSubmitting || switchingMethod}
+        disabled={mfaSubmitting || switchingMethod || mfaLocked}
         className={cn(
           "h-12 w-full rounded-full bg-linear-to-b from-accent to-primary text-sm font-semibold text-white shadow-md cursor-pointer transition-all duration-200",
           "hover:-translate-y-0.5 hover:shadow-lg hover:shadow-teal-500/25 active:translate-y-0 active:shadow-xs",
           "disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:translate-y-0",
         )}
       >
-        {mfaSubmitting ? "Verifying…" : "Verify"}
+        {mfaSubmitting ? "Verifying…" : mfaLocked ? `Locked · ${mfaLockRemaining}s` : "Verify"}
       </button>
 
       <div className="flex flex-col items-center gap-2">
@@ -585,7 +633,7 @@ export default function LoginPage() {
           <button
             type="button"
             onClick={handleSwitchToEmail}
-            disabled={switchingMethod || mfaSubmitting}
+            disabled={switchingMethod || mfaSubmitting || mfaLocked}
             className="text-xs font-semibold text-accent hover:underline disabled:opacity-50"
           >
             {switchingMethod ? "Sending…" : "Use email instead"}
