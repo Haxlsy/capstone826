@@ -44,6 +44,8 @@ export default function ForcedChangePasswordForm({ role }: { role: string }) {
     if (!form.currentPassword) e.currentPassword = "Current password is required."
     if (!form.newPassword) e.newPassword = "New password is required."
     else if (form.newPassword.length < 8) e.newPassword = "Password must be at least 8 characters."
+    else if (form.currentPassword && form.newPassword === form.currentPassword)
+      e.newPassword = "New password must be different from your current password."
     if (!form.confirmPassword) e.confirmPassword = "Please confirm your new password."
     else if (form.newPassword !== form.confirmPassword) e.confirmPassword = "Passwords do not match."
     return e

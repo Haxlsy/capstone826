@@ -82,8 +82,7 @@ export default function ForgotPasswordPage() {
                 <CheckCircle2 className="h-5 w-5 shrink-0 text-status-release" />
                 <span>
                   If an account exists for that email, we&apos;ve sent a password reset link. It&apos;s valid
-                  for 30 minutes. If you haven&apos;t connected an email to your account yet, contact your
-                  administrator to reset your password for you.
+                  for 30 minutes.
                 </span>
               </div>
               <Link
@@ -95,6 +94,10 @@ export default function ForgotPasswordPage() {
             </div>
           ) : (
             <form onSubmit={handleSubmit} noValidate className="w-full space-y-5">
+              <p className="-mt-1 text-xs text-muted">
+                Haven&apos;t connected an email to your account yet? Contact your administrator to reset your
+                password for you instead.
+              </p>
               <div>
                 <label htmlFor="forgot-email" className="mb-1.5 block text-xs font-semibold uppercase tracking-wider text-heading">
                   Email
