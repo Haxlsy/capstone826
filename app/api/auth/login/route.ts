@@ -7,15 +7,13 @@ import { logAudit } from "@/hooks/audit-helpers"
 import { verifyTurnstileToken } from "@/lib/auth/turnstile"
 import { createEmailChallenge, createTotpChallenge } from "@/lib/auth/mfa-challenge"
 import { completeLogin } from "@/lib/auth/complete-login"
+import { LOCKOUT_THRESHOLD, LOCKOUT_MS } from "@/lib/auth/login-lockout"
 
 const LoginSchema = z.object({
   username: z.string().trim().min(1, "Username required").max(100),
   password: z.string().min(1, "Password required").max(128),
   captchaToken: z.string().optional(),
 })
-
-const LOCKOUT_THRESHOLD = 3
-const LOCKOUT_MS = 60_000
 
 export async function POST(request: Request) {
   try {

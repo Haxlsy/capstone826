@@ -4,6 +4,8 @@ import { createClient } from "@/lib/supabase/server"
 import { createAdminClient } from "@/lib/supabase/admin"
 import { hashMfaCode, MAX_MFA_ATTEMPTS, createEmailChallenge } from "@/lib/auth/mfa-challenge"
 import { completeLogin } from "@/lib/auth/complete-login"
+import { logAudit } from "@/hooks/audit-helpers"
+import { LOCKOUT_THRESHOLD } from "@/lib/auth/login-lockout"
 
 // POST /api/auth/verify-mfa
 // Body: { challengeId, code } to verify, or { challengeId, switchToEmail: true }
@@ -85,10 +87,64 @@ export async function POST(request: Request) {
     }
 
     if (!verified) {
+      const newAttemptCount = challenge.attempt_count + 1
       await admin
         .from("login_mfa_challenge")
-        .update({ attempt_count: challenge.attempt_count + 1 })
+        .update({ attempt_count: newAttemptCount })
         .eq("id", challenge.id)
+
+      const { data: account } = await admin
+        .from("user_account")
+        .select("username, full_name, role")
+        .eq("id", challenge.user_id)
+        .single()
+
+      if (account) {
+        await logAudit({
+          user_id:   challenge.user_id,
+          user_name: account.full_name,
+          role:      account.role,
+          category:  "auth",
+          action:    "Failed MFA code attempt",
+          target:    `${account.username} — attempt ${newAttemptCount}/${MAX_MFA_ATTEMPTS}`,
+        })
+      }
+
+      if (newAttemptCount >= MAX_MFA_ATTEMPTS) {
+        await admin.from("login_mfa_challenge").update({ used_at: new Date().toISOString() }).eq("id", challenge.id)
+
+        if (account) {
+          // Exhausting a whole challenge immediately trips the same
+          // account-level lockout a wrong password can — otherwise someone
+          // who already has a leaked/correct password could just keep
+          // re-logging in for an unlimited number of fresh 5-guess budgets
+          // against the code.
+          await admin.from("user_account").update({
+            failed_login_count: LOCKOUT_THRESHOLD,
+            failed_login_at:    new Date().toISOString(),
+          }).eq("id", challenge.user_id)
+
+          await logAudit({
+            user_id:   challenge.user_id,
+            user_name: account.full_name,
+            role:      account.role,
+            category:  "auth",
+            action:    "Account locked out after too many failed MFA attempts",
+            target:    account.username,
+          })
+
+          return NextResponse.json(
+            { error: "Too many failed attempts. Please wait 1 minute.", retryAfterSeconds: 60 },
+            { status: 423 },
+          )
+        }
+
+        return NextResponse.json(
+          { error: "Too many incorrect attempts. Please log in again." },
+          { status: 400 },
+        )
+      }
+
       return NextResponse.json({ error: "Incorrect code. Please try again." }, { status: 400 })
     }
 
