@@ -190,6 +190,28 @@ export default function TechnicianAvailability() {
       setDuplicate(dup)
       return
     }
+
+    if (isEdit) {
+      const current = technicians.find((t) => t.id === editingId)
+      const sameDays =
+        !!current &&
+        [...(current.available_days ?? [])].sort().join(",") === [...form.days].sort().join(",")
+      const unchanged =
+        !!current &&
+        current.first_name === firstName &&
+        current.last_name === lastName &&
+        current.role === form.role &&
+        sameDays &&
+        (current.work_start_time?.slice(0, 5) ?? "08:00") === form.start &&
+        (current.work_end_time?.slice(0, 5) ?? "20:00") === form.end
+      if (unchanged) {
+        toast.info("No changes to save.")
+        setEditOpen(false)
+        setEditingId(null)
+        return
+      }
+    }
+
     setFormError(null)
     setDuplicate(null)
     setFormConfirm(isEdit ? "edit" : "add")
