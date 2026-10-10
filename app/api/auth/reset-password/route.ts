@@ -49,6 +49,27 @@ export async function POST(request: Request) {
       )
     }
 
+    // There's no typed "current password" in this flow to compare against
+    // client-side (the user forgot it) — the only way to tell whether the
+    // proposed new password is actually identical to the current one,
+    // without ever seeing either in plaintext, is a throwaway sign-in
+    // attempt with the new password: if it succeeds, it must already be the
+    // current password. Same technique app/api/auth/change-password/route.ts's
+    // Phase 1 already uses (there, to verify the current password instead) —
+    // a disposable admin-client instance, used once, never reused for
+    // privileged writes.
+    const verifyClient = createAdminClient()
+    const { error: sameAsCurrentError } = await verifyClient.auth.signInWithPassword({
+      email:    `${account.username.toLowerCase()}@826autocare.internal`,
+      password: newPassword,
+    })
+    if (!sameAsCurrentError) {
+      return NextResponse.json(
+        { error: "New password must be different from your current password." },
+        { status: 400 },
+      )
+    }
+
     const { error: updateError } = await admin.auth.admin.updateUserById(resetToken.user_id, {
       password: newPassword,
     })
