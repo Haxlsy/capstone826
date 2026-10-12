@@ -103,7 +103,7 @@ export function clearMatch<C extends MatchableCustomer>(): MatchState<C> {
   return { matched: null, source: null, fields: { name: "", phone: "", email: "", plate: "", vehicle: "" } }
 }
 
-const norm = (v: string | null | undefined) => (v ?? "").trim().toLowerCase()
+export const norm = (v: string | null | undefined) => (v ?? "").trim().toLowerCase()
 
 /**
  * A typed plate that another customer record already holds. The matched

@@ -41,6 +41,8 @@ interface JobOrder {
   /** Rows that only exist in the offline outbox (not yet synced to the server). */
   isQueued?: boolean
   queueStatus?: OutboxItem["status"]
+  /** Why the server rejected this queued row at sync (failed rows only). */
+  queueError?: string
 }
 
 type RawJobOrder = JobOrdersData["job_orders"][number]
@@ -82,6 +84,7 @@ function mapQueuedRow(item: OutboxItem): JobOrder {
     is_overdue: false,
     isQueued: true,
     queueStatus: item.status,
+    queueError: item.status === "failed" ? item.errorMessage : undefined,
   }
 }
 
@@ -341,10 +344,15 @@ export default function JobManagementTable({ initialJobOrders }: { initialJobOrd
       header: "Status",
       cell: (job) =>
         job.isQueued ? (
-          <Badge className="border border-status-delayed/30 bg-status-delayed/10 text-status-delayed">
-            <WifiOff className="h-3 w-3" />
-            {job.queueStatus === "failed" ? "Sync failed" : "Pending sync"}
-          </Badge>
+          <div className="flex flex-col items-start gap-1">
+            <Badge className="border border-status-delayed/30 bg-status-delayed/10 text-status-delayed">
+              <WifiOff className="h-3 w-3" />
+              {job.queueStatus === "failed" ? "Sync failed" : "Pending sync"}
+            </Badge>
+            {job.queueError && (
+              <p className="max-w-[240px] whitespace-normal text-xs text-status-delayed">{job.queueError}</p>
+            )}
+          </div>
         ) : (
           <StatusBadge status={displayJobStatus(job.status, job.is_overdue)} />
         ),

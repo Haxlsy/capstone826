@@ -12,6 +12,8 @@ import { normalizePhone } from "@/lib/phone"
 import { applyTriggerEdit, clearMatch, plateConflict, emailConflict, type MatchField } from "@/lib/operations/customer-match"
 import { useOnlineStatus } from "@/hooks/useOnlineStatus"
 import { enqueue, get as getQueued } from "@/lib/offline/outbox"
+import { queuedVehicles, isVehicleQueued } from "@/lib/offline/queued-vehicles"
+import { useOfflineSyncContext } from "./OfflineSyncContext"
 import { useToast } from "@/components/ui/Toast"
 import { isTechnicianAvailableToday } from "@/lib/technician-availability"
 import { formatOperatingHours, isWithinOperatingHours, fmtTime12h, DEFAULT_OPERATING_DAYS, DEFAULT_OPERATING_OPEN_TIME, DEFAULT_OPERATING_CLOSE_TIME, type Weekday, type Holiday } from "@/types/chatbot"
@@ -224,6 +226,11 @@ export default function AddJobOrderForm() {
   const [success,        setSuccess]        = useState(false)
   const [queued,         setQueued]         = useState(false)
   const isOnline = useOnlineStatus()
+  // Job orders still waiting in this device's outbox. The server can't see
+  // them until they sync, so the form itself has to stop a second one being
+  // queued for the same vehicle.
+  const { queuedItems } = useOfflineSyncContext()
+  const queuedVehicleSet = useMemo(() => queuedVehicles(queuedItems), [queuedItems])
   const [showConfirm,    setShowConfirm]    = useState(false)
   const [confirmSummary, setConfirmSummary] = useState<JobOrderSummary | null>(null)
 
@@ -248,21 +255,31 @@ export default function AddJobOrderForm() {
     async function loadRefs() {
       setLoadingRefs(true)
       try {
+        // Each request falls back on its own. Offline, one that isn't in the
+        // service worker's cache rejects — that must not discard the others
+        // (services, stages) that are.
+        let servicesFailed = false
         const [cRes, sRes, tRes, stagesRes, hoursRes] = await Promise.all([
-          fetch("/api/operations/job-management/list-customers").then((r) =>
-            r.ok ? r.json() : { customers: [] }
-          ),
-          fetch("/api/operations/job-management/list-services").then((r) =>
-            r.ok ? r.json() : { services: [] }
-          ),
-          fetch("/api/operations/job-management/list-technicians").then((r) =>
-            r.ok ? r.json() : { technicians: [], crew_members: [] }
-          ),
-          fetch("/api/operations/job-management/all-service-stages").then((r) =>
-            r.ok ? r.json() : { stagesByService: {} }
-          ),
-          fetch("/api/operations/job-management/operating-hours").then((r) => (r.ok ? r.json() : null)),
+          fetch("/api/operations/job-management/list-customers")
+            .then((r) => (r.ok ? r.json() : { customers: [] }))
+            .catch(() => ({ customers: [] })),
+          fetch("/api/operations/job-management/list-services")
+            .then((r) => (r.ok ? r.json() : { services: [] }))
+            .catch(() => {
+              servicesFailed = true
+              return { services: [] }
+            }),
+          fetch("/api/operations/job-management/list-technicians")
+            .then((r) => (r.ok ? r.json() : { technicians: [], crew_members: [] }))
+            .catch(() => ({ technicians: [], crew_members: [] })),
+          fetch("/api/operations/job-management/all-service-stages")
+            .then((r) => (r.ok ? r.json() : { stagesByService: {} }))
+            .catch(() => ({ stagesByService: {} })),
+          fetch("/api/operations/job-management/operating-hours")
+            .then((r) => (r.ok ? r.json() : null))
+            .catch(() => null),
         ])
+        if (servicesFailed) setApiError("Failed to load form data. Please refresh.")
         setCustomers(cRes.customers ?? [])
         setServices(sRes.services ?? [])
         setHeadTechs(tRes.technicians ?? [])
@@ -476,6 +493,11 @@ export default function AddJobOrderForm() {
   const EMAIL_DUPLICATE_MSG = "This email is already registered to another customer."
   const plateDuplicate = matchedCustomer ? plateConflict(customers, matchedCustomer, manualPlateNumber) : null
   const emailDuplicate = matchedCustomer ? emailConflict(customers, matchedCustomer, manualEmail) : null
+  const PLATE_QUEUED_MSG = "A job order for this vehicle is already waiting to sync on this device."
+  // `!queued`: once this form's own job order is queued, its plate is in the
+  // outbox too — don't flag it against itself while the redirect is pending.
+  const plateQueued = !queued && isVehicleQueued(queuedVehicleSet, { plate: manualPlateNumber })
+  const plateLiveError = plateDuplicate ? PLATE_DUPLICATE_MSG : plateQueued ? PLATE_QUEUED_MSG : undefined
 
   function validate(): FieldErrors {
     const errs: FieldErrors = {}
@@ -493,6 +515,8 @@ export default function AddJobOrderForm() {
         errs.plateNumber = "Plate number is required."
       else if (plateDuplicate)
         errs.plateNumber = PLATE_DUPLICATE_MSG
+      else if (plateQueued)
+        errs.plateNumber = PLATE_QUEUED_MSG
       if (!manualEmail.trim())
         errs.email = "Email is required."
       else if (!EMAIL_RE.test(manualEmail.trim()))
@@ -858,8 +882,14 @@ export default function AddJobOrderForm() {
     return [...map.values()];
   }, [filteredCustomers]);
 
+  const isVehicleWaitingToSync = (c: CustomerRecord) =>
+    isVehicleQueued(queuedVehicleSet, { id: c.id, plate: c.plate_number })
+  const isUnavailable = (c: CustomerRecord) => c.has_active_job || isVehicleWaitingToSync(c)
+  const unavailableLabel = (c: CustomerRecord) =>
+    c.has_active_job ? "Being Serviced" : "Queued on this device"
+
   function selectCustomerVehicle(c: CustomerRecord) {
-    if (c.has_active_job) return;
+    if (isUnavailable(c)) return;
     setSelectedCustomerId(c.id);
     setSearchQuery(c.full_name);
     setIsOpen(false);
@@ -946,9 +976,9 @@ export default function AddJobOrderForm() {
                             <button
                               key={vehicles[0].id}
                               type="button"
-                              disabled={vehicles[0].has_active_job}
+                              disabled={isUnavailable(vehicles[0])}
                               className={`w-full text-left px-4 py-3 text-sm transition-colors border-b last:border-none border-border-subtle flex flex-col ${
-                                vehicles[0].has_active_job
+                                isUnavailable(vehicles[0])
                                   ? "opacity-50 cursor-not-allowed bg-surface-subtle"
                                   : "hover:bg-status-inspection/10 cursor-pointer"
                               }`}
@@ -956,9 +986,9 @@ export default function AddJobOrderForm() {
                             >
                               <span className="font-semibold text-heading flex items-center gap-2">
                                 {vehicles[0].full_name}
-                                {vehicles[0].has_active_job && (
+                                {isUnavailable(vehicles[0]) && (
                                   <span className="text-[10px] font-medium bg-amber-100 text-status-warning px-1.5 py-0.5 rounded-full">
-                                    Being Serviced
+                                    {unavailableLabel(vehicles[0])}
                                   </span>
                                 )}
                               </span>
@@ -974,9 +1004,9 @@ export default function AddJobOrderForm() {
                                 <button
                                   key={c.id}
                                   type="button"
-                                  disabled={c.has_active_job}
+                                  disabled={isUnavailable(c)}
                                   className={`w-full text-left pl-6 pr-4 py-2 text-sm transition-colors flex items-center gap-2 ${
-                                    c.has_active_job
+                                    isUnavailable(c)
                                       ? "opacity-50 cursor-not-allowed bg-surface-subtle"
                                       : "hover:bg-status-inspection/10 cursor-pointer"
                                   }`}
@@ -984,9 +1014,9 @@ export default function AddJobOrderForm() {
                                 >
                                   <span className="text-[10px] text-body uppercase tracking-wider">{c.plate_number}</span>
                                   <span className="text-xs text-muted">{c.vehicle_unit}</span>
-                                  {c.has_active_job && (
+                                  {isUnavailable(c) && (
                                     <span className="ml-auto text-[10px] font-medium bg-amber-100 text-status-warning px-1.5 py-0.5 rounded-full">
-                                      Being Serviced
+                                      {unavailableLabel(c)}
                                     </span>
                                   )}
                                 </button>
@@ -1122,9 +1152,9 @@ export default function AddJobOrderForm() {
                   value={manualPlateNumber}
                   onChange={(e) => handleTriggerEdit("plate", e.target.value)}
                   placeholder="e.g., ABC-1234"
-                  className={inputCls(!!fieldErrors.plateNumber || !!plateDuplicate)}
+                  className={inputCls(!!fieldErrors.plateNumber || !!plateLiveError)}
                 />
-                <FieldError msg={fieldErrors.plateNumber ?? (plateDuplicate ? PLATE_DUPLICATE_MSG : undefined)} />
+                <FieldError msg={fieldErrors.plateNumber ?? plateLiveError} />
               </div>
               <div className="flex flex-col gap-1.5 col-span-2">
                 <label className="text-xs font-medium text-body">Email <span className="text-status-delayed ml-0.5">*</span></label>
@@ -1166,7 +1196,7 @@ export default function AddJobOrderForm() {
                 aria-label="Service Type"
                 className={selectCls(!!fieldErrors.service)}
               >
-                <option value="">{loadingRefs ? "Loading…" : services.length === 0 ? "No services found" : "— Select service type —"}</option>
+                <option value="">{loadingRefs ? "Loading…" : services.length === 0 ? (isOnline ? "No services found" : "Not saved on this device — reconnect once to load services") : "— Select service type —"}</option>
                 {uniqueServiceTypes.map((type) => <option key={type} value={type}>{type}</option>)}
               </select>
               <FieldError msg={fieldErrors.service} />
