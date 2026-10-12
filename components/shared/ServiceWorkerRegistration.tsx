@@ -22,6 +22,7 @@ const PREWARM_URLS = [
   "/api/operations/job-management/list-services",
   "/api/operations/job-management/list-technicians",
   "/api/operations/job-management/all-service-stages",
+  "/api/operations/job-management/operating-hours",
 ]
 
 function prewarm() {

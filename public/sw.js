@@ -129,12 +129,31 @@ self.addEventListener("message", (event) => {
 
 // ── Fetch / caching ──────────────────────────────────────────────────────────
 
-async function networkFirst(request, cacheName) {
+// How long an API read waits on the network before falling back to its cached
+// copy. Wifi with no real internet doesn't fail a request, it hangs it — and
+// the Add Job Order dropdowns would sit on "Loading…" the whole time.
+const API_NETWORK_TIMEOUT_MS = 4000;
+
+async function networkFirst(request, cacheName, timeoutMs) {
   const cache = await caches.open(cacheName);
-  try {
-    const res = await fetch(request);
+  const network = fetch(request).then((res) => {
     if (res.ok) cache.put(request, res.clone());
     return res;
+  });
+  try {
+    if (timeoutMs) {
+      const cached = await cache.match(request);
+      // Only race the clock when there's something to fall back to; the
+      // network request keeps going and still refreshes the cache if it lands.
+      if (cached) {
+        network.catch(() => {});
+        return await Promise.race([
+          network,
+          new Promise((resolve) => setTimeout(() => resolve(cached), timeoutMs)),
+        ]);
+      }
+    }
+    return await network;
   } catch (err) {
     const cached = await cache.match(request);
     if (cached) return cached;
@@ -160,7 +179,7 @@ self.addEventListener("fetch", (event) => {
 
   // Operations read endpoints — keep client-fetched page data working offline.
   if (isCacheableApi(url.pathname)) {
-    event.respondWith(networkFirst(request, API_CACHE));
+    event.respondWith(networkFirst(request, API_CACHE, API_NETWORK_TIMEOUT_MS));
     return;
   }
 
