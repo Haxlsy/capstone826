@@ -13,7 +13,7 @@ import { FilterTrigger } from "@/components/ui/FilterTrigger"
 import { Tabs } from "@/components/ui/Tabs"
 import { DataTable, RowActionHint, type Column } from "@/components/ui/DataTable"
 import { Pagination } from "@/components/ui/Pagination"
-import { StatusBadge } from "@/components/ui/Badge"
+import { JobStatusBadges } from "@/components/ui/Badge"
 import { FieldLabel } from "@/components/ui/Field"
 import type { JobOrdersData } from "@/lib/operations/job-orders-data"
 
@@ -30,7 +30,9 @@ interface JobOrder {
   headInstaller: string
   scheduled: string
   scheduledRaw: string
+  /** The stored status. A delayed job keeps it and also sets `isDelayed`. */
   status: string
+  isDelayed: boolean
 }
 
 type TabType = "All" | "Pending" | "Ongoing" | "For Rework" | "For Release" | "Delayed" | "Cancelled"
@@ -74,9 +76,10 @@ export default function SalesJobList({ jobOrders: initialJobOrders }: { jobOrder
         headInstaller: r.head_installer ?? "Unassigned",
         scheduled: fmtDate(r.scheduled_at),
         scheduledRaw: r.scheduled_at ?? "",
-        // Resolved once here — tabs/counts/badge all read this one field, so
-        // they never need their own separate "is it actually delayed" check.
-        status: displayJobStatus(r.status ?? "Pending", Boolean(r.is_overdue)),
+        // Resolved once here: tabs, counts and badges all read these two
+        // fields. A delayed job is listed under its own status AND Delayed.
+        status: r.status ?? "Pending",
+        isDelayed: displayJobStatus(r.status ?? "Pending", Boolean(r.is_overdue)) === "Delayed",
       })),
     [rawOrders],
   )
@@ -94,7 +97,7 @@ export default function SalesJobList({ jobOrders: initialJobOrders }: { jobOrder
   const hasActiveFilter = activeFilters.length > 0
 
   const filtered = jobOrders.filter((j) => {
-    if (activeTab !== "All" && j.status !== activeTab) return false
+    if (activeTab === "Delayed" ? !j.isDelayed : activeTab !== "All" && j.status !== activeTab) return false
     const q = searchQuery.toLowerCase()
     if (
       q &&
@@ -119,7 +122,10 @@ export default function SalesJobList({ jobOrders: initialJobOrders }: { jobOrder
   const paginated = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE)
 
   const tabCounts: Record<string, number> = { All: jobOrders.length }
-  for (const j of jobOrders) tabCounts[j.status] = (tabCounts[j.status] ?? 0) + 1
+  for (const j of jobOrders) {
+    tabCounts[j.status] = (tabCounts[j.status] ?? 0) + 1
+    if (j.isDelayed && j.status !== "Delayed") tabCounts.Delayed = (tabCounts.Delayed ?? 0) + 1
+  }
 
   const columns: Column<JobOrder>[] = [
     { key: "id", header: "Job Order ID", cell: (j) => <span className="font-mono text-xs font-semibold text-body">{j.displayId}</span> },
@@ -130,7 +136,7 @@ export default function SalesJobList({ jobOrders: initialJobOrders }: { jobOrder
     { key: "hd", header: "Head Detailer", cell: (j) => <span className="text-xs text-body">{j.headDetailer}</span> },
     { key: "hi", header: "Head Installer", cell: (j) => <span className="text-xs text-body">{j.headInstaller}</span> },
     { key: "sched", header: "Scheduled", cell: (j) => <span className="whitespace-nowrap text-xs text-muted">{j.scheduled}</span> },
-    { key: "status", header: "Status", cell: (j) => <StatusBadge status={j.status} /> },
+    { key: "status", header: "Status", cell: (j) => <JobStatusBadges status={j.status} isOverdue={j.isDelayed} /> },
     {
       key: "go",
       header: "",

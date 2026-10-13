@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest"
-import { isJobDelayed, computeStageDelays, hasAnyStageDelayed, stageDelayedSince, displayJobStatus, ACTIVE_JOB_STATUSES } from "@/lib/job-delay"
+import { isJobDelayed, computeStageDelays, hasAnyStageDelayed, stageDelayedSince, displayJobStatus, jobStatusBadges, ACTIVE_JOB_STATUSES } from "@/lib/job-delay"
 
 // 2:00 PM Asia/Manila (06:00 UTC) — comfortably mid-day, so every relative
 // offset used below (minutes/hours "ago") lands within the 8 AM–8 PM
@@ -237,5 +237,27 @@ describe("stageDelayedSince", () => {
       new Map([["j1", started(3)], ["j2", started(1)]]),
     )
     expect([...out.keys()]).toEqual(["j1"])
+  })
+})
+
+describe("jobStatusBadges", () => {
+  it("shows only the status for a job that is on time", () => {
+    expect(jobStatusBadges("Ongoing", false)).toEqual(["Ongoing"])
+  })
+
+  it("keeps the real status and adds Delayed for a late active job", () => {
+    for (const status of ACTIVE_JOB_STATUSES) {
+      expect(jobStatusBadges(status, true)).toEqual([status, "Delayed"])
+    }
+  })
+
+  it("never adds Delayed to a finished job", () => {
+    expect(jobStatusBadges("Released", true)).toEqual(["Released"])
+    expect(jobStatusBadges("Cancelled", true)).toEqual(["Cancelled"])
+  })
+
+  it("shows a legacy stored Delayed status once", () => {
+    expect(jobStatusBadges("Delayed", true)).toEqual(["Delayed"])
+    expect(jobStatusBadges("Delayed", false)).toEqual(["Delayed"])
   })
 })

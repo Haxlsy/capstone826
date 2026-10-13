@@ -5,10 +5,9 @@ import { RefreshCw } from "lucide-react"
 import { useRouter } from "next/navigation"
 import { useRealtimeRefetch } from "@/hooks/useRealtimeRefetch"
 import { Card, CardBody } from "@/components/ui/Card"
-import { StatusBadge } from "@/components/ui/Badge"
+import { JobStatusBadges } from "@/components/ui/Badge"
 import { EmptyState } from "@/components/ui/EmptyState"
 import { Sk, SkRow } from "@/components/ui/skeleton"
-import { displayJobStatus } from "@/lib/job-delay"
 
 interface RecentJob {
   id: string
@@ -82,7 +81,7 @@ export default function QuickAccessPanel({ loading: initialLoading, recentJobs }
                   <p className="font-mono text-xs text-body">{item.display_id}</p>
                   <p className="mt-0.5 text-sm font-medium text-heading">{item.customer}</p>
                 </div>
-                <StatusBadge status={displayJobStatus(item.status, item.is_overdue)} />
+                <JobStatusBadges status={item.status} isOverdue={item.is_overdue} stacked />
               </button>
             ))}
           </div>

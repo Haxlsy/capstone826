@@ -9,6 +9,7 @@ export interface JobSummary {
   customer_name: string
   service_name: string
   status: string
+  is_overdue: boolean
 }
 
 /**
@@ -162,6 +163,7 @@ export async function getDashboardData(){
         customer_name: jobCustomer(row).name ?? "Manual Entry",
         service_name: row.service?.name ?? "—",
         status: row.status,
+        is_overdue: isJobDelayed(row) || overdueJobIds.has(row.id),
       }
       for (const key of keys) jobs_by_status[key].push(summary)
     }

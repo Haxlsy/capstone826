@@ -172,3 +172,16 @@ export function displayJobStatus(status: string, isOverdue: boolean): string {
   const isActive = ACTIVE_JOB_STATUSES.includes(status as ActiveJobStatus)
   return isActive && isOverdue ? "Delayed" : status
 }
+
+/**
+ * The status badges to show for a job, real status first. A delayed job keeps
+ * its own status and gains "Delayed" beside it ("Ongoing" + "Delayed"), where
+ * displayJobStatus alone would replace one with the other and hide whether
+ * the job is Pending, Ongoing, For Rework and so on. Who counts as delayed is
+ * still decided by displayJobStatus, so a finished job never gains the badge
+ * and a legacy stored "Delayed" status is shown once.
+ */
+export function jobStatusBadges(status: string, isOverdue: boolean): string[] {
+  const shown = displayJobStatus(status, isOverdue)
+  return shown === status ? [status] : [status, shown]
+}
