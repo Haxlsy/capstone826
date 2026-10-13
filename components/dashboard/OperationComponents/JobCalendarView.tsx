@@ -4,7 +4,7 @@ import { useMemo, useState } from "react"
 import { ChevronLeft, ChevronRight, ChevronDown, Clock, CalendarClock, CheckCircle2, User } from "lucide-react"
 import { Card, CardBody } from "@/components/ui/Card"
 import { Modal } from "@/components/ui/Modal"
-import { StatusBadge } from "@/components/ui/Badge"
+import { JobStatusBadges } from "@/components/ui/Badge"
 import { Popover, MenuItem } from "@/components/ui/Popover"
 import { Sk } from "@/components/ui/skeleton"
 import { cn } from "@/lib/utils"
@@ -86,7 +86,7 @@ function CompactTooltip({ jobs, align = "left" }: { jobs: CalendarJob[]; align?:
             <div key={job.id} className="flex items-center gap-2 px-3 py-1">
               <span className={cn("h-1.5 w-1.5 shrink-0 rounded-full", statusStyle(status).dot)} />
               <span className="flex-1 truncate text-xs text-heading">{job.customer}</span>
-              <StatusBadge status={status} className="shrink-0 text-[10px]" />
+              <JobStatusBadges status={job.status} isOverdue={job.is_overdue} stacked className="text-[10px]" />
             </div>
           )
         })}
@@ -106,7 +106,7 @@ function JobDetailBlock({ job }: { job: CalendarJob }) {
           <p className="truncate text-sm font-semibold text-heading">{job.customer}</p>
           <p className="mt-0.5 text-xs text-body">{job.service}</p>
         </div>
-        <StatusBadge status={displayJobStatus(job.status, job.is_overdue)} className="shrink-0" />
+        <JobStatusBadges status={job.status} isOverdue={job.is_overdue} stacked />
       </div>
 
       <div className="mb-3 grid grid-cols-2 gap-x-4 gap-y-2 text-xs">

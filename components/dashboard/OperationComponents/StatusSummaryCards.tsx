@@ -14,7 +14,7 @@ import {
 } from "lucide-react"
 import { StatCard } from "@/components/ui/StatCard"
 import { Modal } from "@/components/ui/Modal"
-import { StatusBadge } from "@/components/ui/Badge"
+import { JobStatusBadges } from "@/components/ui/Badge"
 import { Sk } from "@/components/ui/skeleton"
 import type { JobSummary } from "@/lib/operations/dashboard-data"
 
@@ -96,7 +96,7 @@ export default function StatusSummaryCards({ loading, counts, concernCount, jobs
                 <p className="text-xs text-muted truncate">{job.customer_name} · {job.service_name}</p>
               </div>
               <div className="flex shrink-0 items-center gap-2">
-                <StatusBadge status={job.status} />
+                <JobStatusBadges status={job.status} isOverdue={job.is_overdue} stacked />
                 <ChevronRight className="h-4 w-4 text-muted" />
               </div>
             </button>

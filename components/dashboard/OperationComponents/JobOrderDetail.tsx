@@ -12,7 +12,7 @@ import { PageHeader } from "@/components/ui/PageHeader"
 import { Button, IconButton } from "@/components/ui/Button"
 import { Card, CardBody } from "@/components/ui/Card"
 import { Modal, ConfirmModal } from "@/components/ui/Modal"
-import { StatusBadge, Badge } from "@/components/ui/Badge"
+import { StatusBadge, Badge, JobStatusBadges } from "@/components/ui/Badge"
 import { Textarea, Input } from "@/components/ui/Field"
 import { EmptyState } from "@/components/ui/EmptyState"
 import { useToast } from "@/components/ui/Toast"
@@ -25,7 +25,6 @@ import { alreadyOnJob } from "@/lib/operations/team-membership"
 import { requiredTeamRoles } from "@/lib/operations/required-team"
 import { cn } from "@/lib/utils"
 import { statusStyle } from "@/lib/ui/status"
-import { displayJobStatus } from "@/lib/job-delay"
 import { isTechnicianAvailableToday } from "@/lib/technician-availability"
 import { categorySwatch } from "@/lib/ui/category-colors"
 import { fmtDateTime } from "@/lib/time-display"
@@ -815,8 +814,9 @@ export default function JobOrderDetail({
               <p className="mt-0.5 text-sm text-body">{job.contact_number}</p>
               {job.email && <p className="mt-0.5 text-sm text-body">{job.email}</p>}
             </div>
-            <StatusBadge
-              status={displayJobStatus(job.status, job.is_overdue)}
+            <JobStatusBadges
+              status={job.status}
+              isOverdue={job.is_overdue}
               className="px-3.5 py-1 text-xl"
             />
           </div>

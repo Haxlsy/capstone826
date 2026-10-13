@@ -4,10 +4,9 @@ import { useState, useEffect, useCallback } from "react"
 import Link from "next/link"
 import { ArrowLeft, ChevronDown, CheckCircle2, RefreshCw, Clock } from "lucide-react"
 import { fmtDateTime } from "@/lib/time-display"
-import { StatusBadge, Badge } from "@/components/ui/Badge"
+import { Badge, JobStatusBadges } from "@/components/ui/Badge"
 import { cn } from "@/lib/utils"
 import { statusStyle } from "@/lib/ui/status"
-import { displayJobStatus } from "@/lib/job-delay"
 import { useRealtimeRefetch } from "@/hooks/useRealtimeRefetch"
 import { categorySwatch } from "@/lib/ui/category-colors"
 
@@ -156,7 +155,7 @@ export default function SalesJobDetail({ job: initialJob }: { job: JobDetail }) 
           </Link>
           <h1 className="text-xl font-bold text-heading">{displayId}</h1>
         </div>
-        <StatusBadge status={displayJobStatus(job.status, job.is_overdue)} className="mt-6 px-3 py-1 text-sm" />
+        <span className="mt-6"><JobStatusBadges status={job.status} isOverdue={job.is_overdue} className="px-3 py-1 text-sm" /></span>
       </div>
 
       {/* Read-only notice */}

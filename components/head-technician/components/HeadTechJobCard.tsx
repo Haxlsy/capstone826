@@ -3,8 +3,7 @@
 import { useRouter } from "next/navigation"
 import { Car, User, ChevronRight, Clock, AlertCircle } from "lucide-react"
 import { HeadTechJob } from "./types"
-import { StatusBadge } from "@/components/ui/Badge"
-import { displayJobStatus } from "@/lib/job-delay"
+import { JobStatusBadges } from "@/components/ui/Badge"
 
 type HeadTechJobCardProps = {
   job: HeadTechJob
@@ -37,7 +36,9 @@ export function HeadTechJobCard({ job }: HeadTechJobCardProps) {
               Stage Delayed
             </span>
           )}
-          <StatusBadge status={displayJobStatus(job.status, job.is_overdue)} className="text-[11px]" />
+          {/* The pill above already says a stage is late; the Delayed badge is
+              added only for a job past its deadline with no late stage. */}
+          <JobStatusBadges status={job.status} isOverdue={job.is_overdue && !job.has_delayed_stage} className="text-[11px]" />
           <ChevronRight size={14} className="text-muted" />
         </div>
       </div>

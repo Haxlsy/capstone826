@@ -41,11 +41,13 @@ export default function HeadTechnicianPage({
   const [statusModal, setStatusModal] = useState<"Total" | "Ongoing" | "For Rework" | "Delayed" | null>(null)
 
   const filteredJobs = jobs.filter((job) => {
-    // Compares against the DISPLAY status (job.status re-resolved through
-    // displayJobStatus), not the raw one — the raw status is almost never
-    // literally "Delayed" (see lib/job-delay.ts), so filtering on it
-    // directly would make the "Delayed" tab match nothing.
-    if (statusFilter !== "all" && displayJobStatus(job.status, job.is_overdue) !== (statusFilter as Status)) return false
+    // "Delayed" is computed, almost never the stored status (see
+    // lib/job-delay.ts), so that filter goes through displayJobStatus. Every
+    // other filter matches the stored status, so a delayed Ongoing job is
+    // listed under both Ongoing and Delayed, matching its two badges.
+    if (statusFilter === "Delayed") {
+      if (displayJobStatus(job.status, job.is_overdue) !== "Delayed") return false
+    } else if (statusFilter !== "all" && job.status !== (statusFilter as Status)) return false
     if (searchQuery.trim()) {
       const q = searchQuery.toLowerCase()
       const matches =

@@ -13,7 +13,7 @@ import { FilterTrigger } from "@/components/ui/FilterTrigger"
 import { Tabs } from "@/components/ui/Tabs"
 import { DataTable, RowActionHint, type Column } from "@/components/ui/DataTable"
 import { Pagination } from "@/components/ui/Pagination"
-import { StatusBadge, Badge } from "@/components/ui/Badge"
+import { Badge, JobStatusBadges } from "@/components/ui/Badge"
 import { Select, FieldLabel } from "@/components/ui/Field"
 import { useToast } from "@/components/ui/Toast"
 import { useOfflineSyncContext } from "@/components/dashboard/OperationComponents/OfflineSyncContext"
@@ -354,7 +354,7 @@ export default function JobManagementTable({ initialJobOrders }: { initialJobOrd
             )}
           </div>
         ) : (
-          <StatusBadge status={displayJobStatus(job.status, job.is_overdue)} />
+          <JobStatusBadges status={job.status} isOverdue={job.is_overdue} />
         ),
     },
     {
