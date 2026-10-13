@@ -73,11 +73,15 @@ export const ALL_MISSING_FIELDS_LEADS: string[] = [
 ]
 
 const FIELD_LABELS: Record<string, { english: string; filipino: string }> = {
-  "full name":      { english: "full name",      filipino: "buong pangalan" },
-  "contact number": { english: "contact number", filipino: "numero ng telepono" },
-  "plate number":   { english: "plate number",   filipino: "plate number" },
-  "vehicle":        { english: "vehicle",        filipino: "sasakyan" },
-  "email":          { english: "email",          filipino: "email" },
+  "full name":      { english: "full name",      filipino: "Buong pangalan" },
+  "contact number": { english: "contact number", filipino: "Numero ng telepono" },
+  "plate number":   { english: "plate number",   filipino: "Plate number" },
+  "vehicle":        { english: "vehicle",        filipino: "Sasakyan (brand at model)" },
+  "email":          { english: "email",          filipino: "Email address" },
+  // The labels missingBookingFields actually passes for these two. Without
+  // them the Filipino re-ask left "Vehicle Unit" and "Email Address" in English.
+  "vehicle unit":   { english: "vehicle unit",   filipino: "Sasakyan (brand at model)" },
+  "email address":  { english: "email address",  filipino: "Email address" },
 }
 
 /**
@@ -94,16 +98,48 @@ function localizeFields(fields: string[], lang: BotLanguage | undefined): string
  * The deterministic re-ask for still-missing booking fields. The English
  * wording is unchanged from before this module existed — the loop guard and its
  * tests depend on the exact lead-in, and there was no reason to reword it.
+ *
+ * Several fields are laid out one per line, like the booking summary: joined
+ * with commas they made one dense paragraph in a chat bubble. The lead-in
+ * must stay the very start of the message either way (see MISSING_FIELDS_LEADS).
  */
 export function missingFieldsPrompt(missing: string[], lang?: BotLanguage): string {
   const plural = missing.length > 1
-  const en =
-    `${MISSING_FIELDS_LEADS.english}: ${localizeFields(missing, "english").join(", ")}. ` +
-    `Please send ${plural ? "them" : "it"} and I'll get you set up.`
-  const fil =
-    `${MISSING_FIELDS_LEADS.filipino}: ${localizeFields(missing, "filipino").join(", ")}. ` +
-    `Pakipadala ${plural ? "ang mga ito" : "ito"} at ihahanda ko na ang booking mo.`
+  const body = (lead: string, fields: string[], closing: string) =>
+    plural
+      ? `${lead}:\n${fields.map((f) => `• ${f}`).join("\n")}\n\n${closing}`
+      : `${lead}: ${fields.join(", ")}.\n\n${closing}`
+  const en = body(
+    MISSING_FIELDS_LEADS.english,
+    localizeFields(missing, "english"),
+    `Please send ${plural ? "them" : "it"} and I'll get you set up.`,
+  )
+  const fil = body(
+    MISSING_FIELDS_LEADS.filipino,
+    localizeFields(missing, "filipino"),
+    `Pakipadala ${plural ? "ang mga ito" : "ito"} at ihahanda ko na ang booking mo.`,
+  )
   return pickCopy(lang, en, fil)
+}
+
+/**
+ * Appended after an ordinary answer when the customer asks something in the
+ * middle of a booking, so they know the booking is still open. The webhook
+ * also looks for this text in the bot's last message to recognise that the
+ * next short reply is a booking detail (see answersDetailPrompt).
+ */
+export const BOOKING_RESUME_REMINDERS = {
+  english:  "Whenever you're ready, send your remaining details and I'll continue your booking.",
+  filipino: "Kapag handa ka na, ipadala lang ang natitirang detalye at itutuloy ko ang booking mo.",
+} as const
+
+export const ALL_BOOKING_RESUME_REMINDERS: string[] = [
+  BOOKING_RESUME_REMINDERS.english,
+  BOOKING_RESUME_REMINDERS.filipino,
+]
+
+export function bookingResumeReminder(lang?: BotLanguage): string {
+  return pickCopy(lang, BOOKING_RESUME_REMINDERS.english, BOOKING_RESUME_REMINDERS.filipino)
 }
 
 /** Header + confirm prompt for the booking-details summary. */

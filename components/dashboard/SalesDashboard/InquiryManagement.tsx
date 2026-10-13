@@ -21,7 +21,7 @@ import { Badge, StatusBadge } from "@/components/ui/Badge"
 import { useToast } from "@/components/ui/Toast"
 import { cn } from "@/lib/utils"
 import { inquiryTypeStyle } from "@/lib/ui/status"
-import { newInquiryIds, resolveSelectedId, newInquiryToast, escalationHeading, canRecordCustomerDetails, resolveConfirmMessage } from "@/lib/sales/inquiry-list"
+import { newInquiryIds, resolveSelectedId, newInquiryToast, escalationHeading, canRecordCustomerDetails, resolveConfirmMessage, inquiryStatusBadges, isUnrecordedBooking } from "@/lib/sales/inquiry-list"
 import { LinkAccountModal } from "./LinkAccountModal"
 import { logView } from "@/lib/client/log-view"
 
@@ -267,12 +267,15 @@ export default function InquiryManagement() {
   // "Unresolved" == status "open" only — a recorded inquiry already has
   // resolved_at/resolved_by_id stamped server-side the moment it's recorded
   // (see app/api/sales/inquiries/[id]/route.ts), so it's already concluded
-  // and shouldn't keep showing up here.
+  // and shouldn't keep showing up here. "Unrecorded" is the open Booking
+  // inquiries only: nothing is recorded for any other type.
   const tabFiltered = activeTab === "all"
     ? inquiries
     : activeTab === "unresolved"
       ? inquiries.filter((i) => i.status === "open")
-      : inquiries.filter((i) => i.status === activeTab)
+      : activeTab === "open"
+        ? inquiries.filter(isUnrecordedBooking)
+        : inquiries.filter((i) => i.status === activeTab)
   const filtered    = search.trim()
     ? tabFiltered.filter((i) => {
         const q = search.toLowerCase()
@@ -289,10 +292,10 @@ export default function InquiryManagement() {
   }, [selected?.id])
 
   const totalCount    = inquiries.length
-  const openCount     = inquiries.filter((i) => i.status === "open").length
+  const unresolvedCnt = inquiries.filter((i) => i.status === "open").length
+  const unrecordedCnt = inquiries.filter(isUnrecordedBooking).length
   const recCount      = inquiries.filter((i) => i.status === "recorded").length
   const resCount      = inquiries.filter((i) => i.status === "resolved").length
-  const unresolvedCnt = openCount
 
   function openRecordModal(inq: Inquiry) {
     setRecordForm({
@@ -377,7 +380,7 @@ export default function InquiryManagement() {
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
         <StatCard label="Total" value={totalCount} icon={Layers} tone="total" />
         <StatCard label="Unresolved" value={unresolvedCnt} icon={AlertCircle} tone="delayed" />
-        <StatCard label="Unrecorded" value={openCount} icon={Clock} tone="pending" />
+        <StatCard label="Unrecorded" value={unrecordedCnt} icon={Clock} tone="pending" />
         <StatCard label="Recorded" value={recCount} icon={ArrowRightLeft} tone="ongoing" />
         <StatCard label="Resolved" value={resCount} icon={CheckCheck} tone="inspection" />
       </div>
@@ -439,7 +442,11 @@ export default function InquiryManagement() {
                   <div className="flex-1 min-w-0">
                     <div className="flex items-start justify-between gap-1">
                       <span className="text-sm font-semibold text-heading truncate leading-tight">{inq.messengerName}</span>
-                      <StatusBadge status={inq.status} className="shrink-0 text-[10px]" />
+                      <div className="flex shrink-0 flex-col items-end gap-1">
+                        {inquiryStatusBadges(inq).map((b) => (
+                          <StatusBadge key={b} status={b} className="text-[10px]" />
+                        ))}
+                      </div>
                     </div>
                     <div className="mt-1 flex items-center gap-1.5">
                       <Badge className={cn("text-[10px]", inquiryTypeStyle(inq.type))}>{inq.type}</Badge>
@@ -471,7 +478,9 @@ export default function InquiryManagement() {
               </div>
               <div className="flex items-center gap-2">
                 <Badge className={inquiryTypeStyle(selected.type)}>{selected.type}</Badge>
-                <StatusBadge status={selected.status} />
+                {inquiryStatusBadges(selected).map((b) => (
+                  <StatusBadge key={b} status={b} />
+                ))}
               </div>
             </div>
 

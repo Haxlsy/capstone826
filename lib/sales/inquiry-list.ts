@@ -100,3 +100,19 @@ export function resolveConfirmMessage(type: string): string {
   }
   return "This inquiry will be marked as resolved and moved out of the active queue."
 }
+
+/** An open Booking inquiry: the customer's details have not been saved yet. */
+export function isUnrecordedBooking(inquiry: { type: string; status: string }): boolean {
+  return inquiry.type === "Booking" && inquiry.status === "open"
+}
+
+/**
+ * Status badges for an inquiry, most urgent first, as keys for `statusStyle`
+ * (lib/ui/status.ts). An open inquiry used to show only "Unrecorded", which
+ * hid the more urgent fact that the customer is still waiting on a reply.
+ * "Unrecorded" is shown only for a Booking, since nothing else is recorded.
+ */
+export function inquiryStatusBadges(inquiry: { type: string; status: string }): string[] {
+  if (inquiry.status !== "open") return [inquiry.status]
+  return isUnrecordedBooking(inquiry) ? ["unresolved", "open"] : ["unresolved"]
+}

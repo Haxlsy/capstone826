@@ -12,7 +12,6 @@ const idle = {
   quickReply: false,
   humanRequested: false,
   reportIntent: false,
-  isBookingFlow: false,
   awaitingConfirmation: false,
   conflictPending: false,
   awaitingLinkVerification: false,
@@ -94,9 +93,8 @@ describe("needsIntentTiebreak", () => {
     expect(needsIntentTiebreak({ ...idle, message, reportIntent: true })).toBe(false)
   })
 
-  it("does not run while a flow is in progress", () => {
+  it("does not run while a specific answer is awaited", () => {
     const message = "pwede ba magpa-schedule?"
-    expect(needsIntentTiebreak({ ...idle, message, isBookingFlow: true })).toBe(false)
     expect(needsIntentTiebreak({ ...idle, message, awaitingConfirmation: true })).toBe(false)
     expect(needsIntentTiebreak({ ...idle, message, conflictPending: true })).toBe(false)
     expect(needsIntentTiebreak({ ...idle, message, awaitingLinkVerification: true })).toBe(false)
