@@ -98,6 +98,61 @@ export function hasAnyStageDelayed(stageDelays: Map<string, StageDelayResult> | 
   return values.some((v) => v.is_delayed)
 }
 
+/** A job_stage_progress row as the dashboards select it. */
+export interface StageRowForDelay {
+  job_order_id: string
+  status: string
+  stage_duration_mins: number | null
+  service_stage:
+    | { stage_duration_mins: number | null; sequence_order: number | null }
+    | { stage_duration_mins: number | null; sequence_order: number | null }[]
+    | null
+}
+
+/**
+ * The stage-level half of "is this job delayed", rolled up per job: for each
+ * started job with at least one delayed stage (see computeStageDelays), the
+ * earliest expected end among those stages, i.e. when the job first fell
+ * behind. Jobs with no start time or no late stage are absent from the map.
+ *
+ * Operations' dashboard and Admin's Delayed Jobs table both call this. Admin
+ * used to check only the job-level deadline, so a job with a stage running
+ * late showed as delayed for Operations and not at all for Admin.
+ */
+export function stageDelayedSince(
+  stageRows: StageRowForDelay[],
+  startByJobId: Map<string, string | null | undefined>,
+  schedule: WorkSchedule = DEFAULT_SCHEDULE,
+): Map<string, string> {
+  const byJob = new Map<string, StageRowForDelay[]>()
+  for (const s of stageRows) {
+    if (!byJob.has(s.job_order_id)) byJob.set(s.job_order_id, [])
+    byJob.get(s.job_order_id)!.push(s)
+  }
+
+  const result = new Map<string, string>()
+  for (const [jobId, stages] of byJob) {
+    const startAt = startByJobId.get(jobId)
+    if (!startAt) continue
+    const shaped: StageForDelay[] = stages.map((s, idx) => {
+      const svc = Array.isArray(s.service_stage) ? s.service_stage[0] : s.service_stage
+      return {
+        id: String(idx),
+        status: s.status,
+        sequence_order: svc?.sequence_order ?? 0,
+        stage_duration_mins: s.stage_duration_mins,
+        service_stage_duration_mins: svc?.stage_duration_mins ?? null,
+      }
+    })
+    const lateEnds = [...computeStageDelays(shaped, startAt, schedule).values()]
+      .filter((d) => d.is_delayed && d.expected_end_at)
+      .map((d) => d.expected_end_at as string)
+      .sort()
+    if (lateEnds.length > 0) result.set(jobId, lateEnds[0])
+  }
+  return result
+}
+
 /**
  * What status label to actually show for a job. The real, stored `status`
  * (`Pending`/`Ongoing`/etc.) is left untouched everywhere — other code

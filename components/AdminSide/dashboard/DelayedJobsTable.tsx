@@ -15,7 +15,13 @@ interface DelayedJob {
   status: string
   expected_completion_at: string | null
   service: { name: string } | null
+  delay_reason?: "job" | "stage"
+  delayed_since?: string | null
 }
+
+// A job becomes delayed just by time passing, with no change to the job order
+// for the realtime subscription to pick up, so the list is also polled.
+const REFRESH_MS = 60_000
 
 function formatDelayedBy(expectedAt: string | null): string {
   if (!expectedAt) return "—"
@@ -48,6 +54,10 @@ export function DelayedJobsTable({ initialData }: { initialData?: DelayedJob[] }
 
   useEffect(() => { if (!initialData) fetchData() }, [fetchData, initialData])
   useRealtimeRefetch("job_order", fetchData)
+  useEffect(() => {
+    const id = setInterval(fetchData, REFRESH_MS)
+    return () => clearInterval(id)
+  }, [fetchData])
 
   return (
     <Card className="flex flex-col p-5">
@@ -85,7 +95,7 @@ export function DelayedJobsTable({ initialData }: { initialData?: DelayedJob[] }
             </thead>
             <tbody className="divide-y divide-border-subtle">
               {jobs.map((job) => {
-                const delayedBy = formatDelayedBy(job.expected_completion_at)
+                const delayedBy = formatDelayedBy(job.delayed_since ?? job.expected_completion_at)
                 const isOverdue = delayedBy !== "—"
                 return (
                   <tr key={job.id} className="hover:bg-surface-muted transition-colors">
@@ -101,6 +111,9 @@ export function DelayedJobsTable({ initialData }: { initialData?: DelayedJob[] }
                         <Badge className={statusStyle("delayed").soft}>+{delayedBy}</Badge>
                       ) : (
                         <Badge className={statusStyle("delayed").soft}>Delayed</Badge>
+                      )}
+                      {job.delay_reason === "stage" && (
+                        <p className="mt-1 text-[10px] text-muted">Stage behind schedule</p>
                       )}
                     </td>
                   </tr>

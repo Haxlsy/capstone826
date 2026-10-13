@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server"
 import { createAdminClient } from "@/lib/supabase/admin"
 import { isJobDelayed } from "@/lib/job-delay"
+import { loadStageDelayedSince } from "@/lib/job-delay-data"
 import { getRoleCaller } from "@/lib/auth/caller"
 import { jobCustomer } from "@/lib/operations/job-customer"
 
@@ -67,6 +68,12 @@ export async function GET(request: Request) {
       }
     }
 
+    // Stage-level delays, combined with the job-level check below. Released
+    // jobs are finished, so Job Order Records skips this.
+    const lateStage = releasedOnly
+      ? new Map<string, string>()
+      : await loadStageDelayedSince(supabase, (jobs ?? []) as any[])
+
     // Build maps
     const teamMap = new Map<string, { head_detailer: string; head_installer: string }>()
     for (const t of teamRows ?? []) {
@@ -106,7 +113,7 @@ export async function GET(request: Request) {
         released_at:             releasedAtMap.get(j.id) ?? null,
         created_at:              j.created_at,
         progress:                prog.total > 0 ? Math.round((prog.done / prog.total) * 100) : 0,
-        is_overdue:              isJobDelayed(j),
+        is_overdue:              isJobDelayed(j) || lateStage.has(j.id),
       }
     })
 

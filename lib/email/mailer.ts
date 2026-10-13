@@ -23,9 +23,37 @@ export interface SendResult {
   error?: string
 }
 
+// Gmail occasionally answers "421 4.3.0 Temporary System Problem. Try again
+// later." Sending exactly once turned that blip into an email the recipient
+// never got, so a temporary failure is retried one time after a short wait.
+const RETRY_DELAY_MS = 2_000
+
+const TRANSIENT_NETWORK_CODES = new Set(["ETIMEDOUT", "ECONNECTION", "ECONNRESET", "ESOCKET", "EDNS"])
+
+/**
+ * True for a failure the mail server itself marks as temporary (an SMTP 4xx
+ * reply, e.g. 421/450/451) or one where the connection failed before any
+ * reply. A 5xx reply (bad credentials, rejected address) is permanent and is
+ * never retried.
+ */
+export function isTransientMailError(err: unknown): boolean {
+  if (!err || typeof err !== "object") return false
+  const { responseCode, code } = err as { responseCode?: unknown; code?: unknown }
+  if (typeof responseCode === "number") return responseCode >= 400 && responseCode < 500
+  return typeof code === "string" && TRANSIENT_NETWORK_CODES.has(code)
+}
+
 async function send(to: string, subject: string, text: string, html: string): Promise<SendResult> {
+  const attempt = () => transporter().sendMail({ from: FROM, to, subject, text, html })
   try {
-    await transporter().sendMail({ from: FROM, to, subject, text, html })
+    try {
+      await attempt()
+    } catch (err: unknown) {
+      if (!isTransientMailError(err)) throw err
+      console.warn(`[mailer] temporary failure sending "${subject}", retrying once:`, err instanceof Error ? err.message : String(err))
+      await new Promise((r) => setTimeout(r, RETRY_DELAY_MS))
+      await attempt()
+    }
     return { ok: true }
   } catch (err: unknown) {
     return { ok: false, error: err instanceof Error ? err.message : String(err) }

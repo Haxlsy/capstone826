@@ -1,6 +1,6 @@
 import { jobCustomer } from "@/lib/operations/job-customer"
 import {createAdminClient} from '@/lib/supabase/admin'
-import { ACTIVE_JOB_STATUSES, isJobDelayed, computeStageDelays, hasAnyStageDelayed, type StageForDelay } from '@/lib/job-delay'
+import { ACTIVE_JOB_STATUSES, isJobDelayed, stageDelayedSince, type StageRowForDelay } from '@/lib/job-delay'
 import { loadWorkSchedule } from '@/lib/operating-hours'
 
 export interface JobSummary {
@@ -137,29 +137,11 @@ export async function getDashboardData(){
     }
 
     // Signal 2: stage-level — any incomplete stage past its cumulative expected end.
-    if (stageRows.length > 0) {
-      const jobStagesMap = new Map<string, any[]>()
-      for (const s of stageRows) {
-        if (!jobStagesMap.has(s.job_order_id)) jobStagesMap.set(s.job_order_id, [])
-        jobStagesMap.get(s.job_order_id)!.push(s)
-      }
-      const startMap = new Map(activeJobs.map((r: any) => [r.id as string, r.actual_start_at as string]))
-
-      for (const [jobId, stages] of jobStagesMap) {
-        if (overdueJobIds.has(jobId)) continue
-        const startAt = startMap.get(jobId)
-        if (!startAt) continue
-        const shaped: StageForDelay[] = stages.map((s: any, idx: number) => ({
-          id: String(idx),
-          status: s.status,
-          sequence_order: (s.service_stage as any)?.sequence_order ?? 0,
-          stage_duration_mins: s.stage_duration_mins,
-          service_stage_duration_mins: (s.service_stage as any)?.stage_duration_mins ?? null,
-        }))
-        if (hasAnyStageDelayed(computeStageDelays(shaped, startAt, schedule))) {
-          overdueJobIds.add(jobId)
-        }
-      }
+    // Shared with Admin's Delayed Jobs table (stageDelayedSince) so both
+    // screens flag the same jobs.
+    const startMap = new Map(activeJobs.map((r: any) => [r.id as string, r.actual_start_at as string]))
+    for (const jobId of stageDelayedSince(stageRows as unknown as StageRowForDelay[], startMap, schedule).keys()) {
+      overdueJobIds.add(jobId)
     }
 
     for (const _ of overdueJobIds) status_counts["delayed"]++
@@ -197,7 +179,7 @@ export async function getDashboardData(){
         customer:   jobCustomer(r).name ?? "Manual Entry",
         service:    r.service?.name ?? "—",
         status:     r.status,
-        is_overdue: isJobDelayed(r),
+        is_overdue: isJobDelayed(r) || overdueJobIds.has(r.id),
         created_at: r.created_at,
       }))
 
@@ -212,7 +194,7 @@ export async function getDashboardData(){
           actual_start_at:        r.actual_start_at,
           expected_completion_at: r.expected_completion_at,
           status:                 r.status,
-          is_overdue:             isJobDelayed(r),
+          is_overdue:             isJobDelayed(r) || overdueJobIds.has(r.id),
           customer:               jobCustomer(r).name ?? "Manual Entry",
           service:                r.service?.name ?? "—",
           head_detailer:          team.head_detailer,

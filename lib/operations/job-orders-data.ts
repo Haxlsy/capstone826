@@ -1,6 +1,7 @@
 import { createAdminClient } from "@/lib/supabase/admin"
 import { jobCustomer } from "@/lib/operations/job-customer"
 import { isJobDelayed } from "@/lib/job-delay"
+import { loadStageDelayedSince } from "@/lib/job-delay-data"
 
 export async function getJobOrdersData(released = false) {
   const supabase = createAdminClient()
@@ -26,7 +27,7 @@ export async function getJobOrdersData(released = false) {
 
   const jobIds = (jobs ?? []).map((j: any) => j.id)
 
-  const [teamResult, stageResult] = await Promise.all([
+  const [teamResult, stageResult, lateStage] = await Promise.all([
     supabase
       .from("job_order_team")
       .select("job_order_id, role_in_job, user_account:user_account_id(id, full_name)")
@@ -36,6 +37,8 @@ export async function getJobOrdersData(released = false) {
       .from("job_stage_progress")
       .select("job_order_id, status")
       .in("job_order_id", jobIds),
+    // Released jobs are finished, so the Job Order Records list skips this.
+    released ? Promise.resolve(new Map<string, string>()) : loadStageDelayedSince(supabase, (jobs ?? []) as any[]),
   ])
 
   const teamRows = teamResult.data ?? []
@@ -94,7 +97,7 @@ export async function getJobOrdersData(released = false) {
       released_at: releasedAtMap.get(j.id) ?? null,
       created_at: j.created_at,
       progress: prog.total > 0 ? Math.round((prog.done / prog.total) * 100) : 0,
-      is_overdue: isJobDelayed(j),
+      is_overdue: isJobDelayed(j) || lateStage.has(j.id),
     }
   })
 
