@@ -28,6 +28,9 @@ import {
   hasBookingIntent,
   hasStatusIntent,
   continuesStatusInquiry,
+  needsIntentTiebreak,
+  classifyAmbiguousIntent,
+  applyIntentTiebreak,
   missingBookingFields,
   isPureConfirmation,
   isCompleteBooking,
@@ -673,8 +676,28 @@ async function handleInboundMessage(
 
   // Intent detection. Status intent always wins over booking intent: a status
   // lookup is read-only and non-destructive, so checking it first is safe.
-  const bookingIntent =
-    quickReplyPayload === "booking" || hasBookingIntent(messageBody)
+  //
+  // The keyword lists are broad, so a question that merely contains one of the
+  // words ("ilang oras yung service kung magpa-schedule ako") would be pulled
+  // into a fixed flow. For those ambiguous messages only, the model breaks the
+  // tie; a null verdict (not needed, failed, or too slow) keeps the keywords.
+  const intentVerdict = needsIntentTiebreak({
+    message: messageBody,
+    quickReply: Boolean(quickReplyPayload),
+    humanRequested,
+    reportIntent,
+    isBookingFlow: Boolean(is_booking_flow),
+    awaitingConfirmation: Boolean(awaiting_confirmation),
+    conflictPending: Boolean(conflict_pending),
+    awaitingLinkVerification: Boolean(awaiting_link_verification),
+  })
+    ? await classifyAmbiguousIntent({ message: messageBody, history })
+    : null
+  const typedIntent = applyIntentTiebreak(
+    { booking: hasBookingIntent(messageBody), status: hasStatusIntent(messageBody) },
+    intentVerdict,
+  )
+  const bookingIntent = quickReplyPayload === "booking" || typedIntent.booking
   // While a booking flow is engaged, ambiguous status keywords ("check",
   // "update", "progress") must NOT flip the conversation into a status lookup —
   // that would clear is_booking_flow and drop the confirmation guardrail. Only an
@@ -688,7 +711,7 @@ async function handleInboundMessage(
   // customer sent afterward, including a plain "thanks".
   const statusIntent =
     quickReplyPayload === "status" ||
-    ((hasStatusIntent(messageBody) ||
+    ((typedIntent.status ||
       (!bookingIntent && is_vehicle_inquiry && continuesStatusInquiry(messageBody))) &&
       !is_booking_flow &&
       !awaiting_confirmation)
@@ -730,7 +753,9 @@ async function handleInboundMessage(
 
   // A message carries a booking signal when it states booking intent or
   // contains a booking detail token (plate / phone / email).
-  const signal = bookingSignal(messageBody)
+  // When the tie-break gave a verdict it replaces the raw keyword check here
+  // too, so a message judged to be a question does not enter the booking flow.
+  const signal = intentVerdict ? bookingIntent : bookingSignal(messageBody)
 
   // The customer is replying to the bot's "please include: …" re-ask with just
   // the value ("Harley Stephen A. Soldao", "Toyota Vios") — no booking signal.
