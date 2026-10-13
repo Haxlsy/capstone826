@@ -18,6 +18,7 @@ import { EmptyState } from "@/components/ui/EmptyState"
 import { useToast } from "@/components/ui/Toast"
 import { openPrintPreview, downloadWorkbook } from "@/lib/export/print"
 import { buildPrintHtml, buildWorkbook, exportFilename } from "@/lib/operations/job-order-export"
+import { buildReceiptHtml, buildReceiptWorkbook, receiptFilename } from "@/lib/operations/job-order-receipt"
 import { substituteRoleLabel } from "@/lib/substitute-label"
 import { formatOperatingHours, isWithinOperatingHours, DEFAULT_OPERATING_DAYS, DEFAULT_OPERATING_OPEN_TIME, DEFAULT_OPERATING_CLOSE_TIME, type Weekday, type Holiday } from "@/types/chatbot"
 import { alreadyOnJob } from "@/lib/operations/team-membership"
@@ -687,16 +688,30 @@ export default function JobOrderDetail({
 
   const jobData = job
 
+  // The same two buttons export different documents by status: the full
+  // record (history, stages, photos) once the job is Released, and before
+  // that the customer's receipt, which is how they get their Job Order ID.
+  const exportsFullRecord = jobData.status === "Released"
+
   async function runExport(kind: "pdf" | "excel") {
     setExporting(true)
     try {
       const now = new Date()
-      if (kind === "pdf") {
-        openPrintPreview(buildPrintHtml(jobData, now.toLocaleString("en-US", { timeZone: "Asia/Manila" })))
-        logExport("job_order_detail_pdf", jobData.job_order_code)
+      const generatedAt = now.toLocaleString("en-US", { timeZone: "Asia/Manila" })
+      if (exportsFullRecord) {
+        if (kind === "pdf") {
+          openPrintPreview(buildPrintHtml(jobData, generatedAt))
+          logExport("job_order_detail_pdf", jobData.job_order_code)
+        } else {
+          await downloadWorkbook(exportFilename(jobData.job_order_code, "xlsx", now), buildWorkbook(jobData))
+          logExport("job_order_detail_excel", jobData.job_order_code)
+        }
+      } else if (kind === "pdf") {
+        openPrintPreview(buildReceiptHtml(jobData, generatedAt))
+        logExport("job_order_receipt_pdf", jobData.job_order_code)
       } else {
-        await downloadWorkbook(exportFilename(jobData.job_order_code, "xlsx", now), buildWorkbook(jobData))
-        logExport("job_order_detail_excel", jobData.job_order_code)
+        await downloadWorkbook(receiptFilename(jobData.job_order_code, "xlsx", now), buildReceiptWorkbook(jobData, generatedAt))
+        logExport("job_order_receipt_excel", jobData.job_order_code)
       }
       setExportConfirm(null)
     } catch (err) {
@@ -744,7 +759,7 @@ export default function JobOrderDetail({
           {backLabel}
         </Link>
         <div className="flex flex-wrap items-center gap-2">
-          {job.status === "Released" && (
+          {job.status !== "Cancelled" && (
             <>
               <Button variant="secondary" onClick={() => setExportConfirm("pdf")}>
                 <FileText className="h-4 w-4" />
@@ -1069,9 +1084,15 @@ export default function JobOrderDetail({
         open={exportConfirm !== null}
         onClose={() => !exporting && setExportConfirm(null)}
         onConfirm={() => { if (exportConfirm) runExport(exportConfirm) }}
-        title={exportConfirm === "excel" ? "Export Job Order as Excel" : "Export Job Order as PDF"}
+        title={
+          exportsFullRecord
+            ? (exportConfirm === "excel" ? "Export Job Order as Excel" : "Export Job Order as PDF")
+            : (exportConfirm === "excel" ? "Export Receipt as Excel" : "Export Receipt as PDF")
+        }
         message={
-          `Export ${job.customer_name}'s full job order record — status history, stages, and photos?` +
+          (exportsFullRecord
+            ? `Export ${job.customer_name}'s full job order record — status history, stages, and photos?`
+            : `Export the job order receipt for ${job.customer_name}? It shows their Job Order ID and booking details. The full record can be exported once the job is Released.`) +
           (exportConfirm === "excel" ? " Downloads as a .xlsx file." : " This opens a print preview in a new tab.")
         }
         confirmLabel={exporting ? "Exporting…" : "Export"}
