@@ -17,6 +17,7 @@ import {
   BOOKING_SUMMARY_COPY,
   MISSING_FIELDS_LEADS,
   ALL_MISSING_FIELDS_LEADS,
+  ALL_BOOKING_RESUME_REMINDERS,
 } from "@/lib/messenger/copy"
 import {
   DEFAULT_AI_DISABLED_MESSAGE,
@@ -804,7 +805,8 @@ export function mentionsOwnVehicle(message: string): boolean {
  * Whether a keyword-matched message is ambiguous enough to ask the model what
  * the customer means. True only for typed text that hit a booking or status
  * keyword, reads like a question, names no vehicle or contact detail of the
- * customer's own, and arrives outside any flow already in progress.
+ * customer's own, and does not arrive while a specific answer is awaited
+ * (a booking confirmation, an identity question, a Job Order ID).
  */
 export function needsIntentTiebreak(input: {
   message: string
@@ -812,17 +814,15 @@ export function needsIntentTiebreak(input: {
   quickReply: boolean
   humanRequested: boolean
   reportIntent: boolean
-  isBookingFlow: boolean
   awaitingConfirmation: boolean
   conflictPending: boolean
   awaitingLinkVerification: boolean
 }): boolean {
   const { message } = input
   if (input.quickReply || input.humanRequested || input.reportIntent) return false
-  if (
-    input.isBookingFlow || input.awaitingConfirmation ||
-    input.conflictPending || input.awaitingLinkVerification
-  ) return false
+  // A booking still collecting details is deliberately NOT excluded: "what are
+  // your available schedules for booking" asked mid-booking is a question too.
+  if (input.awaitingConfirmation || input.conflictPending || input.awaitingLinkVerification) return false
   if (!hasBookingIntent(message) && !hasStatusIntent(message)) return false
   if (hasExistingBookingIntent(message)) return false
   if (mentionsOwnVehicle(message)) return false
@@ -958,6 +958,24 @@ export function mergeBookingDetails(
   }
 }
 
+/**
+ * True when `after` holds a booking detail that `before` did not: a field
+ * newly filled in, or one whose value changed. The webhook uses this to tell
+ * a reply that supplies a detail from one that does not (a question asked in
+ * the middle of a booking), which should be answered, not met with the same
+ * details request again.
+ */
+export function madeBookingProgress(
+  before: CustomerDetails | null | undefined,
+  after: CustomerDetails | null | undefined,
+): boolean {
+  const norm = (v: string | null | undefined) => (v ?? "").trim().toLowerCase()
+  return BOOKING_FIELDS.some((f) => {
+    const next = norm(after?.[f.key])
+    return next !== "" && next !== norm(before?.[f.key])
+  })
+}
+
 // Deterministic booking-token patterns. Shared with the webhook's intent
 // detection via lib/messenger/patterns.ts — they used to be duplicated here and
 // drifted. Used to fill contact/email/plate straight from the customer's own text
@@ -1038,13 +1056,19 @@ const MAX_DETAIL_ANSWER_LENGTH = 120
  * your booking, please include: …") and the customer's message reads like an
  * answer to it: non-empty, short, and not a question ("what promos do you
  * have?" must still be answered normally, not swallowed as a name).
+ *
+ * A last message that carries the booking resume reminder counts as well: the
+ * bot answered a mid-booking question and invited the remaining details.
  */
 export function answersDetailPrompt(input: {
   lastBotText: string | null | undefined
   message: string
 }): boolean {
   const last = input.lastBotText ?? ""
-  if (!ALL_MISSING_FIELDS_LEADS.some((lead) => last.startsWith(lead))) return false
+  const askedForDetails =
+    ALL_MISSING_FIELDS_LEADS.some((lead) => last.startsWith(lead)) ||
+    ALL_BOOKING_RESUME_REMINDERS.some((reminder) => last.includes(reminder))
+  if (!askedForDetails) return false
   const m = input.message.trim()
   return m.length > 0 && m.length <= MAX_DETAIL_ANSWER_LENGTH && !m.includes("?")
 }

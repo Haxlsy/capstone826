@@ -6,6 +6,8 @@ import {
   escalationHeading,
   canRecordCustomerDetails,
   resolveConfirmMessage,
+  inquiryStatusBadges,
+  isUnrecordedBooking,
 } from "@/lib/sales/inquiry-list"
 
 // The two rules that make a realtime refresh safe to run under someone who is
@@ -152,5 +154,30 @@ describe("resolveConfirmMessage", () => {
     for (const type of ["Human Response", "Concern", ""]) {
       expect(resolveConfirmMessage(type)).toBe("This inquiry will be marked as resolved and moved out of the active queue.")
     }
+  })
+})
+
+describe("inquiryStatusBadges", () => {
+  it("shows Unresolved first, then Unrecorded, for an open booking", () => {
+    expect(inquiryStatusBadges({ type: "Booking", status: "open" })).toEqual(["unresolved", "open"])
+  })
+
+  it("shows only Unresolved for an open inquiry that is not a booking", () => {
+    expect(inquiryStatusBadges({ type: "Inquiry", status: "open" })).toEqual(["unresolved"])
+  })
+
+  it("shows the single final status once recorded or resolved", () => {
+    expect(inquiryStatusBadges({ type: "Booking", status: "recorded" })).toEqual(["recorded"])
+    expect(inquiryStatusBadges({ type: "Booking", status: "resolved" })).toEqual(["resolved"])
+    expect(inquiryStatusBadges({ type: "Inquiry", status: "resolved" })).toEqual(["resolved"])
+  })
+})
+
+describe("isUnrecordedBooking", () => {
+  it("is true only for an open booking", () => {
+    expect(isUnrecordedBooking({ type: "Booking", status: "open" })).toBe(true)
+    expect(isUnrecordedBooking({ type: "Inquiry", status: "open" })).toBe(false)
+    expect(isUnrecordedBooking({ type: "Booking", status: "resolved" })).toBe(false)
+    expect(isUnrecordedBooking({ type: "Booking", status: "recorded" })).toBe(false)
   })
 })

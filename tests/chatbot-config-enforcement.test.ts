@@ -6,13 +6,14 @@ import {
   hasExistingBookingIntent,
   shouldStayInBookingFlow,
   answersDetailPrompt,
+  madeBookingProgress,
   buildBookingSummary,
   buildSystemPrompt,
   buildFullSystemPrompt,
   formatKnowledgeBase,
   type ChatbotSettings,
 } from "@/lib/messenger/chatbot"
-import { missingFieldsPrompt } from "@/lib/messenger/copy"
+import { missingFieldsPrompt, bookingResumeReminder } from "@/lib/messenger/copy"
 import { quickRepliesFor } from "@/lib/messenger/handoff"
 import { DEFAULT_RESOLVED_MESSAGE_EN, DEFAULT_RESOLVED_MESSAGE_FIL } from "@/types/chatbot"
 
@@ -351,6 +352,13 @@ describe("answersDetailPrompt", () => {
     expect(answersDetailPrompt({ lastBotText: fil, message: "Juan Dela Cruz" })).toBe(true)
   })
 
+  it("recognises an answer that ended with the booking resume reminder", () => {
+    for (const lang of ["english", "filipino", "both"] as const) {
+      const last = `We are open Tuesday to Sunday.\n\n${bookingResumeReminder(lang)}`
+      expect(answersDetailPrompt({ lastBotText: last, message: "Juan Dela Cruz" })).toBe(true)
+    }
+  })
+
   it("is false when the bot's last message was anything else", () => {
     expect(answersDetailPrompt({ lastBotText: "Our shop opens at 8am.", message: "Juan Dela Cruz" })).toBe(false)
     expect(answersDetailPrompt({ lastBotText: null, message: "Juan Dela Cruz" })).toBe(false)
@@ -361,5 +369,24 @@ describe("answersDetailPrompt", () => {
     expect(answersDetailPrompt({ lastBotText: reask, message: "what promos do you have?" })).toBe(false)
     expect(answersDetailPrompt({ lastBotText: reask, message: "   " })).toBe(false)
     expect(answersDetailPrompt({ lastBotText: reask, message: "a".repeat(121) })).toBe(false)
+  })
+})
+
+describe("madeBookingProgress", () => {
+  const empty = { full_name: null, contact_number: null, plate_number: null, vehicle_unit: null, email: null }
+
+  it("is false when nothing was added", () => {
+    expect(madeBookingProgress(empty, empty)).toBe(false)
+    expect(madeBookingProgress(null, empty)).toBe(false)
+    expect(madeBookingProgress({ ...empty, full_name: "Juan Dela Cruz" }, { ...empty, full_name: " juan dela cruz " })).toBe(false)
+  })
+
+  it("is true when a field is newly filled in", () => {
+    expect(madeBookingProgress(empty, { ...empty, full_name: "Juan Dela Cruz" })).toBe(true)
+    expect(madeBookingProgress(null, { ...empty, vehicle_unit: "Toyota Vios" })).toBe(true)
+  })
+
+  it("is true when an existing value is corrected", () => {
+    expect(madeBookingProgress({ ...empty, plate_number: "ABC 1234" }, { ...empty, plate_number: "ABC 1235" })).toBe(true)
   })
 })

@@ -31,6 +31,7 @@ import {
   needsIntentTiebreak,
   classifyAmbiguousIntent,
   applyIntentTiebreak,
+  madeBookingProgress,
   missingBookingFields,
   isPureConfirmation,
   isCompleteBooking,
@@ -102,6 +103,7 @@ import {
   pickCopy,
   resolveTurnLanguage,
   ALL_MISSING_FIELDS_LEADS,
+  bookingResumeReminder,
   type BotLanguage,
   type EscalationReason,
 } from "@/lib/messenger/copy"
@@ -686,7 +688,6 @@ async function handleInboundMessage(
     quickReply: Boolean(quickReplyPayload),
     humanRequested,
     reportIntent,
-    isBookingFlow: Boolean(is_booking_flow),
     awaitingConfirmation: Boolean(awaiting_confirmation),
     conflictPending: Boolean(conflict_pending),
     awaitingLinkVerification: Boolean(awaiting_link_verification),
@@ -1298,6 +1299,15 @@ async function handleInboundMessage(
     let confirmSummary = false
     if (acknowledgeDuplicate) {
       // handled above — no branch context, no re-gen, no escalation
+    } else if (missing.length > 0 && !signal && reply && !madeBookingProgress(booking_draft, extracted)) {
+      // The customer said something that is not a booking detail (most often a
+      // question, e.g. "I want to know your schedules first"). Keep the answer
+      // the model already wrote and add a reminder that the booking is still
+      // open. This used to be replaced by the same details request every time,
+      // and a third such message handed the customer to staff as "stuck".
+      escalate = false
+      await persistConfirmFlag(false)
+      reply = `${reply}\n\n${bookingResumeReminder(effectiveLang)}`
     } else if (missing.length > 0) {
       // Deterministic re-ask (never rephrases, never asks for a service type).
       // If the last two bot messages were already this same re-ask, the customer
