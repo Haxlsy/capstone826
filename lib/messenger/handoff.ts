@@ -1,7 +1,7 @@
 import { createAdminClient } from "@/lib/supabase/admin"
 import { insertMessage } from "@/lib/messenger/messenger-data"
 import { sendMessengerQuickReply, type MessengerQuickReply } from "@/lib/messenger/graph"
-import { quickReplyLabel, detectMessageLanguage, resolvedMessage, resolveTemplate, type BotLanguage } from "@/lib/messenger/copy"
+import { quickReplyLabel, detectMessageLanguage, resolveTurnLanguage, resolvedMessage, resolveTemplate, type BotLanguage } from "@/lib/messenger/copy"
 import { loadChatbotConfig } from "@/lib/messenger/chatbot"
 import { DEFAULT_RESOLVED_MESSAGE_EN, DEFAULT_RESOLVED_MESSAGE_FIL } from "@/types/chatbot"
 
@@ -183,7 +183,17 @@ export async function resumeBotAfterHandoff(psid: string): Promise<void> {
 
     // No more admin-configurable Response Language — same as the webhook
     // route, always detect the customer's own last message and match it.
-    const effectiveLang: BotLanguage = detectMessageLanguage(lastCustomerMsg?.message_body)
+    // Judged over their recent messages, not the last one alone, so a final
+    // "ok" or button tap doesn't turn a Tagalog conversation's buttons English.
+    const { data: recentCustomerMsgs } = await admin
+      .from("messenger_message")
+      .select("message_body")
+      .eq("conversation_id", conv.conversation_id)
+      .eq("sender_type", "customer")
+      .order("sent_at", { ascending: false })
+      .limit(10)
+    const earlier = (recentCustomerMsgs ?? []).slice(1).reverse().map((m) => m.message_body as string | null)
+    const effectiveLang: BotLanguage = resolveTurnLanguage(lastCustomerMsg?.message_body, earlier)
     const template = resolveTemplate(
       settings?.resolved_message_en, settings?.resolved_message_fil,
       DEFAULT_RESOLVED_MESSAGE_EN, DEFAULT_RESOLVED_MESSAGE_FIL,

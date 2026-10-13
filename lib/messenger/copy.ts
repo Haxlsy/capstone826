@@ -276,7 +276,17 @@ export const QUICK_REPLY_LABELS: Record<string, { english: string; filipino: str
  * Word-boundary matched, case-insensitive.
  */
 const FILIPINO_MARKERS =
-  /\b(ang|mga|ng|nang|sa|ko|mo|niya|natin|namin|nila|kayo|sila|hindi|oo|opo|po|ba|na|yung|yun|ito|iyon|paano|gusto|pwede|puwede|salamat|magkano|meron|wala|kailan|saan|sino|paki|pakisuri|pakipadala)\b/i
+  /\b(ang|mga|ng|nang|sa|ko|mo|niya|natin|namin|nila|kayo|sila|hindi|oo|opo|po|ba|na|yung|yun|ito|iyon|paano|gusto|pwede|puwede|salamat|magkano|meron|wala|kailan|saan|sino|paki|pakisuri|pakipadala|kumusta|kamusta|magandang|umaga|hapon|gabi|ako|ikaw|kami|tayo|akin|inyo|ano|bakit|kelan|nasaan|asan|ilan|ilang|gaano|lang|naman|rin|nga|daw|kasi|pero|sana|sige|talaga|siguro|tapos|matatapos|ngayon|bukas|mamaya|kahapon|dito|diyan|doon|yan|kotse|sasakyan|presyo|serbisyo|tanong|kunin|magpa\w+|nagpa\w+|pa-?book|pa-?schedule)\b/i
+
+/**
+ * English function words: enough to tell a customer has actually switched to
+ * English, as opposed to sending something with no language in it at all
+ * ("ok", a plate number, a name). Deliberately leaves out words Filipino
+ * speakers drop into Tagalog chats (hi, hello, ok, yes, no, thanks) and ones
+ * that are also Tagalog ("at", "may").
+ */
+const ENGLISH_MARKERS =
+  /\b(the|is|are|was|were|how|much|what|when|where|why|who|which|can|could|would|should|will|do|does|did|i|my|me|you|your|we|our|please|want|need|like|have|has|had|for|with|about|this|that|it|there|to|of|and|or|but|if|not|in|on|from|any|some)\b/i
 
 /**
  * Guesses whether a message is Filipino/Taglish or English, for callers that
@@ -286,6 +296,56 @@ const FILIPINO_MARKERS =
  */
 export function detectMessageLanguage(text: string | null | undefined): "english" | "filipino" {
   return text && FILIPINO_MARKERS.test(text) ? "filipino" : "english"
+}
+
+/** The language of a quick-reply button, when `text` is exactly one of the labels. */
+function quickReplyTitleLanguage(text: string): "english" | "filipino" | null {
+  const t = text.trim().toLowerCase()
+  for (const label of Object.values(QUICK_REPLY_LABELS)) {
+    if (label.filipino.toLowerCase() === t) return "filipino"
+    if (label.english.toLowerCase() === t) return "english"
+  }
+  return null
+}
+
+/** One message's language, or null when it gives no signal either way. */
+function decisiveLanguage(text: string | null | undefined): "english" | "filipino" | null {
+  if (!text) return null
+  // A tap arrives as the button's own title: keep the language of the button
+  // the customer chose, whatever words the title happens to contain.
+  const tapped = quickReplyTitleLanguage(text)
+  if (tapped) return tapped
+  // Checked before English so Taglish counts as Filipino, same as detectMessageLanguage.
+  if (FILIPINO_MARKERS.test(text)) return "filipino"
+  if (ENGLISH_MARKERS.test(text)) return "english"
+  return null
+}
+
+/**
+ * The language for this turn's fixed replies and quick-reply buttons.
+ *
+ * `detectMessageLanguage` judges one message alone and calls anything without
+ * a Filipino word English, which flipped a Tagalog conversation to English
+ * buttons whenever the customer tapped a button, replied "ok", or sent a plate
+ * or phone number. This keeps the conversation's language through those:
+ * a message with no signal inherits from the customer's most recent message
+ * that had one. A customer still switches by writing an actual English (or
+ * Filipino) sentence.
+ *
+ * `priorCustomerMessages` is oldest first, the order getConversationHistory
+ * returns. Defaults to English when nothing in the conversation is decisive.
+ */
+export function resolveTurnLanguage(
+  message: string | null | undefined,
+  priorCustomerMessages: readonly (string | null | undefined)[] = [],
+): "english" | "filipino" {
+  const current = decisiveLanguage(message)
+  if (current) return current
+  for (let i = priorCustomerMessages.length - 1; i >= 0; i--) {
+    const earlier = decisiveLanguage(priorCustomerMessages[i])
+    if (earlier) return earlier
+  }
+  return "english"
 }
 
 /**
