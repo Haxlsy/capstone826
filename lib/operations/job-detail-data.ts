@@ -1,6 +1,7 @@
 import { createAdminClient } from "@/lib/supabase/admin"
 import { jobCustomer } from "@/lib/operations/job-customer"
 import { computeStageDelays, isJobDelayed } from "@/lib/job-delay"
+import { loadStageCatalog, resolveJobStage } from "@/lib/job-stages"
 import { totalStageDurationMins, computeExpectedCompletion } from "@/lib/job-estimates"
 import { loadWorkSchedule } from "@/lib/operating-hours"
 
@@ -63,34 +64,13 @@ export async function getJobDetailData(id: string) {
   // this exact comment is about).
   if (historyError) throw new Error(`Failed to load status history: ${historyError.message}`)
 
-  const ssIds = [...new Set((stages ?? []).map((s: any) => s.service_stage_id as string).filter(Boolean))]
-  let ssRows: any[] = []
-  if (ssIds.length > 0) {
-    const { data } = await supabase
-      .from("service_stage")
-      .select("id, name, sequence_order, category_id, stage_duration_mins")
-      .in("id", ssIds)
-    ssRows = (data ?? []) as any[]
-  }
-  const ssMap = new Map(ssRows.map((r: any) => [r.id, r]))
-
-  const catIds = [...new Set(ssRows.map((r: any) => r.category_id).filter(Boolean) as string[])]
-  let catRows: any[] = []
-  if (catIds.length > 0) {
-    const { data } = await supabase
-      .from("workflow_category")
-      .select("id, name, display_color, technician_role")
-      .in("id", catIds)
-    catRows = (data ?? []) as any[]
-  }
-  const catMap = new Map(catRows.map((r: any) => [r.id, r]))
-  // Custom (job-only) stages have no service_stage_id to derive a category
-  // from via ssMap/catMap — they carry the category as a name in
-  // custom_stage_category instead (see supabase/migrations/20260422000002_custom_job_stages.sql).
-  // Matched by name against the same catRows so a custom stage groups into
-  // the same section as its seeded siblings instead of falling into its own
-  // stray "Unknown" group.
-  const catByName = new Map(catRows.map((r: any) => [r.name, r]))
+  // lib/job-stages.ts is the one shared definition of how a stage's name,
+  // order and category are resolved (per-job overrides first, then the
+  // service's template). A stage added for this job only has no
+  // service_stage_id and names its category in custom_stage_category (see
+  // supabase/migrations/20260422000002_custom_job_stages.sql).
+  const stageCatalog = await loadStageCatalog(supabase, (stages ?? []) as any[])
+  const ssMap = stageCatalog.templates as Map<string, any>
 
   // Per-round rework notes — additive history alongside round 0's
   // completion_notes (see supabase/migrations/20260917000006_stage_round_notes.sql).
@@ -152,16 +132,13 @@ export async function getJobDetailData(id: string) {
   const mappedStages = (() => {
     const mapped = (stages ?? []).map((s: any) => {
       const ss  = s.service_stage_id ? ssMap.get(s.service_stage_id) : null
-      const cat = ss?.category_id
-        ? catMap.get(ss.category_id)
-        : s.custom_stage_category
-          ? catByName.get(s.custom_stage_category)
-          : null
+      const resolved = resolveJobStage(s, stageCatalog)
+      const cat = resolved.category as any
       return {
         id: s.id,
         service_stage_id: s.service_stage_id ?? null,
-        name: s.custom_name ?? ss?.name ?? "—",
-        sequence_order: s.custom_sequence_order ?? ss?.sequence_order ?? 0,
+        name: resolved.name ?? "—",
+        sequence_order: resolved.sequence_order ?? 0,
         category_id: cat?.id ?? null,
         category_name: cat?.name ?? null,
         category_color: cat?.display_color ?? null,

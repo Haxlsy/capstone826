@@ -75,6 +75,8 @@ async function buildJobStatus(
       `
        status,
        stage_duration_mins,
+       custom_name,
+       custom_sequence_order,
        service_stage:service_stage_id(name, sequence_order, stage_duration_mins)`
     )
     .eq("job_order_id", job.id)
@@ -85,8 +87,10 @@ async function buildJobStatus(
       const rel = Array.isArray(s.service_stage) ? s.service_stage[0] : s.service_stage
       return {
         status: s.status,
-        name: rel?.name ?? null,
-        sequence_order: rel?.sequence_order ?? 0,
+        // Per-job overrides first (a stage renamed, reordered or added for
+        // this job), then the service's template. See lib/job-stages.ts.
+        name: s.custom_name ?? rel?.name ?? null,
+        sequence_order: s.custom_sequence_order ?? rel?.sequence_order ?? 0,
         duration_mins: (s.stage_duration_mins as number | null) ?? (rel?.stage_duration_mins ?? 0),
       }
     })

@@ -18,6 +18,7 @@ import { jobCustomer } from "@/lib/operations/job-customer"
 import { startRoleFor, canStartJob, headRoleLabel } from "@/lib/head-technician/start-job"
 import { loadJobStageRoles } from "@/lib/head-technician/stage-roles"
 import { recipientFromVehicle } from "@/lib/messenger/recipient"
+import { STAGE_OVERRIDE_COLUMNS, loadStageCatalog, resolveJobStage } from "@/lib/job-stages"
 
 export async function GET(
   _request: Request,
@@ -70,7 +71,7 @@ export async function GET(
       // Step 1: raw job_stage_progress rows
       admin
         .from("job_stage_progress")
-        .select("id, status, rework_instructions, handoff_notes, completion_notes, completed_at, stage_duration_mins, service_stage_id, current_rework_round, media:stage_media(id, file_url, media_type, rework_round)")
+        .select("id, status, rework_instructions, handoff_notes, completion_notes, completed_at, stage_duration_mins, service_stage_id, custom_name, custom_sequence_order, custom_stage_category, current_rework_round, media:stage_media(id, file_url, media_type, rework_round)")
         .eq("job_order_id", id),
     ])
 
@@ -80,12 +81,6 @@ export async function GET(
       console.error("[HT job detail] query failed — id:", id, "error:", error?.message, "code:", error?.code)
       return NextResponse.json({ error: error?.message ?? "Not found." }, { status: 404 })
     }
-
-    // Step 2: resolve service_stage details + category names via explicit two-step lookup.
-    // FK embedding (workflow_category(name)) silently returns null in this codebase.
-    const ssIds = (stageRows ?? [])
-      .map((s: any) => s.service_stage_id as string | null)
-      .filter(Boolean) as string[]
 
     // Per-round rework notes — one row per round the technician confirmed
     // rework on, additive history alongside round 0's completion_notes.
@@ -104,48 +99,29 @@ export async function GET(
       }
     }
 
-    type SSInfo = { name: string; sequence_order: number; category: string; category_id: string; category_role: string; category_color: string; stage_duration_mins: number }
-    const ssMap: Record<string, SSInfo> = {}
-    if (ssIds.length > 0) {
-      const { data: ssRows } = await admin
-        .from("service_stage")
-        .select("id, name, sequence_order, stage_duration_mins, category_id")
-        .in("id", ssIds)
-
-      // Step 2b: resolve category name + technician_role + display_color from workflow_category
-      const catIds = [...new Set(
-        (ssRows ?? []).map((s: any) => s.category_id as string | null).filter(Boolean)
-      )] as string[]
-
-      const catInfoMap: Map<string, { name: string; role: string; color: string }> = new Map()
-      if (catIds.length > 0) {
-        const { data: catRows } = await admin
-          .from("workflow_category")
-          .select("id, name, technician_role, display_color")
-          .in("id", catIds)
-        for (const c of (catRows ?? []) as any[]) {
-          catInfoMap.set(c.id as string, { name: c.name as string, role: c.technician_role as string, color: c.display_color as string ?? "blue" })
-        }
-      }
-
-      for (const ss of (ssRows ?? []) as any[]) {
-        const catInfo = catInfoMap.get(ss.category_id)
-        ssMap[ss.id] = {
-          name:                ss.name,
-          sequence_order:      ss.sequence_order,
-          stage_duration_mins: (ss as any).stage_duration_mins ?? 0,
-          category:            catInfo?.name  ?? "preparation",
-          category_id:         ss.category_id as string,
-          category_role:       catInfo?.role  ?? "detailer",
-          category_color:      catInfo?.color ?? "blue",
-        }
+    // Step 2: resolve each stage through lib/job-stages.ts, the one shared
+    // definition, so a stage renamed, reordered or added for this job reads
+    // the same here as on Operations' job detail. Reading the service's
+    // template alone showed an added stage as "0. Stage" under "preparation".
+    type SSInfo = { name: string; sequence_order: number; category: string; category_id: string | null; category_role: string; category_color: string; stage_duration_mins: number }
+    const stageCatalog = await loadStageCatalog(admin, (stageRows ?? []) as any[])
+    const infoFor = (row: any): SSInfo => {
+      const r = resolveJobStage(row, stageCatalog)
+      return {
+        name:                r.name ?? "Stage",
+        sequence_order:      r.sequence_order ?? 0,
+        stage_duration_mins: r.template_duration_mins ?? 0,
+        category:            r.category?.name ?? "preparation",
+        category_id:         r.category?.id ?? null,
+        category_role:       r.category?.technician_role ?? "detailer",
+        category_color:      r.category?.display_color ?? "blue",
       }
     }
 
     // Merge and sort by sequence_order so display order is always correct
     const stages = (stageRows ?? [])
-      .map((s: any) => ({ ...s, stageInfo: s.service_stage_id ? (ssMap[s.service_stage_id] ?? null) : null }))
-      .sort((a: any, b: any) => (a.stageInfo?.sequence_order ?? 999) - (b.stageInfo?.sequence_order ?? 999))
+      .map((s: any) => ({ ...s, stageInfo: infoFor(s) }))
+      .sort((a: any, b: any) => a.stageInfo.sequence_order - b.stageInfo.sequence_order)
 
     const j = job as any
     const leaderRole  = role === "head_installer" ? "head_installer" : "head_detailer"
@@ -179,8 +155,9 @@ export async function GET(
 
     // Build a map of categoryId → { role, minSeq, maxSeq } for handoff gating.
     const catSeqMap = new Map<string, { role: string; maxSeq: number; minSeq: number }>()
-    for (const [, info] of Object.entries(ssMap)) {
+    for (const { stageInfo: info } of stages as { stageInfo: SSInfo }[]) {
       const catId = info.category_id
+      if (!catId) continue
       const seq   = info.sequence_order
       const cur   = catSeqMap.get(catId)
       if (!cur) catSeqMap.set(catId, { role: info.category_role, maxSeq: seq, minSeq: seq })
@@ -538,19 +515,13 @@ export async function PATCH(
       {
         const { data: jsp } = await admin
           .from("job_stage_progress")
-          .select("service_stage_id")
+          .select(STAGE_OVERRIDE_COLUMNS)
           .eq("id", stage_id)
           .single()
-        const ssId = (jsp as any)?.service_stage_id as string | null
-        if (ssId) {
-          const { data: ss } = await admin
-            .from("service_stage")
-            .select("name, workflow_category:category_id(name)")
-            .eq("id", ssId)
-            .single()
-          stageName = (ss as any)?.name ?? stageName
-          const cat = (ss as any)?.workflow_category
-          categoryName = (Array.isArray(cat) ? cat[0]?.name : cat?.name) ?? null
+        if (jsp) {
+          const resolved = resolveJobStage(jsp as any, await loadStageCatalog(admin, [jsp as any]))
+          stageName = resolved.name ?? stageName
+          categoryName = resolved.category?.name ?? null
         }
       }
 
@@ -687,25 +658,16 @@ export async function PATCH(
       if (handoff_notes) {
         const { data: jspRows } = await admin
           .from("job_stage_progress")
-          .select("id, service_stage_id")
+          .select(`id, ${STAGE_OVERRIDE_COLUMNS}`)
           .eq("job_order_id", jobId)
 
-        const ssIds = (jspRows ?? []).map((s: any) => s.service_stage_id as string | null).filter(Boolean) as string[]
-        if (ssIds.length > 0) {
-          const { data: ssRows } = await admin
-            .from("service_stage")
-            .select("id, sequence_order")
-            .in("id", ssIds)
-            .eq("category_id", category_id)
-            .order("sequence_order", { ascending: false })
-            .limit(1)
-
-          if (ssRows && ssRows.length > 0) {
-            const lastJsp = (jspRows ?? []).find((s: any) => s.service_stage_id === ssRows[0].id)
-            if (lastJsp) {
-              await admin.from("job_stage_progress").update({ handoff_notes }).eq("id", lastJsp.id)
-            }
-          }
+        const catalog = await loadStageCatalog(admin, (jspRows ?? []) as any[])
+        const lastJsp = ((jspRows ?? []) as any[])
+          .map((r) => ({ id: r.id as string, resolved: resolveJobStage(r, catalog) }))
+          .filter((r) => r.resolved.category?.id === category_id)
+          .sort((a, b) => (b.resolved.sequence_order ?? 0) - (a.resolved.sequence_order ?? 0))[0]
+        if (lastJsp) {
+          await admin.from("job_stage_progress").update({ handoff_notes }).eq("id", lastJsp.id)
         }
       }
 
@@ -783,30 +745,14 @@ export async function PATCH(
       // Determine last_stage_role for this job (same logic as GET)
       const { data: allJspForRole } = await admin
         .from("job_stage_progress")
-        .select("id, status, service_stage_id")
+        .select(`id, status, ${STAGE_OVERRIDE_COLUMNS}`)
         .eq("job_order_id", jobId)
 
-      const allSsIdsForRole = (allJspForRole ?? [])
-        .map((s: any) => s.service_stage_id as string | null).filter(Boolean) as string[]
-      let jobLastStageRole = "detailer"
-      if (allSsIdsForRole.length > 0) {
-        const { data: allSsForRole } = await admin
-          .from("service_stage")
-          .select("id, sequence_order, category_id")
-          .in("id", allSsIdsForRole)
-        const allCatIds = [...new Set((allSsForRole ?? []).map((s: any) => s.category_id as string | null).filter(Boolean))] as string[]
-        if (allCatIds.length > 0) {
-          const { data: allCatRows } = await admin
-            .from("workflow_category")
-            .select("id, technician_role")
-            .in("id", allCatIds)
-          const catRoleMap = new Map((allCatRows ?? []).map((c: any) => [c.id as string, c.technician_role as string]))
-          const sorted = [...(allSsForRole ?? [])].sort((a: any, b: any) =>
-            (b.sequence_order as number) - (a.sequence_order as number)
-          )
-          jobLastStageRole = catRoleMap.get((sorted[0] as any)?.category_id) ?? "detailer"
-        }
-      }
+      const roleCatalog = await loadStageCatalog(admin, (allJspForRole ?? []) as any[])
+      const lastForRole = ((allJspForRole ?? []) as any[])
+        .map((r) => resolveJobStage(r, roleCatalog))
+        .sort((a, b) => (b.sequence_order ?? 0) - (a.sequence_order ?? 0))[0]
+      const jobLastStageRole = lastForRole?.category?.technician_role ?? "detailer"
 
       const expectedCallerRole = jobLastStageRole === "installer" ? "head_installer" : "head_detailer"
       if (callerRole !== expectedCallerRole) {
@@ -870,7 +816,7 @@ export async function PATCH(
       // before any write.
       const { data: targetRows } = await admin
         .from("job_stage_progress")
-        .select("id, service_stage_id")
+        .select(`id, ${STAGE_OVERRIDE_COLUMNS}`)
         .in("id", stage_ids)
         .eq("job_order_id", jobId)
 
@@ -878,32 +824,13 @@ export async function PATCH(
         return NextResponse.json({ error: "One or more stages are not part of this job." }, { status: 400 })
       }
 
-      const targetSsIds = (targetRows ?? [])
-        .map((r: any) => r.service_stage_id as string | null).filter(Boolean) as string[]
-      const ssCategory = new Map<string, string | null>()
-      const categoryRole = new Map<string, string>()
-      if (targetSsIds.length > 0) {
-        const { data: ssRows } = await admin
-          .from("service_stage")
-          .select("id, category_id")
-          .in("id", targetSsIds)
-        for (const ss of (ssRows ?? []) as any[]) ssCategory.set(ss.id, ss.category_id ?? null)
-        const catIds = [...new Set([...ssCategory.values()].filter(Boolean))] as string[]
-        if (catIds.length > 0) {
-          const { data: catRows } = await admin
-            .from("workflow_category")
-            .select("id, technician_role")
-            .in("id", catIds)
-          for (const c of (catRows ?? []) as any[]) categoryRole.set(c.id, c.technician_role)
-        }
-      }
-
+      const targetCatalog = await loadStageCatalog(admin, (targetRows ?? []) as any[])
       const notMine = stagesNotOwnedBy(
         callerRole,
-        (targetRows ?? []).map((r: any) => {
-          const catId = r.service_stage_id ? ssCategory.get(r.service_stage_id) : null
-          return { id: r.id as string, categoryRole: catId ? categoryRole.get(catId) : null }
-        }),
+        ((targetRows ?? []) as any[]).map((r) => ({
+          id: r.id as string,
+          categoryRole: resolveJobStage(r, targetCatalog).category?.technician_role ?? null,
+        })),
       )
       if (notMine.length > 0) {
         return NextResponse.json(

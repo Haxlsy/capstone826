@@ -3,6 +3,7 @@ import { createAdminClient } from "@/lib/supabase/admin"
 import { getCurrentUserProfile } from "@/lib/auth/guard"
 import { isJobDelayed, computeStageDelays, hasAnyStageDelayed, type StageForDelay } from "@/lib/job-delay"
 import { loadWorkSchedule } from "@/lib/operating-hours"
+import { buildStageCatalog, resolveJobStage } from "@/lib/job-stages"
 import { fmtDate } from "@/lib/time-display"
 
 export type TechnicianJob = {
@@ -91,7 +92,7 @@ export async function getHeadTechnicianJobs(userId: string) {
       .in("job_order_id", jobIds),
     admin
       .from("job_stage_progress")
-      .select("job_order_id, status, service_stage_id, stage_duration_mins")
+      .select("job_order_id, status, service_stage_id, custom_sequence_order, custom_stage_category, stage_duration_mins")
       .in("job_order_id", jobIds),
     admin
       .from("service_stage")
@@ -104,8 +105,10 @@ export async function getHeadTechnicianJobs(userId: string) {
 
   if (error) throw new Error(error.message)
 
-  const ssMap = new Map(((ssData ?? []) as SSRow[]).map((r) => [r.id, r]))
-  const catMap = new Map(((catData ?? []) as CatRow[]).map((r) => [r.id, r]))
+  // lib/job-stages.ts: stages renamed, reordered or added for one job are
+  // resolved the same way on every screen. Added stages used to be skipped
+  // here, so a card read "0/1 done" for a job with two stages.
+  const stageCatalog = buildStageCatalog((ssData ?? []) as SSRow[], (catData ?? []) as CatRow[])
 
   const groupsMap = new Map<string, Map<string, StageGroup>>()
   const jobStagesMap = new Map<string, any[]>()
@@ -114,15 +117,13 @@ export async function getHeadTechnicianJobs(userId: string) {
     if (!jobStagesMap.has(s.job_order_id)) jobStagesMap.set(s.job_order_id, [])
     jobStagesMap.get(s.job_order_id)!.push(s)
 
-    const ss = s.service_stage_id ? ssMap.get(s.service_stage_id) : null
-    if (!ss?.category_id) continue
-    const cat = catMap.get(ss.category_id)
+    const cat = resolveJobStage(s as any, stageCatalog).category
     if (!cat) continue
 
     if (!groupsMap.has(s.job_order_id)) groupsMap.set(s.job_order_id, new Map())
     const jobGroups = groupsMap.get(s.job_order_id)!
     if (!jobGroups.has(cat.id)) {
-      jobGroups.set(cat.id, { label: cat.name, color: cat.display_color, done: 0, total: 0 })
+      jobGroups.set(cat.id, { label: cat.name, color: cat.display_color ?? "blue", done: 0, total: 0 })
     }
     const g = jobGroups.get(cat.id)!
     g.total++
@@ -136,13 +137,13 @@ export async function getHeadTechnicianJobs(userId: string) {
     if (!j.actual_start_at) continue
     const stages = jobStagesMap.get(j.id) ?? []
     const shaped: StageForDelay[] = stages.map((s: any, idx: number) => {
-      const ss = s.service_stage_id ? ssMap.get(s.service_stage_id) : null
+      const resolved = resolveJobStage(s, stageCatalog)
       return {
         id: String(idx),
         status: s.status,
-        sequence_order: ss?.sequence_order ?? 0,
+        sequence_order: resolved.sequence_order ?? 0,
         stage_duration_mins: s.stage_duration_mins,
-        service_stage_duration_mins: ss?.stage_duration_mins ?? null,
+        service_stage_duration_mins: resolved.template_duration_mins,
       }
     })
     if (hasAnyStageDelayed(computeStageDelays(shaped, j.actual_start_at as string, schedule))) {

@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server"
+import { STAGE_OVERRIDE_COLUMNS, loadStageCatalog, resolveJobStage } from "@/lib/job-stages"
 import { cookies } from "next/headers"
 import { createClient } from "@/lib/supabase/server"
 import { createAdminClient } from "@/lib/supabase/admin"
@@ -39,8 +40,7 @@ export async function POST(
     const { data: stage, error: stageErr } = await admin
       .from("job_stage_progress")
       .select(
-        `id, status,
-         stage:service_stage_id(name, workflow_category:category_id(name)),
+        `id, status, ${STAGE_OVERRIDE_COLUMNS},
          media:stage_media(shareable_link, media_type, rework_round)`
       )
       .eq("id", stage_id)
@@ -72,11 +72,11 @@ export async function POST(
     const psid         = recipientFromVehicle(j?.customer).psid
     const cust         = jobCustomer(j)
     const customerName = cust.name ?? "Customer"
-    const stageName    = s.stage?.name ?? "Stage"
-    const stageCat     = Array.isArray(s.stage?.workflow_category)
-      ? s.stage.workflow_category[0]?.name
-      : s.stage?.workflow_category?.name
-    const categoryName = stageCat ?? null
+    // Resolved through lib/job-stages.ts so a stage renamed or added for this
+    // job is named to the customer the way Operations sees it.
+    const resolved     = resolveJobStage(s, await loadStageCatalog(admin, [s]))
+    const stageName    = resolved.name ?? "Stage"
+    const categoryName = resolved.category?.name ?? null
     const serviceName  = j?.service?.name ?? null
     const vehicleUnit  = cust.vehicle
     const plate        = cust.plate
