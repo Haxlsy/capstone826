@@ -8,6 +8,14 @@ const GRAPH_API_VERSION = "v26.0"
 const GRAPH_API_BASE = `https://graph.facebook.com/${GRAPH_API_VERSION}`
 const GRAPH_API_URL = `${GRAPH_API_BASE}/me/messages`
 
+// Every call to Meta is bounded. Without a limit, a slow or unresponsive
+// Graph API left the caller waiting indefinitely; the head technician's
+// "mark stage done" request sat on its spinner for the whole of it. A timeout
+// throws, which each function below already treats as a failed send.
+// Video gets longer: Meta downloads the file itself before answering.
+const GRAPH_TIMEOUT_MS = 15_000
+const VIDEO_SEND_TIMEOUT_MS = 60_000
+
 /**
  * `RESPONSE` answers a message the customer just sent; `UPDATE` is a message
  * the shop starts on its own (stage done, ready for release). Both are only
@@ -90,6 +98,7 @@ export async function sendMessengerQuickReply(
       `${GRAPH_API_URL}?access_token=${token}`,
       {
         method: "POST",
+        signal: AbortSignal.timeout(GRAPH_TIMEOUT_MS),
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           recipient:      { id: psid },
@@ -125,6 +134,7 @@ export async function sendMessengerTextDetailed(
       `${GRAPH_API_URL}?access_token=${token}`,
       {
         method: "POST",
+        signal: AbortSignal.timeout(GRAPH_TIMEOUT_MS),
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           recipient:      { id: psid },
@@ -177,6 +187,7 @@ export async function sendMessengerImage(
       `${GRAPH_API_URL}?access_token=${token}`,
       {
         method: "POST",
+        signal: AbortSignal.timeout(GRAPH_TIMEOUT_MS),
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           recipient: { id: psid },
@@ -226,6 +237,7 @@ export async function sendMessengerVideo(
       `${GRAPH_API_URL}?access_token=${token}`,
       {
         method: "POST",
+        signal: AbortSignal.timeout(VIDEO_SEND_TIMEOUT_MS),
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           recipient: { id: psid },
@@ -272,6 +284,7 @@ export async function sendSenderAction(
       `${GRAPH_API_URL}?access_token=${token}`,
       {
         method: "POST",
+        signal: AbortSignal.timeout(GRAPH_TIMEOUT_MS),
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           recipient:     { id: psid },
@@ -300,7 +313,8 @@ export async function fetchMessengerProfile(psid: string): Promise<{
 
   try {
     const res = await fetch(
-      `${GRAPH_API_BASE}/${psid}?fields=name,profile_pic&access_token=${token}`
+      `${GRAPH_API_BASE}/${psid}?fields=name,profile_pic&access_token=${token}`,
+      { signal: AbortSignal.timeout(GRAPH_TIMEOUT_MS) }
     )
     const json = await res.json().catch(() => null)
     return {

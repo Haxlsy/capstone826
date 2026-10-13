@@ -35,3 +35,41 @@ export function createSequenceGuard(): SequenceGuard {
     },
   }
 }
+
+/**
+ * Tracks a page's "loading" flag across overlapping reloads, some of which
+ * show the loading state (a visible reload) and some of which do not (a
+ * silent, in-place refresh from a realtime event or regaining focus).
+ *
+ * The rule: whichever reload is the LATEST to have started turns loading off
+ * when it finishes, whether it was visible or silent. A superseded reload
+ * leaves the flag alone, since the newer one will clear it.
+ *
+ * Without this, a visible reload that was superseded by a silent one stopped
+ * early without clearing the flag, and the silent one never touched it, so
+ * the page sat on its loading skeleton until it was reopened. On the Head
+ * Technician job page that happened after most actions, because the action's
+ * own database change triggered the silent reload.
+ */
+export interface LoadTracker {
+  /** Start a reload. A visible one turns loading on. Returns its token. */
+  begin(opts?: { silent?: boolean }): number
+  /** Whether this reload is still the latest, i.e. its result should be applied. */
+  isCurrent(token: number): boolean
+  /** Finish a reload. The latest one turns loading off. */
+  end(token: number): void
+}
+
+export function createLoadTracker(setLoading: (loading: boolean) => void): LoadTracker {
+  const guard = createSequenceGuard()
+  return {
+    begin: (opts) => {
+      if (!opts?.silent) setLoading(true)
+      return guard.next()
+    },
+    isCurrent: (token) => guard.isCurrent(token),
+    end: (token) => {
+      if (guard.isCurrent(token)) setLoading(false)
+    },
+  }
+}

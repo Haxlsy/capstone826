@@ -14,34 +14,15 @@ import { Button } from "@/components/ui/Button";
 import { Textarea, FieldLabel } from "@/components/ui/Field";
 import { categorySwatch } from "@/lib/ui/category-colors";
 import { fmtDateTime, fmtDateTimeShort } from "@/lib/time-display";
+import { createLoadTracker } from "@/lib/fetch-sequence";
 import { HeadTechJobDetailSkeleton } from "@/app/head-technician/[jobId]/loading";
 import { useRealtimeRefetch } from "@/hooks/useRealtimeRefetch";
 import { VideoRecorderModal } from "./VideoRecorderModal";
 import { headRoleLabel, type HeadRole } from "@/lib/head-technician/start-job";
 import { MAX_VIDEO_MB, MAX_VIDEO_BYTES, MAX_PHOTOS_PER_ROUND, MAX_VIDEOS_PER_ROUND } from "@/lib/media/limits";
+import { compressImage } from "@/lib/media/compress-image";
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
-
-function compressImage(file: File, maxWidth = 1920, quality = 0.82): Promise<File> {
-  return new Promise((resolve) => {
-    const img = new Image();
-    const url = URL.createObjectURL(file);
-    img.onload = () => {
-      URL.revokeObjectURL(url);
-      let { width, height } = img;
-      if (width > maxWidth) { height = Math.round((height * maxWidth) / width); width = maxWidth; }
-      const canvas = document.createElement("canvas");
-      canvas.width = width; canvas.height = height;
-      canvas.getContext("2d")?.drawImage(img, 0, 0, width, height);
-      canvas.toBlob(
-        (blob) => resolve(blob ? new File([blob], file.name.replace(/\.[^.]+$/, ".jpg"), { type: "image/jpeg" }) : file),
-        "image/jpeg", quality,
-      );
-    };
-    img.onerror = () => { URL.revokeObjectURL(url); resolve(file); };
-    img.src = url;
-  });
-}
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -180,16 +161,18 @@ export default function HeadTechJobHistoryPage({ jobId }: { jobId: string }) {
   // visibility regain, the initial mount) — if two overlap, a slower
   // EARLIER-dispatched request landing after a faster LATER one must not
   // overwrite the fresher state it already applied with what it read before.
-  const loadSeqRef = useRef(0);
+  // The tracker also owns the `loading` flag: the latest reload to finish
+  // clears it, silent or not (see createLoadTracker). The page used to stay
+  // on its skeleton when a visible reload was superseded by a silent one.
+  const loadTracker = useRef(createLoadTracker(setLoading)).current;
 
   const load = useCallback(async (opts?: { silent?: boolean }) => {
-    const seq = ++loadSeqRef.current;
-    if (!opts?.silent) setLoading(true);
+    const seq = loadTracker.begin(opts);
     setLoadError(null);
     try {
       const res  = await fetch(`/api/head-technician/jobs/${jobId}`);
       const json = await res.json();
-      if (seq !== loadSeqRef.current) return; // superseded by a newer load()
+      if (!loadTracker.isCurrent(seq)) return; // superseded by a newer load()
       if (!res.ok) { setLoadError(json?.error ?? `HTTP ${res.status}`); return; }
       // Merge, don't replace: on mobile, opening the native camera/gallery
       // picker backgrounds the page, and returning from it fires
@@ -205,12 +188,12 @@ export default function HeadTechJobHistoryPage({ jobId }: { jobId: string }) {
       if (json.job) setJob((prev) => mergeInPendingMedia(prev, json.job));
       else setLoadError("No job data returned.");
     } catch (err: unknown) {
-      if (seq !== loadSeqRef.current) return;
+      if (!loadTracker.isCurrent(seq)) return;
       setLoadError(err instanceof Error ? err.message : "Network error");
     } finally {
-      if (!opts?.silent && seq === loadSeqRef.current) setLoading(false);
+      loadTracker.end(seq);
     }
-  }, [jobId]);
+  }, [jobId, loadTracker]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -502,7 +485,8 @@ export default function HeadTechJobHistoryPage({ jobId }: { jobId: string }) {
       if (!res.ok) throw new Error(json?.error ?? "Failed to approve.");
       setApprovingCategoryId(null);
       setHandoffNotes("");
-      await load();
+      // In place: the job is already on screen, so no full-page skeleton.
+      await load({ silent: true });
     } catch (err: unknown) {
       toast.error(err instanceof Error ? err.message : "Failed to approve.");
     } finally {
@@ -523,7 +507,7 @@ export default function HeadTechJobHistoryPage({ jobId }: { jobId: string }) {
       const json = await res.json();
       if (!res.ok) throw new Error(json?.error ?? "Failed to flag rework");
       closeRework();
-      await load();
+      await load({ silent: true });
     } catch (err: unknown) {
       setReworkError(err instanceof Error ? err.message : String(err));
     } finally { setSubmittingRework(false); }
