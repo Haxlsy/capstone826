@@ -97,7 +97,7 @@ import {
   complaintClarify,
   resolveTemplate,
   pickCopy,
-  detectMessageLanguage,
+  resolveTurnLanguage,
   ALL_MISSING_FIELDS_LEADS,
   type BotLanguage,
   type EscalationReason,
@@ -362,7 +362,15 @@ async function handleInboundMessage(
   // fixed-copy reply this turn always detects the customer's own message and
   // matches it, same as the AI's free-text replies (buildSystemPrompt's own
   // per-turn detect-and-match instruction).
-  const effectiveLang: BotLanguage = detectMessageLanguage(messageBody)
+  //
+  // Judged across the conversation, not this message alone: a button tap, an
+  // "ok", or a plate number carries no language, so it inherits from what the
+  // customer last wrote (see resolveTurnLanguage). `history` was loaded
+  // before this message was inserted, so it holds only earlier turns.
+  const effectiveLang: BotLanguage = resolveTurnLanguage(
+    messageBody,
+    history.filter((h) => h.role === "user").map((h) => h.text),
+  )
 
   // Admin-editable Message Templates, each resolved against its built-in
   // default once per turn and reused at every send site below.
