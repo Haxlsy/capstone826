@@ -37,6 +37,8 @@ interface Props {
   customDescription:  string
   customDurationMins: number | null
   customStages:       Stage[]
+  /** A message per invalid stage id (see lib/operations/job-stage-validation.ts). */
+  stageErrors?:       Record<string, string>
   onNameChange:        (v: string) => void
   onDescriptionChange: (v: string) => void
   onDurationChange:    (v: number | null) => void
@@ -62,6 +64,7 @@ function StageList({
   accentDrag,
   accentFocus,
   accentAdd,
+  stageErrors,
   onDragStart,
   onDragEnter,
   onDragEnd,
@@ -78,6 +81,7 @@ function StageList({
   accentDrag:       string
   accentFocus:      string
   accentAdd:        string
+  stageErrors:      Record<string, string>
   onDragStart:      (globalIndex: number) => void
   onDragEnter:      (globalIndex: number) => void
   onDragEnd:        () => void
@@ -97,9 +101,10 @@ function StageList({
         const durMins = stage.stage_duration_mins ?? 0
         const durHH   = Math.floor(durMins / 60)
         const durMM   = durMins % 60
+        const problem = stageErrors[stage.id]
         return (
+          <div key={stage.id} className="flex flex-col gap-1">
           <div
-            key={stage.id}
             draggable
             onDragStart={() => onDragStart(stage.globalIndex)}
             onDragEnter={() => onDragEnter(stage.globalIndex)}
@@ -107,6 +112,8 @@ function StageList({
             className={`flex items-center gap-2 rounded-sm border px-2 py-1.5 transition-colors ${
               dragging && dragItemRef.current === stage.globalIndex
                 ? `${accentDrag} opacity-50`
+                : problem
+                  ? "border-status-delayed/60 bg-status-delayed/5"
                 : stage.isNew
                   ? "border-dashed border-border bg-surface"
                   : "border-border-subtle bg-surface-subtle hover:border-border"
@@ -147,6 +154,10 @@ function StageList({
               </button>
             )}
           </div>
+          {problem && (
+            <p role="alert" className="pl-8 text-[10px] font-medium text-status-delayed">{problem}</p>
+          )}
+          </div>
         )
       })}
 
@@ -172,6 +183,7 @@ export default function ServiceOverridePanel({
   customDescription,
   customDurationMins,
   customStages,
+  stageErrors = {},
   onNameChange,
   onDescriptionChange,
   onDurationChange,
@@ -470,6 +482,7 @@ export default function ServiceOverridePanel({
                     accentDrag={accent.drag}
                     accentFocus={accent.focus}
                     accentAdd={accent.add}
+                    stageErrors={stageErrors}
                     onDragStart={handleDragStart}
                     onDragEnter={handleDragEnter}
                     onDragEnd={() => setDragging(false)}

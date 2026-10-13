@@ -4,6 +4,7 @@ import { useState, useEffect, useRef, useMemo } from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { CheckCircle2, User, Phone, Mail, IdCard, Car, Info } from "lucide-react"
+import { validateJobStages } from "@/lib/operations/job-stage-validation"
 import ServiceOverridePanel, { type Stage } from "./ServiceOverridePanel"
 import JobOrderConfirmDialog, { type JobOrderSummary } from "./JobOrderConfirmDialog"
 import { fmtDateTime } from "@/lib/time-display"
@@ -60,6 +61,8 @@ interface CrewMember {
   availability_override_date: string | null
 }
 
+const STAGES_INVALID_MSG = "Fix the highlighted stages in the service panel."
+
 interface FieldErrors {
   customer?:      string
   customerName?:  string
@@ -68,6 +71,7 @@ interface FieldErrors {
   email?:         string
   vehicleUnit?:   string
   service?:       string
+  stages?:        string
   scheduledAt?:   string
   headDetailer?:  string
   headInstaller?: string
@@ -222,6 +226,10 @@ export default function AddJobOrderForm() {
 
   const [loading,        setLoading]        = useState(false)
   const [fieldErrors,    setFieldErrors]    = useState<FieldErrors>({})
+  // Per-stage problems in the Service Override panel. Computed live so a
+  // message clears the moment its stage is fixed, but only shown once a
+  // submit has been attempted (a stage just added is empty by design).
+  const [showStageErrors, setShowStageErrors] = useState(false)
   const [apiError,       setApiError]       = useState<string | null>(null)
   const [success,        setSuccess]        = useState(false)
   const [queued,         setQueued]         = useState(false)
@@ -343,6 +351,7 @@ export default function AddJobOrderForm() {
     setManualVehicleUnit(blank.fields.vehicle)
     setIsNameMatch(false)
     setFieldErrors({})
+    setShowStageErrors(false)
   }
 
   // Name is deliberately never an auto-match trigger (see handleTriggerEdit) —
@@ -499,6 +508,8 @@ export default function AddJobOrderForm() {
   const plateQueued = !queued && isVehicleQueued(queuedVehicleSet, { plate: manualPlateNumber })
   const plateLiveError = plateDuplicate ? PLATE_DUPLICATE_MSG : plateQueued ? PLATE_QUEUED_MSG : undefined
 
+  const stageProblems = useMemo(() => validateJobStages(customStages), [customStages])
+
   function validate(): FieldErrors {
     const errs: FieldErrors = {}
     if (!useManualCustomer && !selectedCustomerId)
@@ -530,6 +541,9 @@ export default function AddJobOrderForm() {
       errs.service = "Please select a service type."
     } else if (!selectedServiceId) {
       errs.service = "Please select a service name from the panel."
+    }
+    if (Object.keys(stageProblems).length > 0) {
+      errs.stages = STAGES_INVALID_MSG
     }
     if (!scheduledAt) {
       errs.scheduledAt = isPPF
@@ -685,6 +699,7 @@ export default function AddJobOrderForm() {
   async function handleConfirmClick() {
     setApiError(null)
     const errs = validate()
+    setShowStageErrors(true)
     if (Object.keys(errs).length > 0) { setFieldErrors(errs); return }
     setFieldErrors({})
 
@@ -1200,6 +1215,7 @@ export default function AddJobOrderForm() {
                 {uniqueServiceTypes.map((type) => <option key={type} value={type}>{type}</option>)}
               </select>
               <FieldError msg={fieldErrors.service} />
+              <FieldError msg={showStageErrors && Object.keys(stageProblems).length > 0 ? STAGES_INVALID_MSG : undefined} />
             </div>
             <div className="flex flex-col gap-1.5">
               <label className="text-xs font-medium text-body">
@@ -1397,6 +1413,7 @@ export default function AddJobOrderForm() {
           customDescription={customDescription}
           customDurationMins={customDurationMins}
           customStages={customStages}
+          stageErrors={showStageErrors ? stageProblems : undefined}
           onNameChange={setCustomServiceName}
           onDescriptionChange={setCustomDescription}
           onDurationChange={setCustomDurationMins}
