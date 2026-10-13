@@ -238,6 +238,23 @@ describe("buildSystemPrompt — booking guardrails (Testing Notes #8, #10)", () 
     booking_message_fil: "Susundan ka ng staff namin para kumpirmahin ang booking.",
   }
 
+  describe("personality", () => {
+    const friendly = buildSystemPrompt({ ...settings, personality: "friendly" })
+    const formal = buildSystemPrompt({ ...settings, personality: "formal" })
+
+    it("gives Friendly and Formal clearly different instructions", () => {
+      expect(friendly).not.toBe(formal)
+      expect(friendly).toContain("HOW TO SOUND FRIENDLY")
+      expect(formal).not.toContain("HOW TO SOUND FRIENDLY")
+      expect(formal).toContain("no emoji")
+    })
+
+    it("keeps Friendly calm in serious moments and strict about facts", () => {
+      expect(friendly).toContain("SERIOUS MOMENTS")
+      expect(friendly).toContain("never the facts")
+    })
+  })
+
   it("never asks the model to send a status message — the system sends it", () => {
     const prompt = buildSystemPrompt(settings)
     // The admin's wording is sent verbatim by the system; it must never reach the
