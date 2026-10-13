@@ -104,6 +104,7 @@ import {
 } from "@/lib/messenger/copy"
 import { logAudit } from "@/hooks/audit-helpers"
 import { notifyRole } from "@/lib/notify-role"
+import { verifyMetaSignature } from "@/lib/messenger/signature"
 
 const VERIFY_TOKEN = process.env.META_VERIFY_TOKEN!
 
@@ -228,9 +229,25 @@ interface MessengerEvent {
 }
 
 export async function POST(req: NextRequest) {
+  // Read the body as raw text first: Meta's signature covers the exact bytes
+  // it sent, so it has to be checked before (not after) JSON parsing.
+  const rawBody = await req.text()
+
+  // Anyone who learns this URL can POST fake "customer messages" to it. Meta
+  // signs every real delivery with the app's App Secret; reject the rest.
+  const appSecret = process.env.META_APP_SECRET
+  if (appSecret) {
+    if (!verifyMetaSignature(rawBody, req.headers.get("x-hub-signature-256"), appSecret)) {
+      console.error("[webhook/facebook] rejected: missing or invalid X-Hub-Signature-256")
+      return NextResponse.json({ received: false, error: "Invalid signature" }, { status: 401 })
+    }
+  } else {
+    console.warn("[webhook/facebook] META_APP_SECRET is not set: webhook signatures are NOT being verified")
+  }
+
   let body: any
   try {
-    body = await req.json()
+    body = JSON.parse(rawBody)
   } catch {
     return NextResponse.json({ received: false, error: "Invalid JSON" }, { status: 400 })
   }

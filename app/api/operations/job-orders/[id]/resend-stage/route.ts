@@ -2,7 +2,7 @@ import { NextResponse } from "next/server"
 import { cookies } from "next/headers"
 import { createClient } from "@/lib/supabase/server"
 import { createAdminClient } from "@/lib/supabase/admin"
-import { sendMessengerText, sendMessengerImage, sendMessengerVideo } from "@/lib/messenger/graph"
+import { sendMessengerTextDetailed, sendMessengerImage, sendMessengerVideo, describeSendError, type MessengerSendError } from "@/lib/messenger/graph"
 import { buildStageUpdateMessage } from "@/lib/messenger/stage-update"
 import { getRoleCaller } from "@/lib/auth/caller"
 import { recipientFromVehicle } from "@/lib/messenger/recipient"
@@ -99,6 +99,7 @@ export async function POST(
     const completedCount = (allStages ?? []).filter((r: any) => r.status === "done").length
 
     let sendSuccess = false
+    let sendError: MessengerSendError | null = null
 
     if (psid && process.env.META_PAGE_ACCESS_TOKEN) {
       const message = buildStageUpdateMessage({
@@ -113,14 +114,15 @@ export async function POST(
       })
 
       try {
-        const textMid = await sendMessengerText(psid, message)
+        const { mid: textMid, error } = await sendMessengerTextDetailed(psid, message, "UPDATE")
+        sendError = error
         if (textMid) {
           // Optionally attach first photo/video if available
           if (photos.length > 0) {
-            await sendMessengerImage(psid, photos[0])
+            await sendMessengerImage(psid, photos[0], "UPDATE")
           }
           if (videos.length > 0) {
-            await sendMessengerVideo(psid, videos[0])
+            await sendMessengerVideo(psid, videos[0], "UPDATE")
           }
           sendSuccess = true
         }
@@ -146,7 +148,7 @@ export async function POST(
         ? "Customer has no Messenger PSID linked."
         : !process.env.META_PAGE_ACCESS_TOKEN
         ? "Messenger integration is not configured."
-        : "Messenger API returned an error."
+        : describeSendError(sendError)
 
       return NextResponse.json(
         { error: `Send failed: ${reason}`, messenger_sent: false },

@@ -650,12 +650,12 @@ export async function PATCH(
               totalCount,
             })
 
-            const textMid = await sendMessengerText(psid, message)
+            const textMid = await sendMessengerText(psid, message, "UPDATE")
             if (textMid && photos.length > 0) {
-              await sendMessengerImage(psid, photos[0])
+              await sendMessengerImage(psid, photos[0], "UPDATE")
             }
             if (textMid && videos.length > 0) {
-              await sendMessengerVideo(psid, videos[0])
+              await sendMessengerVideo(psid, videos[0], "UPDATE")
             }
 
             await admin
