@@ -18,6 +18,7 @@ import {
   MISSING_FIELDS_LEADS,
   ALL_MISSING_FIELDS_LEADS,
   ALL_BOOKING_RESUME_REMINDERS,
+  BOOKING_FIELD_EXAMPLES,
 } from "@/lib/messenger/copy"
 import {
   DEFAULT_AI_DISABLED_MESSAGE,
@@ -959,6 +960,35 @@ export function mergeBookingDetails(
 }
 
 /**
+ * Clears any detail the model lifted from our own example text. The missing-
+ * details request shows an example beside each field ("e.g. Juan Dela Cruz"),
+ * and the model reads the whole conversation, bot messages included, so it
+ * can hand an example back as if the customer had given it. A value is only
+ * cleared when it equals the example AND the customer never typed it.
+ */
+export function dropUnsaidExamples(
+  details: CustomerDetails,
+  customerTexts: readonly (string | null | undefined)[],
+): CustomerDetails {
+  const said = customerTexts.map((t) => (t ?? "").toLowerCase()).join("\n")
+  const compact = (v: string) => v.toLowerCase().replace(/[^a-z0-9]/g, "")
+  const out = { ...details }
+  for (const f of BOOKING_FIELDS) {
+    const value = details[f.key]
+    if (!value) continue
+    const example = BOOKING_FIELD_EXAMPLES[f.key]
+    const isExample =
+      compact(value) === compact(example) ||
+      // "+63 917 123 4567" is the same example number as "0917 123 4567".
+      (f.key === "contact_number" && compact(value).slice(-10) === compact(example).slice(-10))
+    if (!isExample) continue
+    const words = example.toLowerCase().split(/[^a-z0-9]+/).filter(Boolean)
+    if (!words.every((w) => said.includes(w))) out[f.key] = null
+  }
+  return out
+}
+
+/**
  * True when `after` holds a booking detail that `before` did not: a field
  * newly filled in, or one whose value changed. The webhook uses this to tell
  * a reply that supplies a detail from one that does not (a question asked in
@@ -1248,7 +1278,7 @@ Each field must contain ONLY its own kind of information — never combine or ap
   // Instruct the model to also surface any customer booking details it sees so
   // the webhook can store them in the inquiry's extracted_* columns. Even when
   // the reply escalates, the details must still be returned.
-  systemPrompt += `\n\nAlways include any customer details you can identify from the conversation in the JSON "customer" object: full_name, contact_number, plate_number, vehicle_unit, and email. Leave any field you cannot determine as null. These are only noted for follow-up by our Sales team. Even when you escalate or answer with a short acknowledgement, you MUST still return every customer detail visible anywhere in the conversation in the "customer" object.`
+  systemPrompt += `\n\nAlways include any customer details you can identify from the conversation in the JSON "customer" object: full_name, contact_number, plate_number, vehicle_unit, and email. Leave any field you cannot determine as null. Take details ONLY from the customer's own messages. Our own messages show examples of the expected format (e.g. "Juan Dela Cruz", "0917 123 4567", "ABC 1234", "2025 Black Toyota Vios", "juan@email.com"); never return one of those examples unless the customer typed it themselves. These are only noted for follow-up by our Sales team. Even when you escalate or answer with a short acknowledgement, you MUST still return every customer detail visible anywhere in the conversation in the "customer" object.`
 
   // Classify the customer's latest message. The webhook fully controls what
   // happens for each of these three (the graduated warning ladder for
@@ -1314,13 +1344,16 @@ Each field must contain ONLY its own kind of information — never combine or ap
           ? parsed.violation
           : "none",
       customer: c && typeof c === "object"
-        ? {
-            full_name:      sanitizeDetail(c.full_name),
-            contact_number: sanitizeDetail(c.contact_number),
-            plate_number:   sanitizeDetail(c.plate_number),
-            vehicle_unit:   sanitizeVehicleUnit(c.vehicle_unit),
-            email:          sanitizeDetail(c.email),
-          }
+        ? dropUnsaidExamples(
+            {
+              full_name:      sanitizeDetail(c.full_name),
+              contact_number: sanitizeDetail(c.contact_number),
+              plate_number:   sanitizeDetail(c.plate_number),
+              vehicle_unit:   sanitizeVehicleUnit(c.vehicle_unit),
+              email:          sanitizeDetail(c.email),
+            },
+            [...history.filter((h) => h.role === "user").map((h) => h.text), message],
+          )
         : null,
     }
   } catch {
@@ -1418,7 +1451,7 @@ export async function extractCustomerDetails(input: {
   const { message, history = [], settings, system_prompt, knowledge } = input
 
   let systemPrompt = buildRuntimeSystemPrompt(settings, system_prompt, knowledge)
-  systemPrompt += `\n\nExtract the customer's booking details from the conversation. Return them in the JSON "customer" object: full_name, contact_number, plate_number, vehicle_unit, and email. For each field, use the most recent value the customer has given for that specific field; if their latest message does not mention a field they already provided earlier, keep the earlier value — never return null for a detail that appears anywhere in the conversation. Leave a field null only when the customer has never provided it. These are only noted for follow-up by our Sales team.
+  systemPrompt += `\n\nExtract the customer's booking details from the conversation. Return them in the JSON "customer" object: full_name, contact_number, plate_number, vehicle_unit, and email. For each field, use the most recent value the customer has given for that specific field; if their latest message does not mention a field they already provided earlier, keep the earlier value — never return null for a detail that appears anywhere in the conversation. Leave a field null only when the customer has never provided it. Take details ONLY from the customer's own messages. Our own messages show examples of the expected format (e.g. "Juan Dela Cruz", "0917 123 4567", "ABC 1234", "2025 Black Toyota Vios", "juan@email.com"); never return one of those examples unless the customer typed it themselves. These are only noted for follow-up by our Sales team.
 
 Each field must contain ONLY its own kind of information — never combine or append another field's value into a different field. If the customer sends everything in one message, e.g. "Juan Dela Cruz, 09171234567, ABC 1234, Toyota Vios, juan@email.com", extract vehicle_unit as exactly "Toyota Vios" — NOT "Toyota Vios, 09171234567, juan@email.com" or any other field's value tacked on. A phone number, email address, or plate number must never appear inside vehicle_unit (or any other field besides its own).`
 
@@ -1464,13 +1497,16 @@ Each field must contain ONLY its own kind of information — never combine or ap
     const c = parsed.customer as Record<string, unknown> | null
     if (!c || typeof c !== "object") return null
 
-    return {
-      full_name:      sanitizeDetail(c.full_name),
-      contact_number: sanitizeDetail(c.contact_number),
-      plate_number:   sanitizeDetail(c.plate_number),
-      vehicle_unit:   sanitizeVehicleUnit(c.vehicle_unit),
-      email:          sanitizeDetail(c.email),
-    }
+    return dropUnsaidExamples(
+      {
+        full_name:      sanitizeDetail(c.full_name),
+        contact_number: sanitizeDetail(c.contact_number),
+        plate_number:   sanitizeDetail(c.plate_number),
+        vehicle_unit:   sanitizeVehicleUnit(c.vehicle_unit),
+        email:          sanitizeDetail(c.email),
+      },
+      [...history.filter((h) => h.role === "user").map((h) => h.text), message],
+    )
   } catch {
     return null
   }

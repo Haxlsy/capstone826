@@ -72,26 +72,47 @@ export const ALL_MISSING_FIELDS_LEADS: string[] = [
   MISSING_FIELDS_LEADS.filipino,
 ]
 
-const FIELD_LABELS: Record<string, { english: string; filipino: string }> = {
-  "full name":      { english: "full name",      filipino: "Buong pangalan" },
-  "contact number": { english: "contact number", filipino: "Numero ng telepono" },
-  "plate number":   { english: "plate number",   filipino: "Plate number" },
-  "vehicle":        { english: "vehicle",        filipino: "Sasakyan (brand at model)" },
-  "email":          { english: "email",          filipino: "Email address" },
-  // The labels missingBookingFields actually passes for these two. Without
-  // them the Filipino re-ask left "Vehicle Unit" and "Email Address" in English.
-  "vehicle unit":   { english: "vehicle unit",   filipino: "Sasakyan (brand at model)" },
-  "email address":  { english: "email address",  filipino: "Email address" },
+/**
+ * What a well-formed answer looks like for each booking detail, shown next to
+ * the field in the missing-details request. The extraction code also checks
+ * against these, so an example is never recorded as the customer's own detail
+ * (see dropUnsaidExamples in lib/messenger/chatbot.ts).
+ */
+export const BOOKING_FIELD_EXAMPLES = {
+  full_name:      "Juan Dela Cruz",
+  contact_number: "0917 123 4567",
+  plate_number:   "ABC 1234",
+  vehicle_unit:   "2025 Black Toyota Vios",
+  email:          "juan@email.com",
+} as const
+
+type BookingFieldKey = keyof typeof BOOKING_FIELD_EXAMPLES
+
+// Keyed by the lowercased label missingBookingFields passes in ("Vehicle
+// Unit", "Email Address"); the shorter keys are older spellings.
+const FIELD_LABELS: Record<string, { field: BookingFieldKey; filipino: string }> = {
+  "full name":      { field: "full_name",      filipino: "Buong pangalan" },
+  "contact number": { field: "contact_number", filipino: "Numero ng telepono" },
+  "plate number":   { field: "plate_number",   filipino: "Plate number" },
+  "vehicle":        { field: "vehicle_unit",   filipino: "Sasakyan" },
+  "vehicle unit":   { field: "vehicle_unit",   filipino: "Sasakyan" },
+  "email":          { field: "email",          filipino: "Email address" },
+  "email address":  { field: "email",          filipino: "Email address" },
 }
 
 /**
- * English keeps the caller's labels verbatim (they're already display-ready,
- * e.g. "Plate Number"); only Filipino substitutes a translation, falling back
- * to the original for anything unmapped.
+ * Display text for each missing field: the label in the reply language plus
+ * an example of the expected form. English keeps the caller's label verbatim
+ * (it is already display-ready, e.g. "Plate Number"); anything unmapped is
+ * passed through as is, with no example.
  */
-function localizeFields(fields: string[], lang: BotLanguage | undefined): string[] {
-  if (lang !== "filipino") return fields
-  return fields.map((f) => FIELD_LABELS[f.toLowerCase()]?.filipino ?? f)
+function localizeFields(fields: string[], lang: "english" | "filipino"): string[] {
+  return fields.map((f) => {
+    const known = FIELD_LABELS[f.toLowerCase()]
+    if (!known) return f
+    const example = BOOKING_FIELD_EXAMPLES[known.field]
+    return lang === "filipino" ? `${known.filipino} (hal. ${example})` : `${f} (e.g. ${example})`
+  })
 }
 
 /**
