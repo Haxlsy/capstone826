@@ -103,6 +103,8 @@ export interface StageRowForDelay {
   job_order_id: string
   status: string
   stage_duration_mins: number | null
+  /** This job's own position for the stage, when it was reordered or added. */
+  custom_sequence_order?: number | null
   service_stage:
     | { stage_duration_mins: number | null; sequence_order: number | null }
     | { stage_duration_mins: number | null; sequence_order: number | null }[]
@@ -139,7 +141,7 @@ export function stageDelayedSince(
       return {
         id: String(idx),
         status: s.status,
-        sequence_order: svc?.sequence_order ?? 0,
+        sequence_order: s.custom_sequence_order ?? svc?.sequence_order ?? 0,
         stage_duration_mins: s.stage_duration_mins,
         service_stage_duration_mins: svc?.stage_duration_mins ?? null,
       }

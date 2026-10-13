@@ -82,7 +82,7 @@ export async function getDashboardData(){
       activeJobIds.length > 0
         ? supabase
             .from("job_stage_progress")
-            .select("job_order_id, status, stage_duration_mins, service_stage:service_stage_id(stage_duration_mins, sequence_order)")
+            .select("job_order_id, status, stage_duration_mins, custom_sequence_order, service_stage:service_stage_id(stage_duration_mins, sequence_order)")
             .in("job_order_id", activeJobIds)
         : Promise.resolve({ data: [] }),
     ])

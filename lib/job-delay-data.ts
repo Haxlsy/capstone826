@@ -27,7 +27,7 @@ export async function loadStageDelayedSince(
   const [{ data, error }, schedule] = await Promise.all([
     admin
       .from("job_stage_progress")
-      .select("job_order_id, status, stage_duration_mins, service_stage:service_stage_id(stage_duration_mins, sequence_order)")
+      .select("job_order_id, status, stage_duration_mins, custom_sequence_order, service_stage:service_stage_id(stage_duration_mins, sequence_order)")
       .in("job_order_id", started.map((j) => j.id)),
     loadWorkSchedule(admin),
   ])
