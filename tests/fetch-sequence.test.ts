@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest"
-import { createSequenceGuard } from "@/lib/fetch-sequence"
+import { createSequenceGuard, createLoadTracker } from "@/lib/fetch-sequence"
 
 describe("createSequenceGuard", () => {
   it("a token is current until something newer starts", () => {
@@ -46,5 +46,53 @@ describe("createSequenceGuard", () => {
     expect(guard.isCurrent(second)).toBe(false)
     expect(guard.isCurrent(first)).toBe(false)
     expect(guard.isCurrent(third)).toBe(true)
+  })
+})
+
+describe("createLoadTracker", () => {
+  function setup() {
+    let loading = false
+    const tracker = createLoadTracker((v) => { loading = v })
+    return { tracker, isLoading: () => loading }
+  }
+
+  it("a visible reload turns loading on, then off when it finishes", () => {
+    const { tracker, isLoading } = setup()
+    const a = tracker.begin()
+    expect(isLoading()).toBe(true)
+    tracker.end(a)
+    expect(isLoading()).toBe(false)
+  })
+
+  it("a silent reload never turns loading on", () => {
+    const { tracker, isLoading } = setup()
+    const a = tracker.begin({ silent: true })
+    expect(isLoading()).toBe(false)
+    tracker.end(a)
+    expect(isLoading()).toBe(false)
+  })
+
+  it("reproduces the stuck skeleton: a visible reload superseded by a silent one still ends with loading off", () => {
+    const { tracker, isLoading } = setup()
+    const visible = tracker.begin()
+    // The action's own database change triggers a realtime, silent reload.
+    const silent = tracker.begin({ silent: true })
+    // The visible reload returns first, superseded: its data is not applied
+    // and it leaves the flag for the newer reload to clear.
+    expect(tracker.isCurrent(visible)).toBe(false)
+    tracker.end(visible)
+    expect(isLoading()).toBe(true)
+    tracker.end(silent)
+    expect(isLoading()).toBe(false)
+  })
+
+  it("the latest reload clears loading even if an older one finishes after it", () => {
+    const { tracker, isLoading } = setup()
+    const first = tracker.begin()
+    const second = tracker.begin({ silent: true })
+    tracker.end(second)
+    expect(isLoading()).toBe(false)
+    tracker.end(first)
+    expect(isLoading()).toBe(false)
   })
 })

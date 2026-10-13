@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server"
+import { NextResponse, after } from "next/server"
 import { cookies } from "next/headers"
 import { createClient } from "@/lib/supabase/server"
 import { createAdminClient } from "@/lib/supabase/admin"
@@ -552,93 +552,99 @@ export async function PATCH(
       // ── Workstream B — auto-send stage completion update to the customer ──────
       // Wrapped so a messaging failure NEVER breaks the 200 response. The manual
       // "Resend stage update" button remains the fallback.
-      try {
-        const { data: stageRow } = await admin
-          .from("job_stage_progress")
-          .select("messenger_sent")
-          .eq("id", stage_id)
-          .single()
-
-        if (!(stageRow as any)?.messenger_sent) {
-          const nowIso = new Date().toISOString()
-
-          const { data: custRow } = await admin
-            .from("job_order")
-            .select(
-              `customer_record_id, plate_number, vehicle_unit, customer_name,
-               service:service_id(name),
-               customer:customer_record_id(plate_number, vehicle_unit, owner:customer!customer_id(psid, full_name, contact_number), booked_by:customer!booked_by_customer_id(psid))`
-            )
-            .eq("id", jobId)
+      //
+      // Runs AFTER the response (next/server `after`): the technician used to
+      // wait on the spinner while the text, photo and video were sent to Meta
+      // one after another. The stage is already saved by this point.
+      after(async () => {
+        try {
+          const { data: stageRow } = await admin
+            .from("job_stage_progress")
+            .select("messenger_sent")
+            .eq("id", stage_id)
             .single()
-          const cr = custRow as any
-          // The customer's Messenger account, else the account that booked it.
-          const psid = recipientFromVehicle(cr?.customer).psid
-          const cust = jobCustomer(cr)
 
-          if (!psid || !process.env.META_PAGE_ACCESS_TOKEN) {
-            await admin
-              .from("job_stage_progress")
-              .update({ messenger_sent: false, messenger_sent_at: nowIso })
-              .eq("id", stage_id)
-          } else {
-            const customerName = cust.name ?? "Customer"
-            const plate = cust.plate
-            const vehicleUnit = cust.vehicle
-            const serviceName = cr?.service?.name ?? null
+          if (!(stageRow as any)?.messenger_sent) {
+            const nowIso = new Date().toISOString()
 
-            // Progress across the whole job.
-            const { data: allStages } = await admin
-              .from("job_stage_progress")
-              .select("status")
-              .eq("job_order_id", jobId)
-            const totalCount = (allStages ?? []).length
-            const completedCount = (allStages ?? []).filter(
-              (s: any) => s.status === "done"
-            ).length
+            const { data: custRow } = await admin
+              .from("job_order")
+              .select(
+                `customer_record_id, plate_number, vehicle_unit, customer_name,
+                 service:service_id(name),
+                 customer:customer_record_id(plate_number, vehicle_unit, owner:customer!customer_id(psid, full_name, contact_number), booked_by:customer!booked_by_customer_id(psid))`
+              )
+              .eq("id", jobId)
+              .single()
+            const cr = custRow as any
+            // The customer's Messenger account, else the account that booked it.
+            const psid = recipientFromVehicle(cr?.customer).psid
+            const cust = jobCustomer(cr)
 
-            // Only round 0 (the original, pre-rework upload) ever reaches the
-            // customer — any rework resubmission is operations-only.
-            const { data: media } = await admin
-              .from("stage_media")
-              .select("shareable_link, media_type")
-              .eq("job_stage_progress_id", stage_id)
-              .eq("rework_round", 0)
-            const photos = ((media ?? []) as any[])
-              .filter((m) => m.media_type === "photo" && m.shareable_link)
-              .map((m) => m.shareable_link as string)
-            const videos = ((media ?? []) as any[])
-              .filter((m) => m.media_type === "video" && m.shareable_link)
-              .map((m) => m.shareable_link as string)
+            if (!psid || !process.env.META_PAGE_ACCESS_TOKEN) {
+              await admin
+                .from("job_stage_progress")
+                .update({ messenger_sent: false, messenger_sent_at: nowIso })
+                .eq("id", stage_id)
+            } else {
+              const customerName = cust.name ?? "Customer"
+              const plate = cust.plate
+              const vehicleUnit = cust.vehicle
+              const serviceName = cr?.service?.name ?? null
 
-            const message = buildStageUpdateMessage({
-              customerName,
-              stageName,
-              categoryName,
-              serviceName,
-              vehicleUnit,
-              plate,
-              completedCount,
-              totalCount,
-            })
+              // Progress across the whole job.
+              const { data: allStages } = await admin
+                .from("job_stage_progress")
+                .select("status")
+                .eq("job_order_id", jobId)
+              const totalCount = (allStages ?? []).length
+              const completedCount = (allStages ?? []).filter(
+                (s: any) => s.status === "done"
+              ).length
 
-            const textMid = await sendMessengerText(psid, message, "UPDATE")
-            if (textMid && photos.length > 0) {
-              await sendMessengerImage(psid, photos[0], "UPDATE")
+              // Only round 0 (the original, pre-rework upload) ever reaches the
+              // customer — any rework resubmission is operations-only.
+              const { data: media } = await admin
+                .from("stage_media")
+                .select("shareable_link, media_type")
+                .eq("job_stage_progress_id", stage_id)
+                .eq("rework_round", 0)
+              const photos = ((media ?? []) as any[])
+                .filter((m) => m.media_type === "photo" && m.shareable_link)
+                .map((m) => m.shareable_link as string)
+              const videos = ((media ?? []) as any[])
+                .filter((m) => m.media_type === "video" && m.shareable_link)
+                .map((m) => m.shareable_link as string)
+
+              const message = buildStageUpdateMessage({
+                customerName,
+                stageName,
+                categoryName,
+                serviceName,
+                vehicleUnit,
+                plate,
+                completedCount,
+                totalCount,
+              })
+
+              const textMid = await sendMessengerText(psid, message, "UPDATE")
+              if (textMid && photos.length > 0) {
+                await sendMessengerImage(psid, photos[0], "UPDATE")
+              }
+              if (textMid && videos.length > 0) {
+                await sendMessengerVideo(psid, videos[0], "UPDATE")
+              }
+
+              await admin
+                .from("job_stage_progress")
+                .update({ messenger_sent: Boolean(textMid), messenger_sent_at: nowIso })
+                .eq("id", stage_id)
             }
-            if (textMid && videos.length > 0) {
-              await sendMessengerVideo(psid, videos[0], "UPDATE")
-            }
-
-            await admin
-              .from("job_stage_progress")
-              .update({ messenger_sent: Boolean(textMid), messenger_sent_at: nowIso })
-              .eq("id", stage_id)
           }
+        } catch (sendErr) {
+          console.error("[HT mark_stage_done] auto-send failed:", sendErr)
         }
-      } catch (sendErr) {
-        console.error("[HT mark_stage_done] auto-send failed:", sendErr)
-      }
+      })
 
       return NextResponse.json({ success: true })
     }

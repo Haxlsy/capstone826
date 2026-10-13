@@ -26,6 +26,9 @@ import { StatCard } from "@/components/ui/StatCard"
 import { StatusBadge } from "@/components/ui/Badge"
 import { useToast } from "@/components/ui/Toast"
 import { MediaPreviewModal } from "@/components/ui/Modal"
+import { VideoRecorderModal } from "./VideoRecorderModal"
+import { compressImage } from "@/lib/media/compress-image"
+import { uploadSizeProblem } from "@/lib/media/limits"
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 type ConcernMedia = { id: string; url: string; type: string }
@@ -221,7 +224,7 @@ export default function HeadTechConcernsPage() {
   const [selectedStageId, setSelectedStageId] = useState("")
 
   const photoInputRef  = useRef<HTMLInputElement>(null)
-  const videoInputRef  = useRef<HTMLInputElement>(null)
+  const [recorderOpen, setRecorderOpen] = useState(false)
   const attachInputRef = useRef<HTMLInputElement>(null)
 
   const filteredJobs = useMemo(() => {
@@ -297,12 +300,22 @@ export default function HeadTechConcernsPage() {
     loadStages()
   }, [selectedJobId])
 
-  function addFiles(incoming: FileList | null) {
+  // Same preparation as a stage upload on the job page: photos are shrunk in
+  // the browser first, and anything still too large to send is refused here
+  // with a reason, not after the concern has been submitted.
+  async function addFiles(incoming: FileList | File[] | null) {
     if (!incoming) return
-    const next = Array.from(incoming).filter(
+    const picked = Array.from(incoming).filter(
       (f) => f.type.startsWith("image/") || f.type.startsWith("video/")
     )
-    setMediaFiles((prev) => [...prev, ...next])
+    const accepted: File[] = []
+    for (const original of picked) {
+      const file = original.type.startsWith("image/") ? await compressImage(original) : original
+      const problem = uploadSizeProblem(file)
+      if (problem) toast.error(problem)
+      else accepted.push(file)
+    }
+    if (accepted.length > 0) setMediaFiles((prev) => [...prev, ...accepted])
   }
 
   function removeFile(idx: number) {
@@ -346,10 +359,17 @@ export default function HeadTechConcernsPage() {
             method: "POST",
             body:   form,
           })
-          const uploadJson = await uploadRes.json()
-          if (!uploadRes.ok) uploadErrors.push(uploadJson?.error ?? `Failed to upload ${file.name}`)
+          // An oversize request is rejected by the host with a non-JSON
+          // reply, so the body is read defensively.
+          const uploadJson = await uploadRes.json().catch(() => null)
+          if (!uploadRes.ok) {
+            const reason = uploadRes.status === 413
+              ? "the file is too large to upload"
+              : uploadJson?.error ?? `server error ${uploadRes.status}`
+            uploadErrors.push(`${file.name}: ${reason}`)
+          }
         } catch {
-          uploadErrors.push(`Failed to upload ${file.name}`)
+          uploadErrors.push(`${file.name}: network error`)
         }
       }
 
@@ -364,7 +384,9 @@ export default function HeadTechConcernsPage() {
       setSubmitted((v) => !v)
 
       if (uploadErrors.length > 0) {
-        setFieldErrors({ description: `Concern submitted, but ${uploadErrors.length} file(s) failed: ${uploadErrors.join("; ")}` })
+        const failed = `Concern submitted, but ${uploadErrors.length} file(s) failed to upload. ${uploadErrors.join("; ")}`
+        setFieldErrors({ description: failed })
+        toast.error(failed)
       } else {
         toast.success("Concern submitted to Operations.")
       }
@@ -552,21 +574,17 @@ export default function HeadTechConcernsPage() {
                     capture="environment"
                     multiple
                     className="hidden"
-                    onChange={(e) => addFiles(e.target.files)}
+                    onChange={(e) => { void addFiles(Array.from(e.target.files ?? [])); e.target.value = "" }}
                   />
                 </label>
-                <label className="flex-1 flex items-center justify-center gap-1.5 text-xs font-semibold border border-border rounded-card py-2.5 text-body hover:bg-surface-muted cursor-pointer transition-colors">
+                <button
+                  type="button"
+                  onClick={() => setRecorderOpen(true)}
+                  className="flex-1 flex items-center justify-center gap-1.5 text-xs font-semibold border border-border rounded-card py-2.5 text-body hover:bg-surface-muted cursor-pointer transition-colors"
+                >
                   <Video size={13} />
                   Video
-                  <input
-                    ref={videoInputRef}
-                    type="file"
-                    accept="video/*"
-                    capture="environment"
-                    className="hidden"
-                    onChange={(e) => addFiles(e.target.files)}
-                  />
-                </label>
+                </button>
                 <label className="flex-1 flex items-center justify-center gap-1.5 text-xs font-semibold border border-border rounded-card py-2.5 text-body hover:bg-surface-muted cursor-pointer transition-colors">
                   <Paperclip size={13} />
                   Attach
@@ -576,7 +594,7 @@ export default function HeadTechConcernsPage() {
                     accept="image/*,video/*"
                     multiple
                     className="hidden"
-                    onChange={(e) => addFiles(e.target.files)}
+                    onChange={(e) => { void addFiles(Array.from(e.target.files ?? [])); e.target.value = "" }}
                   />
                 </label>
               </div>
@@ -628,6 +646,13 @@ export default function HeadTechConcernsPage() {
         </div>
 
       </main>
+
+      {/* The same in-app recorder the job page uses: stops at 60 seconds. */}
+      <VideoRecorderModal
+        open={recorderOpen}
+        onClose={() => setRecorderOpen(false)}
+        onCapture={(file) => { void addFiles([file]) }}
+      />
 
       <BottomNav active="concerns" />
     </>
