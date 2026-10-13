@@ -308,7 +308,7 @@ export async function PATCH(
               ? buildReleaseMessage({ customerName, vehicleUnit, plate, operatingHours: await getOperatingHoursText() })
               : buildCompletionMessage({ customerName, vehicleUnit, plate })
 
-            await sendMessengerText(psid, message)
+            await sendMessengerText(psid, message, "UPDATE")
           }
         } catch (msgErr) {
           console.error("[job-orders PATCH] customer status message failed:", msgErr)
