@@ -3,6 +3,7 @@ import {
   buildMissingFieldsPrompt,
   MISSING_FIELDS_PROMPT_LEAD,
   missingBookingFields,
+  dropUnsaidExamples,
 } from "@/lib/messenger/chatbot"
 import { MISSING_FIELDS_LEADS } from "@/lib/messenger/copy"
 
@@ -36,11 +37,11 @@ describe("buildMissingFieldsPrompt layout", () => {
     expect(buildMissingFieldsPrompt(all, "english")).toBe(
       [
         "To continue your booking, please include:",
-        "• Full Name",
-        "• Contact Number",
-        "• Plate Number",
-        "• Vehicle Unit",
-        "• Email Address",
+        "• Full Name (e.g. Juan Dela Cruz)",
+        "• Contact Number (e.g. 0917 123 4567)",
+        "• Plate Number (e.g. ABC 1234)",
+        "• Vehicle Unit (e.g. 2025 Black Toyota Vios)",
+        "• Email Address (e.g. juan@email.com)",
         "",
         "Please send them and I'll get you set up.",
       ].join("\n"),
@@ -52,11 +53,11 @@ describe("buildMissingFieldsPrompt layout", () => {
     expect(out).toBe(
       [
         "Para maituloy ang iyong booking, pakisama:",
-        "• Buong pangalan",
-        "• Numero ng telepono",
-        "• Plate number",
-        "• Sasakyan (brand at model)",
-        "• Email address",
+        "• Buong pangalan (hal. Juan Dela Cruz)",
+        "• Numero ng telepono (hal. 0917 123 4567)",
+        "• Plate number (hal. ABC 1234)",
+        "• Sasakyan (hal. 2025 Black Toyota Vios)",
+        "• Email address (hal. juan@email.com)",
         "",
         "Pakipadala ang mga ito at ihahanda ko na ang booking mo.",
       ].join("\n"),
@@ -67,15 +68,49 @@ describe("buildMissingFieldsPrompt layout", () => {
 
   it("keeps a single missing field short, without a one-item list", () => {
     expect(buildMissingFieldsPrompt(["Email Address"], "english")).toBe(
-      "To continue your booking, please include: Email Address.\n\nPlease send it and I'll get you set up.",
+      "To continue your booking, please include: Email Address (e.g. juan@email.com).\n\nPlease send it and I'll get you set up.",
     )
     expect(buildMissingFieldsPrompt(["Email Address"], "filipino")).toBe(
-      "Para maituloy ang iyong booking, pakisama: Email address.\n\nPakipadala ito at ihahanda ko na ang booking mo.",
+      "Para maituloy ang iyong booking, pakisama: Email address (hal. juan@email.com).\n\nPakipadala ito at ihahanda ko na ang booking mo.",
     )
   })
 
   it("still starts with the lead-in that history scans look for, in both languages", () => {
     expect(buildMissingFieldsPrompt(all, "english").startsWith(MISSING_FIELDS_LEADS.english)).toBe(true)
     expect(buildMissingFieldsPrompt(all, "filipino").startsWith(MISSING_FIELDS_LEADS.filipino)).toBe(true)
+  })
+})
+
+describe("dropUnsaidExamples", () => {
+  const examples = {
+    full_name: "Juan Dela Cruz",
+    contact_number: "09171234567",
+    plate_number: "ABC 1234",
+    vehicle_unit: "2025 Black Toyota Vios",
+    email: "juan@email.com",
+  }
+  const empty = { full_name: null, contact_number: null, plate_number: null, vehicle_unit: null, email: null }
+
+  it("clears every example the customer never typed", () => {
+    expect(dropUnsaidExamples(examples, ["Booking", "magkano po?"])).toEqual(empty)
+    expect(dropUnsaidExamples({ ...empty, contact_number: "+63 917 123 4567" }, ["hello"])).toEqual(empty)
+  })
+
+  it("keeps a value the customer really typed, whatever the case or spacing", () => {
+    const said = ["juan dela cruz, 0917-123-4567, abc1234", "black toyota vios 2025", "JUAN@EMAIL.COM"]
+    expect(dropUnsaidExamples(examples, said)).toEqual(examples)
+  })
+
+  it("clears only the example fields and leaves real details alone", () => {
+    const mixed = { ...examples, full_name: "Maria Santos", vehicle_unit: "2023 White Honda Civic" }
+    expect(dropUnsaidExamples(mixed, ["Maria Santos", "2023 White Honda Civic"])).toEqual({
+      ...empty,
+      full_name: "Maria Santos",
+      vehicle_unit: "2023 White Honda Civic",
+    })
+  })
+
+  it("returns empty details unchanged", () => {
+    expect(dropUnsaidExamples(empty, [])).toEqual(empty)
   })
 })
