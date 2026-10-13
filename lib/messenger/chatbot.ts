@@ -1,7 +1,15 @@
 import { GoogleGenAI } from "@google/genai"
 import { createAdminClient } from "@/lib/supabase/admin"
 import { normalizePhone } from "@/lib/phone"
-import { TOKEN_PLATE, TOKEN_PHONE, TOKEN_EMAIL, PLATE_PATTERN } from "@/lib/messenger/patterns"
+import {
+  TOKEN_PLATE,
+  TOKEN_PHONE,
+  TOKEN_EMAIL,
+  PLATE_PATTERN,
+  PHONE_PATTERN,
+  EMAIL_PATTERN,
+  JOB_ORDER_CODE_PATTERN,
+} from "@/lib/messenger/patterns"
 import {
   type BotLanguage,
   bookingCancelled,
@@ -716,6 +724,111 @@ export function hasStatusIntent(message: string): boolean {
   return STATUS_INTENT_PATTERNS.some((re) => re.test(normalized))
 }
 
+// ── Intent tie-break ───────────────────────────────────────────────────────
+// The keyword lists above are deliberately broad, so an information question
+// that happens to contain one of the words was pulled into a fixed flow:
+// "ilang oras yung service kung magpa-schedule ako" got the booking details
+// re-ask, and "pa-check po magkano ang ceramic coating" got the vehicle-status
+// reply, when both should have been answered from the knowledge base. For
+// those ambiguous messages only, a small model call decides what the customer
+// means. Clear messages never reach it, and any failure keeps the keyword
+// result, i.e. the behaviour before this existed.
+
+const QUESTION_CUE_PATTERNS = [
+  /\?/,
+  /\bhow\s+(?:long|much|many|do|does|can|to)\b/i,
+  /\b(?:what|when|where|which|why)\b/i,
+  /\b(?:do|does|can|could|may)\s+(?:you|i|we)\b/i,
+  /\b(?:is|are)\s+there\b/i,
+  /\bmag-?kano\b/i,
+  /\bhm\b/i,
+  /\bga(?:a)?no\b/i,
+  /\bilan(?:g)?\b/i,
+  /\bano(?:ng)?\b/i,
+  /\bk(?:ai|e)lan\b/i,
+  /\bsa(?:a)?n\b/i,
+  /\b(?:pwede|puwede|puede)\b/i,
+  /\b(?:meron|mayroon)\b/i,
+  /\bba\b/i,
+  /\btanong\b/i,
+]
+
+/**
+ * True when the message reads like a question, in English or Filipino, with
+ * or without a question mark. Broad on purpose: it only decides whether the
+ * tie-break below is worth running, so a false positive costs one quick call.
+ */
+export function hasQuestionCue(message: string): boolean {
+  return QUESTION_CUE_PATTERNS.some((re) => re.test(message))
+}
+
+const OWN_VEHICLE_PATTERNS = [
+  /\bmy\s+(?:car|vehicle|unit|suv|truck|van|pickup|motor\w*)\b/i,
+  /\b(?:kotse|sasakyan|auto|oto|unit|motor)\s+(?:ko|namin|natin)\b/i,
+  /\b(?:aking|akong|naming)\s+(?:kotse|sasakyan)\b/i,
+  /\b(?:kotse|sasakyan)\b[\s\S]{0,12}\bako\b/i,
+  /\bdo\s+i\s+have\b/i,
+]
+
+/**
+ * True when the message is plainly about the customer's own vehicle or job:
+ * "my car", "kotse ko", a plate number, or a Job Order ID. These never need
+ * the tie-break; the keyword result stands.
+ */
+export function mentionsOwnVehicle(message: string): boolean {
+  return (
+    OWN_VEHICLE_PATTERNS.some((re) => re.test(message)) ||
+    PLATE_PATTERN.test(message) ||
+    JOB_ORDER_CODE_PATTERN.test(message)
+  )
+}
+
+/**
+ * Whether a keyword-matched message is ambiguous enough to ask the model what
+ * the customer means. True only for typed text that hit a booking or status
+ * keyword, reads like a question, names no vehicle or contact detail of the
+ * customer's own, and arrives outside any flow already in progress.
+ */
+export function needsIntentTiebreak(input: {
+  message: string
+  /** The customer tapped a quick reply; a tap is never ambiguous. */
+  quickReply: boolean
+  humanRequested: boolean
+  reportIntent: boolean
+  isBookingFlow: boolean
+  awaitingConfirmation: boolean
+  conflictPending: boolean
+  awaitingLinkVerification: boolean
+}): boolean {
+  const { message } = input
+  if (input.quickReply || input.humanRequested || input.reportIntent) return false
+  if (
+    input.isBookingFlow || input.awaitingConfirmation ||
+    input.conflictPending || input.awaitingLinkVerification
+  ) return false
+  if (!hasBookingIntent(message) && !hasStatusIntent(message)) return false
+  if (hasExistingBookingIntent(message)) return false
+  if (mentionsOwnVehicle(message)) return false
+  if (PHONE_PATTERN.test(message) || EMAIL_PATTERN.test(message)) return false
+  return hasQuestionCue(message)
+}
+
+export type IntentVerdict = "question" | "booking" | "status"
+
+/**
+ * Applies the tie-break verdict to the keyword result. A null verdict (the
+ * tie-break did not run, or failed) leaves the keyword result untouched.
+ */
+export function applyIntentTiebreak(
+  keyword: { booking: boolean; status: boolean },
+  verdict: IntentVerdict | null,
+): { booking: boolean; status: boolean } {
+  if (verdict === "question") return { booking: false, status: false }
+  if (verdict === "booking") return { booking: true, status: false }
+  if (verdict === "status") return { booking: false, status: true }
+  return keyword
+}
+
 /**
  * True when, given a conversation ALREADY flagged `is_vehicle_inquiry` from an
  * earlier turn, this message plausibly continues that status inquiry — the
@@ -1171,6 +1284,79 @@ Each field must contain ONLY its own kind of information — never combine or ap
     }
   } catch {
     return { reply: raw, escalate: false, reason: null, violation: "none", customer: null }
+  }
+}
+
+// How long the webhook waits for the tie-break before falling back to the
+// keyword result. Enforced here with a race, because Gemini rejects any
+// request deadline under 10s (see GEMINI_CALL_TIMEOUT_MS above).
+const INTENT_TIEBREAK_WAIT_MS = 4_000
+const INTENT_TIEBREAK_DEADLINE_MS = 10_000
+const INTENT_TIEBREAK_HISTORY_TURNS = 4
+
+const INTENT_TIEBREAK_PROMPT = `You sort one customer message sent to an auto detailing and protection shop's Messenger page. The message may be in English, Filipino, or a mix.
+
+Answer with exactly one label for the LATEST customer message:
+- "booking": the customer wants to make a booking or appointment now.
+- "status": the customer is asking about their own vehicle that is currently with the shop (progress, whether it is done, when they can pick it up).
+- "question": the customer is asking for information, such as how long a service takes, prices, opening hours, location, what a service includes, or how booking works. This still applies when the message mentions booking, scheduling, or checking, as long as they are asking for information and not asking to book now or about their own vehicle.
+
+When unsure, answer "question".`
+
+/**
+ * Asks the model what an ambiguous, keyword-matched message means (see
+ * `needsIntentTiebreak`). Returns null on any failure or slow response, never
+ * throws: the caller then keeps the keyword result.
+ */
+export async function classifyAmbiguousIntent(input: {
+  message: string
+  history?: ChatMessage[]
+}): Promise<IntentVerdict | null> {
+  const recent = (input.history ?? [])
+    .slice(-INTENT_TIEBREAK_HISTORY_TURNS)
+    .map((h) => `${h.role === "user" ? "Customer" : "Shop"}: ${h.text}`)
+    .join("\n")
+  const text =
+    (recent ? `Earlier messages, for context only:\n${recent}\n\n` : "") +
+    `Latest customer message:\n${input.message.trim()}`
+
+  let timer: ReturnType<typeof setTimeout> | undefined
+  try {
+    const call = ai.models.generateContent({
+      model: "gemini-3.1-flash-lite-preview",
+      contents: [{ role: "user", parts: [{ text }] }],
+      config: {
+        systemInstruction: INTENT_TIEBREAK_PROMPT,
+        temperature: 0,
+        maxOutputTokens: 32,
+        responseMimeType: "application/json",
+        responseSchema: {
+          type: "OBJECT",
+          properties: {
+            intent: { type: "STRING", enum: ["question", "booking", "status"] },
+          },
+          required: ["intent"],
+        },
+        httpOptions: { timeout: INTENT_TIEBREAK_DEADLINE_MS },
+      },
+    })
+    // A late rejection after the race is lost must not go unhandled.
+    call.catch(() => {})
+    const response = await Promise.race([
+      call,
+      new Promise<null>((resolve) => {
+        timer = setTimeout(() => resolve(null), INTENT_TIEBREAK_WAIT_MS)
+      }),
+    ])
+    if (!response) return null
+    const parsed = JSON.parse((response.text ?? "").trim().replace(/^```(?:json)?|```$/g, "").trim())
+    const intent = parsed?.intent
+    return intent === "question" || intent === "booking" || intent === "status" ? intent : null
+  } catch (err) {
+    console.error("[chatbot] intent tie-break failed:", err)
+    return null
+  } finally {
+    if (timer) clearTimeout(timer)
   }
 }
 

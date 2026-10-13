@@ -4,7 +4,7 @@ import { useState, useRef, useEffect } from "react"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
 import Script from "next/script"
-import { User, Lock, Eye, EyeOff, ShieldAlert, X } from "lucide-react"
+import { User, Lock, Eye, EyeOff, ShieldAlert, ShieldCheck, X } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { useToast } from "@/components/ui/Toast"
 import { checkAlreadySignedIn } from "@/lib/auth/already-signed-in"
@@ -25,6 +25,10 @@ declare global {
 // Upper bound on how long the form can be held back by the already-signed-in
 // check — a slow check may delay the form but must never block it.
 const SESSION_CHECK_TIMEOUT_MS = 1_500
+// Shown only when a verification the user actually submitted was rejected, or
+// the widget itself failed. Being ASKED to verify is not an error (see the
+// requireCaptcha branch in handleSubmit).
+const CAPTCHA_FAILED_MSG = "Verification expired or failed. Please try again."
 const sessionFetch: typeof fetch = (input, init) => fetch(input, init)
 
 const ROLE_ROUTES: Record<string, string> = {
@@ -229,6 +233,10 @@ export default function LoginPage() {
       sitekey: process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY ?? "",
       callback: (token: string) => setCaptchaToken(token),
       "expired-callback": () => setCaptchaToken(null),
+      "error-callback": () => {
+        setCaptchaToken(null)
+        toastRef.current.error(CAPTCHA_FAILED_MSG)
+      },
     })
   }, [needsCaptcha, captchaScriptReady])
 
@@ -260,13 +268,14 @@ export default function LoginPage() {
         return
       }
 
+      const sentCaptchaToken = needsCaptcha && !!captchaToken
       const res = await fetch("/api/auth/login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           username: username.trim(),
           password,
-          ...(needsCaptcha && captchaToken ? { captchaToken } : {}),
+          ...(sentCaptchaToken ? { captchaToken } : {}),
         }),
       })
       const data = await res.json()
@@ -296,7 +305,11 @@ export default function LoginPage() {
           if (captchaWidgetId.current && window.turnstile) {
             window.turnstile.reset(captchaWidgetId.current)
           }
-          toastRef.current.error(data.error ?? "Please complete the verification challenge.")
+          // Being asked to verify for the first time is a normal extra step,
+          // not a failure: the widget and its inline note say what to do, and
+          // a red toast next to them reads as "something broke". Only a
+          // verification that was actually submitted and rejected is an error.
+          if (sentCaptchaToken) toastRef.current.error(CAPTCHA_FAILED_MSG)
           setIsLoading(false)
           return
         }
@@ -539,8 +552,21 @@ export default function LoginPage() {
           first submit — that would itself be a new way to probe which
           accounts exist. */}
       {needsCaptcha && (
-        <div className="flex justify-center">
-          <div ref={captchaContainerRef} />
+        <div className="space-y-2.5">
+          <div
+            role="status"
+            className="flex items-center gap-2.5 rounded-xl bg-primary/10 border border-primary/20 px-3.5 py-2.5 text-xs font-medium text-primary"
+          >
+            <ShieldCheck className="h-4 w-4 shrink-0" />
+            <span>
+              {captchaToken
+                ? "Verified. Click Login to continue."
+                : "One more step: for your security, confirm you're not a robot, then log in."}
+            </span>
+          </div>
+          <div className="flex justify-center">
+            <div ref={captchaContainerRef} />
+          </div>
         </div>
       )}
 
@@ -564,7 +590,13 @@ export default function LoginPage() {
           "disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:translate-y-0",
         )}
       >
-        {isLoading ? "Signing in…" : locked ? `Locked · ${remaining}s` : "Login"}
+        {isLoading
+          ? "Signing in…"
+          : locked
+            ? `Locked · ${remaining}s`
+            : needsCaptcha && !captchaToken
+              ? "Complete verification above"
+              : "Login"}
       </button>
     </form>
   )
