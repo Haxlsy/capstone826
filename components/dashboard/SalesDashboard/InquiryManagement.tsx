@@ -627,7 +627,7 @@ export default function InquiryManagement() {
             { label: "Contact Number *", key: "contact_number", type: "tel", placeholder: "e.g. 09171234567" },
             { label: "Email", key: "email", type: "email", placeholder: "e.g. juan@email.com" },
             { label: "Plate Number *", key: "plate_number", type: "text", placeholder: "e.g. ABC 1234" },
-            { label: "Vehicle Unit *", key: "vehicle_unit", type: "text", placeholder: "e.g. Toyota Fortuner" },
+            { label: "Vehicle Unit *", key: "vehicle_unit", type: "text", placeholder: "e.g. 2025 Black Toyota Fortuner" },
           ].map(({ label, key, type, placeholder }) => (
             <div key={key}>
               <FieldLabel>{label}</FieldLabel>
