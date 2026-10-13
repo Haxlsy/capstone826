@@ -10,6 +10,7 @@ import { getAuditCaller } from "@/lib/auth/caller"
 import { logAuditCall } from "@/hooks/audit-helpers"
 import { notifyJobStatusChange, notifyStageDone } from "@/lib/notify-job-status"
 import { sendMessengerText, sendMessengerImage, sendMessengerVideo } from "@/lib/messenger/graph"
+import { stagesNotOwnedBy } from "@/lib/head-technician/rework-ownership"
 import { buildStageUpdateMessage } from "@/lib/messenger/stage-update"
 import { sendPushToUser } from "@/lib/push/send"
 import { getRoleCaller } from "@/lib/auth/caller"
@@ -861,7 +862,55 @@ export async function PATCH(
         .select("role")
         .eq("id", user.id)
         .single()
-      const callerIsInstaller = (callerProfile as any)?.role === "head_installer"
+      const callerRole = (callerProfile as any)?.role as string | undefined
+      const callerIsInstaller = callerRole === "head_installer"
+
+      // A head may only send back their OWN team's stages. The screen only
+      // offers those, so this guards requests made outside the app. Checked
+      // before any write.
+      const { data: targetRows } = await admin
+        .from("job_stage_progress")
+        .select("id, service_stage_id")
+        .in("id", stage_ids)
+        .eq("job_order_id", jobId)
+
+      if ((targetRows ?? []).length !== new Set(stage_ids).size) {
+        return NextResponse.json({ error: "One or more stages are not part of this job." }, { status: 400 })
+      }
+
+      const targetSsIds = (targetRows ?? [])
+        .map((r: any) => r.service_stage_id as string | null).filter(Boolean) as string[]
+      const ssCategory = new Map<string, string | null>()
+      const categoryRole = new Map<string, string>()
+      if (targetSsIds.length > 0) {
+        const { data: ssRows } = await admin
+          .from("service_stage")
+          .select("id, category_id")
+          .in("id", targetSsIds)
+        for (const ss of (ssRows ?? []) as any[]) ssCategory.set(ss.id, ss.category_id ?? null)
+        const catIds = [...new Set([...ssCategory.values()].filter(Boolean))] as string[]
+        if (catIds.length > 0) {
+          const { data: catRows } = await admin
+            .from("workflow_category")
+            .select("id, technician_role")
+            .in("id", catIds)
+          for (const c of (catRows ?? []) as any[]) categoryRole.set(c.id, c.technician_role)
+        }
+      }
+
+      const notMine = stagesNotOwnedBy(
+        callerRole,
+        (targetRows ?? []).map((r: any) => {
+          const catId = r.service_stage_id ? ssCategory.get(r.service_stage_id) : null
+          return { id: r.id as string, categoryRole: catId ? categoryRole.get(catId) : null }
+        }),
+      )
+      if (notMine.length > 0) {
+        return NextResponse.json(
+          { error: "You can only flag your own team's stages for rework." },
+          { status: 403 },
+        )
+      }
 
       const { error: stageErr } = await admin
         .from("job_stage_progress")
@@ -889,40 +938,13 @@ export async function PATCH(
         changed_by_id: user.id,
       })
 
-      // Notify the other role's head technician.
-      const targetRole = callerIsInstaller ? "head_detailer" : "head_installer"
-      const { data: team } = await admin
-        .from("job_order_team")
-        .select("user_account_id, role_in_job")
-        .eq("job_order_id", jobId)
-        .eq("role_in_job", targetRole)
-
-      const notifRows = (team ?? [])
-        .filter((t: any) => t.user_account_id)
-        .map((t: any) => ({
-          user_id:      t.user_account_id,
-          type:         "rework",
-          message:      `Stage(s) have been flagged for rework. Instructions: ${rework_instructions.trim()}`,
-          job_order_id: jobId,
-        }))
-
-      if (notifRows.length > 0) {
-        await admin.from("notification").insert(notifRows)
-        await Promise.all(
-          notifRows.map((n) =>
-            sendPushToUser(n.user_id, {
-              title: "Stage flagged for rework",
-              body: `${jobLabel}: ${rework_instructions.trim()}`,
-              url: `/head-technician/${jobId}`,
-            })
-          )
-        )
-      }
+      // The other head technician is NOT notified: the flagged stages belong
+      // to the caller's own team, so there is nothing for the other team to do.
 
       // Operations' job pages aren't realtime — tell them a head tech sent the job back.
       await notifyJobStatusChange(admin, {
         jobId, jobLabel, to: "For Rework", actorId: user.id,
-        message: `Job ${jobLabel} — ${callerIsInstaller ? "Head Installer" : "Head Detailer"} flagged stage(s) for rework. Instructions: ${rework_instructions.trim()}`,
+        message: `Job ${jobLabel}: ${callerIsInstaller ? "Head Installer" : "Head Detailer"} flagged stage(s) for rework. Instructions: ${rework_instructions.trim()}`,
       })
 
       if (caller) {
