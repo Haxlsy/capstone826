@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server"
+import { validateJobStages } from "@/lib/operations/job-stage-validation"
 import { cookies } from "next/headers"
 import { createClient } from "@/lib/supabase/server"
 import { createAdminClient } from "@/lib/supabase/admin"
@@ -59,6 +60,25 @@ export async function POST(request: Request) {
 
     if (!service_id) {
       return NextResponse.json({ error: "service_id is required." }, { status: 400 })
+    }
+    // Overridden stages follow the same rules as a service's own stages (a
+    // name, no duplicates, at least 1 minute). Checked here too so a request
+    // made outside the form, or a job order queued offline, cannot skip them.
+    if (Array.isArray(custom_stages) && custom_stages.length > 0) {
+      const problems = validateJobStages(
+        (custom_stages as CustomStage[]).map((cs, i) => ({
+          id: String(i),
+          name: cs.custom_name,
+          stage_duration_mins: cs.stage_duration_mins,
+        })),
+      )
+      const firstIndex = Object.keys(problems).map(Number).sort((a, b) => a - b)[0]
+      if (firstIndex !== undefined) {
+        return NextResponse.json(
+          { error: `Stage ${firstIndex + 1}: ${problems[String(firstIndex)]}` },
+          { status: 400 },
+        )
+      }
     }
     if (!customer_record_id && !customer_name) {
       return NextResponse.json(
