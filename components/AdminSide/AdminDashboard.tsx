@@ -1,4 +1,5 @@
 import { TIME_ZONE } from "@/lib/time-display"
+import type { DelayedJob } from "@/lib/admin/dashboard-data"
 import { SummaryCards } from "./dashboard/SummaryCards"
 import { ShopPerformanceChart } from "./dashboard/ShopPerformanceChart"
 import { DelayedJobsTable } from "./dashboard/DelayedJobsTable"
@@ -10,7 +11,7 @@ export default function AdminDashboard({
   initialServiceBreakdown,
 }: {
   initialSummary: { activeJobCount: number; maxCapacity: number; chatbotEfficiency: number }
-  initialDelayedJobs: { id: string; job_order_code: string; status: string; expected_completion_at: string | null; service: { name: string } | null }[]
+  initialDelayedJobs: DelayedJob[]
   initialServiceBreakdown: { service_name: string; count: number }[]
 }) {
   // Server component (UTC on Vercel): pin the shop's zone or the heading shows

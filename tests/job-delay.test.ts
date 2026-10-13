@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest"
-import { isJobDelayed, computeStageDelays, hasAnyStageDelayed, displayJobStatus, ACTIVE_JOB_STATUSES } from "@/lib/job-delay"
+import { isJobDelayed, computeStageDelays, hasAnyStageDelayed, stageDelayedSince, displayJobStatus, ACTIVE_JOB_STATUSES } from "@/lib/job-delay"
 
 // 2:00 PM Asia/Manila (06:00 UTC) — comfortably mid-day, so every relative
 // offset used below (minutes/hours "ago") lands within the 8 AM–8 PM
@@ -185,5 +185,57 @@ describe("displayJobStatus", () => {
   it("never overrides a finished status, even if somehow flagged overdue", () => {
     expect(displayJobStatus("Released", true)).toBe("Released")
     expect(displayJobStatus("Cancelled", true)).toBe("Cancelled")
+  })
+})
+
+describe("stageDelayedSince", () => {
+  const row = (job: string, status: string, mins: number, order: number) => ({
+    job_order_id: job,
+    status,
+    stage_duration_mins: null,
+    service_stage: { stage_duration_mins: mins, sequence_order: order },
+  })
+  const started = (hoursAgo: number) => new Date(Date.now() - hoursAgo * hourMs).toISOString()
+
+  it("leaves out a job that has not started", () => {
+    const out = stageDelayedSince([row("j1", "in_progress", 60, 1)], new Map([["j1", null]]))
+    expect(out.size).toBe(0)
+  })
+
+  it("leaves out a job whose stages are all on time", () => {
+    const out = stageDelayedSince([row("j1", "in_progress", 240, 1)], new Map([["j1", started(1)]]))
+    expect(out.size).toBe(0)
+  })
+
+  it("reports when a job with a late stage fell behind", () => {
+    const start = started(3)
+    const out = stageDelayedSince([row("j1", "in_progress", 60, 1)], new Map([["j1", start]]))
+    expect(out.get("j1")).toBe(new Date(new Date(start).getTime() + hourMs).toISOString())
+  })
+
+  it("uses the earliest of several late stages", () => {
+    const start = started(4)
+    const out = stageDelayedSince(
+      [row("j1", "pending", 60, 2), row("j1", "in_progress", 60, 1)],
+      new Map([["j1", start]]),
+    )
+    expect(out.get("j1")).toBe(new Date(new Date(start).getTime() + hourMs).toISOString())
+  })
+
+  it("ignores stages that are done or sent back for rework", () => {
+    const out = stageDelayedSince(
+      [row("j1", "done", 60, 1), row("j1", "for_rework", 30, 2)],
+      new Map([["j1", started(3)]]),
+    )
+    expect(out.size).toBe(0)
+  })
+
+  it("accepts the service stage as a one-item array and keeps jobs separate", () => {
+    const late = { ...row("j1", "in_progress", 60, 1), service_stage: [{ stage_duration_mins: 60, sequence_order: 1 }] }
+    const out = stageDelayedSince(
+      [late, row("j2", "in_progress", 240, 1)],
+      new Map([["j1", started(3)], ["j2", started(1)]]),
+    )
+    expect([...out.keys()]).toEqual(["j1"])
   })
 })

@@ -2,6 +2,7 @@ import { NextResponse } from "next/server"
 import { createAdminClient } from "@/lib/supabase/admin"
 import { ACTIVE_JOB_STATUSES } from "@/lib/job-delay"
 import { getRoleCaller } from "@/lib/auth/caller"
+import { getDelayedJobs } from "@/lib/admin/dashboard-data"
 
 const ACTIVE_STATUSES: readonly string[] = ACTIVE_JOB_STATUSES
 
@@ -19,7 +20,7 @@ export async function GET() {
       shopConfigResult,
       chatbotCountResult,
       humanEscalationResult,
-      delayedJobsResult,
+      delayedJobs,
       serviceBreakdownResult,
       techniciansResult,
     ] = await Promise.all([
@@ -48,21 +49,9 @@ export async function GET() {
         .select("id", { count: "exact", head: true })
         .eq("inquiry_type", "Human Response"),
 
-      // Delayed jobs: status='Delayed' OR (active + past expected_completion_at)
-      admin
-        .from("job_order")
-        .select(`
-          id,
-          job_order_code,
-          status,
-          expected_completion_at,
-          service:service_id ( name )
-        `)
-        .or(
-          `status.eq.Delayed,and(status.in.(${ACTIVE_STATUSES.map(s => `"${s}"`).join(",")}),expected_completion_at.lt.${new Date().toISOString()})`
-        )
-        .eq("is_archived", false)
-        .order("expected_completion_at", { ascending: true }),
+      // Delayed jobs: the same combined job + stage rule the Admin page's
+      // first render uses (lib/admin/dashboard-data.ts).
+      getDelayedJobs(),
 
       // Service breakdown: count of non-archived job_orders per service
       admin
@@ -81,7 +70,7 @@ export async function GET() {
     ])
 
     // Surface any errors
-    for (const result of [activeJobsResult, shopConfigResult, chatbotCountResult, humanEscalationResult, delayedJobsResult, serviceBreakdownResult, techniciansResult]) {
+    for (const result of [activeJobsResult, shopConfigResult, chatbotCountResult, humanEscalationResult, serviceBreakdownResult, techniciansResult]) {
       if (result.error) {
         return NextResponse.json({ error: result.error.message }, { status: 500 })
       }
@@ -107,7 +96,7 @@ export async function GET() {
       activeJobCount: activeJobsResult.count ?? 0,
       maxCapacity: shopConfigResult.data?.max_capacity ?? 15,
       chatbotEfficiency,
-      delayedJobs: delayedJobsResult.data ?? [],
+      delayedJobs,
       serviceBreakdown,
       technicians: techniciansResult.data ?? [],
     })

@@ -4,6 +4,7 @@ import { createClient } from "@/lib/supabase/server"
 import { createAdminClient } from "@/lib/supabase/admin"
 import { getAuditCaller } from "@/lib/auth/caller"
 import { isJobDelayed, ACTIVE_JOB_STATUSES } from "@/lib/job-delay"
+import { loadStageDelayedSince } from "@/lib/job-delay-data"
 
 export async function GET() {
   try {
@@ -60,10 +61,13 @@ export async function GET() {
       const admin = createAdminClient()
       const { data: activeJobs } = await admin
         .from("job_order")
-        .select("status, expected_completion_at")
+        .select("id, status, expected_completion_at, actual_start_at")
         .in("status", ACTIVE_JOB_STATUSES as unknown as string[])
         .eq("is_archived", false)
-      delayedJobCount = (activeJobs ?? []).filter(isJobDelayed).length
+      // Same combined rule as the dashboards: past the job's deadline, or a
+      // stage behind schedule.
+      const lateStage = await loadStageDelayedSince(admin, activeJobs ?? [])
+      delayedJobCount = (activeJobs ?? []).filter((j) => isJobDelayed(j) || lateStage.has(j.id)).length
     }
 
     return NextResponse.json({ notifications: shaped, unreadCount: unreadCount ?? 0, delayedJobCount })

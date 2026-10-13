@@ -231,7 +231,12 @@ export async function getJobDetailData(id: string) {
       detailers,
       installers,
       status: j.status,
-      is_overdue: isJobDelayed({ status: j.status, expected_completion_at: expectedCompletionAt }),
+      // Past the job's own deadline, OR a stage is behind (the same combined
+      // rule as every job list). The badge used to read "Ongoing" above a
+      // stage marked Delayed.
+      is_overdue:
+        isJobDelayed({ status: j.status, expected_completion_at: expectedCompletionAt }) ||
+        mappedStages.some((s) => s.is_delayed),
       scheduled_at: j.scheduled_at,
       actual_start_at: j.actual_start_at,
       expected_completion_at: expectedCompletionAt,
