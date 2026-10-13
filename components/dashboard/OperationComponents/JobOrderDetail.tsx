@@ -6,7 +6,9 @@ import { useRouter } from "next/navigation"
 import {
   ArrowLeft, PackageCheck, ChevronDown, Users, RefreshCw, CheckCircle2, XCircle,
   Clock, RotateCcw, UserPlus, Loader2, Trash2, FileText, FileSpreadsheet, Pencil, X,
+  UserRound,
 } from "lucide-react"
+import { stageGroupHead } from "@/lib/operations/stage-group-head"
 import { JobOrderDetailSkeleton } from "@/app/dashboard/job-management/[id]/loading"
 import { PageHeader } from "@/components/ui/PageHeader"
 import { Button, IconButton } from "@/components/ui/Button"
@@ -723,11 +725,11 @@ export default function JobOrderDetail({
   const categoryGroups = job.stages.reduce((acc, s) => {
     const key = s.category_id ?? `_${s.category_name}`
     if (!acc.has(key)) {
-      acc.set(key, { name: s.category_name ?? "Unknown", color: s.category_color ?? "blue", stages: [] })
+      acc.set(key, { name: s.category_name ?? "Unknown", color: s.category_color ?? "blue", role: s.category_role, stages: [] })
     }
     acc.get(key)!.stages.push(s)
     return acc
-  }, new Map<string, { name: string; color: string; stages: Stage[] }>())
+  }, new Map<string, { name: string; color: string; role: Stage["category_role"]; stages: Stage[] }>())
 
   const lastStage =
     job.stages.length > 0
@@ -918,13 +920,29 @@ export default function JobOrderDetail({
                 : "Awaiting handoff to Operations"
               : null
             const swatch = categorySwatch(group.color)
+            // Who handles this group: the head technician whose team owns
+            // the category, so Operations need not match it to the Team box.
+            const head = stageGroupHead(group.role, job)
             return (
               <div key={key} className="mb-6 last:mb-0">
-                <div className="mb-3 flex items-center gap-3">
+                <div className="mb-3 flex flex-wrap items-center gap-x-3 gap-y-1.5">
                   <span className={cn("h-2 w-2 rounded-full", swatch.dot)} />
                   <p className="text-xs font-semibold uppercase tracking-wide text-muted">
                     {group.name} stages
                   </p>
+                  {head && (
+                    <Badge
+                      className={
+                        head.assigned
+                          ? "bg-surface-muted text-body"
+                          : "bg-status-warning/12 text-status-warning"
+                      }
+                    >
+                      <UserRound className="h-3 w-3" />
+                      {head.label}: {head.name}
+                      {head.substitutes.length > 0 && ` · Sub: ${head.substitutes.join(", ")}`}
+                    </Badge>
+                  )}
                   {extra && (
                     <Badge
                       className={
