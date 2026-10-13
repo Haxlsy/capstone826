@@ -11,6 +11,8 @@ export const EXPORT_TYPE_ACTIONS = {
   security_logs_excel:      "Exported security logs (Excel)",
   job_order_detail_pdf:     "Exported job order (PDF)",
   job_order_detail_excel:   "Exported job order (Excel)",
+  job_order_receipt_pdf:    "Exported job order receipt (PDF)",
+  job_order_receipt_excel:  "Exported job order receipt (Excel)",
   job_order_records_pdf:    "Exported job order records (PDF)",
   job_order_records_excel:  "Exported job order records (Excel)",
   customer_records_pdf:     "Exported customer records (PDF)",
