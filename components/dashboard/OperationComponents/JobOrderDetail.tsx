@@ -5,7 +5,7 @@ import Link from "next/link"
 import { useRouter } from "next/navigation"
 import {
   ArrowLeft, PackageCheck, ChevronDown, Users, RefreshCw, CheckCircle2, XCircle,
-  Clock, RotateCcw, UserPlus, Loader2, Trash2, FileText, FileSpreadsheet, Pencil, X,
+  Clock, RotateCcw, UserPlus, Loader2, Trash2, FileText, Pencil, X,
   UserRound,
 } from "lucide-react"
 import { stageGroupHead } from "@/lib/operations/stage-group-head"
@@ -18,9 +18,9 @@ import { StatusBadge, Badge, JobStatusBadges } from "@/components/ui/Badge"
 import { Textarea, Input } from "@/components/ui/Field"
 import { EmptyState } from "@/components/ui/EmptyState"
 import { useToast } from "@/components/ui/Toast"
-import { openPrintPreview, downloadWorkbook } from "@/lib/export/print"
-import { buildPrintHtml, buildWorkbook, exportFilename } from "@/lib/operations/job-order-export"
-import { buildReceiptHtml, buildReceiptWorkbook, receiptFilename } from "@/lib/operations/job-order-receipt"
+import { openPrintPreview } from "@/lib/export/print"
+import { buildPrintHtml } from "@/lib/operations/job-order-export"
+import { buildReceiptHtml } from "@/lib/operations/job-order-receipt"
 import { substituteRoleLabel } from "@/lib/substitute-label"
 import { formatOperatingHours, isWithinOperatingHours, DEFAULT_OPERATING_DAYS, DEFAULT_OPERATING_OPEN_TIME, DEFAULT_OPERATING_CLOSE_TIME, type Weekday, type Holiday } from "@/types/chatbot"
 import { alreadyOnJob } from "@/lib/operations/team-membership"
@@ -245,7 +245,7 @@ export default function JobOrderDetail({
 
   const [completeConfirm, setCompleteConfirm] = useState(false)
 
-  const [exportConfirm, setExportConfirm] = useState<"pdf" | "excel" | null>(null)
+  const [exportConfirm, setExportConfirm] = useState(false)
   const [exporting, setExporting] = useState(false)
 
   const [subModal, setSubModal] = useState(false)
@@ -689,32 +689,23 @@ export default function JobOrderDetail({
 
   const jobData = job
 
-  // The same two buttons export different documents by status: the full
-  // record (history, stages, photos) once the job is Released, and before
-  // that the customer's receipt, which is how they get their Job Order ID.
+  // Export PDF exports a different document by status: the full record
+  // (history, stages, photos) once the job is Released, and before that the
+  // customer's receipt, which is how they get their Job Order ID.
   const exportsFullRecord = jobData.status === "Released"
 
-  async function runExport(kind: "pdf" | "excel") {
+  async function runExport() {
     setExporting(true)
     try {
-      const now = new Date()
-      const generatedAt = now.toLocaleString("en-US", { timeZone: "Asia/Manila" })
+      const generatedAt = new Date().toLocaleString("en-US", { timeZone: "Asia/Manila" })
       if (exportsFullRecord) {
-        if (kind === "pdf") {
-          openPrintPreview(buildPrintHtml(jobData, generatedAt))
-          logExport("job_order_detail_pdf", jobData.job_order_code)
-        } else {
-          await downloadWorkbook(exportFilename(jobData.job_order_code, "xlsx", now), buildWorkbook(jobData))
-          logExport("job_order_detail_excel", jobData.job_order_code)
-        }
-      } else if (kind === "pdf") {
+        openPrintPreview(buildPrintHtml(jobData, generatedAt))
+        logExport("job_order_detail_pdf", jobData.job_order_code)
+      } else {
         openPrintPreview(buildReceiptHtml(jobData, generatedAt))
         logExport("job_order_receipt_pdf", jobData.job_order_code)
-      } else {
-        await downloadWorkbook(receiptFilename(jobData.job_order_code, "xlsx", now), buildReceiptWorkbook(jobData, generatedAt))
-        logExport("job_order_receipt_excel", jobData.job_order_code)
       }
-      setExportConfirm(null)
+      setExportConfirm(false)
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Failed to export job order.")
     } finally {
@@ -761,16 +752,10 @@ export default function JobOrderDetail({
         </Link>
         <div className="flex flex-wrap items-center gap-2">
           {job.status !== "Cancelled" && (
-            <>
-              <Button variant="secondary" onClick={() => setExportConfirm("pdf")}>
-                <FileText className="h-4 w-4" />
-                Export PDF
-              </Button>
-              <Button variant="secondary" onClick={() => setExportConfirm("excel")}>
-                <FileSpreadsheet className="h-4 w-4" />
-                Export Excel
-              </Button>
-            </>
+            <Button variant="secondary" onClick={() => setExportConfirm(true)}>
+              <FileText className="h-4 w-4" />
+              Export PDF
+            </Button>
           )}
           {job.status === "Pending" && (
             <Button variant="danger" onClick={() => setCancelConfirm(true)} {...lockProps}>
@@ -1099,25 +1084,21 @@ export default function JobOrderDetail({
 
       {/* Export Confirmation */}
       <ConfirmModal
-        open={exportConfirm !== null}
-        onClose={() => !exporting && setExportConfirm(null)}
-        onConfirm={() => { if (exportConfirm) runExport(exportConfirm) }}
-        title={
-          exportsFullRecord
-            ? (exportConfirm === "excel" ? "Export Job Order as Excel" : "Export Job Order as PDF")
-            : (exportConfirm === "excel" ? "Export Receipt as Excel" : "Export Receipt as PDF")
-        }
+        open={exportConfirm}
+        onClose={() => !exporting && setExportConfirm(false)}
+        onConfirm={runExport}
+        title={exportsFullRecord ? "Export Job Order as PDF" : "Export Receipt as PDF"}
         message={
           (exportsFullRecord
             ? `Export ${job.customer_name}'s full job order record — status history, stages, and photos?`
             : `Export the job order receipt for ${job.customer_name}? It shows their Job Order ID and booking details. The full record can be exported once the job is Released.`) +
-          (exportConfirm === "excel" ? " Downloads as a .xlsx file." : " This opens a print preview in a new tab.")
+          " This opens a print preview in a new tab."
         }
         confirmLabel={exporting ? "Exporting…" : "Export"}
         cancelLabel="Cancel"
         tone="primary"
         loading={exporting}
-        icon={exportConfirm === "excel" ? FileSpreadsheet : FileText}
+        icon={FileText}
       />
 
       {/* Mark as Completed Confirmation */}
