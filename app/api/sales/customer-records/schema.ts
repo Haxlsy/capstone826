@@ -1,4 +1,5 @@
 import { z } from "zod"
+import { validateName } from "@/lib/name"
 
 /**
  * Shared field-level validation for `customer_record` — both create (POST
@@ -11,7 +12,11 @@ import { z } from "zod"
  * (supabase/migrations/20260412000002_rebuild_schema.sql).
  */
 const CustomerRecordFields = {
-  full_name:      z.string().trim().min(1, "Full name is required.").max(255),
+  full_name:      z.string().trim().min(1, "Full name is required.").max(255)
+    .superRefine((v, ctx) => {
+      const err = validateName(v, "Full name", 255)
+      if (err) ctx.addIssue({ code: "custom", message: err })
+    }),
   contact_number: z.string().trim().min(1, "Contact number is required.").max(20),
   // A blank string clears the (optional) email column — kept distinct from a
   // malformed one, which is rejected.

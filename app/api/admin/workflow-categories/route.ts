@@ -3,6 +3,7 @@ import { createAdminClient } from "@/lib/supabase/admin"
 import { getAdminCaller } from "@/lib/auth/guard"
 import { auditCallerOf } from "@/lib/auth/caller"
 import { logAuditCall } from "@/hooks/audit-helpers"
+import { emojiError } from "@/lib/text"
 
 // POST /api/admin/workflow-categories
 // Find-or-create: if a category with the same name already exists, return it.
@@ -21,6 +22,8 @@ export async function POST(request: Request) {
     if (!name?.trim()) {
       return NextResponse.json({ error: "Category name is required." }, { status: 400 })
     }
+    const emojiErr = emojiError(name, "Category name")
+    if (emojiErr) return NextResponse.json({ error: emojiErr }, { status: 400 })
     if (technician_role !== "detailer" && technician_role !== "installer") {
       return NextResponse.json({ error: "technician_role must be 'detailer' or 'installer'." }, { status: 400 })
     }
