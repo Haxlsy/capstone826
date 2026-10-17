@@ -75,9 +75,16 @@ export function Popover({
       openAbove = panelHeight > 0 && spaceBelow < panelHeight + 12 && spaceAbove > spaceBelow
     }
 
+    // Keep the panel inside the viewport horizontally (8px margin) — on a
+    // narrow screen a trigger near the edge would otherwise push it off-screen.
+    const vw = window.innerWidth
+    const panelWidth = panelRef.current?.getBoundingClientRect().width ?? 0
+    const maxOffset = Math.max(8, vw - panelWidth - 8)
+    const clamp = (n: number) => Math.max(8, Math.min(n, maxOffset))
+
     setCoords({
       ...(openAbove ? { bottom: window.innerHeight - rect.top + 6 } : { top: rect.bottom + 6 }),
-      ...(align === "end" ? { right: window.innerWidth - rect.right } : { left: rect.left }),
+      ...(align === "end" ? { right: clamp(vw - rect.right) } : { left: clamp(rect.left) }),
       ...(matchTriggerWidth ? { width: rect.width } : {}),
     })
   }, [align, matchTriggerWidth, placement])
@@ -135,6 +142,7 @@ export function Popover({
             left: coords?.left,
             right: coords?.right,
             width: coords?.width,
+            maxWidth: "calc(100vw - 16px)",
           }}
           className={cn(
             // Above every overlay in the app, including a Modal (z-[100]) and

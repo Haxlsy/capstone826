@@ -9,6 +9,7 @@ import {
 } from "lucide-react"
 import MessageTemplates from "./MessageTemplates"
 import { Modal, ConfirmModal } from "@/components/ui/Modal"
+import { Drawer } from "@/components/ui/Drawer"
 import { Button } from "@/components/ui/Button"
 import { TagInput } from "@/components/ui/TagInput"
 import { FieldHint } from "@/components/ui/FieldHint"
@@ -93,6 +94,8 @@ const EMPTY_KB_FORM: KBForm = { category: "FAQ", topic: "", content: "" }
 export default function ChatbotManagement() {
   const toast = useToast()
   const [activeTab, setActiveTab] = useState<Tab>("settings")
+  // Below 1024 the side preview is hidden; this drawer shows it on demand.
+  const [previewOpen, setPreviewOpen] = useState(false)
 
   // --- Settings state ---
   const [settings, setSettings]       = useState<AdminChatbotSettings>(DEFAULT_SETTINGS)
@@ -394,7 +397,7 @@ export default function ChatbotManagement() {
         <p className="text-sm text-muted mt-0.5">Configure how your chatbot interacts with customers.</p>
       </div>
 
-      <div className="flex border-b border-border gap-1">
+      <div className="flex gap-1 overflow-x-auto overflow-y-hidden border-b border-border">
         <TabButton active={activeTab === "settings"} onClick={() => setActiveTab("settings")} icon={<Settings className="w-4 h-4" />} label="AI Configuration" />
         <TabButton active={activeTab === "knowledge_base"} onClick={() => setActiveTab("knowledge_base")} icon={<BookOpen className="w-4 h-4" />} label="Knowledge Base" />
         <TabButton active={activeTab === "message_templates"} onClick={() => setActiveTab("message_templates")} icon={<MessageSquare className="w-4 h-4" />} label="Message Templates" />
@@ -406,6 +409,10 @@ export default function ChatbotManagement() {
         {/* Left — form */}
         <div className="flex flex-col gap-5 flex-1 min-w-0 max-w-2xl">
           {loading && <p className="text-sm text-muted">Loading settings…</p>}
+
+          <Button variant="secondary" size="sm" className="self-start lg:hidden" onClick={() => setPreviewOpen(true)}>
+            <MessageSquare className="w-3.5 h-3.5" /> Preview chatbot
+          </Button>
 
           {/* 0 — System Controls */}
           <Section icon={<SlidersHorizontal className="w-4 h-4" />} title="System Controls" subtitle="Master switches for AI-powered features across the platform.">
@@ -686,6 +693,12 @@ export default function ChatbotManagement() {
         <div className="hidden lg:flex w-80 xl:w-96 shrink-0 sticky top-0 h-[680px]">
           <ChatbotPreview settings={settings} />
         </div>
+        <Drawer open={previewOpen} onClose={() => setPreviewOpen(false)} title="Chatbot Preview" width="md">
+          {/* ChatbotPreview fills its parent, so give it a height. */}
+          <div className="flex h-[75dvh]">
+            <ChatbotPreview settings={settings} />
+          </div>
+        </Drawer>
         </div>
       )}
 
@@ -969,7 +982,7 @@ function TabButton({ active, onClick, icon, label }: { active: boolean; onClick:
   return (
     <button
       onClick={onClick}
-      className={`flex items-center gap-2 px-4 py-2.5 text-sm font-medium border-b-2 transition-colors ${
+      className={`flex shrink-0 items-center gap-2 whitespace-nowrap px-3 py-2.5 text-sm font-medium border-b-2 sm:px-4 transition-colors ${
         active ? "border-primary text-heading" : "border-transparent text-muted hover:text-body"
       }`}
     >

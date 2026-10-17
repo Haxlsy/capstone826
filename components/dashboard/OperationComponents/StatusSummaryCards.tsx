@@ -40,7 +40,7 @@ export default function StatusSummaryCards({ loading, counts, concernCount, jobs
 
   if (loading) {
     return (
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-7">
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 xl:grid-cols-7">
         {Array.from({ length: 7 }).map((_, i) => (
           <div key={i} className="flex flex-col gap-2.5 rounded-card bg-surface-muted p-4">
             <Sk className="h-3.5 w-20" />
@@ -55,7 +55,7 @@ export default function StatusSummaryCards({ loading, counts, concernCount, jobs
   const modalJobs = statusModal ? jobsByStatus?.[statusModal] ?? [] : []
 
   return (
-    <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-7">
+    <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 xl:grid-cols-7">
       {STATUS_CONFIG.map(({ key, label, icon, tone }) => (
         <StatCard
           key={key}

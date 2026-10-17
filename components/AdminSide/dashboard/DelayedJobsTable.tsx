@@ -61,7 +61,7 @@ export function DelayedJobsTable({ initialData }: { initialData?: DelayedJob[] }
 
   return (
     <Card className="flex flex-col p-5">
-      <div className="mb-4 flex items-center justify-between">
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
         <div className="flex items-center gap-2">
           <AlertTriangle className="h-4 w-4 text-status-rework" />
           <h2 className="text-sm font-semibold text-body">Delayed Jobs</h2>

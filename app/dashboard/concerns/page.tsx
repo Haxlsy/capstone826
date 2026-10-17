@@ -5,7 +5,7 @@ import { toConcernRecords } from "@/lib/operations/concern-record"
 export default async function ConcernsPage() {
   const { concerns } = await getConcernsData()
   return (
-    <div className="p-6">
+    <div className="p-4 md:p-6">
       <JobConcerns initialRecords={toConcernRecords(concerns)} />
     </div>
   )

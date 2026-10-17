@@ -2,7 +2,7 @@ import { Sk, SkRow } from "@/components/ui/skeleton"
 
 export default function SalesJobDetailLoading() {
   return (
-    <div className="p-6">
+    <div className="p-4 md:p-6">
       <div className="mx-auto max-w-6xl flex flex-col gap-6 animate-pulse">
         {/* Header */}
         <div className="flex items-start justify-between gap-4">
@@ -20,7 +20,7 @@ export default function SalesJobDetailLoading() {
         <Sk className="h-9 w-full rounded-card" />
 
         {/* Info grid */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
           {Array.from({ length: 3 }).map((_, i) => (
             <div key={i} className="bg-surface border border-border-subtle rounded-card p-4 flex flex-col gap-3">
               <Sk className="h-3 w-20" />

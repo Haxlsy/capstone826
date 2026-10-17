@@ -52,7 +52,7 @@ export function OperationsSkeleton() {
 
 export default function OperationsLoading() {
   return (
-    <div className="flex-1 p-6">
+    <div className="flex-1 p-4 md:p-6">
       <OperationsSkeleton />
     </div>
   )

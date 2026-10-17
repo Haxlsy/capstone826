@@ -313,7 +313,7 @@ export default function ServiceOverridePanel({
   // ── Placeholder (no service type selected yet) ────────────────────
   if (!primaryService && availableServices.length === 0) {
     return (
-      <div className="w-80 shrink-0 bg-surface border border-border rounded-card flex flex-col items-center justify-center gap-3 px-6 py-14 text-center min-h-[260px]">
+      <div className="w-full lg:w-80 shrink-0 bg-surface border border-border rounded-card flex flex-col items-center justify-center gap-3 px-6 py-14 text-center min-h-[260px]">
         <div className="w-10 h-10 rounded-full bg-surface-muted flex items-center justify-center">
           <Layers className="w-5 h-5 text-muted" />
         </div>
@@ -329,7 +329,7 @@ export default function ServiceOverridePanel({
 
   // ── Panel ─────────────────────────────────────────────────────────
   return (
-    <div className="w-80 shrink-0 bg-surface border border-border rounded-card flex flex-col overflow-hidden">
+    <div className="w-full lg:w-80 shrink-0 bg-surface border border-border rounded-card flex flex-col overflow-hidden">
       {/* Header */}
       <div className="flex items-center justify-between px-4 py-3 border-b border-border-subtle">
         <div className="flex items-center gap-2">

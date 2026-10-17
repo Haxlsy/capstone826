@@ -4,7 +4,7 @@ import { getJobOrdersData } from "@/lib/operations/job-orders-data"
 export default async function JobOrderRecordsPage() {
   const data = await getJobOrdersData(true)
   return (
-    <div className="p-6">
+    <div className="p-4 md:p-6">
       <JobOrderRecords jobOrders={data.job_orders} />
     </div>
   )

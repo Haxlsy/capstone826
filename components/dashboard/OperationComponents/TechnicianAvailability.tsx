@@ -21,7 +21,7 @@ import { useOfflineLock, OfflinePausedNote, OFFLINE_ACTION_HINT } from "@/hooks/
 import { cn } from "@/lib/utils"
 import { avatarColor, initials } from "@/lib/ui/avatar"
 import { roleStyle } from "@/lib/ui/roles"
-import { normalizeName, validateName } from "@/lib/name"
+import { NAME_INPUT_BLOCKED_MESSAGE, normalizeName, sanitizeNameInput, validateName } from "@/lib/name"
 import { isTechnicianAvailableToday, manilaToday } from "@/lib/technician-availability"
 
 interface ActiveJob {
@@ -352,7 +352,7 @@ export default function TechnicianAvailability() {
         <StatCard label="Not Available" value={unavailableCount} icon={UserX} tone="delayed" variant="solid" />
       </div>
 
-      <div className="flex items-center gap-3">
+      <div className="flex flex-wrap items-center gap-3">
         <SearchBar
           value={search}
           onChange={setSearch}
@@ -669,15 +669,28 @@ function TechFormModal({
   submitLabel: string
   onSubmit: () => void
 }) {
+  // Name inputs drop digits/emoji as typed, with a hint so the blocked
+  // keystroke isn't silently ignored.
+  const [nameHint, setNameHint] = useState<string | null>(null)
+  function setNameField(key: "firstName" | "lastName", value: string) {
+    const clean = sanitizeNameInput(value)
+    setForm((f) => ({ ...f, [key]: clean }))
+    setNameHint(clean !== value.normalize("NFC") ? NAME_INPUT_BLOCKED_MESSAGE : null)
+  }
+  function close() {
+    setNameHint(null)
+    onClose()
+  }
+
   return (
     <Modal
       open={open}
-      onClose={onClose}
+      onClose={close}
       title={title}
       size="md"
       footer={
         <>
-          <Button variant="ghost" onClick={onClose}>
+          <Button variant="ghost" onClick={close}>
             Cancel
           </Button>
           <Button onClick={onSubmit} disabled={submitting || !form.firstName.trim() || !form.lastName.trim()}>
@@ -687,12 +700,12 @@ function TechFormModal({
       }
     >
       <div className="space-y-4">
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           <div>
             <FieldLabel>First Name</FieldLabel>
             <Input
               value={form.firstName}
-              onChange={(e) => setForm((f) => ({ ...f, firstName: e.target.value }))}
+              onChange={(e) => setNameField("firstName", e.target.value)}
               placeholder="e.g. Juan"
             />
           </div>
@@ -700,11 +713,12 @@ function TechFormModal({
             <FieldLabel>Last Name</FieldLabel>
             <Input
               value={form.lastName}
-              onChange={(e) => setForm((f) => ({ ...f, lastName: e.target.value }))}
+              onChange={(e) => setNameField("lastName", e.target.value)}
               placeholder="e.g. Dela Cruz"
             />
           </div>
         </div>
+        {nameHint && <p className="-mt-2 text-xs text-status-delayed">{nameHint}</p>}
         <div>
           <FieldLabel>Role</FieldLabel>
           <Select

@@ -144,7 +144,7 @@ export default function SalesJobDetail({ job: initialJob }: { job: JobDetail }) 
     <div className="mx-auto max-w-6xl flex flex-col gap-6">
 
       {/* Header */}
-      <div className="flex items-start justify-between gap-4">
+      <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
           <Link
             href="/dashboard/sales/job-orders"
@@ -164,7 +164,7 @@ export default function SalesJobDetail({ job: initialJob }: { job: JobDetail }) 
       </div>
 
       {/* Info grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
         {/* Customer */}
         <div className="bg-surface border border-border-subtle rounded-card p-4 flex flex-col gap-3">
           <p className="text-xs font-semibold text-muted uppercase tracking-wide">Customer</p>
@@ -312,7 +312,7 @@ function InfoRow({ label, value }: { label: string; value: string }) {
   return (
     <div className="flex items-start justify-between gap-4">
       <span className="text-xs text-muted shrink-0">{label}</span>
-      <span className="text-sm font-medium text-heading text-right">{value}</span>
+      <span className="min-w-0 break-words text-sm font-medium text-heading text-right">{value}</span>
     </div>
   )
 }

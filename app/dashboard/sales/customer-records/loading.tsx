@@ -57,7 +57,7 @@ export function CustomerRecordsSkeleton() {
 
 export default function CustomerRecordsLoading() {
   return (
-    <div className="p-6">
+    <div className="p-4 md:p-6">
       <CustomerRecordsSkeleton />
     </div>
   )

@@ -38,7 +38,7 @@ export default function DashboardShell({ children }: { children: React.ReactNode
   const shell = (
     <AppShell
       nav={resolvedNav}
-      settingsContent={<ChangePasswordSettings extraSection={area === "operations" ? <OfflineSyncSettings /> : undefined} />}
+      settingsContent={<ChangePasswordSettings embedded extraSection={area === "operations" ? <OfflineSyncSettings /> : undefined} />}
       fallbackName={fallbackName}
       showBell={showBell}
       showOfflineBanner={area === "operations"}

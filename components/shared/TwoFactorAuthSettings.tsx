@@ -153,7 +153,7 @@ export default function TwoFactorAuthSettings() {
 
   return (
     <div className="bg-surface border border-border rounded-card overflow-hidden mt-6">
-      <div className="flex items-center gap-3 px-6 py-4 border-b border-border-subtle">
+      <div className="flex items-center gap-3 px-4 py-4 sm:px-6 border-b border-border-subtle">
         <div className="w-8 h-8 rounded-sm bg-primary/10 flex items-center justify-center">
           <ShieldCheck className="w-4 h-4 text-primary" />
         </div>
@@ -165,7 +165,7 @@ export default function TwoFactorAuthSettings() {
         </div>
       </div>
 
-      <div className="px-6 py-5">
+      <div className="@container px-4 py-5 sm:px-6">
         {loading ? (
           <p className="text-sm text-muted">Loading…</p>
         ) : enroll ? (
@@ -208,7 +208,7 @@ export default function TwoFactorAuthSettings() {
               }`}
             />
             {verifyError && <p className="text-xs text-status-delayed">{verifyError}</p>}
-            <div className="flex items-center gap-3">
+            <div className="flex flex-wrap items-center gap-3">
               <Button type="submit" disabled={verifying}>
                 {verifying ? "Verifying…" : "Confirm & Enable"}
               </Button>
@@ -218,14 +218,14 @@ export default function TwoFactorAuthSettings() {
             </div>
           </form>
         ) : verifiedFactorId ? (
-          <div className="flex items-center justify-between gap-3">
-            <p className="text-sm text-body">Authenticator app is enabled for your account.</p>
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <p className="min-w-0 break-words text-sm text-body">Authenticator app is enabled for your account.</p>
             <Button variant="danger" size="sm" onClick={() => setRemoveConfirmOpen(true)}>
               <Trash2 className="w-3.5 h-3.5" /> Remove
             </Button>
           </div>
         ) : (
-          <div className="flex items-center justify-between gap-3">
+          <div className="flex flex-wrap items-center justify-between gap-3">
             <p className="text-sm text-body">Not set up yet.</p>
             <Button onClick={startEnroll} disabled={enrolling}>
               <QrCode className="w-3.5 h-3.5" /> {enrolling ? "Starting…" : "Set Up Authenticator App"}

@@ -4,6 +4,7 @@ import { createClient } from "@/lib/supabase/server"
 import { createAdminClient } from "@/lib/supabase/admin"
 import { logAudit } from "@/hooks/audit-helpers"
 import { getRoleCaller } from "@/lib/auth/caller"
+import { emojiError } from "@/lib/text"
 
 async function requireAdminProfile() {
   const cookieStore = await cookies()
@@ -46,6 +47,8 @@ export async function PATCH(
     const body = await request.json()
     const newName = typeof body?.name === "string" ? body.name.trim() : ""
     if (!newName) return NextResponse.json({ error: "Name is required." }, { status: 400 })
+    const emojiErr = emojiError(newName, "Service type")
+    if (emojiErr) return NextResponse.json({ error: emojiErr }, { status: 400 })
     if (newName === decoded) return NextResponse.json({ success: true, name: newName })
 
     const { error: svcErr } = await admin

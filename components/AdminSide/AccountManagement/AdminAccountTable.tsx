@@ -222,7 +222,7 @@ export default function AdminAccountTable() {
   ]
 
   return (
-    <div className="flex flex-col gap-5 p-6">
+    <div className="flex flex-col gap-5 p-4 md:p-6">
       <PageHeader
         title="Admin Accounts"
         subtitle="Manage Admin user accounts. Visible to Super Admin only."

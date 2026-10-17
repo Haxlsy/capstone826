@@ -7,6 +7,7 @@ import { getInitials } from "@/hooks/useCurrentUser"
 import { fmtDate } from "@/lib/time-display"
 import { dateRangeError, dateRangeLabel } from "@/lib/sales/customer-records-filter"
 import { EMAIL_PATTERN } from "@/lib/messenger/patterns"
+import { NAME_INPUT_BLOCKED_MESSAGE, sanitizeNameInput, validateName } from "@/lib/name"
 import { PageHeader } from "@/components/ui/PageHeader"
 import { SearchBar } from "@/components/ui/SearchBar"
 import { Button } from "@/components/ui/Button"
@@ -246,7 +247,8 @@ export default function CustomerRecords() {
   }
 
   async function saveCustomer(c: Customer) {
-    if (!customerDraft.fullName.trim()) return setSaveErr("Customer name is required.")
+    const nameError = validateName(customerDraft.fullName, "Customer name", 255)
+    if (nameError) return setSaveErr(nameError)
     if (!customerDraft.contactNumber.trim()) return setSaveErr("Contact number is required.")
     const email = customerDraft.email.trim()
     if (email && !EMAIL_PATTERN.test(email)) return setSaveErr("Enter a valid email address.")
@@ -465,12 +467,12 @@ export default function CustomerRecords() {
               />
               <FieldHint>Shows customers added on or before this date. Leave empty for no upper limit.</FieldHint>
             </div>
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2">
               <Button onClick={applyDateFilter}>Apply Filters</Button>
               <Button variant="ghost" onClick={resetDateFilter}>Reset</Button>
             </div>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <Button
               variant="secondary"
               onClick={() => setExportConfirm("pdf")}
@@ -604,7 +606,11 @@ export default function CustomerRecords() {
                           value={customerDraft.fullName}
                           disabled={Boolean(inServiceCode)}
                           title={inServiceCode ? nameLockedMessage(inServiceCode) : undefined}
-                          onChange={(e) => setCustomerDraft((d) => ({ ...d, fullName: e.target.value }))}
+                          onChange={(e) => {
+                            const clean = sanitizeNameInput(e.target.value)
+                            setCustomerDraft((d) => ({ ...d, fullName: clean }))
+                            setSaveErr(clean !== e.target.value.normalize("NFC") ? NAME_INPUT_BLOCKED_MESSAGE : null)
+                          }}
                         />
                       </div>
                       <div>
@@ -670,7 +676,7 @@ export default function CustomerRecords() {
                           isLocked && "border-l-2 border-status-warning bg-status-warning/5",
                         )}
                       >
-                        <div className="flex items-center gap-2 min-w-[220px]">
+                        <div className="flex min-w-0 flex-wrap items-center gap-2 sm:min-w-[220px]">
                           <Car className="h-3.5 w-3.5 shrink-0 text-muted" />
                           {isEditing ? (
                             <>

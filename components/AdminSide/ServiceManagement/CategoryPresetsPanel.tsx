@@ -10,6 +10,7 @@ import { HourMinuteInput } from "@/components/ui/Field"
 import { useToast } from "@/components/ui/Toast"
 import { FieldHint } from "@/components/ui/FieldHint"
 import { findDuplicateStageIds } from "@/lib/admin/service-stage-validation"
+import { EMOJI_BLOCKED_MESSAGE, stripEmoji } from "@/lib/text"
 
 interface PresetStage {
   id?:                string
@@ -363,13 +364,13 @@ export default function CategoryPresetsPanel({
                 <input
                   type="text"
                   value={fName}
-                  onChange={(e) => { setFName(e.target.value); if (nameError) setNameError("") }}
+                  onChange={(e) => { const v = stripEmoji(e.target.value); setFName(v); setNameError(v !== e.target.value ? EMOJI_BLOCKED_MESSAGE : "") }}
                   placeholder="e.g. Quality Check"
                   className={`w-full px-3 py-2.5 text-sm border rounded-card focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-colors ${
                     nameError ? "border-status-delayed bg-status-delayed/10" : "border-border"
                   }`}
                 />
-                <FieldHint>Any characters allowed. Must be unique (case and spacing don&apos;t count).</FieldHint>
+                <FieldHint>Any characters except emoji. Must be unique (case and spacing don&apos;t count).</FieldHint>
                 {nameError && <p className="text-xs text-status-delayed">{nameError}</p>}
               </div>
 
@@ -412,13 +413,17 @@ export default function CategoryPresetsPanel({
                             <input
                               type="text"
                               value={stage.name}
-                              onChange={(e) => updateStage(stage.key, "name", e.target.value)}
+                              onChange={(e) => {
+                                const v = stripEmoji(e.target.value)
+                                updateStage(stage.key, "name", v)
+                                if (v !== e.target.value) setStageErrors((prev) => ({ ...prev, [stage.key]: { ...prev[stage.key], name: EMOJI_BLOCKED_MESSAGE } }))
+                              }}
                               placeholder="Stage name"
                               className={`w-full px-3 py-2 text-sm border rounded-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-colors ${
                                 stageErr?.name ? "border-status-delayed bg-status-delayed/10" : "border-border"
                               }`}
                             />
-                            <FieldHint>Stage names must be unique within this preset. Any characters allowed.</FieldHint>
+                            <FieldHint>Stage names must be unique within this preset. Any characters except emoji.</FieldHint>
                           </div>
                           <HourMinuteInput
                             hours={parseInt(stage.hh, 10) || 0}

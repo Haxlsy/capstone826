@@ -6,6 +6,7 @@ import { logAudit, logAuditCall } from "@/hooks/audit-helpers"
 import { getLiveJobOrdersForService } from "@/lib/operations/service-usage"
 import { getRoleCaller } from "@/lib/auth/caller"
 import { findDuplicateStageName } from "@/lib/admin/service-stage-validation"
+import { emojiError, stageNamesEmojiError } from "@/lib/text"
 
 // GET /api/operations/services/[id]
 // Returns a single service with its stages (including category info) for editing.
@@ -144,6 +145,13 @@ export async function PATCH(
     if (!serviceType?.trim()) {
       return NextResponse.json({ error: "Service type is required." }, { status: 400 })
     }
+    const emojiErr =
+      emojiError(serviceName, "Service name") ??
+      emojiError(serviceType, "Service type") ??
+      emojiError(description, "Description") ??
+      stageNamesEmojiError(stages)
+    if (emojiErr) return NextResponse.json({ error: emojiErr }, { status: 400 })
+
     const dupStage = findDuplicateStageName(Array.isArray(stages) ? stages : [])
     if (dupStage) {
       return NextResponse.json(

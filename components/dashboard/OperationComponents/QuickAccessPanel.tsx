@@ -73,15 +73,17 @@ export default function QuickAccessPanel({ loading: initialLoading, recentJobs }
               <button
                 key={item.id}
                 onClick={() => router.push(`/dashboard/job-management/${item.id}`)}
-                className={`flex w-full items-center justify-between py-2.5 text-left transition-colors hover:bg-surface-muted ${
+                className={`flex w-full items-center justify-between gap-3 py-2.5 text-left transition-colors hover:bg-surface-muted ${
                   idx < jobs.length - 1 ? "border-b border-border-subtle" : ""
                 }`}
               >
-                <div>
+                <div className="min-w-0">
                   <p className="font-mono text-xs text-body">{item.display_id}</p>
-                  <p className="mt-0.5 text-sm font-medium text-heading">{item.customer}</p>
+                  <p className="mt-0.5 truncate text-sm font-medium text-heading">{item.customer}</p>
                 </div>
-                <JobStatusBadges status={item.status} isOverdue={item.is_overdue} stacked />
+                <div className="shrink-0">
+                  <JobStatusBadges status={item.status} isOverdue={item.is_overdue} stacked />
+                </div>
               </button>
             ))}
           </div>

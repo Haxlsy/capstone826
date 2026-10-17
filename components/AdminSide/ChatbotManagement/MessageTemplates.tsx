@@ -3,6 +3,8 @@
 import { useState } from "react"
 import { Save, Check, Smartphone, Info, AlertTriangle } from "lucide-react"
 import type { ChatbotSettings } from "@/types/chatbot"
+import { Button } from "@/components/ui/Button"
+import { Drawer } from "@/components/ui/Drawer"
 
 type TemplateField =
   | "first_time_message_en" | "first_time_message_fil"
@@ -88,6 +90,7 @@ interface Props {
 export default function MessageTemplates({ settings, patch, onSave, onCancel, saved, dirty, errors, error }: Props) {
   const [activeKey, setActiveKey] = useState(CATEGORIES[0].key)
   const [previewLang, setPreviewLang] = useState<"en" | "fil">("en")
+  const [previewOpen, setPreviewOpen] = useState(false)
 
   const active = CATEGORIES.find((c) => c.key === activeKey) ?? CATEGORIES[0]
   const enValue = settings[active.enField] ?? ""
@@ -98,6 +101,57 @@ export default function MessageTemplates({ settings, patch, onSave, onCancel, sa
   const hasIncomplete = incomplete.length > 0
   // Any other problem on the shared Save (e.g. AI Settings tab) also blocks it.
   const hasErrors = Object.keys(errors).length > 0
+
+  // Shared by the desktop side column and the phone/tablet drawer, so both
+  // follow the same language toggle and live text.
+  const preview = (
+    <>
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <Smartphone className="w-4 h-4 text-muted" />
+          <p className="text-sm font-medium text-body">Messenger Preview</p>
+        </div>
+        <div className="flex gap-1 rounded-pill bg-surface-muted p-0.5">
+          {(["en", "fil"] as const).map((l) => (
+            <button
+              key={l}
+              onClick={() => setPreviewLang(l)}
+              className={`px-2.5 py-1 rounded-pill text-[11px] font-semibold transition-colors ${
+                previewLang === l ? "bg-primary text-white" : "text-muted hover:text-body"
+              }`}
+            >
+              {l === "en" ? "EN" : "FIL"}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div className="bg-surface-muted rounded-card p-4 flex flex-col gap-3">
+        <div className="flex items-center gap-2.5 pb-3 border-b border-border">
+          <div className="w-8 h-8 rounded-full bg-primary flex items-center justify-center text-white text-xs font-bold shrink-0">
+            826
+          </div>
+          <div>
+            <p className="text-xs font-semibold text-heading">826 Auto Care</p>
+            <p className="text-[10px] text-muted">Typically replies instantly</p>
+          </div>
+        </div>
+
+        <div className="flex items-end gap-2">
+          <div className="w-6 h-6 rounded-full bg-primary flex items-center justify-center text-white text-[9px] font-bold shrink-0">
+            826
+          </div>
+          <div className="bg-surface rounded-card rounded-bl-sm px-3 py-2.5 shadow-sm max-w-[85%]">
+            <p className="text-[11px] text-body leading-relaxed whitespace-pre-wrap">
+              {(previewLang === "en" ? enValue : filValue) || "Your template will appear here…"}
+            </p>
+          </div>
+        </div>
+      </div>
+
+      <p className="text-[10px] text-muted text-center">Preview approximates Messenger layout.</p>
+    </>
+  )
 
   return (
     <div className="flex flex-col gap-6">
@@ -135,6 +189,14 @@ export default function MessageTemplates({ settings, patch, onSave, onCancel, sa
           <p className="text-sm text-primary">{active.description}</p>
         </div>
       </div>
+
+      {/* Below 1024 there's no room for the side preview — open it on demand. */}
+      <Button variant="secondary" size="sm" className="self-start lg:hidden" onClick={() => setPreviewOpen(true)}>
+        <Smartphone className="w-3.5 h-3.5" /> Preview message
+      </Button>
+      <Drawer open={previewOpen} onClose={() => setPreviewOpen(false)} title={`${active.label} Template`} width="sm">
+        <div className="flex flex-col gap-3">{preview}</div>
+      </Drawer>
 
       {/* Editor + preview */}
       <div className="flex gap-6 items-start">
@@ -192,7 +254,7 @@ export default function MessageTemplates({ settings, patch, onSave, onCancel, sa
             </p>
           )}
 
-          <div className="flex items-center gap-3">
+          <div className="flex flex-wrap items-center gap-3">
             <button
               onClick={onSave}
               disabled={!dirty || hasErrors}
@@ -225,52 +287,9 @@ export default function MessageTemplates({ settings, patch, onSave, onCancel, sa
           </div>
         </div>
 
-        {/* Messenger Preview — right */}
-        <div className="w-72 flex flex-col gap-3 shrink-0">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <Smartphone className="w-4 h-4 text-muted" />
-              <p className="text-sm font-medium text-body">Messenger Preview</p>
-            </div>
-            <div className="flex gap-1 rounded-pill bg-surface-muted p-0.5">
-              {(["en", "fil"] as const).map((l) => (
-                <button
-                  key={l}
-                  onClick={() => setPreviewLang(l)}
-                  className={`px-2.5 py-1 rounded-pill text-[11px] font-semibold transition-colors ${
-                    previewLang === l ? "bg-primary text-white" : "text-muted hover:text-body"
-                  }`}
-                >
-                  {l === "en" ? "EN" : "FIL"}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          <div className="bg-surface-muted rounded-card p-4 flex flex-col gap-3">
-            <div className="flex items-center gap-2.5 pb-3 border-b border-border">
-              <div className="w-8 h-8 rounded-full bg-primary flex items-center justify-center text-white text-xs font-bold shrink-0">
-                826
-              </div>
-              <div>
-                <p className="text-xs font-semibold text-heading">826 Auto Care</p>
-                <p className="text-[10px] text-muted">Typically replies instantly</p>
-              </div>
-            </div>
-
-            <div className="flex items-end gap-2">
-              <div className="w-6 h-6 rounded-full bg-primary flex items-center justify-center text-white text-[9px] font-bold shrink-0">
-                826
-              </div>
-              <div className="bg-surface rounded-card rounded-bl-sm px-3 py-2.5 shadow-sm max-w-[85%]">
-                <p className="text-[11px] text-body leading-relaxed whitespace-pre-wrap">
-                  {(previewLang === "en" ? enValue : filValue) || "Your template will appear here…"}
-                </p>
-              </div>
-            </div>
-          </div>
-
-          <p className="text-[10px] text-muted text-center">Preview approximates Messenger layout.</p>
+        {/* Messenger Preview — right (desktop); below 1024 it opens in a drawer */}
+        <div className="hidden w-72 flex-col gap-3 shrink-0 lg:flex">
+          {preview}
         </div>
       </div>
     </div>

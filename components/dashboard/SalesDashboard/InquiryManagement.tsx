@@ -7,7 +7,7 @@ import { useRealtimeRefetch } from "@/hooks/useRealtimeRefetch"
 import { RealtimeStatusDot } from "@/components/shared/RealtimeStatusDot"
 import {
   ArrowRightLeft, Clock,
-  CheckCircle2, ChevronRight, User, Car,
+  CheckCircle2, ChevronLeft, ChevronRight, User, Car,
   Phone, Hash, CheckCheck, CircleDot, Search,
   AlertCircle, Mail, Layers, AlertTriangle, Truck,
 } from "lucide-react"
@@ -24,6 +24,7 @@ import { inquiryTypeStyle } from "@/lib/ui/status"
 import { newInquiryIds, resolveSelectedId, newInquiryToast, escalationHeading, canRecordCustomerDetails, resolveConfirmMessage, inquiryStatusBadges, isUnrecordedBooking } from "@/lib/sales/inquiry-list"
 import { LinkAccountModal } from "./LinkAccountModal"
 import { logView } from "@/lib/client/log-view"
+import { NAME_INPUT_BLOCKED_MESSAGE, sanitizeNameInput, validateName } from "@/lib/name"
 
 type InquiryStatus = "open" | "resolved" | "recorded"
 type InquiryType   = "Booking" | "Human Response" | "Report"
@@ -81,6 +82,9 @@ export default function InquiryManagement() {
   const [activeTab, setActiveTab]   = useState<Tab>("all")
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [search, setSearch]         = useState("")
+  // Below 1024px the list and the detail don't fit side by side, so only one
+  // shows at a time: picking an inquiry opens its detail, "Back" returns.
+  const [narrowView, setNarrowView] = useState<"list" | "detail">("list")
 
   // Record modal
   const [recordOpen, setRecordOpen] = useState(false)
@@ -93,17 +97,13 @@ export default function InquiryManagement() {
   const PLATE_RE = /^[A-Z]{1,4}\s?-?\s?\d{1,6}(?:\s?-\s?[A-Z]{1,2})?$/i
   const PHONE_RE = /^(?:\+?63|0)\s?9\d{2}[\s.-]?\d{3}[\s.-]?\d{4}$/
   const EMAIL_RE = /^[\w.+-]+@[\w-]+\.[\w.]+$/
-  const NAME_RE  = /^[A-Za-z\s.'-]{2,}$/
 
   function validateRecordForm(): Record<string, string> {
     const errs: Record<string, string> = {}
     const { full_name, contact_number, email, plate_number, vehicle_unit } = recordForm
 
-    if (!full_name.trim()) {
-      errs.full_name = "Full name is required."
-    } else if (!NAME_RE.test(full_name.trim())) {
-      errs.full_name = "Full name must be at least 2 characters (letters, spaces, dots, hyphens only)."
-    }
+    const nameError = validateName(full_name, "Full name", 255)
+    if (nameError) errs.full_name = nameError
 
     if (!contact_number.trim()) {
       errs.contact_number = "Contact number is required."
@@ -221,6 +221,7 @@ export default function InquiryManagement() {
     setActiveTab("all")
     setSearch("")
     setSelectedId(requestedParam)
+    setNarrowView("detail")
     if (!inquiriesRef.current.some((i) => i.id === requestedParam)) load({ silent: true })
     else requestedIdRef.current = null
     const url = new URL(window.location.href)
@@ -286,6 +287,23 @@ export default function InquiryManagement() {
 
   const selected      = inquiries.find((i) => i.id === selectedId) ?? null
 
+  // Below 1024 the list and detail swap in place and the page itself scrolls,
+  // so move the view with them: opening an inquiry jumps to its detail, and
+  // "Back" returns to the row it came from. Only on a view change, so the
+  // first auto-selected row never yanks the page on load.
+  const detailRef   = useRef<HTMLDivElement>(null)
+  const prevViewRef = useRef(narrowView)
+  useEffect(() => {
+    const prev = prevViewRef.current
+    prevViewRef.current = narrowView
+    if (prev === narrowView || !window.matchMedia("(max-width: 1023px)").matches) return
+    if (narrowView === "detail") {
+      detailRef.current?.scrollIntoView({ block: "start" })
+    } else if (selectedId) {
+      document.querySelector(`[data-inquiry-id="${CSS.escape(selectedId)}"]`)?.scrollIntoView({ block: "center" })
+    }
+  }, [narrowView, selectedId])
+
   useEffect(() => {
     if (selected) logView("inquiry", selected.extractedName || selected.messengerName)
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -299,7 +317,7 @@ export default function InquiryManagement() {
 
   function openRecordModal(inq: Inquiry) {
     setRecordForm({
-      full_name:      inq.extractedName    ?? "",
+      full_name:      sanitizeNameInput(inq.extractedName ?? ""),
       contact_number: inq.extractedContact ?? "",
       email:          inq.extractedEmail   ?? "",
       plate_number:   inq.extractedPlate   ?? "",
@@ -369,7 +387,7 @@ export default function InquiryManagement() {
   }
 
   return (
-    <div className="flex flex-col h-full gap-5">
+    <div className="flex flex-col gap-5 lg:h-full">
       <PageHeader
         title="Inquiry Management"
         subtitle="Escalated chatbot conversations requiring Sales action."
@@ -386,9 +404,12 @@ export default function InquiryManagement() {
       </div>
 
       {/* Main Panel */}
-      <div className="flex flex-1 gap-4 min-h-0">
+      <div className="flex gap-4 lg:min-h-0 lg:flex-1">
         {/* Left: List */}
-        <div className="flex flex-col w-96 shrink-0 bg-surface border border-border rounded-card overflow-hidden">
+        <div className={cn(
+          "flex w-full flex-col shrink-0 bg-surface border border-border rounded-card lg:w-96 lg:overflow-hidden",
+          narrowView === "detail" && "max-lg:hidden",
+        )}>
           {/* Tabs */}
           <div ref={tabBarRef} className="flex border-b border-border-subtle px-3 pt-2 gap-0.5 overflow-x-auto overflow-y-hidden scrollbar-none">
             {TABS.map((tab) => (
@@ -420,7 +441,7 @@ export default function InquiryManagement() {
             </div>
           </div>
 
-          <div className="flex-1 overflow-y-auto divide-y divide-border-subtle">
+          <div className="divide-y divide-border-subtle lg:flex-1 lg:overflow-y-auto">
             {loading ? (
               <p className="text-sm text-muted text-center py-10">Loading…</p>
             ) : filtered.length === 0 ? (
@@ -430,7 +451,7 @@ export default function InquiryManagement() {
                 <button
                   key={inq.id}
                   data-inquiry-id={inq.id}
-                  onClick={() => setSelectedId(inq.id)}
+                  onClick={() => { setSelectedId(inq.id); setNarrowView("detail") }}
                   className={cn(
                     "w-full text-left px-4 py-3.5 flex items-start gap-3 hover:bg-surface-muted transition-colors",
                     selectedId === inq.id && "bg-primary-soft",
@@ -465,18 +486,28 @@ export default function InquiryManagement() {
 
         {/* Right: Detail */}
         {selected ? (
-          <div className="flex-1 bg-surface border border-border rounded-card p-6 flex flex-col gap-5 overflow-y-auto">
-            <div className="flex items-start justify-between gap-3">
-              <div className="flex items-center gap-3">
-                <div className="w-12 h-12 rounded-full bg-surface-muted flex items-center justify-center text-sm font-bold text-body">
+          <div className={cn(
+            "min-w-0 flex-1 scroll-mt-4 bg-surface border border-border rounded-card p-4 sm:p-6 flex flex-col gap-5 lg:overflow-y-auto",
+            narrowView === "list" && "max-lg:hidden",
+          )}>
+            <button
+              type="button"
+              onClick={() => setNarrowView("list")}
+              className="-mb-2 flex items-center gap-1 self-start text-sm font-medium text-primary hover:underline lg:hidden"
+            >
+              <ChevronLeft className="h-4 w-4" /> Back to inquiries
+            </button>
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div className="flex min-w-0 items-center gap-3">
+                <div className="w-12 h-12 shrink-0 rounded-full bg-surface-muted flex items-center justify-center text-sm font-bold text-body">
                   {selected.extractedName ? getInitials(selected.extractedName) : <User className="w-5 h-5 text-muted" />}
                 </div>
-                <div>
-                  <p className="text-base font-bold text-heading">{selected.messengerName}</p>
+                <div className="min-w-0">
+                  <p className="truncate text-base font-bold text-heading">{selected.messengerName}</p>
                   <p className="text-xs text-muted mt-0.5">{selected.escalationDate}</p>
                 </div>
               </div>
-              <div className="flex items-center gap-2">
+              <div className="flex flex-wrap items-center gap-2">
                 <Badge className={inquiryTypeStyle(selected.type)}>{selected.type}</Badge>
                 {inquiryStatusBadges(selected).map((b) => (
                   <StatusBadge key={b} status={b} />
@@ -486,7 +517,7 @@ export default function InquiryManagement() {
 
             <hr className="border-border-subtle" />
 
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <div className="space-y-2">
                 <p className="text-xs font-semibold text-body uppercase tracking-wider">Escalation Date</p>
                 <div className="bg-surface-subtle border border-border-subtle rounded-card px-4 py-3 flex items-center gap-3 h-[58px]">
@@ -588,7 +619,10 @@ export default function InquiryManagement() {
             </div>
           </div>
         ) : (
-          <div className="flex-1 bg-surface border border-border rounded-card flex items-center justify-center">
+          <div className={cn(
+            "flex-1 bg-surface border border-border rounded-card flex items-center justify-center",
+            narrowView === "list" && "max-lg:hidden",
+          )}>
             <p className="text-sm text-muted">Select an inquiry to view details.</p>
           </div>
         )}
@@ -635,6 +669,19 @@ export default function InquiryManagement() {
                 type={type}
                 value={(recordForm as Record<string, string>)[key]}
                 onChange={(e) => {
+                  // Full name drops digits/emoji as typed, with a hint so the
+                  // blocked keystroke isn't silently ignored.
+                  if (key === "full_name") {
+                    const clean = sanitizeNameInput(e.target.value)
+                    setRecordForm((prev) => ({ ...prev, full_name: clean }))
+                    setRecordErrors((prev) => {
+                      const n = { ...prev }
+                      if (clean !== e.target.value.normalize("NFC")) n.full_name = NAME_INPUT_BLOCKED_MESSAGE
+                      else delete n.full_name
+                      return n
+                    })
+                    return
+                  }
                   setRecordForm((prev) => ({ ...prev, [key]: e.target.value }))
                   if (recordErrors[key])
                     setRecordErrors((prev) => {

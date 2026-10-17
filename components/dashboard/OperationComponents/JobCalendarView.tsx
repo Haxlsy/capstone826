@@ -72,7 +72,7 @@ function CompactTooltip({ jobs, align = "left" }: { jobs: CalendarJob[]; align?:
   return (
     <div
       className={cn(
-        "pointer-events-none absolute top-full z-30 mt-1 w-52 rounded-card border border-border-subtle bg-surface py-2 shadow-pop",
+        "pointer-events-none absolute top-full z-30 mt-1 hidden w-52 md:block rounded-card border border-border-subtle bg-surface py-2 shadow-pop",
         align === "right" ? "right-0" : "left-0",
       )}
     >
@@ -239,7 +239,7 @@ export default function JobCalendarView({ loading, calendarJobs }: Props) {
   if (loading) {
     return (
       <Card>
-        <CardBody className="flex flex-col gap-4">
+        <CardBody className="flex flex-col gap-4 p-3 sm:p-5">
           <div className="flex items-center justify-between">
             <Sk className="h-5 w-24" />
             <Sk className="h-7 w-40 rounded-sm" />
@@ -272,7 +272,7 @@ export default function JobCalendarView({ loading, calendarJobs }: Props) {
         <div
           className={cn(
             "flex flex-col items-center gap-1 rounded-sm pt-1.5 transition-colors",
-            tall ? "h-40" : "h-20",
+            tall ? "h-32 sm:h-40" : "h-16 sm:h-20",
             isToday ? "bg-primary text-white" : "hover:bg-surface-subtle",
             hasJobs && "cursor-pointer border-2 border-primary/30",
           )}
@@ -286,7 +286,7 @@ export default function JobCalendarView({ loading, calendarJobs }: Props) {
               {dayJobs.slice(0, 4).map((job) => (
                 <div key={job.id} className="flex items-center gap-1 overflow-hidden">
                   <span className={cn("h-1.5 w-1.5 shrink-0 rounded-full", statusStyle(displayJobStatus(job.status, job.is_overdue)).dot)} />
-                  <span className={cn("truncate text-[10px]", isToday ? "text-white" : "text-body")}>{job.customer}</span>
+                  <span className={cn("hidden truncate text-[10px] sm:inline", isToday ? "text-white" : "text-body")}>{job.customer}</span>
                 </div>
               ))}
               {dayJobs.length > 4 && (
@@ -307,7 +307,7 @@ export default function JobCalendarView({ loading, calendarJobs }: Props) {
               </div>
               {hasJobs && (
                 <span className={cn("text-xs font-semibold", isToday ? "text-white" : "text-primary")}>
-                  {dayJobs.length} job{dayJobs.length !== 1 ? "s" : ""}
+                  {dayJobs.length}<span className="hidden sm:inline"> job{dayJobs.length !== 1 ? "s" : ""}</span>
                 </span>
               )}
             </>
@@ -321,7 +321,7 @@ export default function JobCalendarView({ loading, calendarJobs }: Props) {
   return (
     <Card className="overflow-hidden">
       {/* Teal header bar */}
-      <div className="flex items-center justify-between bg-primary px-5 py-3 text-white">
+      <div className="flex flex-wrap items-center justify-between gap-2 bg-primary px-4 py-3 text-white sm:px-5">
         <h2 className="text-sm font-semibold">Calendar</h2>
         <div className="flex items-center gap-2">
           {viewMode !== "today" && (
@@ -378,7 +378,7 @@ export default function JobCalendarView({ loading, calendarJobs }: Props) {
         </div>
       </div>
 
-      <CardBody className="flex flex-col gap-4">
+      <CardBody className="flex flex-col gap-4 p-3 sm:p-5">
         {viewMode === "today" && (
           todaysJobs.length === 0 ? (
             <div className="flex flex-col items-center justify-center gap-2 py-10 text-center">
@@ -419,7 +419,7 @@ export default function JobCalendarView({ loading, calendarJobs }: Props) {
             <div className="relative grid grid-cols-7 gap-1">
               {monthCells.map((date, idx) =>
                 date === null
-                  ? <div key={`empty-${idx}`} className="h-20" />
+                  ? <div key={`empty-${idx}`} className="h-16 sm:h-20" />
                   : <DayCell key={dateKey(date)} date={date} />
               )}
             </div>

@@ -2,7 +2,7 @@ import TechnicianAvailability from "@/components/dashboard/OperationComponents/T
 
 export default function TechnicianAvailabilityPage() {
   return (
-    <div className="p-6">
+    <div className="p-4 md:p-6">
       <TechnicianAvailability />
     </div>
   )

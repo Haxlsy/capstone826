@@ -11,7 +11,10 @@ import TwoFactorAuthSettings from "./TwoFactorAuthSettings"
 
 const LOGOUT_DELAY_MS = 2500
 
-export default function ChangePasswordSettings({ extraSection }: { extraSection?: React.ReactNode } = {}) {
+export default function ChangePasswordSettings({
+  extraSection,
+  embedded = false,
+}: { extraSection?: React.ReactNode; embedded?: boolean } = {}) {
   const logout = useLogout()
   const [form, setForm] = useState({
     currentPassword: "",
@@ -136,12 +139,15 @@ export default function ChangePasswordSettings({ extraSection }: { extraSection?
   }
 
   return (
-    <div className="p-6 max-w-lg">
-      {/* Header */}
-      <div className="mb-6">
-        <h1 className="text-xl font-bold text-heading">Settings</h1>
-        <p className="text-sm text-muted mt-0.5">Manage your account.</p>
-      </div>
+    // Inside the Settings modal the modal supplies the title and padding, so
+    // the page-only wrapper padding and heading are skipped.
+    <div className={embedded ? undefined : "p-4 sm:p-6 max-w-lg"}>
+      {!embedded && (
+        <div className="mb-6">
+          <h1 className="text-xl font-bold text-heading">Settings</h1>
+          <p className="text-sm text-muted mt-0.5">Manage your account.</p>
+        </div>
+      )}
 
       <AccountInfoCard />
 
@@ -149,7 +155,7 @@ export default function ChangePasswordSettings({ extraSection }: { extraSection?
 
       <div className="bg-surface border border-border rounded-card overflow-hidden">
         {/* Section header */}
-        <div className="flex items-center gap-3 px-6 py-4 border-b border-border-subtle">
+        <div className="flex items-center gap-3 px-4 py-4 sm:px-6 border-b border-border-subtle">
           <div className="w-8 h-8 rounded-sm bg-primary/10 flex items-center justify-center">
             <KeyRound className="w-4 h-4 text-primary" />
           </div>
@@ -159,7 +165,7 @@ export default function ChangePasswordSettings({ extraSection }: { extraSection?
           </div>
         </div>
 
-        <form onSubmit={handleSubmit} className="px-6 py-5 space-y-5">
+        <form onSubmit={handleSubmit} className="@container px-4 py-5 sm:px-6 space-y-5">
           {serverError && (
             <div className="bg-status-delayed/10 border border-status-delayed/30 text-status-delayed text-sm rounded-sm px-4 py-3">
               {serverError}
@@ -253,7 +259,7 @@ export default function ChangePasswordSettings({ extraSection }: { extraSection?
             )}
           </div>
 
-          <div className="flex items-center gap-3 pt-1">
+          <div className="flex flex-wrap items-center gap-3 pt-1">
             <button
               type="submit"
               disabled={submitting}

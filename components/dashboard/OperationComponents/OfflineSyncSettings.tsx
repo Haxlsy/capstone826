@@ -14,7 +14,7 @@ export default function OfflineSyncSettings() {
 
   return (
     <div className="bg-surface border border-border rounded-card overflow-hidden mb-5">
-      <div className="flex items-center gap-3 px-6 py-4 border-b border-border-subtle">
+      <div className="flex items-center gap-3 px-4 py-4 sm:px-6 border-b border-border-subtle">
         <div className="w-8 h-8 rounded-sm bg-primary/10 flex items-center justify-center">
           <RefreshCw className="w-4 h-4 text-primary" />
         </div>
@@ -28,8 +28,8 @@ export default function OfflineSyncSettings() {
         </div>
       </div>
 
-      <div className="px-6 py-5 space-y-4">
-        <div className="grid gap-4 sm:grid-cols-2">
+      <div className="@container px-4 py-5 sm:px-6 space-y-4">
+        <div className="grid gap-4 @md:grid-cols-2">
           <div className="space-y-1.5">
             <p className="text-xs font-semibold uppercase tracking-wide text-muted">Available offline</p>
             <ul className="space-y-1 text-xs text-body">

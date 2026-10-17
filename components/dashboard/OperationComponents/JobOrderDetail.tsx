@@ -794,24 +794,24 @@ export default function JobOrderDetail({
       {/* Job Info Card */}
       <Card>
         <CardBody>
-          <div className="mb-4 flex items-start justify-between gap-4">
-            <div>
+          <div className="mb-4 flex flex-wrap items-start justify-between gap-4">
+            <div className="min-w-0">
               <p className="mb-1 font-mono text-xs text-muted">{displayId}</p>
-              <h1 className="text-xl font-bold text-heading">{job.customer_name}</h1>
+              <h1 className="break-words text-xl font-bold text-heading">{job.customer_name}</h1>
               <p className="mt-0.5 text-sm text-body">{job.contact_number}</p>
               {job.email && <p className="mt-0.5 text-sm text-body">{job.email}</p>}
             </div>
             <JobStatusBadges
               status={job.status}
               isOverdue={job.is_overdue}
-              className="px-3.5 py-1 text-xl"
+              className="px-3.5 py-1 text-sm sm:text-base"
             />
           </div>
 
           {/* Grouped into separate boxes — Vehicle/Timeline/Team each keep to their
               own column, so a long crew list in Team can never misalign or push
               around unrelated cells the way one flat shared grid used to. */}
-          <div className="grid grid-cols-1 gap-4 text-sm md:grid-cols-3">
+          <div className="grid grid-cols-1 gap-4 text-sm sm:grid-cols-2 lg:grid-cols-3">
             <div className="flex flex-col gap-3 rounded-card border border-border-subtle p-4">
               <p className="text-xs font-semibold uppercase tracking-wide text-muted">Vehicle &amp; Service</p>
               <InfoCell label="Vehicle" value={job.vehicle_unit} />
@@ -1070,7 +1070,7 @@ export default function JobOrderDetail({
               <p className="text-sm text-muted">No history recorded.</p>
             ) : (
               job.history.map((h, idx) => (
-                <div key={idx} className="flex items-center gap-3 text-sm">
+                <div key={idx} className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm">
                   <span className={cn("h-2 w-2 shrink-0 rounded-full", statusStyle(h.status).dot)} />
                   <span className="w-28 shrink-0 font-medium text-body">{h.status}</span>
                   <span className="text-xs text-muted">{fmtDateTime(h.created_at)}</span>

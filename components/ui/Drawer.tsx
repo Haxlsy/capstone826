@@ -78,8 +78,8 @@ export function Drawer({
           )}
         >
           {(title || onClose) && (
-            <div className="flex items-start justify-between gap-4 border-b border-border-subtle px-5 py-4">
-              <div>
+            <div className="flex items-start justify-between gap-4 border-b border-border-subtle px-4 py-4 sm:px-5">
+              <div className="min-w-0">
                 {title && <h2 className="text-base font-semibold text-heading">{title}</h2>}
                 {description && <p className="mt-0.5 text-sm text-body">{description}</p>}
               </div>
@@ -98,9 +98,9 @@ export function Drawer({
               </div>
             </div>
           )}
-          <div className="flex-1 overflow-y-auto px-5 py-4">{children}</div>
+          <div className="flex-1 overflow-y-auto px-4 py-4 sm:px-5">{children}</div>
           {footer && (
-            <div className="flex items-center justify-end gap-2 border-t border-border-subtle px-5 py-3.5">
+            <div className="flex flex-wrap items-center justify-end gap-2 border-t border-border-subtle px-4 py-3.5 sm:px-5">
               {footer}
             </div>
           )}

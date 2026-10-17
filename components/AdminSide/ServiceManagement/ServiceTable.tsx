@@ -267,7 +267,7 @@ export default function ServiceTable({ canWrite = true }: { canWrite?: boolean }
   ]
 
   return (
-    <div className="space-y-5 p-6">
+    <div className="space-y-5 p-4 md:p-6">
       <PageHeader
         title="Service Management"
         actions={

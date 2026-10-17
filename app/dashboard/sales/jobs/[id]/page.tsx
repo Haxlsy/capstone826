@@ -9,7 +9,7 @@ export default async function SalesJobDetailPage({
   const { id } = await params
   const data = await getJobDetailData(id)
   return (
-    <div className="p-6">
+    <div className="p-4 md:p-6">
       <SalesJobDetail job={data.job} />
     </div>
   )

@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/Button"
 import { Badge } from "@/components/ui/Badge"
 import { FieldHint } from "@/components/ui/FieldHint"
 import { statusStyle } from "@/lib/ui/status"
+import { EMOJI_BLOCKED_MESSAGE, stripEmoji } from "@/lib/text"
 
 interface Props {
   open: boolean
@@ -161,13 +162,13 @@ export default function AddServiceTypeModal({ open, onClose, onSuccess }: Props)
                 autoFocus
                 type="text"
                 value={newName}
-                onChange={(e) => { setNewName(e.target.value); setAddError("") }}
+                onChange={(e) => { const v = stripEmoji(e.target.value); setNewName(v); setAddError(v !== e.target.value ? EMOJI_BLOCKED_MESSAGE : "") }}
                 placeholder="e.g. Paint Protection Film"
                 className={`w-full rounded-sm border px-3 py-2 text-sm transition-colors focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary ${
                   addError ? "border-status-delayed bg-status-delayed/10" : "border-border"
                 }`}
               />
-              <FieldHint>Any characters allowed. Duplicates are blocked regardless of capitalization or spacing.</FieldHint>
+              <FieldHint>Any characters except emoji. Duplicates are blocked regardless of capitalization or spacing.</FieldHint>
               {addError && <p className="text-xs text-status-delayed">{addError}</p>}
             </div>
             <Button type="submit">
@@ -196,13 +197,13 @@ export default function AddServiceTypeModal({ open, onClose, onSuccess }: Props)
                             autoFocus
                             type="text"
                             value={editValue}
-                            onChange={(e) => { setEditValue(e.target.value); setEditError("") }}
+                            onChange={(e) => { const v = stripEmoji(e.target.value); setEditValue(v); setEditError(v !== e.target.value ? EMOJI_BLOCKED_MESSAGE : "") }}
                             onKeyDown={(e) => { if (e.key === "Enter") startRename(t.name); if (e.key === "Escape") cancelEdit() }}
                             className={`w-full rounded-sm border px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary ${
                               editError ? "border-status-delayed bg-status-delayed/10" : "border-border"
                             }`}
                           />
-                          <FieldHint>Any characters allowed. Must be unique (case and spacing don&apos;t count).</FieldHint>
+                          <FieldHint>Any characters except emoji. Must be unique (case and spacing don&apos;t count).</FieldHint>
                         </div>
                         <button
                           type="button"

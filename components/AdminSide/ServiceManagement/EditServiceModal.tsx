@@ -18,6 +18,7 @@ import {
   type PresetItem,
 } from "./service-form-helpers"
 import { findDuplicateStageIds } from "@/lib/admin/service-stage-validation"
+import { EMOJI_BLOCKED_MESSAGE, stripEmoji } from "@/lib/text"
 
 interface EditServiceModalProps {
   serviceId: string | null
@@ -128,6 +129,13 @@ export default function EditServiceModal({ serviceId, open, onClose, onSuccess }
 
   function clearError(key: string) {
     if (errors[key]) setErrors((p) => { const n = { ...p }; delete n[key]; return n })
+  }
+
+  // Text fields drop emoji as typed; this shows (or clears) the hint so the
+  // blocked keystroke isn't silently ignored.
+  function setEmojiError(key: string, blocked: boolean) {
+    if (blocked) setErrors((p) => ({ ...p, [key]: EMOJI_BLOCKED_MESSAGE }))
+    else clearError(key)
   }
 
   // ── Section management ──────────────────────────────────────────
@@ -436,13 +444,13 @@ export default function EditServiceModal({ serviceId, open, onClose, onSuccess }
               <input
                 type="text"
                 value={serviceName}
-                onChange={(e) => { setServiceName(e.target.value); clearError("serviceName") }}
+                onChange={(e) => { const v = stripEmoji(e.target.value); setServiceName(v); setEmojiError("serviceName", v !== e.target.value) }}
                 placeholder="e.g. Full Detail Package"
                 className={`w-full px-3 py-2.5 text-sm border rounded-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-colors ${
                   errors.serviceName ? "border-status-delayed bg-status-delayed/10" : "border-border"
                 }`}
               />
-              <FieldHint>Any characters allowed. Must be unique among active services.</FieldHint>
+              <FieldHint>Any characters except emoji. Must be unique among active services.</FieldHint>
               {errors.serviceName && <p className="text-xs text-status-delayed">{errors.serviceName}</p>}
             </div>
 
@@ -451,11 +459,12 @@ export default function EditServiceModal({ serviceId, open, onClose, onSuccess }
               <label className="block text-sm font-medium text-body">Description</label>
               <textarea
                 value={description}
-                onChange={(e) => setDescription(e.target.value)}
+                onChange={(e) => { const v = stripEmoji(e.target.value); setDescription(v); setEmojiError("description", v !== e.target.value) }}
                 rows={4}
                 placeholder="Optional — describe what this service includes."
                 className="w-full px-3 py-2.5 text-sm border border-border rounded-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-colors resize-none"
               />
+              {errors.description && <p className="text-xs text-status-delayed">{errors.description}</p>}
             </div>
 
             {/* Workflow Stages — Estimated Duration (below) is computed from

@@ -5,6 +5,7 @@ import { createAdminClient } from "@/lib/supabase/admin"
 import { logAudit } from "@/hooks/audit-helpers"
 import { getRoleCaller } from "@/lib/auth/caller"
 import { findDuplicateStageName } from "@/lib/admin/service-stage-validation"
+import { emojiError, stageNamesEmojiError } from "@/lib/text"
 
 interface Stage {
   name:               string
@@ -46,6 +47,13 @@ export async function POST(request: Request) {
 
   const stageList: Stage[] = Array.isArray(stages) ? stages : []
   const estimatedDurationMins = stageList.reduce((acc, s) => acc + (s.stage_duration_mins ?? 0), 0)
+
+  const emojiErr =
+    emojiError(serviceName, "Service name") ??
+    emojiError(serviceType, "Service type") ??
+    emojiError(description, "Description") ??
+    stageNamesEmojiError(stages)
+  if (emojiErr) return NextResponse.json({ error: emojiErr }, { status: 400 })
 
   const dupStage = findDuplicateStageName(stageList)
   if (dupStage) {

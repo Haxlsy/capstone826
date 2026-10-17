@@ -45,7 +45,7 @@ export function SalesJobListSkeleton() {
 
 export default function SalesJobOrdersLoading() {
   return (
-    <div className="p-6 flex flex-col">
+    <div className="p-4 md:p-6 flex flex-col">
       <SalesJobListSkeleton />
     </div>
   )

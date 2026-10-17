@@ -206,7 +206,7 @@ export default function JobOrderRecords({ jobOrders: rawOrders }: { jobOrders: a
         subtitle="Completed and released units."
       />
 
-      <Card className="flex flex-wrap items-end justify-between gap-4 p-5">
+      <Card className="flex flex-wrap items-end justify-between gap-4 p-4 sm:p-5">
         <div className="flex flex-wrap items-end gap-4">
           <div>
             <FieldLabel>Start Date</FieldLabel>
@@ -247,14 +247,14 @@ export default function JobOrderRecords({ jobOrders: rawOrders }: { jobOrders: a
               ))}
             </Select>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <Button onClick={handleApplyFilters}>Apply Filters</Button>
             <Button variant="ghost" onClick={handleReset}>
               Reset
             </Button>
           </div>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <Button variant="secondary" onClick={() => setExportConfirm("pdf")}>
             <FileText className="h-4 w-4" /> Export PDF
           </Button>

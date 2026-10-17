@@ -4,6 +4,7 @@ import { createAdminClient } from "@/lib/supabase/admin"
 import { getAdminCaller } from "@/lib/auth/guard"
 import { auditCallerOf } from "@/lib/auth/caller"
 import { logAuditCall } from "@/hooks/audit-helpers"
+import { hasEmoji } from "@/lib/text"
 
 // GET /api/admin/service-types
 // Returns all service types sorted alphabetically.
@@ -29,7 +30,8 @@ export async function GET() {
 }
 
 const CreateSchema = z.object({
-  name: z.string().min(1, "Name is required.").max(100),
+  name: z.string().min(1, "Name is required.").max(100)
+    .refine((v) => !hasEmoji(v), "Service type can't contain emoji."),
 })
 
 // POST /api/admin/service-types

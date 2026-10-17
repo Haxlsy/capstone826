@@ -4,7 +4,7 @@ import { getDashboardData } from "@/lib/operations/dashboard-data";
 export default async function OperationsPage() {
   const data = await getDashboardData();
   return (
-    <div className="p-6">
+    <div className="p-4 md:p-6">
       <OperationsDashboard {...data} />
     </div>
   )
