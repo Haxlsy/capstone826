@@ -49,7 +49,7 @@ export function ConcernsSkeleton() {
 
 export default function ConcernsLoading() {
   return (
-    <div className="p-6">
+    <div className="p-4 md:p-6">
       <ConcernsSkeleton />
     </div>
   )

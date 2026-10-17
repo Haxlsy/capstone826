@@ -58,7 +58,7 @@ export function TechnicianAvailabilitySkeleton() {
 
 export default function TechnicianAvailabilityLoading() {
   return (
-    <div className="p-6">
+    <div className="p-4 md:p-6">
       <TechnicianAvailabilitySkeleton />
     </div>
   )

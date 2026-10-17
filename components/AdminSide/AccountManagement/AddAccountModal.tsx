@@ -268,7 +268,7 @@ export default function AddAccountModal({
           <p className="text-xs text-muted"><span className="text-status-delayed">*</span> Required fields</p>
 
           {/* Name */}
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <div className="space-y-1.5">
               <label className="block text-sm font-medium text-body">
                 First Name <span className="text-status-delayed">*</span>

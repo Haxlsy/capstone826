@@ -238,7 +238,7 @@ export default function AccountTable() {
   ]
 
   return (
-    <div className="space-y-5 p-6">
+    <div className="space-y-5 p-4 md:p-6">
       <PageHeader
         title="Account Management"
         actions={<Button onClick={() => setAddModalOpen(true)}>+ Add Account</Button>}

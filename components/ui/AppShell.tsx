@@ -1,3 +1,5 @@
+"use client"
+
 import * as React from "react"
 import { AppSidebar, type NavItem } from "./AppSidebar"
 import { AppTopBar } from "./AppTopBar"
@@ -7,6 +9,9 @@ import { OfflineBanner } from "@/components/shared/OfflineBanner"
  * Dashboard shell: dark ground + dark sidebar + dark top bar, with the page
  * content on a white surface that has a large top-left corner radius
  * (per the Operations reference mockups).
+ *
+ * Below 768px the sidebar is an off-canvas drawer opened from the top bar's
+ * menu button; from 768px up it sits in the layout (see AppSidebar).
  */
 export function AppShell({
   nav,
@@ -30,13 +35,22 @@ export function AppShell({
   lockSettingsOffline?: boolean
   children: React.ReactNode
 }) {
+  const [mobileNavOpen, setMobileNavOpen] = React.useState(false)
+  const closeMobileNav = React.useCallback(() => setMobileNavOpen(false), [])
+
   return (
-    <div className="flex h-screen overflow-hidden bg-shell">
-      <AppSidebar nav={nav} settingsContent={settingsContent} lockSettingsOffline={lockSettingsOffline} />
+    <div className="flex h-dvh overflow-hidden bg-shell">
+      <AppSidebar
+        nav={nav}
+        settingsContent={settingsContent}
+        lockSettingsOffline={lockSettingsOffline}
+        mobileOpen={mobileNavOpen}
+        onMobileClose={closeMobileNav}
+      />
       <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
-        <AppTopBar fallbackName={fallbackName} showBell={showBell} />
+        <AppTopBar fallbackName={fallbackName} showBell={showBell} onOpenNav={() => setMobileNavOpen(true)} />
         {showOfflineBanner && <OfflineBanner />}
-        <main className="flex-1 overflow-x-auto overflow-y-auto rounded-tl-panel bg-surface-subtle">{children}</main>
+        <main className="flex-1 overflow-x-auto overflow-y-auto bg-surface-subtle md:rounded-tl-panel">{children}</main>
       </div>
     </div>
   )

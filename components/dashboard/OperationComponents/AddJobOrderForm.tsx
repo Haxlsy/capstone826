@@ -943,7 +943,7 @@ export default function AddJobOrderForm() {
       )}
 
       {/* ── Two-column: form cards + panel ───────────────────────── */}
-      <div className="flex gap-6 items-start">
+      <div className="flex flex-col gap-6 lg:flex-row lg:items-start">
       {/* ── Left: form ──────────────────────────────────────────── */}
       <div className="flex flex-col gap-5 flex-1 min-w-0">
         {/* Card 1: Customer & Vehicle Details */}
@@ -1084,7 +1084,7 @@ export default function AddJobOrderForm() {
               )}
             </div>
           ) : (
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <div className="flex flex-col gap-1.5 col-span-2">
                 <div className="flex items-center justify-between">
                   <label className="text-xs font-medium text-body">Customer Name *</label>
@@ -1136,7 +1136,7 @@ export default function AddJobOrderForm() {
                 )}
                 <FieldError msg={fieldErrors.customerName} />
                 {matchedCustomer && (
-                  <div className="flex items-center justify-between gap-3 rounded-sm border border-primary/30 bg-primary/10 px-3 py-2.5 text-[11px] text-primary">
+                  <div className="flex flex-wrap items-center justify-between gap-3 rounded-sm border border-primary/30 bg-primary/10 px-3 py-2.5 text-[11px] text-primary">
                     <div className="flex min-w-0 flex-1 flex-col gap-2">
                       <p className="flex items-start gap-1.5">
                         <Info className="mt-px h-3.5 w-3.5 shrink-0" />
@@ -1215,7 +1215,7 @@ export default function AddJobOrderForm() {
         {/* Card 2: Service & Schedule */}
         <div className="bg-surface border border-border rounded-card p-5 space-y-4">
           <h2 className="font-semibold text-sm text-heading">Service & Schedule</h2>
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <div className="flex flex-col gap-1.5">
               <label className="text-xs font-medium text-body">Service <span className="text-status-delayed ml-0.5">*</span></label>
               <select
@@ -1263,7 +1263,7 @@ export default function AddJobOrderForm() {
           </div>
 
           {scheduledAt && (
-            <div className="bg-surface-subtle rounded-sm p-4 grid grid-cols-2 gap-4">
+            <div className="bg-surface-subtle rounded-sm p-4 grid grid-cols-1 gap-4 sm:grid-cols-2">
               <div>
                 <p className="text-xs text-body">Scheduled Start</p>
                 <p className="text-sm font-medium text-heading mt-1">
@@ -1296,7 +1296,7 @@ export default function AddJobOrderForm() {
             <p className="text-xs text-muted mt-0.5">{teamAssignmentHint(teamNeeds)}</p>
           </div>
 
-          <div className={teamNeeds.detailer && teamNeeds.installer ? "grid grid-cols-2 gap-4" : "grid grid-cols-1 gap-4"}>
+          <div className={teamNeeds.detailer && teamNeeds.installer ? "grid grid-cols-1 gap-4 sm:grid-cols-2" : "grid grid-cols-1 gap-4"}>
             {teamNeeds.detailer && (
               <div className="flex flex-col gap-1.5">
                 <label className="text-xs font-medium text-body">Head Detailer <span className="text-status-delayed">*</span></label>
@@ -1340,7 +1340,7 @@ export default function AddJobOrderForm() {
           </div>
 
           {!scheduledAt ? (
-            <div className={teamNeeds.detailer && teamNeeds.installer ? "grid grid-cols-2 gap-4" : "grid grid-cols-1 gap-4"}>
+            <div className={teamNeeds.detailer && teamNeeds.installer ? "grid grid-cols-1 gap-4 sm:grid-cols-2" : "grid grid-cols-1 gap-4"}>
               {(["Detailers", "Installers"] as const)
                 .filter((label) => (label === "Detailers" ? teamNeeds.detailer : teamNeeds.installer))
                 .map((label) => (
@@ -1360,7 +1360,7 @@ export default function AddJobOrderForm() {
               ))}
             </div>
           ) : (
-            <div className={teamNeeds.detailer && teamNeeds.installer ? "grid grid-cols-2 gap-4" : "grid grid-cols-1 gap-4"}>
+            <div className={teamNeeds.detailer && teamNeeds.installer ? "grid grid-cols-1 gap-4 sm:grid-cols-2" : "grid grid-cols-1 gap-4"}>
               {teamNeeds.detailer && (
                 <CrewCheckboxList
                   label="Detailers"
@@ -1416,7 +1416,7 @@ export default function AddJobOrderForm() {
       </div>
 
       {/* ── Right: service override panel (always visible) ───────── */}
-      <div className="sticky top-6">
+      <div className="w-full lg:sticky lg:top-6 lg:w-auto">
         <ServiceOverridePanel
           primaryService={selectedService}
           availableServices={availableServices}

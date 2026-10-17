@@ -103,7 +103,7 @@ export default function UserActivity() {
     const DATE_INPUT_CLS = "h-10 rounded-sm border border-border bg-surface px-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
     return (
         <div className="flex flex-col gap-5">
-        <Card className="flex flex-wrap items-end justify-between gap-4 p-5">
+        <Card className="flex flex-wrap items-end justify-between gap-4 p-4 sm:p-5">
           <div className="flex flex-wrap items-end gap-4">
             <div>
               <FieldLabel>From</FieldLabel>
@@ -121,12 +121,12 @@ export default function UserActivity() {
                 className={DATE_INPUT_CLS}
               />
             </div>
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2">
               <Button onClick={handleApplyFilters}>Apply Filters</Button>
               <Button variant="ghost" onClick={handleResetDateFilter}>Reset</Button>
             </div>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <Button variant="secondary" onClick={() => setExportConfirm("pdf")}>
               <FileText className="h-4 w-4" /> Export PDF
             </Button>

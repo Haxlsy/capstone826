@@ -66,11 +66,11 @@ export function StatCard({
           className,
         )}
       >
-        <span className="flex items-center gap-1.5 text-[13px] font-medium text-white/95">
+        <span className="flex min-w-0 items-center gap-1.5 text-[13px] font-medium text-white/95">
           {Icon && <Icon className="h-3.5 w-3.5 shrink-0" strokeWidth={2.2} />}
-          {label}
+          <span className="truncate">{label}</span>
         </span>
-        <span className="text-[28px] font-bold leading-none">{value}</span>
+        <span className="text-2xl font-bold leading-none sm:text-[28px]">{value}</span>
       </Comp>
     )
   }

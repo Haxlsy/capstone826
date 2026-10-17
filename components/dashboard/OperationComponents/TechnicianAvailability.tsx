@@ -352,7 +352,7 @@ export default function TechnicianAvailability() {
         <StatCard label="Not Available" value={unavailableCount} icon={UserX} tone="delayed" variant="solid" />
       </div>
 
-      <div className="flex items-center gap-3">
+      <div className="flex flex-wrap items-center gap-3">
         <SearchBar
           value={search}
           onChange={setSearch}
@@ -700,7 +700,7 @@ function TechFormModal({
       }
     >
       <div className="space-y-4">
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           <div>
             <FieldLabel>First Name</FieldLabel>
             <Input

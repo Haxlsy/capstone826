@@ -27,7 +27,7 @@ export default function AccountInfoCard() {
 
   return (
     <div className="bg-surface border border-border rounded-card overflow-hidden mb-5">
-      <div className="flex items-center gap-3 px-6 py-4 border-b border-border-subtle">
+      <div className="flex items-center gap-3 px-4 py-4 sm:px-6 border-b border-border-subtle">
         <div className="w-8 h-8 rounded-sm bg-primary/10 flex items-center justify-center">
           <User className="w-4 h-4 text-primary" />
         </div>
@@ -37,7 +37,7 @@ export default function AccountInfoCard() {
         </div>
       </div>
 
-      <div className="px-6 py-5">
+      <div className="@container px-4 py-5 sm:px-6">
         {loading ? (
           <div className="flex items-center gap-4 animate-pulse">
             <div className="w-12 h-12 rounded-full bg-surface-muted shrink-0" />
@@ -51,7 +51,7 @@ export default function AccountInfoCard() {
             <div className="w-12 h-12 rounded-full bg-primary/12 text-primary flex items-center justify-center text-sm font-bold shrink-0">
               {getInitials(profile.full_name)}
             </div>
-            <div className="min-w-0 flex-1 grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-3">
+            <div className="min-w-0 flex-1 grid grid-cols-1 @md:grid-cols-2 gap-x-4 gap-y-3">
               <InfoRow label="Full Name" value={profile.full_name} />
               <InfoRow label="Role" value={getRoleLabel(profile.role)} />
               <InfoRow label="Username" value={profile.username} mono />

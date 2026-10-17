@@ -467,12 +467,12 @@ export default function CustomerRecords() {
               />
               <FieldHint>Shows customers added on or before this date. Leave empty for no upper limit.</FieldHint>
             </div>
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2">
               <Button onClick={applyDateFilter}>Apply Filters</Button>
               <Button variant="ghost" onClick={resetDateFilter}>Reset</Button>
             </div>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <Button
               variant="secondary"
               onClick={() => setExportConfirm("pdf")}
@@ -676,7 +676,7 @@ export default function CustomerRecords() {
                           isLocked && "border-l-2 border-status-warning bg-status-warning/5",
                         )}
                       >
-                        <div className="flex items-center gap-2 min-w-[220px]">
+                        <div className="flex min-w-0 flex-wrap items-center gap-2 sm:min-w-[220px]">
                           <Car className="h-3.5 w-3.5 shrink-0 text-muted" />
                           {isEditing ? (
                             <>

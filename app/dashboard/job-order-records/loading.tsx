@@ -53,7 +53,7 @@ export function JobOrderRecordsSkeleton() {
 
 export default function JobOrderRecordsLoading() {
   return (
-    <div className="p-6">
+    <div className="p-4 md:p-6">
       <JobOrderRecordsSkeleton />
     </div>
   )

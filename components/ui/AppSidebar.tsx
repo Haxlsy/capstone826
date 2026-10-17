@@ -11,9 +11,11 @@ import {
   LogOut,
   Settings,
   WifiOff,
+  X,
   type LucideIcon,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
+import { useMediaQuery, MOBILE_QUERY, TABLET_QUERY } from "@/hooks/useMediaQuery"
 import { useLogoutConfirm } from "@/hooks/useLogout"
 import { useOnlineStatus } from "@/hooks/useOnlineStatus"
 import { Modal, ConfirmModal } from "@/components/ui/Modal"
@@ -76,6 +78,8 @@ export function AppSidebar({
   settingsContent,
   brand = "826 Auto Care",
   lockSettingsOffline = false,
+  mobileOpen = false,
+  onMobileClose,
 }: {
   nav: NavItem[]
   /** Rendered inside the Settings popup modal — see AppShell. */
@@ -83,9 +87,20 @@ export function AppSidebar({
   brand?: string
   /** Grey out the Settings button while offline (Operations only). */
   lockSettingsOffline?: boolean
+  /** Below 768px the sidebar is a drawer; this says whether it's showing. */
+  mobileOpen?: boolean
+  onMobileClose?: () => void
 }) {
   const pathname = usePathname()
-  const [collapsed, toggle] = useCollapsed()
+  const [savedCollapsed, toggleSaved] = useCollapsed()
+  const isMobile = useMediaQuery(MOBILE_QUERY) === true
+  const isTablet = useMediaQuery(TABLET_QUERY) === true
+  // Tablet width always starts as the icon rail; expanding it overlays the
+  // page instead of squeezing it, and isn't saved as the desktop preference.
+  const [tabletExpanded, setTabletExpanded] = React.useState(false)
+  const collapsed = isMobile ? false : isTablet ? !tabletExpanded : savedCollapsed
+  const toggle = isTablet ? () => setTabletExpanded((e) => !e) : toggleSaved
+  const overlayOpen = (isMobile && mobileOpen) || (isTablet && tabletExpanded)
   const isOnline = useOnlineStatus()
   const [settingsOpen, setSettingsOpen] = React.useState(false)
   const { confirming, loading, requestLogout, cancel, confirm } = useLogoutConfirm()
@@ -100,12 +115,37 @@ export function AppSidebar({
     return () => window.removeEventListener("826:open-settings", open)
   }, [])
 
+  const closeOverlay = React.useCallback(() => {
+    onMobileClose?.()
+    setTabletExpanded(false)
+  }, [onMobileClose])
+
+  // Esc closes the drawer (phone) or the expanded overlay (tablet).
+  React.useEffect(() => {
+    if (!overlayOpen) return
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") closeOverlay() }
+    window.addEventListener("keydown", onKey)
+    return () => window.removeEventListener("keydown", onKey)
+  }, [overlayOpen, closeOverlay])
+
   return (
+    <>
+      {/* Tablet: keeps the rail's 72px in the layout while the expanded
+          sidebar floats above the page. */}
+      {isTablet && tabletExpanded && <div aria-hidden className="w-[72px] shrink-0" />}
+      {overlayOpen && (
+        <div aria-hidden onClick={closeOverlay} className="fixed inset-0 z-40 bg-shell/60 lg:hidden" />
+      )}
     <aside
       data-collapsed={collapsed}
       className={cn(
-        "flex h-full shrink-0 flex-col bg-shell text-white transition-[width] duration-300 ease-in-out",
+        "flex h-full shrink-0 flex-col bg-shell text-white transition-[width,transform] duration-300 ease-in-out",
         collapsed ? "w-[72px]" : "w-64",
+        // Phone: off-canvas drawer.
+        "max-md:fixed max-md:inset-y-0 max-md:left-0 max-md:z-50 max-md:shadow-pop",
+        mobileOpen ? "max-md:translate-x-0" : "max-md:-translate-x-full",
+        // Tablet, expanded: floats above the page.
+        isTablet && tabletExpanded && "fixed inset-y-0 left-0 z-50 shadow-pop",
       )}
     >
       {/* Brand + collapse toggle */}
@@ -125,19 +165,33 @@ export function AppSidebar({
         {!collapsed && (
           <span className="flex-1 truncate text-sm font-semibold text-display">{brand}</span>
         )}
-        <button
-          type="button"
-          aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
-          onClick={toggle}
-          className="flex h-7 w-7 items-center justify-center rounded-sm text-white/60 hover:bg-white/10 hover:text-white"
-        >
-          {collapsed ? <ChevronsRight className="h-4 w-4" /> : <ChevronsLeft className="h-4 w-4" />}
-        </button>
+        {isMobile ? (
+          <button
+            type="button"
+            aria-label="Close menu"
+            onClick={closeOverlay}
+            className="flex h-7 w-7 items-center justify-center rounded-sm text-white/60 hover:bg-white/10 hover:text-white"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        ) : (
+          <button
+            type="button"
+            aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+            onClick={toggle}
+            className="flex h-7 w-7 items-center justify-center rounded-sm text-white/60 hover:bg-white/10 hover:text-white"
+          >
+            {collapsed ? <ChevronsRight className="h-4 w-4" /> : <ChevronsLeft className="h-4 w-4" />}
+          </button>
+        )}
       </div>
 
       <SidebarOnlineContext.Provider value={isOnline}>
-        {/* Nav */}
-        <nav className="flex-1 space-y-1 overflow-y-auto px-3 py-4 scroll-track">
+        {/* Nav — following a link closes the phone drawer / tablet overlay. */}
+        <nav
+          onClick={(e) => { if ((e.target as HTMLElement).closest("a")) closeOverlay() }}
+          className="flex-1 space-y-1 overflow-y-auto px-3 py-4 scroll-track"
+        >
           {nav.map((item) => (
             <NavNode key={item.label} item={item} pathname={pathname} collapsed={collapsed} />
           ))}
@@ -148,7 +202,7 @@ export function AppSidebar({
           <SettingsButton
             collapsed={collapsed}
             disabledOffline={lockSettingsOffline}
-            onClick={() => setSettingsOpen(true)}
+            onClick={() => { closeOverlay(); setSettingsOpen(true) }}
           />
           <button
             type="button"
@@ -181,6 +235,7 @@ export function AppSidebar({
         {settingsContent}
       </Modal>
     </aside>
+    </>
   )
 }
 
@@ -229,7 +284,7 @@ function NavNode({
         )}
       >
         <item.icon className="h-4 w-4 shrink-0" />
-        <span className="flex-1 text-left">{item.label}</span>
+        <span className="flex-1 truncate text-left">{item.label}</span>
         <ChevronDown className={cn("h-3.5 w-3.5 transition-transform", open && "rotate-180")} />
       </button>
       {open && (
@@ -290,13 +345,22 @@ function CollapsedGroup({
       onFocusCapture={show}
       onBlurCapture={scheduleHide}
     >
-      <SidebarLink
-        href={item.children![0].href}
-        icon={item.icon}
-        label={item.label}
-        active={childActive}
-        collapsed
-      />
+      {/* A button, not a link to the first child: on touch there's no hover,
+          so tapping has to open the flyout or the other children are
+          unreachable. */}
+      <button
+        type="button"
+        aria-label={item.label}
+        aria-expanded={open}
+        title={item.label}
+        onClick={() => (open ? setOpen(false) : show())}
+        className={cn(
+          "relative flex w-full items-center justify-center rounded-sm py-2.5 text-sm font-medium transition-colors",
+          childActive ? "bg-white text-primary shadow-card" : "text-white/60 hover:bg-white/10 hover:text-white",
+        )}
+      >
+        <item.icon className="h-4 w-4 shrink-0" />
+      </button>
       {open && (
         <div
           onMouseEnter={show}

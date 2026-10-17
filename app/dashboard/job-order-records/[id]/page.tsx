@@ -24,7 +24,7 @@ export default async function JobOrderRecordDetailPage({
   }
 
   return (
-    <div className="p-6">
+    <div className="p-4 md:p-6">
       <JobOrderDetail jobId={id} initialJob={initialJob} backHref={back.href} backLabel={back.label} />
     </div>
   )
