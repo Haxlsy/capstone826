@@ -6,7 +6,7 @@ import { Drawer } from "@/components/ui/Drawer"
 import { Button } from "@/components/ui/Button"
 import { ConfirmModal } from "@/components/ui/Modal"
 import { useToast } from "@/components/ui/Toast"
-import { validateName } from "@/lib/name"
+import { NAME_INPUT_BLOCKED_MESSAGE, sanitizeNameInput, validateName } from "@/lib/name"
 import { validateEmail } from "@/lib/email/validation"
 import { logView } from "@/lib/client/log-view"
 
@@ -226,6 +226,17 @@ export default function AddAccountModal({
     if (errors[key]) setErrors((prev) => ({ ...prev, [key]: undefined }))
   }
 
+  // Name inputs drop digits/emoji/symbols as they're typed or pasted, with a
+  // hint so the blocked keystroke isn't silently ignored.
+  function setNameField(key: "firstName" | "lastName", value: string) {
+    const clean = sanitizeNameInput(value)
+    setForm((prev) => ({ ...prev, [key]: clean }))
+    setErrors((prev) => ({
+      ...prev,
+      [key]: clean !== value.normalize("NFC") ? NAME_INPUT_BLOCKED_MESSAGE : undefined,
+    }))
+  }
+
   const roleLabel = roleOptions.find((o) => o.value === form.role)?.label ?? form.role
   const fullNameDisplay = `${form.firstName.trim()} ${form.lastName.trim()}`.trim()
 
@@ -265,7 +276,7 @@ export default function AddAccountModal({
               <input
                 type="text"
                 value={form.firstName}
-                onChange={(e) => setField("firstName", e.target.value)}
+                onChange={(e) => setNameField("firstName", e.target.value)}
                 className={`w-full px-3 py-2.5 text-sm border rounded-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-colors ${
                   errors.firstName ? "border-status-delayed bg-status-delayed/10" : "border-border"
                 }`}
@@ -280,7 +291,7 @@ export default function AddAccountModal({
               <input
                 type="text"
                 value={form.lastName}
-                onChange={(e) => setField("lastName", e.target.value)}
+                onChange={(e) => setNameField("lastName", e.target.value)}
                 className={`w-full px-3 py-2.5 text-sm border rounded-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-colors ${
                   errors.lastName ? "border-status-delayed bg-status-delayed/10" : "border-border"
                 }`}

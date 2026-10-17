@@ -24,6 +24,7 @@ import { inquiryTypeStyle } from "@/lib/ui/status"
 import { newInquiryIds, resolveSelectedId, newInquiryToast, escalationHeading, canRecordCustomerDetails, resolveConfirmMessage, inquiryStatusBadges, isUnrecordedBooking } from "@/lib/sales/inquiry-list"
 import { LinkAccountModal } from "./LinkAccountModal"
 import { logView } from "@/lib/client/log-view"
+import { NAME_INPUT_BLOCKED_MESSAGE, sanitizeNameInput, validateName } from "@/lib/name"
 
 type InquiryStatus = "open" | "resolved" | "recorded"
 type InquiryType   = "Booking" | "Human Response" | "Report"
@@ -93,17 +94,13 @@ export default function InquiryManagement() {
   const PLATE_RE = /^[A-Z]{1,4}\s?-?\s?\d{1,6}(?:\s?-\s?[A-Z]{1,2})?$/i
   const PHONE_RE = /^(?:\+?63|0)\s?9\d{2}[\s.-]?\d{3}[\s.-]?\d{4}$/
   const EMAIL_RE = /^[\w.+-]+@[\w-]+\.[\w.]+$/
-  const NAME_RE  = /^[A-Za-z\s.'-]{2,}$/
 
   function validateRecordForm(): Record<string, string> {
     const errs: Record<string, string> = {}
     const { full_name, contact_number, email, plate_number, vehicle_unit } = recordForm
 
-    if (!full_name.trim()) {
-      errs.full_name = "Full name is required."
-    } else if (!NAME_RE.test(full_name.trim())) {
-      errs.full_name = "Full name must be at least 2 characters (letters, spaces, dots, hyphens only)."
-    }
+    const nameError = validateName(full_name, "Full name", 255)
+    if (nameError) errs.full_name = nameError
 
     if (!contact_number.trim()) {
       errs.contact_number = "Contact number is required."
@@ -299,7 +296,7 @@ export default function InquiryManagement() {
 
   function openRecordModal(inq: Inquiry) {
     setRecordForm({
-      full_name:      inq.extractedName    ?? "",
+      full_name:      sanitizeNameInput(inq.extractedName ?? ""),
       contact_number: inq.extractedContact ?? "",
       email:          inq.extractedEmail   ?? "",
       plate_number:   inq.extractedPlate   ?? "",
@@ -635,6 +632,19 @@ export default function InquiryManagement() {
                 type={type}
                 value={(recordForm as Record<string, string>)[key]}
                 onChange={(e) => {
+                  // Full name drops digits/emoji as typed, with a hint so the
+                  // blocked keystroke isn't silently ignored.
+                  if (key === "full_name") {
+                    const clean = sanitizeNameInput(e.target.value)
+                    setRecordForm((prev) => ({ ...prev, full_name: clean }))
+                    setRecordErrors((prev) => {
+                      const n = { ...prev }
+                      if (clean !== e.target.value.normalize("NFC")) n.full_name = NAME_INPUT_BLOCKED_MESSAGE
+                      else delete n.full_name
+                      return n
+                    })
+                    return
+                  }
                   setRecordForm((prev) => ({ ...prev, [key]: e.target.value }))
                   if (recordErrors[key])
                     setRecordErrors((prev) => {

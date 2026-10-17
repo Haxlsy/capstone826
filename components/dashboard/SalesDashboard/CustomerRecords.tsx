@@ -7,6 +7,7 @@ import { getInitials } from "@/hooks/useCurrentUser"
 import { fmtDate } from "@/lib/time-display"
 import { dateRangeError, dateRangeLabel } from "@/lib/sales/customer-records-filter"
 import { EMAIL_PATTERN } from "@/lib/messenger/patterns"
+import { NAME_INPUT_BLOCKED_MESSAGE, sanitizeNameInput, validateName } from "@/lib/name"
 import { PageHeader } from "@/components/ui/PageHeader"
 import { SearchBar } from "@/components/ui/SearchBar"
 import { Button } from "@/components/ui/Button"
@@ -246,7 +247,8 @@ export default function CustomerRecords() {
   }
 
   async function saveCustomer(c: Customer) {
-    if (!customerDraft.fullName.trim()) return setSaveErr("Customer name is required.")
+    const nameError = validateName(customerDraft.fullName, "Customer name", 255)
+    if (nameError) return setSaveErr(nameError)
     if (!customerDraft.contactNumber.trim()) return setSaveErr("Contact number is required.")
     const email = customerDraft.email.trim()
     if (email && !EMAIL_PATTERN.test(email)) return setSaveErr("Enter a valid email address.")
@@ -604,7 +606,11 @@ export default function CustomerRecords() {
                           value={customerDraft.fullName}
                           disabled={Boolean(inServiceCode)}
                           title={inServiceCode ? nameLockedMessage(inServiceCode) : undefined}
-                          onChange={(e) => setCustomerDraft((d) => ({ ...d, fullName: e.target.value }))}
+                          onChange={(e) => {
+                            const clean = sanitizeNameInput(e.target.value)
+                            setCustomerDraft((d) => ({ ...d, fullName: clean }))
+                            setSaveErr(clean !== e.target.value.normalize("NFC") ? NAME_INPUT_BLOCKED_MESSAGE : null)
+                          }}
                         />
                       </div>
                       <div>

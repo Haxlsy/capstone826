@@ -18,6 +18,7 @@ import {
   type PresetItem,
 } from "./service-form-helpers"
 import { findDuplicateStageIds } from "@/lib/admin/service-stage-validation"
+import { EMOJI_BLOCKED_MESSAGE, stripEmoji } from "@/lib/text"
 
 interface AddServiceModalProps {
   open: boolean
@@ -80,9 +81,17 @@ export default function AddServiceModal({ open, onClose, onSuccess }: AddService
   }, [open])
 
 
+  // Text fields drop emoji as typed, with a hint so the blocked keystroke
+  // isn't silently ignored.
   function setField(key: keyof typeof EMPTY_FORM, value: string) {
-    setForm((p) => ({ ...p, [key]: value }))
-    if (errors[key]) setErrors((p) => ({ ...p, [key]: undefined as unknown as string }))
+    const clean = stripEmoji(value)
+    setForm((p) => ({ ...p, [key]: clean }))
+    setErrors((p) => {
+      const n = { ...p }
+      if (clean !== value) n[key] = EMOJI_BLOCKED_MESSAGE
+      else delete n[key]
+      return n
+    })
   }
 
   // ── Section management ──────────────────────────────────────────
@@ -373,7 +382,7 @@ export default function AddServiceModal({ open, onClose, onSuccess }: AddService
                 errors.serviceName ? "border-status-delayed bg-status-delayed/10" : "border-border"
               }`}
             />
-            <FieldHint>Any characters allowed. Must be unique among active services.</FieldHint>
+            <FieldHint>Any characters except emoji. Must be unique among active services.</FieldHint>
             {errors.serviceName && <p className="text-xs text-status-delayed">{errors.serviceName}</p>}
           </div>
 
@@ -387,6 +396,7 @@ export default function AddServiceModal({ open, onClose, onSuccess }: AddService
               placeholder="Optional — describe what this service includes."
               className="w-full px-3 py-2.5 text-sm border border-border rounded-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-colors resize-none"
             />
+            {errors.description && <p className="text-xs text-status-delayed">{errors.description}</p>}
           </div>
 
           {/* Workflow Stages — Estimated Duration (below) is computed from these,

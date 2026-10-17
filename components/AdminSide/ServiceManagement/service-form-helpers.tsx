@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react"
 import { GripVertical, Trash2, Pencil, Plus, ChevronDown, ChevronUp, Check, X } from "lucide-react"
 import { HourMinuteInput } from "@/components/ui/Field"
 import { FieldHint } from "@/components/ui/FieldHint"
+import { EMOJI_BLOCKED_MESSAGE, stripEmoji } from "@/lib/text"
 
 export type ServiceType = string
 
@@ -126,7 +127,7 @@ export function ServiceTypeCombobox({
             ref={inputRef}
             type="text"
             value={displayValue}
-            onChange={(e) => { setQuery(e.target.value); if (!open) setOpen(true) }}
+            onChange={(e) => { setQuery(stripEmoji(e.target.value)); if (!open) setOpen(true) }}
             onFocus={() => { setOpen(true); setQuery("") }}
             placeholder="Select a service type..."
             className="flex-1 px-3 py-2.5 text-sm bg-transparent focus:outline-none"
@@ -230,7 +231,7 @@ export function StageList({
                       autoFocus
                       type="text"
                       value={stage.name}
-                      onChange={(e) => onUpdate(stage.id, e.target.value)}
+                      onChange={(e) => onUpdate(stage.id, stripEmoji(e.target.value))}
                       onBlur={() => setEditingId(null)}
                       onKeyDown={(e) => { if (e.key === "Enter") setEditingId(null) }}
                       placeholder={placeholder}
@@ -238,7 +239,7 @@ export function StageList({
                         errors[`stage_${stage.id}`] ? "border-status-delayed bg-status-delayed/10" : "border-border"
                       }`}
                     />
-                    <FieldHint>Stage names must be unique within this service. Any characters allowed.</FieldHint>
+                    <FieldHint>Stage names must be unique within this service. Any characters except emoji.</FieldHint>
                   </>
                 ) : (
                   <div
@@ -395,7 +396,7 @@ export function CreateCategoryForm({
           autoFocus
           type="text"
           value={name}
-          onChange={(e) => { setName(e.target.value); setNameErr("") }}
+          onChange={(e) => { const v = stripEmoji(e.target.value); setName(v); setNameErr(v !== e.target.value ? EMOJI_BLOCKED_MESSAGE : "") }}
           placeholder="Category name (e.g. Quality Check)"
           className={`w-full px-3 py-2 text-sm border rounded-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary bg-surface ${nameErr ? "border-status-delayed" : "border-border"}`}
         />

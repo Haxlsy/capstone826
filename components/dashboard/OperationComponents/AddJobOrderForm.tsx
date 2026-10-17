@@ -17,6 +17,7 @@ import { queuedVehicles, isVehicleQueued } from "@/lib/offline/queued-vehicles"
 import { useOfflineSyncContext } from "./OfflineSyncContext"
 import { useToast } from "@/components/ui/Toast"
 import { isTechnicianAvailableToday } from "@/lib/technician-availability"
+import { NAME_INPUT_BLOCKED_MESSAGE, sanitizeNameInput, validateName } from "@/lib/name"
 import { formatOperatingHours, isWithinOperatingHours, fmtTime12h, DEFAULT_OPERATING_DAYS, DEFAULT_OPERATING_OPEN_TIME, DEFAULT_OPERATING_CLOSE_TIME, type Weekday, type Holiday } from "@/types/chatbot"
 
 interface CustomerRecord {
@@ -515,8 +516,12 @@ export default function AddJobOrderForm() {
     if (!useManualCustomer && !selectedCustomerId)
       errs.customer = "Please select a customer."
     if (useManualCustomer) {
-      if (!manualCustomerName.trim())
-        errs.customerName = "Customer name is required."
+      // A matched customer's name is locked to their record, so only a typed
+      // name is format-checked.
+      const nameError = matchedCustomer
+        ? (manualCustomerName.trim() ? null : "Customer name is required.")
+        : validateName(manualCustomerName, "Customer name", 255)
+      if (nameError) errs.customerName = nameError
       const rawPhone = manualContactNumber.replace(/[\s\-]/g, "")
       if (!rawPhone)
         errs.contactNumber = "Contact number is required."
@@ -1095,7 +1100,16 @@ export default function AddJobOrderForm() {
                   type="text"
                   value={manualCustomerName}
                   readOnly={!!matchedCustomer}
-                  onChange={(e) => { if (!matchedCustomer) { setManualCustomerName(e.target.value); clearField("customerName") } }}
+                  onChange={(e) => {
+                    if (matchedCustomer) return
+                    // Drops digits/emoji as typed, with a hint so the blocked
+                    // keystroke isn't silently ignored.
+                    const clean = sanitizeNameInput(e.target.value)
+                    setManualCustomerName(clean)
+                    if (clean !== e.target.value.normalize("NFC"))
+                      setFieldErrors((prev) => ({ ...prev, customerName: NAME_INPUT_BLOCKED_MESSAGE }))
+                    else clearField("customerName")
+                  }}
                   placeholder="e.g., Juan dela Cruz"
                   className={inputCls(!!fieldErrors.customerName, !!matchedCustomer)}
                 />
