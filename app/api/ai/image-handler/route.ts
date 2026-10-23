@@ -38,6 +38,7 @@ export async function POST(request: NextRequest) {
     }
 
     if (isRateLimited()) {
+      console.warn("[media-validation] rate limit hit (10/min), approving without a check")
       return NextResponse.json(serviceError())
     }
 
