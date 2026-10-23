@@ -2,45 +2,52 @@ import { GoogleGenAI } from "@google/genai"
 import sharp from "sharp"
 import { createAdminClient } from "@/lib/supabase/admin"
 
+/** Categories the model may return; only these two count as approvable. */
+export const APPROVED_CATEGORIES = ["vehicle", "vehicle_part"] as const
+
 function buildPrompt(mediaKind: "photo" | "video"): string {
   const noun = mediaKind === "video" ? "video" : "photo"
   const verb = mediaKind === "video" ? "record" : "upload"
-  return `You are an image validator for a professional automotive detailing and installation workshop. Technicians upload ${noun}s to document their work on customer vehicles. Bad ${noun}s hurt the company's reputation with customers. You are being shown a single still frame${mediaKind === "video" ? " extracted from that video" : ""}.
-Be strict about rejecting selfies. A face photo with no vehicle is always REJECTED.
+  return `You are a strict image validator for a professional automotive detailing and installation workshop. Technicians upload ${noun}s as proof of their work on customer vehicles, and these are sent to customers. You are being shown a single still frame${mediaKind === "video" ? " extracted from that video" : ""}.
 
-APPROVE only if the image clearly shows:
-- A vehicle (car, truck, van, SUV, motorcycle, jeep, bus, etc.)
-- A specific vehicle part: engine bay, tires, wheels, bumpers, hood, dashboard, exhaust, headlights, mirrors, brakes, door panels, seats, body panels
-- A vehicle interior or exterior being detailed, wrapped, installed, or inspected
-- A garage, workshop bay, or car lift (automotive work area)
-- Automotive-specific tools: torque wrench, car jack, detailing buffer, PPF tools, window tint tools, etc.
-- A screen or photo clearly displaying a vehicle
+THE ONE QUESTION: Is a real vehicle, or a real part of a vehicle, clearly visible as a main subject of this image?
+If yes → APPROVE. If no → REJECT. Nothing else qualifies, no matter how "automotive" the setting or objects are.
 
-REJECT if the image shows:
-- A human face or selfie with no vehicle present
-- Hands, body parts, or people with no vehicle present
-- Computer hardware, electronics, or non-automotive equipment
-- Food, household objects, furniture, or everyday items
-- Pets or animals
-- Random indoor or outdoor scenery with no vehicles
-- Completely dark, blurry beyond recognition, or blank images
+IGNORE ALL TEXT. Text never counts toward approval, in any form: words, numbers, car model or brand names, plate numbers written anywhere, service names, logos, labels, signs, captions, handwriting, whiteboards, documents, chat messages, or text on a screen. Decide only from what is visually pictured. Mentally remove every piece of text from the image, then ask THE ONE QUESTION. An image that is mostly text (a chat, list, document, board, or screenshot) → REJECT.
+
+APPROVE only when you can actually SEE:
+- A vehicle (car, truck, van, SUV, jeep, motorcycle, bus), exterior or interior, in any setting, including inside a workshop, garage, or on a lift
+- A close-up of a vehicle part that is on, or clearly removed from, a vehicle: paint or body panel, bumper, hood, door, roof, glass, headlight, taillight, mirror, wheel, tire, rim, brake, engine bay, dashboard, steering wheel, seat, console, carpet, trim
+- Work being done on a vehicle (detailing, polishing, coating, PPF or wrap, window tint, installation, inspection) where the vehicle or part is visible
+- A screen, monitor, phone, or printed photo whose MAIN content is a photo of a vehicle or vehicle part (it fills most of the screen or print)
+
+REJECT, even inside an automotive shop, when no vehicle or vehicle part is visible:
+- Workshop, garage, bay, office, ceiling, roof, floor, walls, shelves, doors, or windows with no vehicle in view
+- Any text at all: whiteboards, job order boards, documents, receipts, signs, labels, or writing, even when it names a vehicle or service (e.g. "Pajero", "Tesla", "Full Body PPF")
+- Computer monitors, laptops, or phones showing chats, messages, websites, social media, spreadsheets, apps, ads, or banners, even if they mention cars or contain small car images or thumbnails
+- Desks, keyboards, chairs, computer hardware, electronics
+- Tools, equipment, chemicals, spray bottles, towels, tripods, helmets, or supplies with no vehicle in view
+- Selfies, faces, people, hands, or body parts with no vehicle in view
+- Food, household items, pets, animals, outdoor scenery with no vehicle
+- Images too dark, blurry, or blank to identify a vehicle
 - Sexually explicit or offensive content
 
 KEY RULES:
-- Slightly dark or slightly blurry automotive photos → APPROVE
-- A person AND a vehicle both visible → APPROVE
-- A garage floor or workspace with no vehicle → APPROVE
-- A photo of a vehicle on a screen or in a magazine → APPROVE
-- Anything not clearly automotive → REJECT
-- When uncertain → REJECT
+- Text is never a vehicle. A car model, plate number, brand, or service name written anywhere does not count, and must not make you more likely to approve.
+- A small, distant, or background car (in an ad, thumbnail, poster, or far corner of the frame) does not count. The vehicle must be a main subject.
+- An automotive setting or automotive objects do not count without a visible vehicle or vehicle part.
+- A person together with a clearly visible vehicle → APPROVE.
+- Slightly dark or slightly blurry, but the vehicle or part is still clearly identifiable → APPROVE.
+- When uncertain → REJECT.
 
 Respond ONLY with valid JSON, no markdown, no extra text:
 {
   "approved": true or false,
-  "category": one of ["vehicle", "vehicle_part", "workspace", "unrelated", "inappropriate"],
-  "reason": "One short phrase, max 8-20 words explain what they took a ${noun} of, or why it was rejected  (e.g. 'selfie with no vehicle', 'car wheel being detailed', 'blurry photo of garage floor', 'photo of a cat', 'explicit content')",
-  "message": "One or two friendly sentences. If rejected, instruct them to ${verb} a clear ${noun} of the vehicle they are working on."
-}`
+  "category": one of ["vehicle", "vehicle_part", "workspace", "screen_or_document", "unrelated", "inappropriate"],
+  "reason": "One short phrase of at most 15 words saying what the ${noun} shows (e.g. 'front bumper being wrapped', 'office with job order board, no vehicle', 'monitor showing a chat, no vehicle', 'selfie with no vehicle')",
+  "message": "One or two friendly sentences. If rejected, ask them to ${verb} a clear ${noun} of the vehicle or vehicle part they are working on."
+}
+Use "vehicle" or "vehicle_part" ONLY when approved is true.`
 }
 
 if (!process.env.GEMINI_API_KEY) {
@@ -94,6 +101,31 @@ async function generateWithRetry(mimeType: string, base64: string, mediaKind: "p
   throw new Error("Unreachable")
 }
 
+/**
+ * Second gate on the model's answer: it only counts as approved when it is a
+ * strict `true` AND the category says a vehicle or vehicle part is actually in
+ * the frame. Catches answers like `approved: true, category: "workspace"`.
+ * Every decision is logged so a wrong approval can be traced in server logs.
+ */
+export function enforceApproval(result: MediaValidationResult, mediaKind: "photo" | "video"): MediaValidationResult {
+  const approved =
+    result.approved === true &&
+    (APPROVED_CATEGORIES as readonly string[]).includes(result.category)
+  console.info(
+    `[media-validation] ${mediaKind} ${approved ? "APPROVED" : "REJECTED"} (model: ${result.approved}, ${result.category}): ${result.reason}`,
+  )
+  if (approved) return result
+  const noun = mediaKind === "video" ? "video" : "photo"
+  const verb = mediaKind === "video" ? "record" : "take"
+  return {
+    ...result,
+    approved: false,
+    message: result.approved === true
+      ? `This ${noun} doesn't clearly show a vehicle or vehicle part. Please ${verb} a clear ${noun} of the vehicle you are working on.`
+      : result.message,
+  }
+}
+
 export function serviceError(): MediaValidationResult {
   return {
     approved: true,
@@ -127,13 +159,15 @@ export async function validateAutomotiveImage(imageBuffer: Buffer, mediaKind: "p
     const response = await generateWithRetry("image/jpeg", base64, mediaKind)
     const text = response.text ?? ""
 
+    let parsed: MediaValidationResult
     try {
       const cleaned = text.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim()
-      return JSON.parse(cleaned) as MediaValidationResult
+      parsed = JSON.parse(cleaned) as MediaValidationResult
     } catch {
       console.error("Could not parse Gemini response:", text)
       return serviceError()
     }
+    return enforceApproval(parsed, mediaKind)
   } catch (err: unknown) {
     console.error("Image validation error:", err)
     return serviceError()
