@@ -2,8 +2,8 @@ import { NextResponse } from "next/server"
 import { cookies } from "next/headers"
 import { createClient } from "@/lib/supabase/server"
 import { createAdminClient } from "@/lib/supabase/admin"
-import { extractVideoFrame, stripAudio } from "@/lib/media/video"
-import { validateAutomotiveImage, isMediaValidationEnabled } from "@/lib/ai/media-validation"
+import { extractVideoFrames, stripAudio } from "@/lib/media/video"
+import { validateAutomotiveVideo, unreadableVideo, isMediaValidationEnabled } from "@/lib/ai/media-validation"
 import {
   MAX_PHOTO_MB, MAX_VIDEO_MB, MAX_PHOTO_BYTES, MAX_VIDEO_BYTES,
   MAX_PHOTOS_PER_ROUND, MAX_VIDEOS_PER_ROUND,
@@ -96,16 +96,21 @@ export async function POST(
       // media on-topic is skipped for them.
       const original = Buffer.from(uploadBuffer)
       if (currentRound === 0 && await isMediaValidationEnabled()) {
+        // Frames from across the whole clip, not one moment — every one must
+        // show a real vehicle. A video we can't read at all is rejected (ask
+        // to re-record) rather than let through unchecked; a Gemini outage
+        // still approves inside validateAutomotiveVideo.
+        let frames: Buffer[]
         try {
-          const frame = await extractVideoFrame(original)
-          const result = await validateAutomotiveImage(frame, "video")
-          if (!result.approved) {
-            return NextResponse.json({ ...result, error: result.message }, { status: 400 })
-          }
+          frames = await extractVideoFrames(original)
         } catch (err) {
-          // Frame extraction/validation hiccup — never block the upload on
-          // tooling failure, same philosophy as the AI validator itself.
-          console.error("[stage-media] video validation failed, approving by default:", err)
+          console.error("[stage-media] could not read video frames, rejecting:", err)
+          const result = unreadableVideo()
+          return NextResponse.json({ ...result, error: result.message }, { status: 400 })
+        }
+        const result = await validateAutomotiveVideo(frames)
+        if (!result.approved) {
+          return NextResponse.json({ ...result, error: result.message }, { status: 400 })
         }
       }
       try {

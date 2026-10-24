@@ -6,6 +6,7 @@ import { createAdminClient } from "@/lib/supabase/admin"
 import { logAudit } from "@/hooks/audit-helpers"
 import { sendPushToUser } from "@/lib/push/send"
 import { getRoleCaller } from "@/lib/auth/caller"
+import { startReworkRound } from "@/lib/operations/rework-round"
 
 // POST /api/operations/job-orders/[id]/rework
 // Body: { stage_ids: string[], rework_instructions: string }
@@ -39,12 +40,12 @@ export async function POST(
 
     const admin = createAdminClient()
 
-    // Mark selected stages as for_rework
-    const { error: stageErr } = await admin
-      .from("job_stage_progress")
-      .update({ status: "for_rework", rework_instructions: rework_instructions.trim() })
-      .in("id", stage_ids)
-      .eq("job_order_id", jobId)
+    // Mark selected stages as for_rework, each starting a new rework round
+    // (locks the previous round's photos/videos — see startReworkRound).
+    const { error: stageErr } = await startReworkRound(admin, jobId, stage_ids, {
+      status:              "for_rework",
+      rework_instructions: rework_instructions.trim(),
+    })
 
     if (stageErr) return NextResponse.json({ error: stageErr.message }, { status: 500 })
 

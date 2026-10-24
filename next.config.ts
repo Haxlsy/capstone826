@@ -3,6 +3,13 @@ import type { NextConfig } from "next";
 const nextConfig: NextConfig = {
   allowedDevOrigins: ["192.168.8.34"],
   serverExternalPackages: ["@google/genai", "fluent-ffmpeg", "ffmpeg-static"],
+  // ffmpeg-static's binary is found at runtime by path, so the bundler's file
+  // tracing doesn't see it. Without this the deployed routes have no ffmpeg:
+  // video checks can't read frames and muting silently falls back.
+  outputFileTracingIncludes: {
+    "/api/head-technician/jobs/[id]/stages/[stageId]/media": ["./node_modules/ffmpeg-static/ffmpeg*"],
+    "/api/ai/image-handler": ["./node_modules/ffmpeg-static/ffmpeg*"],
+  },
   experimental: {
     // Default is 0 — every dynamic route (anything using cookies(), i.e.
     // every page in this app) is treated as instantly stale, so the Client

@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from "next/server"
-import { validateAutomotiveImage, isMediaValidationEnabled, testModeApproval, serviceError } from "@/lib/ai/media-validation"
-import { extractVideoFrame } from "@/lib/media/video"
+import {
+  validateAutomotiveImage, validateAutomotiveVideo, unreadableVideo,
+  isMediaValidationEnabled, testModeApproval, serviceError,
+} from "@/lib/ai/media-validation"
+import { extractVideoFrames } from "@/lib/media/video"
 
 const requestTimestamps: number[] = []
 const RATE_LIMIT = 10 // max requests per minute
@@ -50,16 +53,17 @@ export async function POST(request: NextRequest) {
 
     const arrayBuffer = await file.arrayBuffer()
 
-    // Video: pull one representative frame and validate that through the same
-    // pipeline as a photo, rather than skipping video entirely.
+    // Video: frames sampled across the whole clip, every one must show a real
+    // vehicle. A video that can't be read is rejected (re-record), not passed.
     if (!file.type.startsWith("image/")) {
+      let frames: Buffer[]
       try {
-        const frame = await extractVideoFrame(Buffer.from(arrayBuffer))
-        return NextResponse.json(await validateAutomotiveImage(frame, "video"))
+        frames = await extractVideoFrames(Buffer.from(arrayBuffer))
       } catch (err: unknown) {
-        console.error("Video frame extraction failed:", err)
-        return NextResponse.json(serviceError())
+        console.error("Video frame extraction failed, rejecting:", err)
+        return NextResponse.json(unreadableVideo())
       }
+      return NextResponse.json(await validateAutomotiveVideo(frames))
     }
 
     return NextResponse.json(await validateAutomotiveImage(Buffer.from(arrayBuffer)))
