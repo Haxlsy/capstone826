@@ -23,6 +23,7 @@ import { avatarColor, initials } from "@/lib/ui/avatar"
 import { roleStyle } from "@/lib/ui/roles"
 import { NAME_INPUT_BLOCKED_MESSAGE, normalizeName, sanitizeNameInput, validateName } from "@/lib/name"
 import { isTechnicianAvailableToday, manilaToday } from "@/lib/technician-availability"
+import { workloadLabel } from "@/lib/operations/workload"
 
 interface ActiveJob {
   job_id: string
@@ -42,7 +43,8 @@ interface Technician {
   work_start_time: string
   work_end_time: string
   availability_override_date: string | null
-  active_job: ActiveJob | null
+  /** Every active job order they are on (crew can be on several at once). */
+  active_jobs: ActiveJob[]
 }
 
 const ALL_DAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
@@ -270,7 +272,7 @@ export default function TechnicianAvailability() {
         setEditOpen(false)
         toast.success("Technician updated.")
       } else {
-        setTechnicians((prev) => [...prev, { ...json.technician, active_job: null }])
+        setTechnicians((prev) => [...prev, { ...json.technician, active_jobs: [] }])
         setAddOpen(false)
         toast.success("Technician added.")
       }
@@ -312,8 +314,8 @@ export default function TechnicianAvailability() {
 
   // Stats always describe the active roster, never the archived view.
   const activeTechs = technicians.filter((t) => !t.is_archived)
-  const onJobCount = activeTechs.filter((t) => !!t.active_job).length
-  const availableCount = activeTechs.filter((t) => isTechnicianAvailableToday(t) && !t.active_job).length
+  const onJobCount = activeTechs.filter((t) => t.active_jobs.length > 0).length
+  const availableCount = activeTechs.filter((t) => isTechnicianAvailableToday(t) && t.active_jobs.length === 0).length
   const unavailableCount = activeTechs.length - availableCount - onJobCount
 
   const filtered = technicians.filter((t) => {
@@ -412,8 +414,8 @@ export default function TechnicianAvailability() {
         <div className={cn("grid gap-6", Object.keys(grouped).length === 1 ? "grid-cols-1" : "xl:grid-cols-2")}>
           {Object.entries(grouped).map(([role, members]) => {
             const activeMembers = members.filter((m) => !m.is_archived)
-            const onJobN = activeMembers.filter((m) => m.active_job).length
-            const availN = activeMembers.filter((m) => isTechnicianAvailableToday(m) && !m.active_job).length
+            const onJobN = activeMembers.filter((m) => m.active_jobs.length > 0).length
+            const availN = activeMembers.filter((m) => isTechnicianAvailableToday(m) && m.active_jobs.length === 0).length
             return (
               <div key={role} className="overflow-hidden rounded-card border border-border-subtle bg-surface">
                 <div className="flex items-center justify-between border-b border-border-subtle bg-surface-subtle px-5 py-3">
@@ -427,7 +429,7 @@ export default function TechnicianAvailability() {
                 </div>
                 <div className="max-h-[26rem] divide-y divide-border-subtle overflow-y-auto scroll-track">
                   {members.map((tech) => {
-                    const onJob = !!tech.active_job
+                    const onJob = tech.active_jobs.length > 0
                     return (
                       <div
                         key={tech.id}
@@ -454,8 +456,13 @@ export default function TechnicianAvailability() {
                           ) : onJob ? (
                             <div className="mt-0.5 flex items-center gap-1.5">
                               <Wrench className="h-3 w-3 shrink-0 text-status-onjob" />
-                              <span className="truncate text-xs font-medium text-status-onjob">
-                                On Job — {tech.active_job?.customer}
+                              <span
+                                className="truncate text-xs font-medium text-status-onjob"
+                                title={tech.active_jobs.map((j) => `${j.customer} — ${j.service}`).join("\n")}
+                              >
+                                {tech.active_jobs.length === 1 ? "On Job" : workloadLabel(tech.active_jobs.length)}
+                                {" — "}
+                                {tech.active_jobs.map((j) => j.customer).join(", ")}
                               </span>
                             </div>
                           ) : (

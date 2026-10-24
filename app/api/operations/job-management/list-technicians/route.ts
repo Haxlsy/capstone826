@@ -58,7 +58,7 @@ export async function GET() {
       activeJobIds.length > 0
         ? supabase
             .from("job_order_team")
-            .select("technician_id")
+            .select("technician_id, job_order_id")
             .in("job_order_id", activeJobIds)
             .not("technician_id", "is", null)
         : Promise.resolve({ data: [] }),
@@ -76,11 +76,17 @@ export async function GET() {
       jobCountMap.set(id, (jobCountMap.get(id) ?? 0) + 1)
     }
 
-    // Crew: build set of technician IDs currently on an active job
-    const onJobCrewIds = new Set<string>()
-    for (const a of crewTeamRows ?? []) {
-      if (a.technician_id) onJobCrewIds.add(a.technician_id as string)
+    // Crew: count active jobs per technician. Crew can be on several jobs at
+    // once (they work as a team), so this is shown as workload, not a block.
+    // Distinct jobs: a primary and a substitute row on one job count once.
+    const crewJobs = new Map<string, Set<string>>()
+    for (const a of (crewTeamRows ?? []) as { technician_id: string | null; job_order_id?: string }[]) {
+      if (!a.technician_id || !a.job_order_id) continue
+      const jobs = crewJobs.get(a.technician_id) ?? new Set<string>()
+      jobs.add(a.job_order_id)
+      crewJobs.set(a.technician_id, jobs)
     }
+    const crewJobCountMap = new Map([...crewJobs].map(([id, jobs]) => [id, jobs.size]))
 
     const technicians = (heads ?? []).map((h: any) => ({
       id:          h.id,
@@ -100,7 +106,9 @@ export async function GET() {
       work_start_time:  (c.work_start_time as string) ?? "08:00:00",
       work_end_time:    (c.work_end_time   as string) ?? "20:00:00",
       availability_override_date: (c.availability_override_date as string | null) ?? null,
-      on_job:           onJobCrewIds.has(c.id),
+      active_jobs:      crewJobCountMap.get(c.id) ?? 0,
+      // Kept for older clients: true when on at least one active job.
+      on_job:           (crewJobCountMap.get(c.id) ?? 0) > 0,
     }))
 
     return NextResponse.json({ technicians, crew_members })

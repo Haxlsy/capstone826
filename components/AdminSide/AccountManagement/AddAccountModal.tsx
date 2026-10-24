@@ -81,6 +81,9 @@ export default function AddAccountModal({
 }: AddAccountModalProps) {
   const toast = useToast()
   const isEdit = !!editAccount
+  // Email is optional (some workers have none), except an email already on
+  // an account: it can be changed but not removed (it's their login-code channel).
+  const emailRequired = isEdit && !!editAccount?.email
   const roleOptions = mode === "admin" ? ADMIN_ROLE_OPTIONS : STAFF_ROLE_OPTIONS
 
   const [form, setForm] = useState({
@@ -139,8 +142,10 @@ export default function AddAccountModal({
     if (firstError) e.firstName = firstError
     const lastError = validateName(form.lastName, "Last name")
     if (lastError) e.lastName = lastError
-    const emailError = validateEmail(form.email, "Email")
-    if (emailError) e.email = emailError
+    if (form.email.trim() || emailRequired) {
+      const emailError = validateEmail(form.email, "Email")
+      if (emailError) e.email = emailError
+    }
     if (!isEdit) {
       if (!form.username.trim()) e.username = "Username is required."
       else if (!/^[a-zA-Z0-9_]+\.[a-zA-Z0-9_]+$/.test(form.username.trim()))
@@ -207,7 +212,9 @@ export default function AddAccountModal({
         return
       }
 
-      if (!isEdit && json.emailSent === false) {
+      if (!isEdit && json.noEmail) {
+        toast.success("Account created. No email on file, so share the username and password in person.")
+      } else if (!isEdit && json.emailSent === false) {
         toast.error("Account created, but the email couldn't be sent — the password above is still valid, share it directly.")
       }
 
@@ -304,7 +311,10 @@ export default function AddAccountModal({
           {/* Email */}
           <div className="space-y-1.5">
             <label className="block text-sm font-medium text-body">
-              Email <span className="text-status-delayed">*</span>
+              Email{" "}
+              {emailRequired
+                ? <span className="text-status-delayed">*</span>
+                : <span className="font-normal text-muted">(optional)</span>}
             </label>
             <input
               type="email"
@@ -316,7 +326,9 @@ export default function AddAccountModal({
               placeholder="e.g. juan.delacruz@gmail.com"
             />
             {!isEdit && (
-              <p className="text-xs text-muted">We&apos;ll email the account&apos;s username and password here.</p>
+              <p className="text-xs text-muted">
+                If given, we&apos;ll email the username and password here. Leave it blank if they don&apos;t have one and share the password in person.
+              </p>
             )}
             {errors.email && <p className="text-xs text-status-delayed">{errors.email}</p>}
           </div>

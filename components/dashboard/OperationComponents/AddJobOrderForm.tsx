@@ -17,6 +17,8 @@ import { queuedVehicles, isVehicleQueued } from "@/lib/offline/queued-vehicles"
 import { useOfflineSyncContext } from "./OfflineSyncContext"
 import { useToast } from "@/components/ui/Toast"
 import { isTechnicianAvailableToday } from "@/lib/technician-availability"
+import { workloadLabel } from "@/lib/operations/workload"
+import { orderStagesByCategory } from "@/lib/operations/stage-order"
 import { NAME_INPUT_BLOCKED_MESSAGE, sanitizeNameInput, validateName } from "@/lib/name"
 import { formatOperatingHours, isWithinOperatingHours, fmtTime12h, DEFAULT_OPERATING_DAYS, DEFAULT_OPERATING_OPEN_TIME, DEFAULT_OPERATING_CLOSE_TIME, type Weekday, type Holiday } from "@/types/chatbot"
 
@@ -56,6 +58,9 @@ interface CrewMember {
   role:             "detailer" | "installer"
   is_available:     boolean
   on_job:           boolean
+  /** Active job orders they're already on. Informational only — crew work as
+   *  a team and can be on several jobs at once. */
+  active_jobs?:     number
   available_days:   string[]
   work_start_time:  string
   work_end_time:    string
@@ -127,7 +132,9 @@ function CrewCheckboxList({
       ) : (
         <div className={`border rounded-sm divide-y divide-border-subtle max-h-40 overflow-y-auto ${error ? "border-status-delayed bg-status-delayed/10" : "border-border"}`}>
           {members.map((c) => {
-            const disabled = c.on_job || !c.is_available
+            // Being on other jobs never blocks — only availability does.
+            const disabled = !c.is_available
+            const jobs = c.active_jobs ?? (c.on_job ? 1 : 0)
             return (
               <label
                 key={c.id}
@@ -143,14 +150,14 @@ function CrewCheckboxList({
                 <div className="flex-1 min-w-0">
                   <p className={`text-sm truncate ${disabled ? "text-muted" : "text-body"}`}>{c.full_name}</p>
                 </div>
-                <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded-full ${
-                  c.on_job
-                    ? "bg-orange-100 text-status-rework"
-                    : c.is_available
-                      ? "bg-status-inspection/10 text-status-inspection"
-                      : "bg-surface-muted text-muted"
+                <span className={`shrink-0 text-[10px] font-medium px-1.5 py-0.5 rounded-full ${
+                  !c.is_available
+                    ? "bg-surface-muted text-muted"
+                    : jobs > 0
+                      ? "bg-orange-100 text-status-rework"
+                      : "bg-status-inspection/10 text-status-inspection"
                 }`}>
-                  {c.on_job ? "On Job" : c.is_available ? "Available" : "Unavailable"}
+                  {!c.is_available ? "Unavailable" : workloadLabel(jobs)}
                 </span>
               </label>
             )
@@ -600,8 +607,6 @@ export default function AddJobOrderForm() {
   const headInstallers = headTechs.filter((t) => t.role === "head_installer")
 
   function toggleCrew(id: string, set: Set<string>, setter: (s: Set<string>) => void, field: keyof FieldErrors) {
-    const member = crewMembers.find((c) => c.id === id)
-    if (member?.on_job) return
     const next = new Set(set)
     next.has(id) ? next.delete(id) : next.add(id)
     setter(next)
@@ -628,8 +633,9 @@ export default function AddJobOrderForm() {
     return d.getHours() * 60 + d.getMinutes()
   }, [scheduledAt, isPPF])
 
+  // Whether a crew member can be picked for this schedule. Being on other
+  // active jobs doesn't count against them (crew can be on several at once).
   function crewAvailable(c: CrewMember): boolean {
-    if (c.on_job) return false
     if (scheduledDayLabel) {
       // A specific date is picked — the recurring weekly schedule governs.
       // Today's one-off override (is_available) only ever applies to today,
@@ -748,9 +754,11 @@ export default function AddJobOrderForm() {
       const nameChanged = customServiceName !== (selectedService?.name ?? "")
       const descChanged = customDescription !== (selectedService?.description ?? "")
 
-      // Send all stages — the API distinguishes new vs. existing via is_new
+      // Send all stages — the API distinguishes new vs. existing via is_new.
+      // Numbered in the order the panel shows them (grouped by category), so a
+      // stage's number always matches where Operations sees it.
       const customStagesPayload = customStages.length > 0
-        ? customStages.map((s, i) => ({
+        ? orderStagesByCategory(customStages, (s) => s.category_id ?? s.category_name).map((s, i) => ({
             service_stage_id:      s.isNew ? null : s.id,
             is_new:                s.isNew ?? false,
             custom_name:           s.name,

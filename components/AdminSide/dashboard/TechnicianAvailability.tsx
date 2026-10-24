@@ -7,6 +7,7 @@ import { Card } from "@/components/ui/Card"
 import { StatusBadge } from "@/components/ui/Badge"
 import { cn } from "@/lib/utils"
 import { isTechnicianAvailableToday, manilaToday } from "@/lib/technician-availability"
+import { workloadLabel } from "@/lib/operations/workload"
 
 interface Technician {
   id:             string
@@ -15,7 +16,8 @@ interface Technician {
   is_available:   boolean
   available_days: string[]
   availability_override_date: string | null
-  active_job:     { job_id: string; customer: string; service: string } | null
+  /** Every active job order they are on (crew can be on several at once). */
+  active_jobs:    { job_id: string; customer: string; service: string }[]
 }
 
 const DETAILER_ROLES  = ["head_detailer", "detailer"]
@@ -28,7 +30,7 @@ function roleLabel(role: string): string {
 
 function TechList({ title, techs, loading }: { title: string; techs: Technician[]; loading: boolean }) {
   const availableToday = techs.filter(
-    (t) => !t.active_job && isTechnicianAvailableToday(t)
+    (t) => t.active_jobs.length === 0 && isTechnicianAvailableToday(t)
   ).length
 
   return (
@@ -51,12 +53,12 @@ function TechList({ title, techs, loading }: { title: string; techs: Technician[
       ) : (
         <ul className="space-y-1.5 overflow-y-auto max-h-72">
           {techs.map((t) => {
-            const onJob      = t.active_job !== null
+            const onJob      = t.active_jobs.length > 0
             const worksToday = t.available_days.includes(TODAY)
             const available  = !onJob && isTechnicianAvailableToday(t)
 
             const dotColor = onJob ? "bg-status-onjob" : available ? "bg-status-inspection" : "bg-border"
-            const badgeLabel = onJob ? "On Job" : available ? "Available" : "Not Available"
+            const badgeLabel = onJob ? (t.active_jobs.length === 1 ? "On Job" : workloadLabel(t.active_jobs.length)) : available ? "Available" : "Not Available"
 
             return (
               <li
@@ -67,11 +69,10 @@ function TechList({ title, techs, loading }: { title: string; techs: Technician[
                   <span className={cn("mt-1.5 h-2 w-2 shrink-0 rounded-full", dotColor)} />
                   <div className="min-w-0">
                     <span className="block truncate text-sm text-heading">{t.full_name}</span>
-                    {onJob && t.active_job && (
-                      <span className="block truncate text-xs text-status-onjob">
-                        {t.active_job.customer} — {t.active_job.service}
+                    {onJob && t.active_jobs.map((j) => (
+                      <span key={j.job_id} className="block truncate text-xs text-status-onjob"> — {j.service}
                       </span>
-                    )}
+                    ))}
                     {!onJob && !worksToday && (
                       <span className="block text-xs text-muted">Not scheduled today</span>
                     )}
