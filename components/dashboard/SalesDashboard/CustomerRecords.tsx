@@ -7,7 +7,7 @@ import { getInitials } from "@/hooks/useCurrentUser"
 import { fmtDate } from "@/lib/time-display"
 import { dateRangeError, dateRangeLabel } from "@/lib/sales/customer-records-filter"
 import { EMAIL_PATTERN } from "@/lib/messenger/patterns"
-import { NAME_INPUT_BLOCKED_MESSAGE, sanitizeNameInput, validateName } from "@/lib/name"
+import { NAME_INPUT_BLOCKED_MESSAGE, joinName, normalizeName, sanitizeNameInput, splitFullName, validateName } from "@/lib/name"
 import { PageHeader } from "@/components/ui/PageHeader"
 import { SearchBar } from "@/components/ui/SearchBar"
 import { Button } from "@/components/ui/Button"
@@ -114,7 +114,7 @@ export default function CustomerRecords() {
 
   // Customer-level edit (name / phone / email) and vehicle-level edit (plate / unit).
   const [editingCustomerId, setEditingCustomerId] = useState<string | null>(null)
-  const [customerDraft, setCustomerDraft] = useState({ fullName: "", contactNumber: "", email: "" })
+  const [customerDraft, setCustomerDraft] = useState({ firstName: "", lastName: "", originalName: "", contactNumber: "", email: "" })
   const [editingVehicleId, setEditingVehicleId] = useState<string | null>(null)
   const [vehicleDraft, setVehicleDraft] = useState({ plateNumber: "", vehicleUnit: "" })
   const [saving, setSaving] = useState(false)
@@ -236,7 +236,8 @@ export default function CustomerRecords() {
   function startEditCustomer(c: Customer) {
     setEditingVehicleId(null)
     setEditingCustomerId(c.id)
-    setCustomerDraft({ fullName: c.fullName, contactNumber: c.contactNumber, email: c.email ?? "" })
+    const { first, last } = splitFullName(c.fullName)
+    setCustomerDraft({ firstName: first, lastName: last, originalName: c.fullName, contactNumber: c.contactNumber, email: c.email ?? "" })
     setSaveErr(null)
   }
 
@@ -247,7 +248,14 @@ export default function CustomerRecords() {
   }
 
   async function saveCustomer(c: Customer) {
-    const nameError = validateName(customerDraft.fullName, "Customer name", 255)
+    // First and last name are required, but only when the name was changed:
+    // an existing one-word name (or one locked while in service) mustn't block
+    // editing the phone or email.
+    const fullName = joinName(customerDraft.firstName, customerDraft.lastName)
+    const nameChanged = fullName !== normalizeName(customerDraft.originalName)
+    const nameError = !nameChanged
+      ? null
+      : validateName(customerDraft.firstName, "First name", 127) ?? validateName(customerDraft.lastName, "Last name", 127)
     if (nameError) return setSaveErr(nameError)
     if (!customerDraft.contactNumber.trim()) return setSaveErr("Contact number is required.")
     const email = customerDraft.email.trim()
@@ -260,7 +268,7 @@ export default function CustomerRecords() {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          full_name: customerDraft.fullName.trim(),
+          full_name: nameChanged ? fullName : customerDraft.originalName,
           contact_number: customerDraft.contactNumber.trim(),
           email: email || null,
         }),
@@ -270,7 +278,7 @@ export default function CustomerRecords() {
       setCustomers((prev) =>
         prev.map((x) =>
           x.id === c.id
-            ? { ...x, fullName: customerDraft.fullName.trim(), contactNumber: customerDraft.contactNumber.trim(), email: email || null }
+            ? { ...x, fullName: nameChanged ? fullName : customerDraft.originalName, contactNumber: customerDraft.contactNumber.trim(), email: email || null }
             : x,
         ),
       )
@@ -596,23 +604,25 @@ export default function CustomerRecords() {
               <div className="border-t border-border-subtle px-5 py-3">
                 {isEditingCustomer ? (
                   <div className="flex flex-col gap-3">
-                    <div className="grid gap-3 sm:grid-cols-3">
-                      <div>
-                        <FieldLabel>Name</FieldLabel>
-                        <Input
-                          aria-label="Customer name"
-                          maxLength={255}
-                          className={editCell}
-                          value={customerDraft.fullName}
-                          disabled={Boolean(inServiceCode)}
-                          title={inServiceCode ? nameLockedMessage(inServiceCode) : undefined}
-                          onChange={(e) => {
-                            const clean = sanitizeNameInput(e.target.value)
-                            setCustomerDraft((d) => ({ ...d, fullName: clean }))
-                            setSaveErr(clean !== e.target.value.normalize("NFC") ? NAME_INPUT_BLOCKED_MESSAGE : null)
-                          }}
-                        />
-                      </div>
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      {(["firstName", "lastName"] as const).map((part) => (
+                        <div key={part}>
+                          <FieldLabel>{part === "firstName" ? "First name" : "Last name"}</FieldLabel>
+                          <Input
+                            aria-label={part === "firstName" ? "First name" : "Last name"}
+                            maxLength={127}
+                            className={editCell}
+                            value={customerDraft[part]}
+                            disabled={Boolean(inServiceCode)}
+                            title={inServiceCode ? nameLockedMessage(inServiceCode) : undefined}
+                            onChange={(e) => {
+                              const clean = sanitizeNameInput(e.target.value)
+                              setCustomerDraft((d) => ({ ...d, [part]: clean }))
+                              setSaveErr(clean !== e.target.value.normalize("NFC") ? NAME_INPUT_BLOCKED_MESSAGE : null)
+                            }}
+                          />
+                        </div>
+                      ))}
                       <div>
                         <FieldLabel>Contact number</FieldLabel>
                         <Input

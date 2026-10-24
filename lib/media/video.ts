@@ -71,26 +71,53 @@ export function pickEvenly<T>(items: readonly T[], n: number): T[] {
  * JPEG buffers in playback order — so a clip that shows a car for a second and
  * then something else can't pass on that one second.
  *
- * One ffmpeg pass at one frame per second (`fps=1`), downscaled. Unlike a seek
- * to a fixed time this also works for clips under a second and for recordings
- * with no duration metadata (common for in-browser recordings). Then keeps up
- * to `max` evenly spaced frames. Throws when no frame could be read.
+ * Fast path: decode KEYFRAMES ONLY (`-skip_frame nokey`). Phone recordings
+ * have one every second or two, so this still covers the whole clip while
+ * skipping the expensive decoding of every in-between frame — the bulk of the
+ * time on a small server, especially for iPhone (HEVC) video.
+ *
+ * Fallback: when a recording has too few keyframes (some in-browser
+ * recordings have only the first), decode one frame per second instead
+ * (`fps=1`). Neither path needs duration metadata, and both work for clips
+ * under a second. Keeps up to `max` evenly spaced frames, in playback order.
+ * Throws when no frame could be read.
  */
 export async function extractVideoFrames(videoBuffer: Buffer, max = 4): Promise<Buffer[]> {
   const dir = await fs.mkdtemp(path.join(os.tmpdir(), "vidframes-"))
   const inputPath = path.join(dir, "input.mp4")
+  const started = Date.now()
   try {
     await fs.writeFile(inputPath, videoBuffer)
-    await new Promise<void>((resolve, reject) => {
-      ffmpeg(inputPath)
-        .outputOptions(["-vf fps=1,scale=640:-2", "-frames:v 120"])
-        .on("end", () => resolve())
-        .on("error", reject)
-        .save(path.join(dir, "frame-%03d.jpg"))
-    })
-    const names = (await fs.readdir(dir)).filter((f) => f.startsWith("frame-")).sort()
+
+    const run = (prefix: string, inputOptions: string[], outputOptions: string[]) =>
+      new Promise<string[]>((resolve, reject) => {
+        ffmpeg(inputPath)
+          .inputOptions(inputOptions)
+          .outputOptions(outputOptions)
+          .on("end", async () => {
+            try {
+              resolve((await fs.readdir(dir)).filter((f) => f.startsWith(prefix)).sort())
+            } catch (err) {
+              reject(err)
+            }
+          })
+          .on("error", reject)
+          .save(path.join(dir, `${prefix}%03d.jpg`))
+      })
+
+    let names = await run("key-", ["-skip_frame nokey"], ["-vf scale=480:-2", "-vsync vfr", "-frames:v 120"])
+    let mode = "keyframes"
+    if (names.length < Math.min(2, max)) {
+      const perSecond = await run("sec-", [], ["-vf fps=1,scale=480:-2", "-frames:v 120"])
+      if (perSecond.length > names.length) {
+        names = perSecond
+        mode = "1 per second"
+      }
+    }
     if (names.length === 0) throw new Error("No frames could be read from the video.")
-    return Promise.all(pickEvenly(names, max).map((f) => fs.readFile(path.join(dir, f))))
+    const frames = await Promise.all(pickEvenly(names, max).map((f) => fs.readFile(path.join(dir, f))))
+    console.info(`[media-validation] read ${frames.length}/${names.length} video frames (${mode}) in ${Date.now() - started} ms`)
+    return frames
   } finally {
     await fs.rm(dir, { recursive: true, force: true }).catch(() => {})
   }

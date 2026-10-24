@@ -42,3 +42,39 @@ export function validateName(raw: string | null | undefined, label = "Name", max
   }
   return null
 }
+
+/** "First" + "Last" → one normalized full name, as stored in `full_name`. */
+export function joinName(first: string | null | undefined, last: string | null | undefined): string {
+  return normalizeName(`${first ?? ""} ${last ?? ""}`)
+}
+
+// Words that begin a surname rather than end a given name, so "Juan Dela
+// Cruz" splits as Juan / Dela Cruz, not Juan Dela / Cruz.
+const SURNAME_PARTICLES = new Set([
+  "de", "del", "dela", "delos", "la", "las", "los", "san", "sta", "sta.", "santa", "santo", "van", "von", "da", "di", "du",
+])
+
+/**
+ * Best-effort split of a stored full name into first / last, for pre-filling
+ * the First Name and Last Name boxes (the user can still correct it). The last
+ * name starts at the last word, pulled back over any surname particles before
+ * it. A single word is treated as a first name with no last name.
+ */
+export function splitFullName(full: string | null | undefined): { first: string; last: string } {
+  const words = normalizeName(full).split(" ").filter(Boolean)
+  if (words.length <= 1) return { first: words[0] ?? "", last: "" }
+  let start = words.length - 1
+  while (start > 1 && SURNAME_PARTICLES.has(words[start - 1].toLowerCase())) start--
+  return { first: words.slice(0, start).join(" "), last: words.slice(start).join(" ") }
+}
+
+/**
+ * `validateName` for a single full-name value (what the server receives),
+ * plus: it must contain both a first and a last name.
+ */
+export function validateFullName(raw: string | null | undefined, label = "Name", max = 255): string | null {
+  const base = validateName(raw, label, max)
+  if (base) return base
+  if (normalizeName(raw).split(" ").length < 2) return "Enter both a first and last name."
+  return null
+}

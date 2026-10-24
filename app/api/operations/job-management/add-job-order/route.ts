@@ -12,7 +12,7 @@ import { isWithinOperatingHours, formatOperatingHours } from "@/types/chatbot"
 import { normalizePhone } from "@/lib/phone"
 import { sendPushToUser } from "@/lib/push/send"
 import { getRoleCaller } from "@/lib/auth/caller"
-import { validateName } from "@/lib/name"
+import { validateFullName } from "@/lib/name"
 import { decideManualCustomer } from "@/lib/operations/manual-customer"
 import { findActiveJobsByCustomerRecord } from "@/lib/sales/customer-record-lock"
 
@@ -92,7 +92,7 @@ export async function POST(request: Request) {
     // A typed manual customer name must be a real name. A matched customer's
     // name comes from their record, so it isn't re-checked here.
     if (!customer_record_id && !matched_customer_record_id) {
-      const nameError = validateName(customer_name, "Customer name", 255)
+      const nameError = validateFullName(customer_name, "Customer name", 255)
       if (nameError) return NextResponse.json({ error: nameError }, { status: 400 })
     }
 

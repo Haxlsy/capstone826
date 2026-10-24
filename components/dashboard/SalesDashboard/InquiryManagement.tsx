@@ -24,7 +24,7 @@ import { inquiryTypeStyle } from "@/lib/ui/status"
 import { newInquiryIds, resolveSelectedId, newInquiryToast, escalationHeading, canRecordCustomerDetails, resolveConfirmMessage, inquiryStatusBadges, isUnrecordedBooking } from "@/lib/sales/inquiry-list"
 import { LinkAccountModal } from "./LinkAccountModal"
 import { logView } from "@/lib/client/log-view"
-import { NAME_INPUT_BLOCKED_MESSAGE, sanitizeNameInput, validateName } from "@/lib/name"
+import { NAME_INPUT_BLOCKED_MESSAGE, joinName, sanitizeNameInput, splitFullName, validateName } from "@/lib/name"
 
 type InquiryStatus = "open" | "resolved" | "recorded"
 type InquiryType   = "Booking" | "Human Response" | "Report"
@@ -89,7 +89,7 @@ export default function InquiryManagement() {
   // Record modal
   const [recordOpen, setRecordOpen] = useState(false)
   const [linkOpen, setLinkOpen]     = useState(false)
-  const [recordForm, setRecordForm] = useState({ full_name: "", contact_number: "", email: "", plate_number: "", vehicle_unit: "" })
+  const [recordForm, setRecordForm] = useState({ first_name: "", last_name: "", contact_number: "", email: "", plate_number: "", vehicle_unit: "" })
   const [recording, setRecording]   = useState(false)
   const [recordErrors, setRecordErrors] = useState<Record<string, string>>({})
 
@@ -100,10 +100,13 @@ export default function InquiryManagement() {
 
   function validateRecordForm(): Record<string, string> {
     const errs: Record<string, string> = {}
-    const { full_name, contact_number, email, plate_number, vehicle_unit } = recordForm
+    const { first_name, last_name, contact_number, email, plate_number, vehicle_unit } = recordForm
 
-    const nameError = validateName(full_name, "Full name", 255)
-    if (nameError) errs.full_name = nameError
+    // Both parts required; they're joined into the customer's full name.
+    const firstError = validateName(first_name, "First name", 127)
+    if (firstError) errs.first_name = firstError
+    const lastError = validateName(last_name, "Last name", 127)
+    if (lastError) errs.last_name = lastError
 
     if (!contact_number.trim()) {
       errs.contact_number = "Contact number is required."
@@ -317,7 +320,12 @@ export default function InquiryManagement() {
 
   function openRecordModal(inq: Inquiry) {
     setRecordForm({
-      full_name:      sanitizeNameInput(inq.extractedName ?? ""),
+      // Pre-filled from the chatbot's extracted name, split into First / Last
+      // (Sales can correct the split before saving).
+      ...(() => {
+        const { first, last } = splitFullName(sanitizeNameInput(inq.extractedName ?? ""))
+        return { first_name: first, last_name: last }
+      })(),
       contact_number: inq.extractedContact ?? "",
       email:          inq.extractedEmail   ?? "",
       plate_number:   inq.extractedPlate   ?? "",
@@ -338,7 +346,7 @@ export default function InquiryManagement() {
     setRecordErrors({})
     try {
       const trimmed = {
-        full_name:      recordForm.full_name.trim(),
+        full_name:      joinName(recordForm.first_name, recordForm.last_name),
         contact_number: recordForm.contact_number.trim(),
         email:          recordForm.email.trim() || null,
         plate_number:   recordForm.plate_number.trim().toUpperCase(),
@@ -657,7 +665,8 @@ export default function InquiryManagement() {
       >
         <div className="space-y-3">
           {[
-            { label: "Full Name *", key: "full_name", type: "text", placeholder: "e.g. Juan Dela Cruz" },
+            { label: "First Name *", key: "first_name", type: "text", placeholder: "e.g. Juan" },
+            { label: "Last Name *", key: "last_name", type: "text", placeholder: "e.g. Dela Cruz" },
             { label: "Contact Number *", key: "contact_number", type: "tel", placeholder: "e.g. 09171234567" },
             { label: "Email", key: "email", type: "email", placeholder: "e.g. juan@email.com" },
             { label: "Plate Number *", key: "plate_number", type: "text", placeholder: "e.g. ABC 1234" },
@@ -669,15 +678,15 @@ export default function InquiryManagement() {
                 type={type}
                 value={(recordForm as Record<string, string>)[key]}
                 onChange={(e) => {
-                  // Full name drops digits/emoji as typed, with a hint so the
+                  // Name parts drop digits/emoji as typed, with a hint so the
                   // blocked keystroke isn't silently ignored.
-                  if (key === "full_name") {
+                  if (key === "first_name" || key === "last_name") {
                     const clean = sanitizeNameInput(e.target.value)
-                    setRecordForm((prev) => ({ ...prev, full_name: clean }))
+                    setRecordForm((prev) => ({ ...prev, [key]: clean }))
                     setRecordErrors((prev) => {
                       const n = { ...prev }
-                      if (clean !== e.target.value.normalize("NFC")) n.full_name = NAME_INPUT_BLOCKED_MESSAGE
-                      else delete n.full_name
+                      if (clean !== e.target.value.normalize("NFC")) n[key] = NAME_INPUT_BLOCKED_MESSAGE
+                      else delete n[key]
                       return n
                     })
                     return

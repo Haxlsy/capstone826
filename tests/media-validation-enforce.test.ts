@@ -2,7 +2,7 @@ import { describe, it, expect, vi } from "vitest"
 
 // The module builds a Gemini client and imports Supabase/sharp at load time;
 // none of that is needed to test the approval gate.
-vi.mock("@google/genai", () => ({ GoogleGenAI: class {} }))
+vi.mock("@google/genai", () => ({ GoogleGenAI: class {}, ThinkingLevel: { MINIMAL: "MINIMAL" } }))
 vi.mock("sharp", () => ({ default: vi.fn() }))
 vi.mock("@/lib/supabase/admin", () => ({ createAdminClient: vi.fn() }))
 
@@ -77,5 +77,26 @@ describe("enforceVideoApproval", () => {
 describe("unreadableVideo", () => {
   it("rejects and asks to record again", () => {
     expect(unreadableVideo()).toMatchObject({ approved: false, message: expect.stringMatching(/record it again/) })
+  })
+})
+
+const { buildPrompt, buildVideoPrompt } = await import("@/lib/ai/media-validation")
+
+/** Index of a JSON field's key in the answer-format template. */
+const at = (prompt: string, field: string) => prompt.lastIndexOf(`"${field}":`)
+
+describe("answer format: describe first, then decide", () => {
+  it("photo prompt asks for reason and category before approved", () => {
+    const p = buildPrompt("photo")
+    expect(at(p, "reason")).toBeGreaterThan(-1)
+    expect(at(p, "reason")).toBeLessThan(at(p, "category"))
+    expect(at(p, "category")).toBeLessThan(at(p, "approved"))
+  })
+
+  it("video prompt asks for every frame before approved", () => {
+    const p = buildVideoPrompt(4)
+    expect(at(p, "frames")).toBeGreaterThan(-1)
+    expect(at(p, "frames")).toBeLessThan(at(p, "approved"))
+    expect(p.indexOf('"reason": "at most 12 words')).toBeLessThan(p.indexOf('"category": one of'))
   })
 })

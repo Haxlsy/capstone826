@@ -19,7 +19,7 @@ import { useToast } from "@/components/ui/Toast"
 import { isTechnicianAvailableToday } from "@/lib/technician-availability"
 import { workloadLabel } from "@/lib/operations/workload"
 import { orderStagesByCategory } from "@/lib/operations/stage-order"
-import { NAME_INPUT_BLOCKED_MESSAGE, sanitizeNameInput, validateName } from "@/lib/name"
+import { NAME_INPUT_BLOCKED_MESSAGE, joinName, sanitizeNameInput, splitFullName, validateName } from "@/lib/name"
 import { formatOperatingHours, isWithinOperatingHours, fmtTime12h, DEFAULT_OPERATING_DAYS, DEFAULT_OPERATING_OPEN_TIME, DEFAULT_OPERATING_CLOSE_TIME, type Weekday, type Holiday } from "@/types/chatbot"
 
 interface CustomerRecord {
@@ -72,6 +72,8 @@ const STAGES_INVALID_MSG = "Fix the highlighted stages in the service panel."
 interface FieldErrors {
   customer?:      string
   customerName?:  string
+  customerFirstName?: string
+  customerLastName?:  string
   contactNumber?: string
   plateNumber?:   string
   email?:         string
@@ -196,6 +198,10 @@ export default function AddJobOrderForm() {
 
   const [useManualCustomer,    setUseManualCustomer]    = useState(false)
   const [selectedCustomerId,   setSelectedCustomerId]   = useState<string | null>(null)
+  // Typed as First + Last (both required); `manualCustomerName` is always the
+  // joined full name, which is what matching, suggestions and the payload use.
+  const [manualFirstName,      setManualFirstName]      = useState("")
+  const [manualLastName,       setManualLastName]       = useState("")
   const [manualCustomerName,   setManualCustomerName]   = useState("")
   const [manualContactNumber,  setManualContactNumber]  = useState("")
   const [manualEmail,          setManualEmail]          = useState("")
@@ -318,6 +324,29 @@ export default function AddJobOrderForm() {
     loadRefs()
   }, [])
 
+  // Sets the full name from outside the two name boxes (a matched customer,
+  // a cleared match) and keeps First / Last in step with it.
+  function setCustomerName(full: string) {
+    const { first, last } = splitFullName(full)
+    setManualFirstName(first)
+    setManualLastName(last)
+    setManualCustomerName(full)
+  }
+
+  // One of the two name boxes changed: drop digits/emoji as typed (with a
+  // hint so the blocked keystroke isn't silently ignored), then re-join.
+  function setNamePart(part: "first" | "last", raw: string) {
+    const clean = sanitizeNameInput(raw)
+    const first = part === "first" ? clean : manualFirstName
+    const last  = part === "last"  ? clean : manualLastName
+    setManualFirstName(first)
+    setManualLastName(last)
+    setManualCustomerName(joinName(first, last))
+    const key = part === "first" ? "customerFirstName" : "customerLastName"
+    if (clean !== raw.normalize("NFC")) setFieldErrors((prev) => ({ ...prev, [key]: NAME_INPUT_BLOCKED_MESSAGE }))
+    else clearField(key)
+  }
+
   // Plate, phone, and email can each find an existing customer record. Only
   // the field being edited decides the match (see lib/operations/customer-match.ts)
   // — deriving it from every field on every keystroke used to re-fill the one
@@ -339,7 +368,7 @@ export default function AddJobOrderForm() {
     )
     setMatchedCustomer(next.matched)
     setMatchSource(next.source)
-    setManualCustomerName(next.fields.name)
+    setCustomerName(next.fields.name)
     setManualContactNumber(next.fields.phone)
     setManualEmail(next.fields.email)
     setManualPlateNumber(next.fields.plate)
@@ -352,7 +381,7 @@ export default function AddJobOrderForm() {
     const blank = clearMatch<CustomerRecord>()
     setMatchedCustomer(blank.matched)
     setMatchSource(blank.source)
-    setManualCustomerName(blank.fields.name)
+    setCustomerName(blank.fields.name)
     setManualContactNumber(blank.fields.phone)
     setManualEmail(blank.fields.email)
     setManualPlateNumber(blank.fields.plate)
@@ -398,7 +427,7 @@ export default function AddJobOrderForm() {
   function selectNameSuggestion(c: CustomerRecord) {
     setMatchedCustomer(c)
     setIsNameMatch(true)
-    setManualCustomerName(c.full_name)
+    setCustomerName(c.full_name)
     setManualContactNumber(c.contact_number)
     setManualEmail(c.email ?? "")
     clearField("customerName")
@@ -524,11 +553,15 @@ export default function AddJobOrderForm() {
       errs.customer = "Please select a customer."
     if (useManualCustomer) {
       // A matched customer's name is locked to their record, so only a typed
-      // name is format-checked.
-      const nameError = matchedCustomer
-        ? (manualCustomerName.trim() ? null : "Customer name is required.")
-        : validateName(manualCustomerName, "Customer name", 255)
-      if (nameError) errs.customerName = nameError
+      // name is checked — and a typed one needs both a first and last name.
+      if (matchedCustomer) {
+        if (!manualCustomerName.trim()) errs.customerName = "Customer name is required."
+      } else {
+        const firstError = validateName(manualFirstName, "First name", 127)
+        if (firstError) errs.customerFirstName = firstError
+        const lastError = validateName(manualLastName, "Last name", 127)
+        if (lastError) errs.customerLastName = lastError
+      }
       const rawPhone = manualContactNumber.replace(/[\s\-]/g, "")
       if (!rawPhone)
         errs.contactNumber = "Contact number is required."
@@ -968,7 +1001,7 @@ export default function AddJobOrderForm() {
                   <label className="text-xs font-medium text-body">Customer <span className="text-status-delayed ml-0.5">*</span></label>
                   <button
                     type="button"
-                    onClick={() => { setUseManualCustomer(true); setSelectedCustomerId(null); setFieldErrors({}); setMatchedCustomer(null); setMatchSource(null); setIsNameMatch(false); setManualPlateNumber(""); setManualCustomerName(""); setManualContactNumber(""); setManualEmail(""); setManualVehicleUnit("") }}
+                    onClick={() => { setUseManualCustomer(true); setSelectedCustomerId(null); setFieldErrors({}); setMatchedCustomer(null); setMatchSource(null); setIsNameMatch(false); setManualPlateNumber(""); setCustomerName(""); setManualContactNumber(""); setManualEmail(""); setManualVehicleUnit("") }}
                     className="text-xs text-primary hover:underline"
                   >
                     Enter manually
@@ -1095,7 +1128,9 @@ export default function AddJobOrderForm() {
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <div className="flex flex-col gap-1.5 col-span-2">
                 <div className="flex items-center justify-between">
-                  <label className="text-xs font-medium text-body">Customer Name *</label>
+                  <label className="text-xs font-medium text-body">
+                    {matchedCustomer ? "Customer Name *" : "Customer Name * (first and last)"}
+                  </label>
                   <button
                     type="button"
                     onClick={() => { setUseManualCustomer(false); setFieldErrors({}); setMatchedCustomer(null); setMatchSource(null); setIsNameMatch(false) }}
@@ -1104,23 +1139,41 @@ export default function AddJobOrderForm() {
                     Select from records
                   </button>
                 </div>
-                <input
-                  type="text"
-                  value={manualCustomerName}
-                  readOnly={!!matchedCustomer}
-                  onChange={(e) => {
-                    if (matchedCustomer) return
-                    // Drops digits/emoji as typed, with a hint so the blocked
-                    // keystroke isn't silently ignored.
-                    const clean = sanitizeNameInput(e.target.value)
-                    setManualCustomerName(clean)
-                    if (clean !== e.target.value.normalize("NFC"))
-                      setFieldErrors((prev) => ({ ...prev, customerName: NAME_INPUT_BLOCKED_MESSAGE }))
-                    else clearField("customerName")
-                  }}
-                  placeholder="e.g., Juan dela Cruz"
-                  className={inputCls(!!fieldErrors.customerName, !!matchedCustomer)}
-                />
+                {matchedCustomer ? (
+                  // Existing customer: their name comes from their record and
+                  // isn't edited here, so one read-only box.
+                  <input
+                    type="text"
+                    value={manualCustomerName}
+                    readOnly
+                    className={inputCls(!!fieldErrors.customerName, true)}
+                  />
+                ) : (
+                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                    <div className="flex flex-col gap-1">
+                      <input
+                        type="text"
+                        aria-label="First name"
+                        value={manualFirstName}
+                        onChange={(e) => setNamePart("first", e.target.value)}
+                        placeholder="First name, e.g. Juan"
+                        className={inputCls(!!fieldErrors.customerFirstName, false)}
+                      />
+                      <FieldError msg={fieldErrors.customerFirstName} />
+                    </div>
+                    <div className="flex flex-col gap-1">
+                      <input
+                        type="text"
+                        aria-label="Last name"
+                        value={manualLastName}
+                        onChange={(e) => setNamePart("last", e.target.value)}
+                        placeholder="Last name, e.g. Dela Cruz"
+                        className={inputCls(!!fieldErrors.customerLastName, false)}
+                      />
+                      <FieldError msg={fieldErrors.customerLastName} />
+                    </div>
+                  </div>
+                )}
                 {nameSuggestions.length > 0 && (
                   <div className="rounded-sm border border-border bg-surface shadow-pop">
                     <p className="px-3 pt-2 pb-1 text-[11px] font-medium text-muted">

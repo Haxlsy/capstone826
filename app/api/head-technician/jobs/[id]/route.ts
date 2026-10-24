@@ -20,6 +20,7 @@ import { loadJobStageRoles } from "@/lib/head-technician/stage-roles"
 import { recipientFromVehicle } from "@/lib/messenger/recipient"
 import { STAGE_OVERRIDE_COLUMNS, loadStageCatalog, resolveJobStage } from "@/lib/job-stages"
 import { startReworkRound } from "@/lib/operations/rework-round"
+import { jobStatusAfterStageDone } from "@/lib/operations/job-status-after-stage"
 
 export async function GET(
   _request: Request,
@@ -471,42 +472,42 @@ export async function PATCH(
       // every stage completion used to silently clear the Delayed flag
       // mid-job. Per-stage lateness during the job is already independently
       // tracked by computeStageDelays/hasAnyStageDelayed, unaffected by this.
-      const { data: remainingStages } = await admin
-        .from("job_stage_progress")
-        .select("id")
-        .eq("job_order_id", jobId)
-        .neq("status", "done")
-
-      let jobStatusNotified = false
-      if ((remainingStages ?? []).length === 0) {
-        // All stages done — check current job status before updating
-        const { data: jobRow } = await admin
+      const [{ data: stageProgress }, { data: jobRow }] = await Promise.all([
+        admin
+          .from("job_stage_progress")
+          .select("id, status, current_rework_round")
+          .eq("job_order_id", jobId),
+        admin
           .from("job_order")
           .select("status")
           .eq("id", jobId)
-          .single()
-        const currentStatus = (jobRow as any)?.status as string | undefined
+          .single(),
+      ])
+      const remainingStages = (stageProgress ?? []).filter((s) => s.status !== "done")
 
-        const jobUpdate: Record<string, unknown> = {}
-        if (currentStatus === "For Rework") {
-          jobUpdate.status = "For Inspection"
-        }
-        if (Object.keys(jobUpdate).length > 0) {
-          await admin.from("job_order").update(jobUpdate).eq("id", jobId)
-        }
-
-        if (currentStatus === "For Rework") {
-          await admin.from("job_order_history").insert({
-            job_order_id:  jobId,
-            status:        "For Inspection",
-            changed_by_id: user.id,
-          })
-          await notifyJobStatusChange(admin, {
-            jobId, jobLabel, from: "For Rework", to: "For Inspection", actorId: user.id,
-            message: `Job ${jobLabel} is ready for inspection after rework.`,
-          })
-          jobStatusNotified = true
-        }
+      // A job in "For Rework" moves on once its rework is finished: to
+      // "For Inspection" when every stage is done, or back to "Ongoing" when
+      // a head technician's mid-job rework is done but other stages remain.
+      let jobStatusNotified = false
+      const currentStatus = (jobRow as { status?: string } | null)?.status
+      const nextStatus = jobStatusAfterStageDone({
+        currentStatus,
+        stages: (stageProgress ?? []) as { status: string; current_rework_round: number | null }[],
+      })
+      if (nextStatus) {
+        await admin.from("job_order").update({ status: nextStatus }).eq("id", jobId)
+        await admin.from("job_order_history").insert({
+          job_order_id:  jobId,
+          status:        nextStatus,
+          changed_by_id: user.id,
+        })
+        await notifyJobStatusChange(admin, {
+          jobId, jobLabel, from: "For Rework", to: nextStatus, actorId: user.id,
+          message: nextStatus === "For Inspection"
+            ? `Job ${jobLabel} is ready for inspection after rework.`
+            : `Job ${jobLabel} is back in progress after rework.`,
+        })
+        jobStatusNotified = true
       }
 
       // Resolve stage name + workflow category (used for the audit target and

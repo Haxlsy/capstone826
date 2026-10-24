@@ -1,5 +1,5 @@
 import { z } from "zod"
-import { validateName } from "@/lib/name"
+import { validateFullName, validateName } from "@/lib/name"
 
 /**
  * Shared field-level validation for `customer_record` — both create (POST
@@ -31,7 +31,14 @@ const CustomerRecordFields = {
 
 // Recording a booking: a customer (name / phone / email / Messenger account) plus one vehicle.
 export const CreateCustomerRecordSchema = z.object({
-  full_name:      CustomerRecordFields.full_name,
+  // A new customer needs both a first and last name (the form has two boxes,
+  // joined into full_name). Edits only enforce this when the name changes —
+  // see app/api/sales/customers/[id]/route.ts — so legacy one-word names
+  // don't block editing a phone or email.
+  full_name:      CustomerRecordFields.full_name.superRefine((v, ctx) => {
+    const err = validateFullName(v, "Full name", 255)
+    if (err) ctx.addIssue({ code: "custom", message: err })
+  }),
   contact_number: CustomerRecordFields.contact_number,
   email:          CustomerRecordFields.email.optional().nullable(),
   plate_number:   CustomerRecordFields.plate_number,

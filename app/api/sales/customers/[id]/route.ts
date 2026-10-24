@@ -3,6 +3,7 @@ import { createAdminClient } from "@/lib/supabase/admin"
 import { requireAuditCaller, getRoleCaller } from "@/lib/auth/caller"
 import { logAuditCall } from "@/hooks/audit-helpers"
 import { normalizePhone } from "@/lib/phone"
+import { validateFullName } from "@/lib/name"
 import { UpdateCustomerSchema } from "../../customer-records/schema"
 import {
   findActiveJobsByCustomer,
@@ -57,6 +58,10 @@ export async function PATCH(
     // The name is shown on every job of this customer, so it can't change
     // while any of their vehicles is in service. Phone and email can.
     if (full_name !== undefined && full_name !== current.full_name) {
+      // A changed name must have both a first and last name; an unchanged
+      // legacy one-word name never blocks editing the phone or email.
+      const nameError = validateFullName(full_name, "Full name", 255)
+      if (nameError) return NextResponse.json({ error: nameError }, { status: 400 })
       const code = anyActiveCode(await findActiveJobsByCustomer(supabase, id))
       if (code) return NextResponse.json({ error: nameLockedMessage(code) }, { status: 409 })
       updates.full_name = full_name

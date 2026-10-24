@@ -20,6 +20,10 @@ function isRateLimited(): boolean {
   return false
 }
 
+// Room for frame reading + the AI check on a slow moment, so the route answers
+// with its own JSON instead of being cut off by the platform time limit.
+export const maxDuration = 60
+
 export async function POST(request: NextRequest) {
   try {
     if (process.env.GEMINI_API_KEY_TEST) {

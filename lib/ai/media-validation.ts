@@ -1,4 +1,4 @@
-import { GoogleGenAI } from "@google/genai"
+import { GoogleGenAI, ThinkingLevel } from "@google/genai"
 import sharp from "sharp"
 import { createAdminClient } from "@/lib/supabase/admin"
 
@@ -47,36 +47,40 @@ KEY RULES:
 
 const CATEGORY_LIST = `["vehicle", "vehicle_part", "workspace", "screen_or_document", "unrelated", "inappropriate"]`
 
-function buildPrompt(mediaKind: "photo" | "video"): string {
+// The answer format puts "reason" and "category" BEFORE "approved": the model
+// writes in order, so it describes what it sees and then decides from that,
+// instead of committing to yes/no first. That matters with thinking set to
+// minimal for speed (see generateWithRetry). Exported for tests.
+export function buildPrompt(mediaKind: "photo" | "video"): string {
   const noun = mediaKind === "video" ? "video" : "photo"
   const verb = mediaKind === "video" ? "record" : "upload"
   return `You are a strict image validator for a professional automotive detailing and installation workshop. Technicians upload ${noun}s as proof of their work on customer vehicles, and these are sent to customers. You are being shown a single still frame${mediaKind === "video" ? " extracted from that video" : ""}.
 
 ${criteria("image")}
 
-Respond ONLY with valid JSON, no markdown, no extra text:
+Respond ONLY with valid JSON, no markdown, no extra text, with the fields in exactly this order. Fill in "reason" and "category" first, from what you actually see, then decide "approved" from them:
 {
-  "approved": true or false,
+  "reason": "One short phrase of at most 15 words saying what the ${noun} actually shows (e.g. 'front bumper being wrapped', 'office with job order board, no vehicle', 'monitor showing a chat, no vehicle', 'selfie with no vehicle')",
   "category": one of ${CATEGORY_LIST},
-  "reason": "One short phrase of at most 15 words saying what the ${noun} shows (e.g. 'front bumper being wrapped', 'office with job order board, no vehicle', 'monitor showing a chat, no vehicle', 'selfie with no vehicle')",
+  "approved": true or false,
   "message": "One or two friendly sentences. If rejected, ask them to ${verb} a clear ${noun} of the vehicle or vehicle part they are working on."
 }
 Use "vehicle" or "vehicle_part" ONLY when approved is true.`
 }
 
 /** Prompt for several frames sampled from one video, judged frame by frame. */
-function buildVideoPrompt(frameCount: number): string {
+export function buildVideoPrompt(frameCount: number): string {
   return `You are a strict video validator for a professional automotive detailing and installation workshop. Technicians record videos as proof of their work on customer vehicles, and these are sent to customers. You are being shown ${frameCount} still frame${frameCount === 1 ? "" : "s"} sampled evenly from ONE video, in playback order. Judge EVERY frame on its own with the rules below.
 
 ${criteria("frame")}
 
 THE VIDEO IS APPROVED ONLY IF EVERY FRAME IS APPROVED. If even one frame shows text, a screen, a desk, an emoji, or anything without a real vehicle or vehicle part as a main subject, the whole video is REJECTED.
 
-Respond ONLY with valid JSON, no markdown, no extra text:
+Respond ONLY with valid JSON, no markdown, no extra text, with the fields in exactly this order. Describe every frame first (its "reason", then its "category"), then the video as a whole, and only then decide "approved" from those frames:
 {
-  "approved": true or false,
-  "frames": [ one entry per frame, in order: { "category": one of ${CATEGORY_LIST}, "reason": "at most 12 words on what this frame shows" } ],
+  "frames": [ one entry per frame, in order: { "reason": "at most 12 words on what this frame actually shows", "category": one of ${CATEGORY_LIST} } ],
   "reason": "One short phrase of at most 15 words summarizing the video (e.g. 'car hood being polished throughout', 'text with a car emoji, no real vehicle')",
+  "approved": true or false,
   "message": "One or two friendly sentences. If rejected, ask them to record a clear video of the vehicle or vehicle part they are working on, keeping it in view the whole time."
 }
 Use "vehicle" or "vehicle_part" for a frame ONLY when that frame shows a real vehicle or vehicle part as a main subject.`
@@ -97,8 +101,22 @@ export interface MediaValidationResult {
   message: string
 }
 
+/** Whole-check time budget (all attempts together). Past it the check counts
+ *  as a service failure, which approves (see serviceError) — an upload must
+ *  never hang on the AI. */
+const PHOTO_TIME_LIMIT_MS = 12_000
+const VIDEO_TIME_LIMIT_MS = 20_000
+
 /** One or more JPEG images (base64) sent in order in a single request. */
-async function generateWithRetry(images: string[], systemInstruction: string, maxOutputTokens = 256, retries = 3) {
+async function generateWithRetry(
+  images: string[],
+  systemInstruction: string,
+  { maxOutputTokens = 256, timeLimitMs = PHOTO_TIME_LIMIT_MS }: { maxOutputTokens?: number; timeLimitMs?: number } = {},
+  retries = 3,
+) {
+  // One deadline shared by every attempt, so retries can't stretch the wait.
+  const deadline = AbortSignal.timeout(timeLimitMs)
+  const started = Date.now()
   for (let attempt = 0; attempt < retries; attempt++) {
     try {
       const response = await ai.models.generateContent({
@@ -113,10 +131,20 @@ async function generateWithRetry(images: string[], systemInstruction: string, ma
           temperature: 0,
           maxOutputTokens,
           responseMimeType: "application/json",
+          // A yes/no image check needs no reasoning. Gemini 3 models "think"
+          // by default, which made each check take many seconds and grew
+          // with the stricter instructions; minimal keeps it fast.
+          thinkingConfig: { thinkingLevel: ThinkingLevel.MINIMAL },
+          abortSignal: deadline,
         },
       })
+      console.info(`[media-validation] Gemini answered in ${Date.now() - started} ms (${images.length} image${images.length === 1 ? "" : "s"})`)
       return response
     } catch (err: unknown) {
+      if (deadline.aborted) {
+        console.warn(`[media-validation] Gemini took over ${timeLimitMs} ms, giving up`)
+        throw err
+      }
       const isRetryable =
         err instanceof Error &&
         (err.message.includes("503") || err.message.includes("429"))
@@ -219,7 +247,7 @@ export async function validateAutomotiveVideo(frames: Buffer[]): Promise<MediaVa
           .toBuffer()).toString("base64"),
       ),
     )
-    const response = await generateWithRetry(images, buildVideoPrompt(images.length), 512)
+    const response = await generateWithRetry(images, buildVideoPrompt(images.length), { maxOutputTokens: 512, timeLimitMs: VIDEO_TIME_LIMIT_MS })
     const text = response.text ?? ""
 
     let parsed: VideoValidationResult
