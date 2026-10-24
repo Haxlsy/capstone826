@@ -15,8 +15,8 @@ export async function POST(request: Request) {
   const body = await request.json()
   const { userId, firstName, lastName, email, password } = body
 
-  if (!userId || !firstName || !lastName || !email) {
-    return NextResponse.json({ error: "userId, firstName, lastName and email are required." }, { status: 400 })
+  if (!userId || !firstName || !lastName) {
+    return NextResponse.json({ error: "userId, firstName and lastName are required." }, { status: 400 })
   }
 
   const cleanFirst = normalizeName(firstName)
@@ -27,10 +27,13 @@ export async function POST(request: Request) {
   }
   const cleanName = `${cleanFirst} ${cleanLast}`
 
-  const cleanEmail = normalizeEmail(email)
-  const emailError = validateEmail(cleanEmail, "Email")
-  if (emailError) {
-    return NextResponse.json({ error: emailError }, { status: 400 })
+  // Email is optional (some workers have none); blank means "no email".
+  const cleanEmail = typeof email === "string" && email.trim() ? normalizeEmail(email) : null
+  if (cleanEmail) {
+    const emailError = validateEmail(cleanEmail, "Email")
+    if (emailError) {
+      return NextResponse.json({ error: emailError }, { status: 400 })
+    }
   }
 
   const cookieStore = await cookies()
@@ -59,12 +62,24 @@ export async function POST(request: Request) {
   // the Edit Account form, which shows Role as a read-only field.
   const supabase = admin
 
+  // An email already on file is the account's login-code (MFA) channel, so it
+  // can be changed but not removed — blanking it would quietly switch the
+  // account to logging in without a code.
+  if (!cleanEmail && target?.email) {
+    return NextResponse.json(
+      { error: "This account already has an email. You can change it, but not remove it." },
+      { status: 400 },
+    )
+  }
+
   // Contact-email uniqueness (case-insensitive), scoped to exclude this
   // account's own current row so saving it unchanged doesn't false-positive —
   // same pattern already used for service/category-preset name edits.
-  const { data: otherAccounts } = await supabase.from("user_account").select("email").neq("id", userId)
-  if ((otherAccounts ?? []).some((a) => a.email && normalizeEmail(a.email) === cleanEmail)) {
-    return NextResponse.json({ error: "That email is already in use by another account." }, { status: 409 })
+  if (cleanEmail) {
+    const { data: otherAccounts } = await supabase.from("user_account").select("email").neq("id", userId)
+    if ((otherAccounts ?? []).some((a) => a.email && normalizeEmail(a.email) === cleanEmail)) {
+      return NextResponse.json({ error: "That email is already in use by another account." }, { status: 409 })
+    }
   }
 
   const { error: profileError } = await supabase
@@ -88,7 +103,7 @@ export async function POST(request: Request) {
   // admin only edited the name. Best-effort: the account update above is
   // already committed, so a failed send here must never affect the response.
   const oldEmail = target?.email ? normalizeEmail(target.email) : null
-  if (target && oldEmail !== cleanEmail) {
+  if (target && cleanEmail && oldEmail !== cleanEmail) {
     if (target.email) {
       const oldResult = await sendEmailChangedOldAddressEmail(target.email, { fullName: cleanName, username: target.username })
       if (!oldResult.ok) console.error("sendEmailChangedOldAddressEmail failed:", oldResult.error)

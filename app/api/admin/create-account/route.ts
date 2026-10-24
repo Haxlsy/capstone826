@@ -28,8 +28,11 @@ const CreateAccountSchema = z.object({
       const err = validateName(v, "Last name")
       if (err) ctx.addIssue({ code: "custom", message: err })
     }),
-  email: z.string().trim().max(254)
+  // Optional: some workers have no email. Sign-in uses the username (see
+  // authEmail below), and the password can be handed over in person.
+  email: z.string().trim().max(254).optional().default("")
     .superRefine((v, ctx) => {
+      if (!v) return
       const err = validateEmail(v, "Email")
       if (err) ctx.addIssue({ code: "custom", message: err })
     }),
@@ -54,7 +57,7 @@ export async function POST(request: Request) {
 
   const { firstName, lastName, email, username, password, role } = parsed.data
   const fullName = `${firstName} ${lastName}`
-  const normalizedEmail = normalizeEmail(email)
+  const normalizedEmail = email ? normalizeEmail(email) : null
 
   const cookieStore = await cookies()
   const userClient  = createClient(cookieStore)
@@ -95,9 +98,11 @@ export async function POST(request: Request) {
   // Check contact-email uniqueness (case-insensitive) — a friendlier
   // pre-check ahead of the DB's own normalized unique index, same pattern
   // already used for service/category-preset names.
-  const { data: existingAccounts } = await supabase.from("user_account").select("email")
-  if ((existingAccounts ?? []).some((a) => a.email && normalizeEmail(a.email) === normalizedEmail)) {
-    return NextResponse.json({ error: "That email is already in use by another account." }, { status: 409 })
+  if (normalizedEmail) {
+    const { data: existingAccounts } = await supabase.from("user_account").select("email")
+    if ((existingAccounts ?? []).some((a) => a.email && normalizeEmail(a.email) === normalizedEmail)) {
+      return NextResponse.json({ error: "That email is already in use by another account." }, { status: 409 })
+    }
   }
 
   // Internal email derived from username — the Supabase Auth sign-in
@@ -151,6 +156,12 @@ export async function POST(request: Request) {
       action:    "Created account",
       target:    fullName.trim(),
     })
+  }
+
+  // No email on file: nothing to send — the admin shares the credentials in
+  // person from the screen.
+  if (!normalizedEmail) {
+    return NextResponse.json({ success: true, emailSent: false, noEmail: true })
   }
 
   // Best-effort — account creation has already succeeded and must not be

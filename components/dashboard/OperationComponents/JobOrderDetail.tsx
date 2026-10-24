@@ -28,6 +28,7 @@ import { requiredTeamRoles } from "@/lib/operations/required-team"
 import { cn } from "@/lib/utils"
 import { statusStyle } from "@/lib/ui/status"
 import { isTechnicianAvailableToday } from "@/lib/technician-availability"
+import { workloadLabel } from "@/lib/operations/workload"
 import { categorySwatch } from "@/lib/ui/category-colors"
 import { fmtDateTime } from "@/lib/time-display"
 import { useOfflineLock, OfflinePausedNote, OFFLINE_ACTION_HINT } from "@/hooks/useOfflineLock"
@@ -256,6 +257,8 @@ export default function JobOrderDetail({
       name: string
       role: string
       on_job: boolean
+      /** Active job orders they're already on — shown, never blocking. */
+      active_jobs: number
       is_available: boolean
       available_days: string[]
       availability_override_date: string | null
@@ -433,6 +436,7 @@ export default function JobOrderDetail({
           name: t.full_name,
           role: t.role as string,
           on_job: t.on_job as boolean,
+          active_jobs: (t.active_jobs as number | undefined) ?? (t.on_job ? 1 : 0),
           is_available: t.is_available as boolean,
           available_days: (t.available_days as string[]) ?? [],
           availability_override_date: (t.availability_override_date as string | null) ?? null,
@@ -492,8 +496,9 @@ export default function JobOrderDetail({
     }
   }
 
-  // Crew already on THIS job (primary or substitute) are shown as assigned —
-  // `on_job` alone would silently hide them (it means "on any active job").
+  // Crew already on THIS job (primary or substitute) are shown as assigned.
+  // Being on OTHER active jobs doesn't exclude anyone — crew work as a team
+  // and can be on several jobs at once; only availability filters them out.
   // Split by is_substitute (unlike a head role's single primaryId, crew can
   // have several original members) so the modal can offer to remove a
   // substitute directly, while an original assignment stays un-removable.
@@ -505,7 +510,7 @@ export default function JobOrderDetail({
   const subCandidates = subTechs
     .filter((t) => t.role === subRole)
     .map((t) => ({ t, membership: alreadyOnJob(t.id, crewTeam) }))
-    .filter(({ t, membership }) => membership !== null || (isTechnicianAvailableToday(t) && !t.on_job))
+    .filter(({ t, membership }) => membership !== null || isTechnicianAvailableToday(t))
     .sort((a, b) => Number(a.membership !== null) - Number(b.membership !== null))
 
   // Who's already on this job in the chosen head role, so they show as such
@@ -1226,7 +1231,13 @@ export default function JobOrderDetail({
                     )}
                   >
                     <span className="font-medium">{t.name}</span>
-                    <StatusBadge status={t.on_job ? "On Job" : isTechnicianAvailableToday(t) ? "Available" : "Unavailable"} />
+                    {!isTechnicianAvailableToday(t) ? (
+                      <StatusBadge status="Unavailable" />
+                    ) : t.active_jobs > 0 ? (
+                      <StatusBadge status="On Job" label={workloadLabel(t.active_jobs)} />
+                    ) : (
+                      <StatusBadge status="Available" />
+                    )}
                   </button>
                 ),
               )}

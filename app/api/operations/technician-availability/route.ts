@@ -51,7 +51,8 @@ export async function GET(request: Request) {
 
     const assignedJobIds = [...new Set((assignments ?? []).map((a: any) => a.job_order_id as string))]
 
-    let ongoingMap = new Map<string, { job_id: string; customer: string; service: string }>()
+    // Every active job each technician is on — crew can be on several at once.
+    const ongoingMap = new Map<string, { job_id: string; customer: string; service: string }[]>()
 
     const ACTIVE_STATUSES = ["Pending", "Ongoing", "For Rework", "Delayed"]
 
@@ -78,7 +79,10 @@ export async function GET(request: Request) {
       for (const a of assignments ?? []) {
         const jobInfo = jobInfoMap.get(a.job_order_id)
         if (jobInfo && a.technician_id) {
-          ongoingMap.set(a.technician_id, jobInfo)
+          const jobs = ongoingMap.get(a.technician_id) ?? []
+          // A person can have a primary and a substitute row on the same job.
+          if (!jobs.some((j) => j.job_id === jobInfo.job_id)) jobs.push(jobInfo)
+          ongoingMap.set(a.technician_id, jobs)
         }
       }
     }
@@ -95,7 +99,7 @@ export async function GET(request: Request) {
       work_start_time:  t.work_start_time ?? "08:00:00",
       work_end_time:    t.work_end_time   ?? "20:00:00",
       availability_override_date: t.availability_override_date ?? null,
-      active_job:       ongoingMap.get(t.id) ?? null,
+      active_jobs:      ongoingMap.get(t.id) ?? [],
     }))
 
     return NextResponse.json({ technicians })

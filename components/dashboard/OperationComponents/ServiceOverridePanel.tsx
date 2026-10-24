@@ -273,11 +273,20 @@ export default function ServiceOverridePanel({
       category_name:       template?.category_name ?? null,
       category_color:      template?.category_color ?? null,
       category_role:       template?.category_role ?? null,
-      sequence_order:      customStages.length + 1,
+      sequence_order:      0,
       stage_duration_mins: 0,
       isNew:               true,
     }
-    onStagesChange([...customStages, newStage])
+    // Insert right after the last stage of the same category, not at the end
+    // of the list: the panel draws stages grouped by category, but the job
+    // runs them by sequence number, so a Preparation stage appended after the
+    // Installation stages would be saved (and run) last.
+    let lastIdx = -1
+    customStages.forEach((s, i) => { if (s.category_id === categoryId) lastIdx = i })
+    const next = lastIdx === -1
+      ? [...customStages, newStage]
+      : [...customStages.slice(0, lastIdx + 1), newStage, ...customStages.slice(lastIdx + 1)]
+    onStagesChange(next.map((s, i) => ({ ...s, sequence_order: i + 1 })))
   }
 
   function updateStageDuration(id: string, mins: number) {

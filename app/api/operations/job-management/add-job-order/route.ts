@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server"
 import { validateJobStages } from "@/lib/operations/job-stage-validation"
+import { orderStagesByCategory } from "@/lib/operations/stage-order"
+import { STAGE_OVERRIDE_COLUMNS, loadStageCatalog, resolveJobStage, type JobStageRow } from "@/lib/job-stages"
 import { cookies } from "next/headers"
 import { createClient } from "@/lib/supabase/server"
 import { createAdminClient } from "@/lib/supabase/admin"
@@ -472,14 +474,28 @@ export async function POST(request: Request) {
 
     // ── Apply stage overrides ─────────────────────────────────────────────────
     // The DB trigger (on_job_order_created) seeds job_stage_progress from service_stage.
-    // Two cases:
     //   1. Existing stage (is_new=false): UPDATE the seeded row with custom name / order.
     //   2. New stage (is_new=true):       INSERT a new row with no service_stage_id.
+    //   3. Stage removed in the override:  DELETE its seeded row.
+    //   4. Renumber so each category's stages sit together (see below).
     if (Array.isArray(custom_stages) && custom_stages.length > 0) {
       const stages = custom_stages as CustomStage[]
 
       const existing = stages.filter((s) => !s.is_new && s.service_stage_id)
       const newStages = stages.filter((s) => s.is_new)
+
+      // Seeded stages Operations removed in the override. Safe to delete: the
+      // job was created a moment ago, so nothing has progressed on them.
+      const keptTemplateIds = existing.map((s) => s.service_stage_id as string)
+      let removeQuery = admin
+        .from("job_stage_progress")
+        .delete()
+        .eq("job_order_id", job.id)
+        .not("service_stage_id", "is", null)
+      if (keptTemplateIds.length > 0) {
+        removeQuery = removeQuery.not("service_stage_id", "in", `(${keptTemplateIds.join(",")})`)
+      }
+      await removeQuery
 
       // Update seeded rows
       if (existing.length > 0) {
@@ -509,6 +525,32 @@ export async function POST(request: Request) {
             custom_sequence_order: cs.custom_sequence_order,
             stage_duration_mins:   cs.stage_duration_mins ?? null,
           }))
+        )
+      }
+
+      // Stages run strictly by number and each category belongs to one team,
+      // so a category's stages must be consecutive — otherwise a stage added
+      // to Preparation but numbered after Installation blocks the head
+      // detailer until the end. Renumber from the stored rows (not just the
+      // payload), so older or offline-queued clients get fixed up too.
+      const { data: savedRows } = await admin
+        .from("job_stage_progress")
+        .select(`id, ${STAGE_OVERRIDE_COLUMNS}`)
+        .eq("job_order_id", job.id)
+      const rows = (savedRows ?? []) as (JobStageRow & { id: string })[]
+      if (rows.length > 0) {
+        const catalog = await loadStageCatalog(admin, rows)
+        const resolved = rows
+          .map((r) => ({ row: r, stage: resolveJobStage(r, catalog) }))
+          .sort((a, b) => (a.stage.sequence_order ?? 0) - (b.stage.sequence_order ?? 0))
+        const ordered = orderStagesByCategory(resolved, (x) => x.stage.category?.id ?? null)
+        await Promise.all(
+          ordered
+            .map((x, i) => ({ x, seq: i + 1 }))
+            .filter(({ x, seq }) => x.row.custom_sequence_order !== seq)
+            .map(({ x, seq }) =>
+              admin.from("job_stage_progress").update({ custom_sequence_order: seq }).eq("id", x.row.id),
+            ),
         )
       }
     }
