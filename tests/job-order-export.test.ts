@@ -16,8 +16,8 @@ const baseJob: ExportJobDetail = {
   head_detailer: { full_name: "Maria Santos" },
   head_installer: null,
   history: [
-    { status: "Pending", created_at: "2026-01-05T08:00:00.000Z", changed_by: "System", reason: null },
-    { status: "Released", created_at: "2026-01-05T16:00:00.000Z", changed_by: "Maria Santos", reason: "Completed early" },
+    { status: "Pending", created_at: "2026-01-05T08:00:00.000Z", changed_by: "System" },
+    { status: "Released", created_at: "2026-01-05T16:00:00.000Z", changed_by: "Maria Santos" },
   ],
   stages: [
     {
@@ -48,9 +48,11 @@ describe("buildPrintHtml", () => {
     expect(html).not.toContain("video1.mp4")
   })
 
-  it("includes the status history with the reason column", () => {
+  it("includes the status history without a reason column", () => {
     const html = buildPrintHtml(baseJob, "Jan 5, 2026")
-    expect(html).toContain("Completed early")
+    expect(html).toContain("<th>Time</th><th>Status</th><th>Changed By</th></tr>")
+    expect(html).not.toContain("<th>Reason</th>")
+    expect(html).toContain("Maria Santos")
   })
 
   it("doesn't render a photo-grid element when a stage has no photos", () => {
@@ -83,11 +85,11 @@ describe("buildWorkbook", () => {
     expect(photos.rowCount).toBe(1) // header row only
   })
 
-  it("puts the status history reason in its own sheet", () => {
+  it("puts the status history in its own sheet with Time, Status and Changed By only", () => {
     const wb = buildWorkbook(baseJob)
     const history = wb.getWorksheet("Status History")!
-    const reasons = history.getColumn("reason").values.filter((v) => typeof v === "string")
-    expect(reasons).toContain("Completed early")
+    expect(history.getRow(1).values).toEqual([undefined, "Time", "Status", "Changed By"])
+    expect(history.rowCount).toBe(3)
   })
 })
 

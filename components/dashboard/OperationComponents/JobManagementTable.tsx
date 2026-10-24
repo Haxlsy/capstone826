@@ -17,13 +17,20 @@ import { Badge, JobStatusBadges } from "@/components/ui/Badge"
 import { Select, FieldLabel } from "@/components/ui/Field"
 import { useToast } from "@/components/ui/Toast"
 import { useOfflineSyncContext } from "@/components/dashboard/OperationComponents/OfflineSyncContext"
-import StatusPickerModal, { type JobStatus, type StatusOption } from "./StatusPickerModal"
-import StatusConfirmDialog from "./StatusConfirmDialog"
 import { fmtDate } from "@/lib/time-display"
 import { displayJobStatus } from "@/lib/job-delay"
 import { remove as removeQueued } from "@/lib/offline/outbox"
 import type { JobOrdersData } from "@/lib/operations/job-orders-data"
 import type { OutboxItem } from "@/lib/offline/db"
+
+type JobStatus =
+  | "Pending"
+  | "Ongoing"
+  | "For Rework"
+  | "For Inspection"
+  | "For Release"
+  | "Released"
+  | "Delayed"
 
 interface JobOrder {
   id: string
@@ -105,10 +112,6 @@ export default function JobManagementTable({ initialJobOrders }: { initialJobOrd
   const [currentPage, setCurrentPage] = useState(1)
   const [pageSize, setPageSize] = useState(15)
 
-  const [pickerJob, setPickerJob] = useState<JobOrder | null>(null)
-  const [confirmTarget, setConfirmTarget] = useState<StatusOption | null>(null)
-  const [updating, setUpdating] = useState(false)
-  const [updateError, setUpdateError] = useState<string | null>(null)
 
   const [filterService, setFilterService] = useState("")
   const [filterTechnician, setFilterTechnician] = useState("")
@@ -248,12 +251,6 @@ export default function JobManagementTable({ initialJobOrders }: { initialJobOrd
   const page = Math.min(currentPage, totalPages)
   const paginated = filtered.slice((page - 1) * pageSize, page * pageSize)
 
-  function closeAll() {
-    setPickerJob(null)
-    setConfirmTarget(null)
-    setUpdateError(null)
-  }
-
   // Drop a queued Add Job Order that can't sync (bad/stale payload from an
   // earlier session). The outbox broadcasts a change event, so useOfflineSync
   // refreshes and the row disappears.
@@ -264,30 +261,6 @@ export default function JobManagementTable({ initialJobOrders }: { initialJobOrd
     } catch (err) {
       console.error("[offline] discard queued item failed", err)
       toast.error("Couldn't remove that item.")
-    }
-  }
-
-  async function confirmUpdate(reason: string) {
-    if (!confirmTarget || !pickerJob) return
-    setUpdating(true)
-    setUpdateError(null)
-    try {
-      const res = await fetch(`/api/operations/job-orders/${pickerJob.id}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ status: confirmTarget.db, reason }),
-      })
-      const json = await res.json()
-      if (!res.ok) throw new Error(json?.error ?? "Failed to update status")
-      setJobOrders((prev) =>
-        prev.map((j) => (j.id === pickerJob.id ? { ...j, status: confirmTarget.label } : j)),
-      )
-      toast.success(`Status updated to ${confirmTarget.label}.`)
-      closeAll()
-    } catch (err: unknown) {
-      setUpdateError(err instanceof Error ? err.message : String(err))
-    } finally {
-      setUpdating(false)
     }
   }
 
@@ -519,27 +492,6 @@ export default function JobManagementTable({ initialJobOrders }: { initialJobOrd
           }
         />
       </div>
-
-      {pickerJob && !confirmTarget && (
-        <StatusPickerModal
-          jobId={pickerJob.displayId}
-          customerName={pickerJob.customer}
-          currentStatus={pickerJob.status}
-          onSelect={(opt) => setConfirmTarget(opt)}
-          onClose={closeAll}
-        />
-      )}
-
-      {confirmTarget && pickerJob && (
-        <StatusConfirmDialog
-          customerName={pickerJob.customer}
-          target={confirmTarget}
-          error={updateError}
-          updating={updating}
-          onConfirm={confirmUpdate}
-          onBack={() => setConfirmTarget(null)}
-        />
-      )}
     </>
   )
 }

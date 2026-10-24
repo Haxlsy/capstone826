@@ -26,7 +26,6 @@ export interface ExportHistoryEntry {
   status: string
   created_at: string
   changed_by: string
-  reason: string | null
 }
 
 export interface ExportJobDetail {
@@ -95,7 +94,7 @@ function stageSectionHtml(stage: ExportStage): string {
  */
 export function buildPrintHtml(job: ExportJobDetail, generatedAt: string): string {
   const historyRows = job.history
-    .map((h) => `<tr><td>${escapeHtml(fmtDateTime(h.created_at))}</td><td>${escapeHtml(h.status)}</td><td>${escapeHtml(h.changed_by)}</td><td>${escapeHtml(h.reason ?? "—")}</td></tr>`)
+    .map((h) => `<tr><td>${escapeHtml(fmtDateTime(h.created_at))}</td><td>${escapeHtml(h.status)}</td><td>${escapeHtml(h.changed_by)}</td></tr>`)
     .join("")
 
   return `<html><head><title>${escapeHtml(job.job_order_code)}</title>
@@ -135,8 +134,8 @@ export function buildPrintHtml(job: ExportJobDetail, generatedAt: string): strin
 
     <h2>Status History</h2>
     <table>
-      <thead><tr><th>Time</th><th>Status</th><th>Changed By</th><th>Reason</th></tr></thead>
-      <tbody>${historyRows || `<tr><td colspan="4">No history recorded.</td></tr>`}</tbody>
+      <thead><tr><th>Time</th><th>Status</th><th>Changed By</th></tr></thead>
+      <tbody>${historyRows || `<tr><td colspan="3">No history recorded.</td></tr>`}</tbody>
     </table>
 
     <h2>Workflow Stages</h2>
@@ -185,10 +184,9 @@ export function buildWorkbook(job: ExportJobDetail): ExcelJS.Workbook {
     { header: "Time", key: "time", width: 20 },
     { header: "Status", key: "status", width: 16 },
     { header: "Changed By", key: "by", width: 22 },
-    { header: "Reason", key: "reason", width: 40 },
   ]
   history.addRows(job.history.map((h) => ({
-    time: fmtDateTime(h.created_at), status: h.status, by: h.changed_by, reason: h.reason ?? "—",
+    time: fmtDateTime(h.created_at), status: h.status, by: h.changed_by,
   })))
   history.getRow(1).font = { bold: true }
 
