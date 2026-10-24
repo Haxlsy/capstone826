@@ -4,6 +4,7 @@ import { getAdminCaller } from "@/lib/auth/guard"
 import { auditCallerOf } from "@/lib/auth/caller"
 import { logAuditCall } from "@/hooks/audit-helpers"
 import { kbUpdateSchema } from "@/types/chatbot"
+import { readJsonBody } from "@/lib/http/read-json-body"
 
 export async function PATCH(
   request: Request,
@@ -15,7 +16,7 @@ export async function PATCH(
 
   const { id } = await params
 
-  const body = await request.json()
+  const body = await readJsonBody(request)
   const parsed = kbUpdateSchema.safeParse(body)
   if (!parsed.success) {
     return NextResponse.json({ error: parsed.error.issues[0].message }, { status: 400 })

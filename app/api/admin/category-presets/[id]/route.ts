@@ -5,6 +5,7 @@ import { auditCallerOf } from "@/lib/auth/caller"
 import { logAuditCall } from "@/hooks/audit-helpers"
 import { findDuplicateStageName } from "@/lib/admin/service-stage-validation"
 import { emojiError, stageNamesEmojiError } from "@/lib/text"
+import { readJsonBody } from "@/lib/http/read-json-body"
 
 // PUT /api/admin/category-presets/[id]
 export async function PUT(request: Request, { params }: { params: Promise<{ id: string }> }) {
@@ -16,7 +17,7 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
     const admin = createAdminClient()
 
     const { id } = await params
-    const body = await request.json()
+    const body = await readJsonBody(request)
     const { name, technician_role, display_color, stages } = body
 
     if (!name?.trim()) return NextResponse.json({ error: "Preset name is required." }, { status: 400 })

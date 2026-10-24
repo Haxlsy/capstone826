@@ -7,6 +7,7 @@ import { getAuditCaller } from "@/lib/auth/caller"
 import { logAuditCall } from "@/hooks/audit-helpers"
 import { sendPushToUser } from "@/lib/push/send"
 import { getRoleCaller } from "@/lib/auth/caller"
+import { readJsonBody } from "@/lib/http/read-json-body"
 
 // ── GET — fetch own submitted concerns ───────────────────────────────────────
 export async function GET() {
@@ -102,7 +103,7 @@ export async function POST(request: Request) {
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) return NextResponse.json({ error: "Unauthorized." }, { status: 401 })
 
-    const body = await request.json()
+    const body = await readJsonBody(request)
     const { description, job_order_id, stage_id } = body as {
       description?:  string
       job_order_id?: string

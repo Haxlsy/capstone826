@@ -6,6 +6,7 @@ import type { TimePeriod } from "@/types/audit"
 import {
   isAuditSortColumn, isAuditSortDir, isAuditScope, SECURITY_CATEGORY, dateRangeBounds,
 } from "@/lib/admin/audit-log-query"
+import { readJsonBody } from "@/lib/http/read-json-body"
 
 // ── GET /api/admin/audit-log ──────────────────────────────────────────────────
 // Query params: scope (activity|security, default activity), role, category
@@ -105,7 +106,7 @@ export async function POST(request: Request) {
     const auth = await getRoleCaller(["admin", "super_admin"])
     if ("error" in auth) return auth.error
 
-    const body = await request.json()
+    const body = await readJsonBody(request)
     const { user_id, user_name, role, category, action, target } = body
 
     if (!user_name || !role || !category || !action) {

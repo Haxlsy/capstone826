@@ -7,6 +7,7 @@ import {
 } from "@/lib/messenger/chatbot"
 import { getAdminCaller } from "@/lib/auth/guard"
 import { chatMessageSchema, chatbotSettingsSchema } from "@/types/chatbot"
+import { readJsonBody } from "@/lib/http/read-json-body"
 
 const PreviewSchema = z.object({
   message:  z.string().trim().min(1, "message is required."),
@@ -19,7 +20,7 @@ export async function POST(request: Request) {
   if ("error" in auth) return auth.error
 
   try {
-    const body = await request.json()
+    const body = await readJsonBody(request)
     const parsed = PreviewSchema.safeParse(body)
     if (!parsed.success) {
       return NextResponse.json({ error: parsed.error.issues[0].message }, { status: 400 })

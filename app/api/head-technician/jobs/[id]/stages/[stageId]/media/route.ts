@@ -9,6 +9,7 @@ import {
   MAX_PHOTOS_PER_ROUND, MAX_VIDEOS_PER_ROUND,
 } from "@/lib/media/limits"
 import { getRoleCaller } from "@/lib/auth/caller"
+import { readJsonBody } from "@/lib/http/read-json-body"
 
 // Room for frame reading + the AI check on a slow moment, so the route answers
 // with its own JSON instead of being cut off by the platform time limit.
@@ -186,7 +187,7 @@ export async function DELETE(
     if ("error" in auth) return auth.error
 
     const { stageId } = await params
-    const { media_id } = await request.json()
+    const { media_id } = await readJsonBody(request)
     if (!media_id) return NextResponse.json({ error: "media_id is required." }, { status: 400 })
 
     const cookieStore = await cookies()

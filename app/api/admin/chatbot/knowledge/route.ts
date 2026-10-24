@@ -4,6 +4,7 @@ import { getAdminCaller } from "@/lib/auth/guard"
 import { auditCallerOf } from "@/lib/auth/caller"
 import { logAuditCall } from "@/hooks/audit-helpers"
 import { kbCreateSchema } from "@/types/chatbot"
+import { readJsonBody } from "@/lib/http/read-json-body"
 
 export async function GET() {
   const auth = await getAdminCaller()
@@ -26,7 +27,7 @@ export async function POST(request: Request) {
   if ("error" in auth) return auth.error
   const { caller } = auth
 
-  const body = await request.json()
+  const body = await readJsonBody(request)
   const parsed = kbCreateSchema.safeParse(body)
   if (!parsed.success) {
     return NextResponse.json({ error: parsed.error.issues[0].message }, { status: 400 })

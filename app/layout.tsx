@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono, Poppins } from "next/font/google";
 import QueryProvider from "@/providers/query-provider";
 import { ToastProvider } from "@/components/ui/Toast";
+import { InvisibleCharGuard } from "@/components/shared/InvisibleCharGuard";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -46,6 +47,8 @@ export default function RootLayout({
       className={`${geistSans.variable} ${geistMono.variable} ${poppins.variable} h-full antialiased`}
     >
       <body className="min-h-full flex flex-col">
+        {/* Strips invisible characters (e.g. "ㅤ") from every text field app-wide. */}
+        <InvisibleCharGuard />
         <QueryProvider>
           <ToastProvider>{children}</ToastProvider>
         </QueryProvider>

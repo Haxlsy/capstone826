@@ -5,6 +5,7 @@ import { getAdminCaller } from "@/lib/auth/guard"
 import { auditCallerOf } from "@/lib/auth/caller"
 import { logAuditCall } from "@/hooks/audit-helpers"
 import { hasEmoji } from "@/lib/text"
+import { readJsonBody } from "@/lib/http/read-json-body"
 
 // GET /api/admin/service-types
 // Returns all service types sorted alphabetically.
@@ -42,7 +43,7 @@ export async function POST(request: Request) {
     if ("error" in auth) return auth.error
     const { caller } = auth
 
-    const body   = await request.json()
+    const body   = await readJsonBody(request)
     const parsed = CreateSchema.safeParse(body)
     if (!parsed.success) {
       return NextResponse.json({ error: parsed.error.issues[0].message }, { status: 400 })

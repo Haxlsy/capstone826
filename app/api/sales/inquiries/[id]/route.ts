@@ -5,6 +5,7 @@ import { createAdminClient } from "@/lib/supabase/admin"
 import { getAuditCaller, getRoleCaller } from "@/lib/auth/caller"
 import { logAuditCall } from "@/hooks/audit-helpers"
 import { resumeBotAfterHandoff } from "@/lib/messenger/handoff"
+import { readJsonBody } from "@/lib/http/read-json-body"
 
 export async function PATCH(
   request: Request,
@@ -16,7 +17,7 @@ export async function PATCH(
     const roleAuth = await getRoleCaller(["sales"])
     if ("error" in roleAuth) return roleAuth.error
 
-    const body = await request.json()
+    const body = await readJsonBody(request)
     const { status } = body
 
     const cookieStore = await cookies()

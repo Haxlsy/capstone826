@@ -5,6 +5,7 @@ import { createClient as createAdminClient } from "@supabase/supabase-js";
 import { getAuditCaller, getRoleCaller } from "@/lib/auth/caller";
 import { logAuditCall } from "@/hooks/audit-helpers";
 import { resumeBotAfterHandoff } from "@/lib/messenger/handoff";
+import { readJsonBody } from "@/lib/http/read-json-body"
 
 export async function GET(
   request: Request,
@@ -59,7 +60,7 @@ export async function PATCH(
     if ("error" in auth) return auth.error;
 
     const { id } = await params;
-    const body = await request.json();
+    const body = await readJsonBody(request);
     const { status, handled_by_user_id, handler_role } = body;
 
     if (!id) {

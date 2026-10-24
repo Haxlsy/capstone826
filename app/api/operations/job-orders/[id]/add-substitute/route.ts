@@ -7,6 +7,7 @@ import { z } from "zod"
 import { sendPushToUser } from "@/lib/push/send"
 import { substituteAddedMessage, type HeadRole } from "@/lib/substitute-label"
 import { getRoleCaller } from "@/lib/auth/caller"
+import { readJsonBody } from "@/lib/http/read-json-body"
 
 const BodySchema = z.object({
   person_id: z.string().uuid(),
@@ -28,7 +29,7 @@ export async function POST(
     if ("error" in auth) return auth.error
 
     const { id: jobId } = await params
-    const body   = await request.json()
+    const body   = await readJsonBody(request)
     const parsed = BodySchema.safeParse(body)
     if (!parsed.success) {
       return NextResponse.json({ error: parsed.error.issues[0].message }, { status: 400 })
@@ -158,7 +159,7 @@ export async function DELETE(
     if ("error" in auth) return auth.error
 
     const { id: jobId } = await params
-    const body   = await request.json()
+    const body   = await readJsonBody(request)
     const parsed = BodySchema.safeParse(body)
     if (!parsed.success) {
       return NextResponse.json({ error: parsed.error.issues[0].message }, { status: 400 })

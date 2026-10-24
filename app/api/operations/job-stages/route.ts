@@ -4,6 +4,7 @@ import { createClient } from "@/lib/supabase/server"
 import { createAdminClient } from "@/lib/supabase/admin"
 import { logAudit } from "@/hooks/audit-helpers"
 import { getRoleCaller } from "@/lib/auth/caller"
+import { readJsonBody } from "@/lib/http/read-json-body"
 
 export async function GET(request: Request) {
   try {
@@ -46,7 +47,7 @@ export async function PATCH(request: Request) {
     const auth = await getRoleCaller(["operations"])
     if ("error" in auth) return auth.error
 
-    const body = await request.json()
+    const body = await readJsonBody(request)
     const { id, status, rework_instructions, handoff_notes } = body
 
     if (!id) {

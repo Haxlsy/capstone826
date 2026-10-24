@@ -8,6 +8,7 @@ import { buildStageUpdateMessage } from "@/lib/messenger/stage-update"
 import { getRoleCaller } from "@/lib/auth/caller"
 import { recipientFromVehicle } from "@/lib/messenger/recipient"
 import { jobCustomer } from "@/lib/operations/job-customer"
+import { readJsonBody } from "@/lib/http/read-json-body"
 
 // POST /api/operations/job-orders/[id]/resend-stage
 // Body: { stage_id: string }
@@ -22,7 +23,7 @@ export async function POST(
     if ("error" in auth) return auth.error
 
     const { id: jobId } = await params
-    const body = await request.json()
+    const body = await readJsonBody(request)
     const { stage_id } = body as { stage_id?: string }
 
     if (!stage_id) {

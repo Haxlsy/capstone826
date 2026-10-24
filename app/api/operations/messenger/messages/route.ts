@@ -3,6 +3,7 @@ import { cookies } from "next/headers";
 import { createClient } from "@/lib/supabase/server";
 import { createClient as createAdminClient } from "@supabase/supabase-js";
 import { getRoleCaller } from "@/lib/auth/caller";
+import { readJsonBody } from "@/lib/http/read-json-body"
 
 interface MessageQuery {
   conversationId?: string;
@@ -59,7 +60,7 @@ export async function POST(request: Request) {
     const auth = await getRoleCaller(["operations"]);
     if ("error" in auth) return auth.error;
 
-    const body = await request.json();
+    const body = await readJsonBody(request);
     const {
       conversation_id,
       sender_type,

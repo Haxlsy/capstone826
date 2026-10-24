@@ -7,6 +7,7 @@ import { logAudit } from "@/hooks/audit-helpers"
 import { sendPushToUser } from "@/lib/push/send"
 import { getRoleCaller } from "@/lib/auth/caller"
 import { startReworkRound } from "@/lib/operations/rework-round"
+import { readJsonBody } from "@/lib/http/read-json-body"
 
 // POST /api/operations/job-orders/[id]/rework
 // Body: { stage_ids: string[], rework_instructions: string }
@@ -20,7 +21,7 @@ export async function POST(
     if ("error" in auth) return auth.error
 
     const { id: jobId } = await params
-    const body = await request.json()
+    const body = await readJsonBody(request)
     const { stage_ids, rework_instructions } = body as {
       stage_ids?: string[]
       rework_instructions?: string

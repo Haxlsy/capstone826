@@ -7,7 +7,6 @@ import { Card } from "@/components/ui/Card"
 import { StatusBadge } from "@/components/ui/Badge"
 import { cn } from "@/lib/utils"
 import { isTechnicianAvailableToday, manilaToday } from "@/lib/technician-availability"
-import { workloadLabel } from "@/lib/operations/workload"
 import { OnJobList, type OnJobEntry } from "@/components/shared/OnJobList"
 
 interface Technician {
@@ -59,7 +58,9 @@ function TechList({ title, techs, loading }: { title: string; techs: Technician[
             const available  = !onJob && isTechnicianAvailableToday(t)
 
             const dotColor = onJob ? "bg-status-onjob" : available ? "bg-status-inspection" : "bg-border"
-            const badgeLabel = onJob ? (t.active_jobs.length === 1 ? "On Job" : workloadLabel(t.active_jobs.length)) : available ? "Available" : "Not Available"
+            // Always a known status, so the badge keeps its colour and label; the
+            // job count is already on the "On N jobs" line under the name.
+            const badgeLabel = onJob ? "On Job" : available ? "Available" : "Not Available"
 
             return (
               <li

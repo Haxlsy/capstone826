@@ -2,6 +2,7 @@ import { NextResponse } from "next/server"
 import { cookies } from "next/headers"
 import { createClient } from "@/lib/supabase/server"
 import { createAdminClient } from "@/lib/supabase/admin"
+import { readJsonBody } from "@/lib/http/read-json-body"
 
 export async function POST(request: Request) {
   try {
@@ -10,7 +11,7 @@ export async function POST(request: Request) {
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) return NextResponse.json({ error: "Unauthorized." }, { status: 401 })
 
-    const body = await request.json()
+    const body = await readJsonBody(request)
     const endpoint = body?.endpoint as string | undefined
     const p256dh = body?.keys?.p256dh as string | undefined
     const auth = body?.keys?.auth as string | undefined

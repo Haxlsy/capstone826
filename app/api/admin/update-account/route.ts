@@ -7,12 +7,13 @@ import { normalizeName, validateName } from "@/lib/name"
 import { normalizeEmail, validateEmail } from "@/lib/email/validation"
 import { sendEmailChangedOldAddressEmail, sendEmailChangedNewAddressEmail } from "@/lib/email/mailer"
 import { getRoleCaller } from "@/lib/auth/caller"
+import { readJsonBody } from "@/lib/http/read-json-body"
 
 export async function POST(request: Request) {
   const auth = await getRoleCaller(["admin", "super_admin"])
   if ("error" in auth) return auth.error
 
-  const body = await request.json()
+  const body = await readJsonBody(request)
   const { userId, firstName, lastName, email, password } = body
 
   if (!userId || !firstName || !lastName) {

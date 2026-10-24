@@ -8,6 +8,7 @@ import {
   vehicleLockedMessage,
   deleteVehicleBlockedMessage,
 } from "@/lib/sales/customer-record-lock"
+import { readJsonBody } from "@/lib/http/read-json-body"
 
 // This route is a VEHICLE (a `customer_record` row: plate + vehicle unit).
 // The person — name, phone, email, Messenger account — is edited through
@@ -29,7 +30,7 @@ export async function PATCH(
     if ("error" in auth) return auth.error
     const { caller } = auth
 
-    const parsed = UpdateVehicleSchema.safeParse(await request.json())
+    const parsed = UpdateVehicleSchema.safeParse(await readJsonBody(request))
     if (!parsed.success) {
       return NextResponse.json({ error: parsed.error.issues[0]?.message ?? "Validation failed." }, { status: 400 })
     }

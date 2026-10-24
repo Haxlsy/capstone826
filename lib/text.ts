@@ -58,3 +58,48 @@ export function stageNamesEmojiError(stages: unknown): string | null {
     ? "Stage names can't contain emoji or invisible characters."
     : null
 }
+
+/**
+ * The invisible characters stripped from EVERY text field (browser guard +
+ * server body reader). Same as INVISIBLE minus the zero-width joiners
+ * U+200C/U+200D: those hold multi-part emoji together (👨‍👩‍👧), and emoji
+ * are allowed in free text like notes and chatbot messages. Name and label
+ * fields still strip them through their own stricter rules.
+ */
+const GENERIC_INVISIBLE = /[ᅟᅠㅤﾠ⠀​‎‏⁠-⁤﻿­͏]/g
+
+/** Removes generic invisible characters (see GENERIC_INVISIBLE). Doesn't trim. */
+export function stripInvisibleGeneric(raw: string): string {
+  return raw.replace(GENERIC_INVISIBLE, "")
+}
+
+/**
+ * Cleans every string in a parsed JSON body — nested objects and arrays too —
+ * except values under `skipKeys` (passwords, verification codes), which must
+ * reach the server exactly as typed. Numbers, booleans and null pass through.
+ */
+export function stripInvisibleDeep<T>(value: T, { skipKeys = [] as readonly string[] } = {}): T {
+  const skip = new Set(skipKeys)
+  const walk = (v: unknown): unknown => {
+    if (typeof v === "string") return stripInvisibleGeneric(v)
+    if (Array.isArray(v)) return v.map(walk)
+    if (v && typeof v === "object") {
+      return Object.fromEntries(
+        Object.entries(v as Record<string, unknown>).map(([k, val]) => [k, skip.has(k) ? val : walk(val)]),
+      )
+    }
+    return v
+  }
+  return walk(value) as T
+}
+
+/**
+ * For the browser guard: the cleaned value plus where the caret should go,
+ * shifted left by however many characters were removed before it.
+ */
+export function cleanValueAndCaret(value: string, caret: number | null): { value: string; caret: number | null } {
+  const clean = stripInvisibleGeneric(value)
+  if (clean === value || caret === null) return { value: clean, caret }
+  const removedBefore = value.slice(0, caret).length - stripInvisibleGeneric(value.slice(0, caret)).length
+  return { value: clean, caret: caret - removedBefore }
+}

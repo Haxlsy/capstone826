@@ -6,6 +6,7 @@ import { addWorkingMins } from "@/hooks/time-utils"
 import { fmtDateTime } from "@/lib/time-display"
 import { getRoleCaller } from "@/lib/auth/caller"
 import { loadWorkSchedule } from "@/lib/operating-hours"
+import { readJsonBody } from "@/lib/http/read-json-body"
 
 // Computes the expected completion for a prospective job order so the
 // confirm-dialog preview is produced server-side (same engine that persists
@@ -20,7 +21,7 @@ export async function POST(request: Request) {
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) return NextResponse.json({ error: "Unauthorized." }, { status: 401 })
 
-    const body = await request.json()
+    const body = await readJsonBody(request)
     const startIso = (body?.startIso as string) ?? ""
     const durationMins = Number(body?.durationMins)
 

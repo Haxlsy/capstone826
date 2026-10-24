@@ -4,6 +4,7 @@ import { createClient } from "@/lib/supabase/server"
 import { createAdminClient } from "@/lib/supabase/admin"
 import { validateEmail, normalizeEmail } from "@/lib/email/validation"
 import { createEmailVerificationChallenge } from "@/lib/auth/email-verification"
+import { readJsonBody } from "@/lib/http/read-json-body"
 
 // POST /api/auth/connect-email/start
 // Body: { email }. Self-service "add/update my email for MFA" — the first
@@ -11,7 +12,7 @@ import { createEmailVerificationChallenge } from "@/lib/auth/email-verification"
 // write anything to user_account yet.
 export async function POST(request: Request) {
   try {
-    const { email } = await request.json()
+    const { email } = await readJsonBody(request)
 
     const cleanEmail = normalizeEmail(email)
     const emailError = validateEmail(cleanEmail, "Email")

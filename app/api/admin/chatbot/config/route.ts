@@ -6,6 +6,7 @@ import { logAuditCall } from "@/hooks/audit-helpers"
 import { buildSystemPrompt } from "@/lib/messenger/chatbot"
 import { chatbotSettingsSaveSchema, type ChatbotSettings } from "@/types/chatbot"
 import { describeChatbotSettingsChanges } from "@/lib/admin/chatbot-settings-diff"
+import { readJsonBody } from "@/lib/http/read-json-body"
 
 export async function GET() {
   const auth = await getAdminCaller()
@@ -27,7 +28,7 @@ export async function POST(request: Request) {
   if ("error" in auth) return auth.error
   const { caller } = auth
 
-  const body = await request.json()
+  const body = await readJsonBody(request)
 
   // Accept either legacy system_prompt string OR new settings object
   const isLegacy = typeof body.system_prompt === "string" && !body.settings

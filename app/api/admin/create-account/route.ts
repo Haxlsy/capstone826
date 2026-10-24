@@ -8,6 +8,7 @@ import { validateName } from "@/lib/name"
 import { validateEmail, normalizeEmail } from "@/lib/email/validation"
 import { sendAccountCreatedEmail } from "@/lib/email/mailer"
 import { getRoleCaller } from "@/lib/auth/caller"
+import { readJsonBody } from "@/lib/http/read-json-body"
 
 const ALLOWED_ROLES = [
   "admin",
@@ -49,7 +50,7 @@ export async function POST(request: Request) {
   const auth = await getRoleCaller(["admin", "super_admin"])
   if ("error" in auth) return auth.error
 
-  const body = await request.json()
+  const body = await readJsonBody(request)
   const parsed = CreateAccountSchema.safeParse(body)
   if (!parsed.success) {
     return NextResponse.json({ error: parsed.error.issues[0].message }, { status: 400 })

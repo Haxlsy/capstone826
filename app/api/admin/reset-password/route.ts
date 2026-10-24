@@ -3,6 +3,7 @@ import { randomBytes } from "crypto"
 import { createAdminClient } from "@/lib/supabase/admin"
 import { logAuditCall } from "@/hooks/audit-helpers"
 import { getRoleCaller } from "@/lib/auth/caller"
+import { readJsonBody } from "@/lib/http/read-json-body"
 
 function generatePassword(): string {
   // 12 chars from an unambiguous alphabet (no 0/O, 1/l/I)
@@ -19,7 +20,7 @@ export async function POST(request: Request) {
     if ("error" in auth) return auth.error
 
     const { caller } = auth
-    const { userId } = await request.json()
+    const { userId } = await readJsonBody(request)
 
     if (!userId || typeof userId !== "string") {
       return NextResponse.json({ error: "userId is required." }, { status: 400 })

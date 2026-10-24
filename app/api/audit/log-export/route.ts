@@ -2,6 +2,7 @@ import { NextResponse } from "next/server"
 import { requireAuditCaller } from "@/lib/auth/caller"
 import { logAuditCall } from "@/hooks/audit-helpers"
 import { isExportType, EXPORT_TYPE_ACTIONS } from "@/lib/audit/export-types"
+import { readJsonBody } from "@/lib/http/read-json-body"
 
 // POST /api/audit/log-export
 // Body: { exportType: keyof EXPORT_TYPE_ACTIONS, target?: string }
@@ -14,7 +15,7 @@ export async function POST(request: Request) {
     const result = await requireAuditCaller()
     if ("error" in result) return result.error
 
-    const body = await request.json().catch(() => ({}))
+    const body = await readJsonBody(request).catch(() => ({}))
     const { exportType, target } = body as { exportType?: unknown; target?: unknown }
 
     if (!isExportType(exportType)) {
