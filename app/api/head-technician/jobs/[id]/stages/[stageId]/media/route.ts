@@ -10,6 +10,10 @@ import {
 } from "@/lib/media/limits"
 import { getRoleCaller } from "@/lib/auth/caller"
 
+// Room for frame reading + the AI check on a slow moment, so the route answers
+// with its own JSON instead of being cut off by the platform time limit.
+export const maxDuration = 60
+
 // POST /api/head-technician/jobs/[id]/stages/[stageId]/media
 // Accepts a multipart form with file field "file".
 // Uploads to Supabase Storage (stage-media bucket) and records in stage_media.
@@ -95,6 +99,13 @@ export async function POST(
       // so the automotive-content check that's meant to keep customer-facing
       // media on-topic is skipped for them.
       const original = Buffer.from(uploadBuffer)
+      // Mute in parallel with the check below instead of after it — the
+      // result is only used if the video passes. Never rejects (errors are
+      // returned as a value) so a rejected video leaves no unhandled promise.
+      const muting = stripAudio(original).then(
+        (buffer) => ({ buffer, error: null as unknown }),
+        (error: unknown) => ({ buffer: null as Buffer | null, error }),
+      )
       if (currentRound === 0 && await isMediaValidationEnabled()) {
         // Frames from across the whole clip, not one moment — every one must
         // show a real vehicle. A video we can't read at all is rejected (ask
@@ -113,15 +124,16 @@ export async function POST(
           return NextResponse.json({ ...result, error: result.message }, { status: 400 })
         }
       }
-      try {
-        uploadBuffer = await stripAudio(original)
+      const muted = await muting
+      if (muted.buffer) {
+        uploadBuffer = muted.buffer
         mutedToMp4 = true
-      } catch (err) {
+      } else {
         // Muting failed — fall back to storing the original (with audio)
         // rather than lose the technician's upload entirely. The original
         // bytes are in their original format, so the original extension/
         // content-type below is still correct in this one fallback case.
-        console.error("[stage-media] audio stripping failed, storing original:", err)
+        console.error("[stage-media] audio stripping failed, storing original:", muted.error)
         uploadBuffer = original
       }
     }

@@ -21,6 +21,7 @@ import { VideoRecorderModal } from "./VideoRecorderModal";
 import { headRoleLabel, type HeadRole } from "@/lib/head-technician/start-job";
 import { MAX_VIDEO_MB, MAX_VIDEO_BYTES, MAX_PHOTOS_PER_ROUND, MAX_VIDEOS_PER_ROUND } from "@/lib/media/limits";
 import { compressImage } from "@/lib/media/compress-image";
+import { readJsonResponse } from "@/lib/client/read-json";
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -369,9 +370,12 @@ export default function HeadTechJobHistoryPage({ jobId }: { jobId: string }) {
         const validateForm = new FormData();
         validateForm.append("file", file);
         const validateRes  = await fetch("/api/ai/image-handler", { method: "POST", body: validateForm });
-        const validateJson = await validateRes.json();
+        // Read defensively: a timed-out check returns a non-JSON page. Only an
+        // explicit rejection blocks the photo; anything else lets the upload
+        // go ahead, the same as a validation-service hiccup.
+        const validateJson = await readJsonResponse<{ approved?: boolean; message?: string }>(validateRes);
 
-        if (!validateJson.approved) {
+        if (validateJson.approved === false) {
           URL.revokeObjectURL(localUrl);
           setJob((prev) => prev ? {
             ...prev,
@@ -389,16 +393,19 @@ export default function HeadTechJobHistoryPage({ jobId }: { jobId: string }) {
       const form = new FormData();
       form.append("file", file);
       const res  = await fetch(`/api/head-technician/jobs/${jobId}/stages/${stage.id}/media`, { method: "POST", body: form });
-      const json = await res.json();
+      // A cut-off request (time limit) returns a non-JSON page; this turns it
+      // into a readable error instead of Safari's "string did not match".
+      const json = await readJsonResponse<{ media?: { id: string; file_url: string; media_type: string; rework_round: number }; approved?: boolean; message?: string }>(res);
 
-      if (res.ok && json.media) {
+      const media = json.media;
+      if (res.ok && media) {
         URL.revokeObjectURL(localUrl);
         setJob((prev) => prev ? {
           ...prev,
           stages: prev.stages.map((s) =>
             s.id === stage.id
               ? { ...s, media: s.media.map((m) => m.id === tmpId
-                  ? { id: json.media.id, url: json.media.file_url, type: json.media.media_type, rework_round: json.media.rework_round }
+                  ? { id: media.id, url: media.file_url, type: media.media_type, rework_round: media.rework_round }
                   : m
                 )}
               : s
@@ -419,7 +426,7 @@ export default function HeadTechJobHistoryPage({ jobId }: { jobId: string }) {
         } else if (!isPhoto && res.status === 400 && /too large/i.test(json?.error ?? "")) {
           // Server-side size cap — same friendly "please retake" modal rather
           // than the small inline error banner.
-          setRejectionAlert({ message: json.error, kind: "video" });
+          setRejectionAlert({ message: json.error ?? "This video is too large. Please record a shorter one.", kind: "video" });
         } else {
           setUploadError((prev) => ({ ...prev, [stage.id]: json?.error ?? "Upload failed." }));
         }
