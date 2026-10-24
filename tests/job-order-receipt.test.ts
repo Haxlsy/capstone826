@@ -17,7 +17,7 @@ const baseJob: ExportJobDetail = {
   head_detailer: { full_name: "Maria Santos" },
   head_installer: null,
   history: [
-    { status: "Pending", created_at: "2026-01-05T08:00:00.000Z", changed_by: "Ops Person", reason: "Created at front desk" },
+    { status: "Pending", created_at: "2026-01-05T08:00:00.000Z", changed_by: "Ops Person" },
   ],
   stages: [
     {

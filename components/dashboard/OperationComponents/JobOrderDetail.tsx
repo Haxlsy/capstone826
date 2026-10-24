@@ -76,7 +76,6 @@ interface HistoryEntry {
   status: string
   created_at: string
   changed_by: string
-  reason: string | null
 }
 
 interface TeamMember {

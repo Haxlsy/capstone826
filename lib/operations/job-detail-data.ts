@@ -35,7 +35,7 @@ export async function getJobDetailData(id: string) {
       .eq("job_order_id", id),
     supabase
       .from("job_order_history")
-      .select("status, created_at, reason, changed_by:changed_by_id(full_name)")
+      .select("status, created_at, changed_by:changed_by_id(full_name)")
       .eq("job_order_id", id)
       .order("created_at", { ascending: true }),
     supabase
@@ -229,7 +229,6 @@ export async function getJobDetailData(id: string) {
         status: h.status,
         created_at: h.created_at,
         changed_by: h.changed_by?.full_name ?? "System",
-        reason: h.reason ?? null,
       })),
       stages: mappedStages,
     },
