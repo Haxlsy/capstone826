@@ -6,11 +6,13 @@
  * periods — the characters that legitimately appear in names like "Mary-Jane",
  * "O'Brien" or "Jr.". Rejects digits and other symbols.
  */
+import { hasInvisible, stripInvisible } from "@/lib/text"
+
 const NAME_PATTERN = /^\p{L}[\p{L}\s'’.-]*$/u
 const DISALLOWED_NAME_CHARS = /[^\p{L}\s'’.-]/gu
 
 /** Hint shown when `sanitizeNameInput` drops something the user typed. */
-export const NAME_INPUT_BLOCKED_MESSAGE = "Numbers and emoji aren't allowed in names."
+export const NAME_INPUT_BLOCKED_MESSAGE = "Numbers, emoji and invisible characters aren't allowed in names."
 
 /**
  * Strips characters a name can never contain (digits, emoji, symbols) as the
@@ -19,7 +21,9 @@ export const NAME_INPUT_BLOCKED_MESSAGE = "Numbers and emoji aren't allowed in n
  * having its mark stripped.
  */
 export function sanitizeNameInput(raw: string): string {
-  return raw.normalize("NFC").replace(DISALLOWED_NAME_CHARS, "")
+  // Invisible "letters" like the Hangul filler (ㅤ) pass DISALLOWED_NAME_CHARS
+  // because Unicode classes them as letters — strip them explicitly.
+  return stripInvisible(raw.normalize("NFC").replace(DISALLOWED_NAME_CHARS, ""))
 }
 
 /** Trims and collapses runs of internal whitespace to a single space. */
@@ -35,6 +39,9 @@ export function normalizeName(raw: string | null | undefined): string {
 export function validateName(raw: string | null | undefined, label = "Name", max = 50): string | null {
   const value = normalizeName(raw)
   if (!value) return `${label} is required.`
+  // Checked before length: "ㅤㅤ" (two Hangul fillers) is 2 "letters" that
+  // display as nothing, which is how a blank-looking last name got through.
+  if (hasInvisible(value)) return `${label} contains invisible characters. Please type it again.`
   if (value.length < 2) return `${label} must be at least 2 characters.`
   if (value.length > max) return `${label} must be ${max} characters or fewer.`
   if (!NAME_PATTERN.test(value)) {

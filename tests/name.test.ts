@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest"
-import { joinName, splitFullName, validateFullName } from "@/lib/name"
+import { joinName, sanitizeNameInput, splitFullName, validateFullName, validateName } from "@/lib/name"
 
 describe("joinName", () => {
   it("joins and normalizes spacing", () => {
@@ -40,5 +40,29 @@ describe("validateFullName", () => {
   it("keeps the base name rules", () => {
     expect(validateFullName("", "Customer name")).toBe("Customer name is required.")
     expect(validateFullName("Juan 2", "Customer name")).toMatch(/may only contain/)
+  })
+})
+
+describe("invisible characters (e.g. the Hangul filler ㅤ)", () => {
+  it("rejects a name made only of fillers", () => {
+    expect(validateName("ㅤㅤ", "Last name")).toBe("Last name contains invisible characters. Please type it again.")
+  })
+
+  it("rejects a name with a hidden filler", () => {
+    expect(validateName("Juanㅤ", "First name")).toMatch(/invisible characters/)
+    expect(validateName("Ju​an", "First name")).toMatch(/invisible characters/)
+    expect(validateFullName("None ㅤㅤ", "Full name")).toMatch(/invisible characters/)
+  })
+
+  it("strips fillers as they're typed", () => {
+    expect(sanitizeNameInput("Noneㅤㅤ")).toBe("None")
+    expect(sanitizeNameInput("ㅤ")).toBe("")
+  })
+
+  it("still accepts normal names", () => {
+    for (const n of ["José", "Dela Cruz", "Ma. Clara", "O'Brien", "Mary-Jane"]) {
+      expect(validateName(n, "Name")).toBeNull()
+      expect(sanitizeNameInput(n)).toBe(n)
+    }
   })
 })
