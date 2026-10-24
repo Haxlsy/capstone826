@@ -7,6 +7,7 @@ import { logAudit } from "@/hooks/audit-helpers"
 import { sendPushToUser } from "@/lib/push/send"
 import { z } from "zod"
 import { getRoleCaller } from "@/lib/auth/caller"
+import { startReworkRound } from "@/lib/operations/rework-round"
 
 const BodySchema = z.object({
   stage_id:     z.string().uuid(),
@@ -55,22 +56,13 @@ export async function POST(
       )
     }
 
-    // Bump the active round — the technician's next uploads for this stage
-    // get tagged with this round, keeping full history of every past round's
-    // media (including the original) instead of overwriting it.
-    const { data: stageBefore } = await admin
-      .from("job_stage_progress")
-      .select("current_rework_round")
-      .eq("id", stage_id)
-      .single()
-    const nextRound = ((stageBefore?.current_rework_round as number | null) ?? 0) + 1
-
-    // Update the stage status and rework notes
-    const { error: stageErr } = await admin
-      .from("job_stage_progress")
-      .update({ status: "for_rework", rework_instructions: rework_notes.trim(), current_rework_round: nextRound })
-      .eq("id", stage_id)
-      .eq("job_order_id", jobId)
+    // Start a new rework round — the technician's next uploads for this stage
+    // get tagged with it, keeping full history of every past round's media
+    // (including the original, now locked) instead of overwriting it.
+    const { error: stageErr } = await startReworkRound(admin, jobId, [stage_id], {
+      status:              "for_rework",
+      rework_instructions: rework_notes.trim(),
+    })
 
     if (stageErr) return NextResponse.json({ error: stageErr.message }, { status: 500 })
 

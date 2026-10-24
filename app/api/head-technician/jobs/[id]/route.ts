@@ -19,6 +19,7 @@ import { startRoleFor, canStartJob, headRoleLabel } from "@/lib/head-technician/
 import { loadJobStageRoles } from "@/lib/head-technician/stage-roles"
 import { recipientFromVehicle } from "@/lib/messenger/recipient"
 import { STAGE_OVERRIDE_COLUMNS, loadStageCatalog, resolveJobStage } from "@/lib/job-stages"
+import { startReworkRound } from "@/lib/operations/rework-round"
 
 export async function GET(
   _request: Request,
@@ -845,16 +846,14 @@ export async function PATCH(
         )
       }
 
-      const { error: stageErr } = await admin
-        .from("job_stage_progress")
-        .update({
-          status:               "in_progress",
-          rework_instructions:  rework_instructions.trim(),
-          completed_at:         null,
-          completed_by_id:      null,
-        })
-        .in("id", stage_ids)
-        .eq("job_order_id", jobId)
+      // Starts a new rework round, which locks the original photos/videos as
+      // evidence and gives the redo its own uploads (see startReworkRound).
+      const { error: stageErr } = await startReworkRound(admin, jobId, stage_ids, {
+        status:               "in_progress",
+        rework_instructions:  rework_instructions.trim(),
+        completed_at:         null,
+        completed_by_id:      null,
+      })
 
       if (stageErr) return NextResponse.json({ error: stageErr.message }, { status: 500 })
 

@@ -34,3 +34,48 @@ describe("enforceApproval", () => {
     expect(r).toMatchObject({ approved: false, message: "Please retake." })
   })
 })
+
+const { enforceVideoApproval, unreadableVideo } = await import("@/lib/ai/media-validation")
+const frame = (category: string) => ({ category, reason: "test" })
+
+describe("enforceVideoApproval", () => {
+  it("approves when every frame shows a vehicle or vehicle part", () => {
+    const r = enforceVideoApproval(
+      { approved: true, category: "", reason: "car", message: "ok", frames: [frame("vehicle"), frame("vehicle_part"), frame("vehicle")] },
+      3,
+    )
+    expect(r.approved).toBe(true)
+  })
+
+  it("rejects when any one frame is text or a screen", () => {
+    const r = enforceVideoApproval(
+      { approved: true, category: "", reason: "mixed", message: "ok", frames: [frame("vehicle"), frame("screen_or_document"), frame("vehicle")] },
+      3,
+    )
+    expect(r.approved).toBe(false)
+    expect(r.category).toBe("screen_or_document")
+    expect(r.message).toMatch(/vehicle/)
+  })
+
+  it("rejects when the model skipped some frames", () => {
+    const r = enforceVideoApproval(
+      { approved: true, category: "", reason: "car", message: "ok", frames: [frame("vehicle")] },
+      4,
+    )
+    expect(r.approved).toBe(false)
+  })
+
+  it("rejects text with a car emoji even if the model said approved", () => {
+    const r = enforceVideoApproval(
+      { approved: true, category: "", reason: "text with car emoji", message: "ok", frames: [frame("unrelated"), frame("unrelated")] },
+      2,
+    )
+    expect(r.approved).toBe(false)
+  })
+})
+
+describe("unreadableVideo", () => {
+  it("rejects and asks to record again", () => {
+    expect(unreadableVideo()).toMatchObject({ approved: false, message: expect.stringMatching(/record it again/) })
+  })
+})

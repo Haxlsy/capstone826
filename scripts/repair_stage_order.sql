@@ -11,9 +11,64 @@
 -- together (categories in the order they first appear, stages keep their
 -- order within a category). Stage status, media and notes are untouched.
 --
--- Run in Supabase -> SQL Editor, one section at a time, in order.
+-- HOW TO RUN (Supabase -> SQL Editor). Select ONE section's statement,
+-- then press Run. Each section is a single statement.
+--   1. Section 0 (optional): check one job order. Change the code first.
+--   2. Section 1: preview what will change. Changes nothing.
+--   3. Section 2: jobs that will be skipped. Changes nothing.
+--   4. Section 3: apply. It saves immediately and lists every stage it
+--      renumbered. An empty result means nothing needed changing.
+--   5. Run section 1 again: only the section-2 jobs should be left.
 -- (Open this file and copy from it; long lines get clipped in chat.)
 -- =====================================================================
+
+
+-- 0) DIAGNOSE ONE JOB (changes nothing). Replace JO-CODE-HERE with the
+--    job order code shown in Operations, then run. Shows each stage's
+--    category and the number it would get, and why a job might not move.
+WITH s AS (
+  SELECT jsp.id,
+         jsp.job_order_id,
+         jo.job_order_code,
+         jo.status                                                 AS job_status,
+         jsp.status::text                                          AS status,
+         coalesce(jsp.custom_name, ss.name)                        AS stage_name,
+         jsp.custom_stage_category,
+         coalesce(jsp.custom_sequence_order, ss.sequence_order, 0) AS seq,
+         coalesce(ss.category_id, wc.id)                           AS cat,
+         coalesce(tc.name, wc.name)                                AS category_name
+    FROM job_stage_progress jsp
+    JOIN job_order jo ON jo.id = jsp.job_order_id
+    LEFT JOIN service_stage ss ON ss.id = jsp.service_stage_id
+    LEFT JOIN workflow_category tc ON tc.id = ss.category_id
+    LEFT JOIN workflow_category wc
+      ON jsp.service_stage_id IS NULL
+     AND lower(trim(wc.name)) = lower(trim(jsp.custom_stage_category))
+   WHERE jo.job_order_code = 'JO-CODE-HERE'
+), ranked AS (
+  SELECT s.*, min(seq) OVER (PARTITION BY job_order_id, cat) AS cat_first
+    FROM s
+), target AS (
+  SELECT ranked.*,
+         row_number() OVER (PARTITION BY job_order_id ORDER BY cat_first, seq, id) AS new_seq
+    FROM ranked
+)
+SELECT job_order_code,
+       job_status,
+       job_status IN ('Pending', 'Ongoing', 'For Rework', 'Delayed') AS repaired_by_script,
+       stage_name,
+       status,
+       category_name,
+       custom_stage_category,
+       seq     AS current_number,
+       new_seq AS new_number,
+       EXISTS (
+         SELECT 1 FROM target d
+          WHERE d.status = 'done' AND target.status <> 'done'
+            AND target.seq > d.seq AND target.new_seq < d.new_seq
+       ) AS would_skip_job
+  FROM target
+ ORDER BY new_seq;
 
 
 -- 1) PREVIEW (changes nothing): every stage whose number would change.
@@ -86,12 +141,14 @@ SELECT DISTINCT p.job_order_code
 
 
 -- 3) APPLY: renumber every changed job EXCEPT the ones listed in step 2.
-BEGIN;
-
+--    One statement: it saves as soon as it finishes (no BEGIN / COMMIT
+--    needed) and lists each stage it renumbered.
 WITH s AS (
   SELECT jsp.id,
          jsp.job_order_id,
+         jo.job_order_code,
          jsp.status::text                                          AS status,
+         coalesce(jsp.custom_name, ss.name)                        AS stage_name,
          coalesce(jsp.custom_sequence_order, ss.sequence_order, 0) AS seq,
          coalesce(ss.category_id, wc.id)                           AS cat
     FROM job_stage_progress jsp
@@ -124,8 +181,5 @@ UPDATE job_stage_progress jsp
   FROM target t
  WHERE jsp.id = t.id
    AND t.new_seq <> t.seq
-   AND t.job_order_id NOT IN (SELECT job_order_id FROM skipped);
-
--- Run section 1 again here: only the step-2 jobs should still show up.
--- If it looks right:   COMMIT;
--- If anything is off:  ROLLBACK;
+   AND t.job_order_id NOT IN (SELECT job_order_id FROM skipped)
+RETURNING t.job_order_code, t.stage_name, t.seq AS old_number, t.new_seq AS new_number;
