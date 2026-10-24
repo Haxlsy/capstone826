@@ -6,6 +6,7 @@ import { hashMfaCode, MAX_MFA_ATTEMPTS, createEmailChallenge } from "@/lib/auth/
 import { completeLogin } from "@/lib/auth/complete-login"
 import { logAudit } from "@/hooks/audit-helpers"
 import { LOCKOUT_THRESHOLD } from "@/lib/auth/login-lockout"
+import { readJsonBody } from "@/lib/http/read-json-body"
 
 // POST /api/auth/verify-mfa
 // Body: { challengeId, code } to verify, or { challengeId, switchToEmail: true }
@@ -16,7 +17,7 @@ import { LOCKOUT_THRESHOLD } from "@/lib/auth/login-lockout"
 // original login route used to finish by itself.
 export async function POST(request: Request) {
   try {
-    const body = await request.json()
+    const body = await readJsonBody(request)
     const { challengeId, code, switchToEmail } = body
 
     if (!challengeId) {

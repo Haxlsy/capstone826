@@ -6,6 +6,7 @@ import { logAudit } from "@/hooks/audit-helpers"
 import { getRoleCaller } from "@/lib/auth/caller"
 import { findDuplicateStageName } from "@/lib/admin/service-stage-validation"
 import { emojiError, stageNamesEmojiError } from "@/lib/text"
+import { readJsonBody } from "@/lib/http/read-json-body"
 
 interface Stage {
   name:               string
@@ -34,7 +35,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Forbidden. Admin access required." }, { status: 403 })
   }
 
-  const body = await request.json()
+  const body = await readJsonBody(request)
   const { serviceType, serviceName, description, stages } = body
 
   if (!serviceName) {

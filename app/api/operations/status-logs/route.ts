@@ -4,6 +4,7 @@ import { createClient } from "@/lib/supabase/server";
 import { createClient as createAdminClient } from "@supabase/supabase-js";
 import { getAuditCaller, getRoleCaller } from "@/lib/auth/caller";
 import { logAuditCall } from "@/hooks/audit-helpers";
+import { readJsonBody } from "@/lib/http/read-json-body"
 
 export async function GET(request: Request) {
   try {
@@ -54,7 +55,7 @@ export async function POST(request: Request) {
     const auth = await getRoleCaller(["operations"]);
     if ("error" in auth) return auth.error;
 
-    const body = await request.json();
+    const body = await readJsonBody(request);
     const {
       job_order_id,
       old_status,

@@ -15,6 +15,7 @@ import { getRoleCaller } from "@/lib/auth/caller"
 import { validateFullName } from "@/lib/name"
 import { decideManualCustomer } from "@/lib/operations/manual-customer"
 import { findActiveJobsByCustomerRecord } from "@/lib/sales/customer-record-lock"
+import { readJsonBody } from "@/lib/http/read-json-body"
 
 interface CustomStage {
   service_stage_id:      string | null   // null for stages added only for this job
@@ -30,7 +31,7 @@ export async function POST(request: Request) {
     const auth = await getRoleCaller(["operations"])
     if ("error" in auth) return auth.error
 
-    const body = await request.json()
+    const body = await readJsonBody(request)
     const {
       // Client-generated UUID (offline outbox sync only — see
       // docs/plan/operations-offline-mode-plan.md). Lets a retried sync

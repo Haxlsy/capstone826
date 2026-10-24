@@ -4,6 +4,7 @@ import { normalizeEmail } from "@/lib/email/validation"
 import { generateToken, hashToken } from "@/lib/auth/token-hash"
 import { sendPasswordResetEmail } from "@/lib/email/mailer"
 import { logAudit } from "@/hooks/audit-helpers"
+import { readJsonBody } from "@/lib/http/read-json-body"
 
 const GENERIC_MESSAGE = "If an account exists for that email, we've sent a password reset link."
 const TOKEN_TTL_MS = 30 * 60 * 1000
@@ -17,7 +18,7 @@ const TOKEN_TTL_MS = 30 * 60 * 1000
 // also sends an email — a known, minor residual gap, not fully closed here.)
 export async function POST(request: Request) {
   try {
-    const body = await request.json()
+    const body = await readJsonBody(request)
     const email = normalizeEmail(body?.email)
     if (!email) {
       return NextResponse.json({ message: GENERIC_MESSAGE })

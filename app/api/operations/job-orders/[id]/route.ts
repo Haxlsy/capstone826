@@ -14,6 +14,7 @@ import { buildReleaseMessage, buildCompletionMessage, getOperatingHoursText } fr
 import { getRoleCaller } from "@/lib/auth/caller"
 import { recipientFromVehicle } from "@/lib/messenger/recipient"
 import { jobCustomer } from "@/lib/operations/job-customer"
+import { readJsonBody } from "@/lib/http/read-json-body"
 
 export async function GET(
   _request: Request,
@@ -56,7 +57,7 @@ export async function PATCH(
 
     const { id } = await params
 
-    const body = await request.json()
+    const body = await readJsonBody(request)
     const {
       status,
       head_detailer_id,

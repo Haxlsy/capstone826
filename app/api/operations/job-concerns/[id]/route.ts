@@ -5,6 +5,7 @@ import { createAdminClient } from "@/lib/supabase/admin"
 import { getAuditCaller, getRoleCaller } from "@/lib/auth/caller"
 import { logAuditCall } from "@/hooks/audit-helpers"
 import { sendPushToUser } from "@/lib/push/send"
+import { readJsonBody } from "@/lib/http/read-json-body"
 
 export async function GET(
   _request: Request,
@@ -47,7 +48,7 @@ export async function PATCH(
 
     const { id } = await params
 
-    const body = await request.json()
+    const body = await readJsonBody(request)
     const { status, response_note } = body
 
     if (!status) return NextResponse.json({ error: "status is required." }, { status: 400 })

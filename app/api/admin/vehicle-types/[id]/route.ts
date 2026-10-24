@@ -4,6 +4,7 @@ import { createClient } from "@/lib/supabase/server"
 import { createAdminClient } from "@/lib/supabase/admin"
 import { logAudit } from "@/hooks/audit-helpers"
 import { getRoleCaller } from "@/lib/auth/caller"
+import { readJsonBody } from "@/lib/http/read-json-body"
 
 export async function PATCH(request: Request, { params }: { params: Promise<{ id: string }> }) {
   const auth = await getRoleCaller(["admin", "super_admin"])
@@ -13,7 +14,7 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
   const id = Number(rawId)
   if (!id) return NextResponse.json({ error: "Invalid id." }, { status: 400 })
 
-  const body = await request.json()
+  const body = await readJsonBody(request)
   const { type_name, description, is_active } = body
 
   const updates: Record<string, any> = {}

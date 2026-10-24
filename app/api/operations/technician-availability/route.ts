@@ -5,6 +5,7 @@ import { getAuditCaller, getRoleCaller } from "@/lib/auth/caller"
 import { logAuditCall } from "@/hooks/audit-helpers"
 import { normalizeName, validateName } from "@/lib/name"
 import { manilaToday } from "@/lib/technician-availability"
+import { readJsonBody } from "@/lib/http/read-json-body"
 
 const ALL_DAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
 
@@ -117,7 +118,7 @@ export async function PATCH(request: Request) {
     const auth = await getRoleCaller(["operations"])
     if ("error" in auth) return auth.error
 
-    const { id, is_available, first_name, last_name, role, is_archived, available_days, work_start_time, work_end_time } = await request.json()
+    const { id, is_available, first_name, last_name, role, is_archived, available_days, work_start_time, work_end_time } = await readJsonBody(request)
 
     if (!id) {
       return NextResponse.json({ error: "id is required." }, { status: 400 })
@@ -198,7 +199,7 @@ export async function POST(request: Request) {
     const auth = await getRoleCaller(["operations"])
     if ("error" in auth) return auth.error
 
-    const { first_name, last_name, role, available_days, work_start_time, work_end_time } = await request.json()
+    const { first_name, last_name, role, available_days, work_start_time, work_end_time } = await readJsonBody(request)
 
     const firstName = normalizeName(first_name)
     const lastName  = normalizeName(last_name)

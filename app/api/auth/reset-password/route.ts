@@ -4,6 +4,7 @@ import { createAdminClient } from "@/lib/supabase/admin"
 import { createClient } from "@/lib/supabase/server"
 import { hashToken } from "@/lib/auth/token-hash"
 import { completeLogin } from "@/lib/auth/complete-login"
+import { readJsonBody } from "@/lib/http/read-json-body"
 
 // POST /api/auth/reset-password
 // Body: { token, newPassword }
@@ -12,7 +13,7 @@ import { completeLogin } from "@/lib/auth/complete-login"
 // session, so there's no getAuditCaller() to lean on here.
 export async function POST(request: Request) {
   try {
-    const { token, newPassword } = await request.json()
+    const { token, newPassword } = await readJsonBody(request)
 
     if (!token || !newPassword) {
       return NextResponse.json({ error: "Token and new password are required." }, { status: 400 })

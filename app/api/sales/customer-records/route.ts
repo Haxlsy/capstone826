@@ -7,6 +7,7 @@ import { CreateCustomerRecordSchema } from "./schema"
 import { findActiveJobsByCustomerRecord } from "@/lib/sales/customer-record-lock"
 import { dateAddedBounds } from "@/lib/sales/customer-records-filter"
 import { decideRecordCustomer } from "@/lib/sales/record-customer"
+import { readJsonBody } from "@/lib/http/read-json-body"
 
 type One<T> = T | T[] | null | undefined
 const first = <T,>(v: One<T>): T | null => (Array.isArray(v) ? (v[0] ?? null) : (v ?? null))
@@ -133,7 +134,7 @@ export async function POST(request: Request) {
     if ("error" in auth) return auth.error
     const { caller } = auth
 
-    const body = await request.json()
+    const body = await readJsonBody(request)
     const parsed = CreateCustomerRecordSchema.safeParse(body)
     if (!parsed.success) {
       return NextResponse.json({ error: parsed.error.issues[0]?.message ?? "Validation failed." }, { status: 400 })

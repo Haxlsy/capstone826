@@ -21,6 +21,7 @@ import { recipientFromVehicle } from "@/lib/messenger/recipient"
 import { STAGE_OVERRIDE_COLUMNS, loadStageCatalog, resolveJobStage } from "@/lib/job-stages"
 import { startReworkRound } from "@/lib/operations/rework-round"
 import { jobStatusAfterStageDone } from "@/lib/operations/job-status-after-stage"
+import { readJsonBody } from "@/lib/http/read-json-body"
 
 export async function GET(
   _request: Request,
@@ -312,7 +313,7 @@ export async function PATCH(
     if ("error" in auth) return auth.error
 
     const { id: jobId } = await params
-    const body          = await request.json()
+    const body          = await readJsonBody(request)
     const { action, stage_id, handoff_notes, completion_notes, media_url, media_type, stage_ids, rework_instructions } = body
 
     const cookieStore = await cookies()

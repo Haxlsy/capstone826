@@ -6,6 +6,7 @@ import { getAuditCaller } from "@/lib/auth/caller"
 import { logAuditCall } from "@/hooks/audit-helpers"
 import { hashMfaCode, MAX_MFA_ATTEMPTS } from "@/lib/auth/mfa-challenge"
 import { normalizeEmail } from "@/lib/email/validation"
+import { readJsonBody } from "@/lib/http/read-json-body"
 
 // POST /api/auth/connect-email/confirm
 // Body: { challengeId, code }. Only on a correct code does this actually
@@ -13,7 +14,7 @@ import { normalizeEmail } from "@/lib/email/validation"
 // the account.
 export async function POST(request: Request) {
   try {
-    const { challengeId, code } = await request.json()
+    const { challengeId, code } = await readJsonBody(request)
     if (!challengeId || !code) {
       return NextResponse.json({ error: "Verification code is required." }, { status: 400 })
     }

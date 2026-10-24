@@ -2,6 +2,7 @@ import { NextResponse } from "next/server"
 import { requireAuditCaller } from "@/lib/auth/caller"
 import { logAuditCall } from "@/hooks/audit-helpers"
 import { isViewType, VIEW_TYPE_ACTIONS } from "@/lib/audit/view-types"
+import { readJsonBody } from "@/lib/http/read-json-body"
 
 // POST /api/audit/log-view
 // Body: { viewType: keyof VIEW_TYPE_ACTIONS, target?: string }
@@ -14,7 +15,7 @@ export async function POST(request: Request) {
     const result = await requireAuditCaller()
     if ("error" in result) return result.error
 
-    const body = await request.json().catch(() => ({}))
+    const body = await readJsonBody(request).catch(() => ({}))
     const { viewType, target } = body as { viewType?: unknown; target?: unknown }
 
     if (!isViewType(viewType)) {

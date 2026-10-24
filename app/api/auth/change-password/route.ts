@@ -5,6 +5,7 @@ import { createAdminClient } from "@/lib/supabase/admin"
 import { getAuditCaller } from "@/lib/auth/caller"
 import { logAuditCall } from "@/hooks/audit-helpers"
 import { hashMfaCode, MAX_MFA_ATTEMPTS, createEmailChallenge, createTotpChallenge } from "@/lib/auth/mfa-challenge"
+import { readJsonBody } from "@/lib/http/read-json-body"
 
 type AdminClient = ReturnType<typeof createAdminClient>
 
@@ -50,7 +51,7 @@ async function performPasswordChange(
 //     persisted beyond the challenge itself.
 export async function POST(request: Request) {
   try {
-    const body = await request.json()
+    const body = await readJsonBody(request)
     const { currentPassword, newPassword, challengeId, code } = body
 
     if (!newPassword || newPassword.length < 8) {

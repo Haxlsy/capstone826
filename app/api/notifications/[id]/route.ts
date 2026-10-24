@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server"
 import { cookies } from "next/headers"
 import { createClient } from "@/lib/supabase/server"
+import { readJsonBody } from "@/lib/http/read-json-body"
 
 export async function PATCH(
   request: Request,
@@ -8,7 +9,7 @@ export async function PATCH(
 ) {
   try {
     const { id } = await params
-    const body = await request.json()
+    const body = await readJsonBody(request)
     const { is_read } = body
 
     if (is_read === undefined) {

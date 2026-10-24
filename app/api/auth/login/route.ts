@@ -8,6 +8,7 @@ import { verifyTurnstileToken } from "@/lib/auth/turnstile"
 import { createEmailChallenge, createTotpChallenge } from "@/lib/auth/mfa-challenge"
 import { completeLogin } from "@/lib/auth/complete-login"
 import { LOCKOUT_THRESHOLD, LOCKOUT_MS } from "@/lib/auth/login-lockout"
+import { readJsonBody } from "@/lib/http/read-json-body"
 
 const LoginSchema = z.object({
   username: z.string().trim().min(1, "Username required").max(100),
@@ -17,7 +18,7 @@ const LoginSchema = z.object({
 
 export async function POST(request: Request) {
   try {
-    const body = await request.json()
+    const body = await readJsonBody(request)
     const parsed = LoginSchema.safeParse(body)
     if (!parsed.success) {
       return NextResponse.json({ error: parsed.error.issues[0].message }, { status: 400 })

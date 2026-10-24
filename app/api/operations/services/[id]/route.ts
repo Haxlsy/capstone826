@@ -7,6 +7,7 @@ import { getLiveJobOrdersForService } from "@/lib/operations/service-usage"
 import { getRoleCaller } from "@/lib/auth/caller"
 import { findDuplicateStageName } from "@/lib/admin/service-stage-validation"
 import { emojiError, stageNamesEmojiError } from "@/lib/text"
+import { readJsonBody } from "@/lib/http/read-json-body"
 
 // GET /api/operations/services/[id]
 // Returns a single service with its stages (including category info) for editing.
@@ -90,7 +91,7 @@ export async function PATCH(
     if (!user) return NextResponse.json({ error: "Unauthorized." }, { status: 401 })
 
     const { id }  = await params
-    const body    = await request.json()
+    const body    = await readJsonBody(request)
     const supabase = createAdminClient()
 
     const { data: profile } = await supabase

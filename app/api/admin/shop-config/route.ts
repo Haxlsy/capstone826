@@ -4,6 +4,7 @@ import { createAdminClient } from "@/lib/supabase/admin"
 import { getAdminCaller } from "@/lib/auth/guard"
 import { auditCallerOf } from "@/lib/auth/caller"
 import { logAuditCall } from "@/hooks/audit-helpers"
+import { readJsonBody } from "@/lib/http/read-json-body"
 
 // GET /api/admin/shop-config
 export async function GET() {
@@ -37,7 +38,7 @@ export async function PATCH(request: Request) {
     if ("error" in auth) return auth.error
     const { caller } = auth
 
-    const body = await request.json()
+    const body = await readJsonBody(request)
     const parsed = PatchSchema.safeParse(body)
     if (!parsed.success) {
       return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 })

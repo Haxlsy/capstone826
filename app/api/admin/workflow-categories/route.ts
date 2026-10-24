@@ -4,6 +4,7 @@ import { getAdminCaller } from "@/lib/auth/guard"
 import { auditCallerOf } from "@/lib/auth/caller"
 import { logAuditCall } from "@/hooks/audit-helpers"
 import { emojiError } from "@/lib/text"
+import { readJsonBody } from "@/lib/http/read-json-body"
 
 // POST /api/admin/workflow-categories
 // Find-or-create: if a category with the same name already exists, return it.
@@ -16,7 +17,7 @@ export async function POST(request: Request) {
 
     const admin = createAdminClient()
 
-    const body = await request.json()
+    const body = await readJsonBody(request)
     const { name, technician_role, display_color } = body
 
     if (!name?.trim()) {
