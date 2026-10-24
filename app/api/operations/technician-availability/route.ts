@@ -52,7 +52,7 @@ export async function GET(request: Request) {
     const assignedJobIds = [...new Set((assignments ?? []).map((a: any) => a.job_order_id as string))]
 
     // Every active job each technician is on — crew can be on several at once.
-    const ongoingMap = new Map<string, { job_id: string; customer: string; service: string }[]>()
+    const ongoingMap = new Map<string, { job_id: string; code: string; customer: string; service: string }[]>()
 
     const ACTIVE_STATUSES = ["Pending", "Ongoing", "For Rework", "Delayed"]
 
@@ -60,17 +60,20 @@ export async function GET(request: Request) {
       const { data: ongoingJobs } = await supabase
         .from("job_order")
         .select(
-          `id, status, customer_name,
+          `id, status, customer_name, job_order_code,
            customer:customer_record_id(owner:customer!customer_id(full_name)),
            service:service_id(name)`
         )
         .in("id", assignedJobIds)
         .in("status", ACTIVE_STATUSES)
 
-      const jobInfoMap = new Map<string, { job_id: string; customer: string; service: string }>()
+      const jobInfoMap = new Map<string, { job_id: string; code: string; customer: string; service: string }>()
       for (const j of ongoingJobs ?? []) {
         jobInfoMap.set(j.id, {
           job_id:   j.id,
+          // Shown instead of the customer's name: one person can be on
+          // several jobs, and the code identifies each one unambiguously.
+          code:     (j.job_order_code as string | null) ?? `#${(j.id as string).slice(0, 8)}`,
           customer: jobCustomer(j as any).name ?? "—",
           service:  (j.service  as any)?.name ?? "—",
         })

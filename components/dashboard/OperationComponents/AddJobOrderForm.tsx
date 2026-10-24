@@ -1128,9 +1128,7 @@ export default function AddJobOrderForm() {
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <div className="flex flex-col gap-1.5 col-span-2">
                 <div className="flex items-center justify-between">
-                  <label className="text-xs font-medium text-body">
-                    {matchedCustomer ? "Customer Name *" : "Customer Name * (first and last)"}
-                  </label>
+                  <label className="text-xs font-medium text-body">Customer Name <span className="text-status-delayed ml-0.5">*</span></label>
                   <button
                     type="button"
                     onClick={() => { setUseManualCustomer(false); setFieldErrors({}); setMatchedCustomer(null); setMatchSource(null); setIsNameMatch(false) }}
@@ -1263,7 +1261,7 @@ export default function AddJobOrderForm() {
                   type="text"
                   value={manualVehicleUnit}
                   onChange={(e) => { setManualVehicleUnit(e.target.value); clearField("vehicleUnit") }}
-                  placeholder="e.g., Toyota Vios 2020"
+                  placeholder="e.g., 2026 Black Toyota Hilux"
                   className={inputCls(!!fieldErrors.vehicleUnit)}
                 />
                 <FieldError msg={fieldErrors.vehicleUnit} />

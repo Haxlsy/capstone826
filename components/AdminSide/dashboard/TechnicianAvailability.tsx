@@ -8,6 +8,7 @@ import { StatusBadge } from "@/components/ui/Badge"
 import { cn } from "@/lib/utils"
 import { isTechnicianAvailableToday, manilaToday } from "@/lib/technician-availability"
 import { workloadLabel } from "@/lib/operations/workload"
+import { OnJobList, type OnJobEntry } from "@/components/shared/OnJobList"
 
 interface Technician {
   id:             string
@@ -17,7 +18,7 @@ interface Technician {
   available_days: string[]
   availability_override_date: string | null
   /** Every active job order they are on (crew can be on several at once). */
-  active_jobs:    { job_id: string; customer: string; service: string }[]
+  active_jobs:    OnJobEntry[]
 }
 
 const DETAILER_ROLES  = ["head_detailer", "detailer"]
@@ -69,10 +70,7 @@ function TechList({ title, techs, loading }: { title: string; techs: Technician[
                   <span className={cn("mt-1.5 h-2 w-2 shrink-0 rounded-full", dotColor)} />
                   <div className="min-w-0">
                     <span className="block truncate text-sm text-heading">{t.full_name}</span>
-                    {onJob && t.active_jobs.map((j) => (
-                      <span key={j.job_id} className="block truncate text-xs text-status-onjob"> — {j.service}
-                      </span>
-                    ))}
+                    {onJob && <OnJobList jobs={t.active_jobs} />}
                     {!onJob && !worksToday && (
                       <span className="block text-xs text-muted">Not scheduled today</span>
                     )}
