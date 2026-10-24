@@ -23,13 +23,9 @@ import { avatarColor, initials } from "@/lib/ui/avatar"
 import { roleStyle } from "@/lib/ui/roles"
 import { NAME_INPUT_BLOCKED_MESSAGE, normalizeName, sanitizeNameInput, validateName } from "@/lib/name"
 import { isTechnicianAvailableToday, manilaToday } from "@/lib/technician-availability"
-import { workloadLabel } from "@/lib/operations/workload"
+import { OnJobList, type OnJobEntry } from "@/components/shared/OnJobList"
 
-interface ActiveJob {
-  job_id: string
-  customer: string
-  service: string
-}
+type ActiveJob = OnJobEntry
 
 interface Technician {
   id: string
@@ -454,17 +450,7 @@ export default function TechnicianAvailability() {
                               <Badge className="bg-surface-muted text-muted">Archived</Badge>
                             </div>
                           ) : onJob ? (
-                            <div className="mt-0.5 flex items-center gap-1.5">
-                              <Wrench className="h-3 w-3 shrink-0 text-status-onjob" />
-                              <span
-                                className="truncate text-xs font-medium text-status-onjob"
-                                title={tech.active_jobs.map((j) => `${j.customer} — ${j.service}`).join("\n")}
-                              >
-                                {tech.active_jobs.length === 1 ? "On Job" : workloadLabel(tech.active_jobs.length)}
-                                {" — "}
-                                {tech.active_jobs.map((j) => j.customer).join(", ")}
-                              </span>
-                            </div>
+                            <OnJobList jobs={tech.active_jobs} linkBase="/dashboard/job-management" />
                           ) : (
                             <div className="mt-0.5 flex items-center gap-1.5">
                               <span
