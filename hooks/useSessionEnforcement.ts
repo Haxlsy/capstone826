@@ -62,7 +62,8 @@ export function useSessionEnforcement() {
         // redirect either way, not router.push — tears down open realtime
         // channels/client state instead of a soft client-side transition
         // leaving stale connections behind.
-        if (json?.reason === "archived") {
+        // Same for a Temporary Head Technician whose one-day access ended.
+        if (json?.reason === "archived" || json?.reason === "access_ended") {
           // An admin archived this account while it was in use. The session
           // itself is still valid, so /login alone would just bounce back
           // (proxy.ts sends signed-in visitors to their dashboard) — this

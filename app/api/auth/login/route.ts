@@ -8,6 +8,7 @@ import { verifyTurnstileToken } from "@/lib/auth/turnstile"
 import { createEmailChallenge, createTotpChallenge } from "@/lib/auth/mfa-challenge"
 import { completeLogin } from "@/lib/auth/complete-login"
 import { LOCKOUT_THRESHOLD, LOCKOUT_MS } from "@/lib/auth/login-lockout"
+import { isAccessExpired } from "@/lib/auth/temporary-access"
 import { readJsonBody } from "@/lib/http/read-json-body"
 
 const LoginSchema = z.object({
@@ -37,7 +38,9 @@ export async function POST(request: Request) {
       admin.rpc("get_user_email_by_username", { p_username: username }),
       admin
         .from("user_account")
-        .select("id, full_name, role, email, must_change_password, failed_login_count, failed_login_at, is_archived")
+        // "*" so it also gets access_expires_at, and keeps working before the
+        // temporary-head migration has run (see lib/auth/caller.ts).
+        .select("*")
         .eq("username", username)
         .single(),
     ])
@@ -155,6 +158,20 @@ export async function POST(request: Request) {
         target:    username,
       })
       return NextResponse.json({ error: "Invalid credentials" }, { status: 401 })
+    }
+
+    // A Temporary Head Technician whose one-day access has ended. Unlike an
+    // archived account, say so plainly: the password was right, and they need
+    // to know to ask Operations rather than retry. The session just minted is
+    // revoked the same way.
+    if (isAccessExpired(account)) {
+      if (authData.session) {
+        await admin.auth.admin.signOut(authData.session.access_token, "global")
+      }
+      return NextResponse.json(
+        { error: "Your temporary head technician access has ended. Ask Operations if you need it again." },
+        { status: 403 },
+      )
     }
 
     if (account.must_change_password) {
