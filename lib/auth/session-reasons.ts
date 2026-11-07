@@ -9,10 +9,12 @@
  * deliberately maps to no reason — the login page must not claim the user was
  * kicked out when they simply signed out.
  */
-export type LoginRedirectReason = "signed_in_elsewhere" | "account_archived"
+export type LoginRedirectReason = "signed_in_elsewhere" | "account_archived" | "temporary_access_ended"
 
 export function redirectReasonFor(statusReason: unknown): LoginRedirectReason | null {
   if (statusReason === "mismatch") return "signed_in_elsewhere"
   if (statusReason === "archived") return "account_archived"
+  // A Temporary Head Technician's one-day access ran out while signed in.
+  if (statusReason === "access_ended") return "temporary_access_ended"
   return null
 }

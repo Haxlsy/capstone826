@@ -31,7 +31,10 @@ export async function getJobDetailData(id: string) {
       .single(),
     supabase
       .from("job_order_team")
-      .select("role_in_job, is_substitute, user_account:user_account_id(id, full_name), technician:technician_id(id, full_name)")
+      // user_account(*) rather than naming the temporary-head columns, so this
+      // keeps working before that migration runs. Only the fields mapped below
+      // (toSub etc.) ever leave the server.
+      .select("role_in_job, is_substitute, user_account:user_account_id(*), technician:technician_id(id, full_name)")
       .eq("job_order_id", id),
     supabase
       .from("job_order_history")
@@ -109,7 +112,13 @@ export async function getJobDetailData(id: string) {
   const headInstallerRows = (team ?? []).filter((t: any) => t.role_in_job === "head_installer")
   const headDetailer  = headDetailerRows[0]
   const headInstaller = headInstallerRows[0]
-  const toSub = (t: any) => ({ id: (t.user_account as any)?.id ?? "", full_name: (t.user_account as any)?.full_name ?? "Unknown" })
+  const toSub = (t: any) => ({
+    id: (t.user_account as any)?.id ?? "",
+    full_name: (t.user_account as any)?.full_name ?? "Unknown",
+    // A technician made Temporary Head for the day (tagged on the job page).
+    is_temporary_head: (t.user_account as any)?.is_temporary_head === true,
+    access_expires_at: ((t.user_account as any)?.access_expires_at as string | null | undefined) ?? null,
+  })
   const headDetailerSubs  = headDetailerRows.slice(1).map(toSub)
   const headInstallerSubs = headInstallerRows.slice(1).map(toSub)
   // `is_substitute` is only reliably set going forward (see
@@ -201,8 +210,10 @@ export async function getJobDetailData(id: string) {
       contact_number: cust.phone ?? "—",
       email: cust.email,
       service: j.service?.name ?? "—",
-      head_detailer: (headDetailer?.user_account as any) ?? null,
-      head_installer: (headInstaller?.user_account as any) ?? null,
+      // Only id + name: the embedded account row is the full user_account
+      // (see the team query), which must not be sent to the browser as is.
+      head_detailer: headDetailer?.user_account ? { id: (headDetailer.user_account as any).id, full_name: (headDetailer.user_account as any).full_name } : null,
+      head_installer: headInstaller?.user_account ? { id: (headInstaller.user_account as any).id, full_name: (headInstaller.user_account as any).full_name } : null,
       head_detailer_substitutes: headDetailerSubs,
       head_installer_substitutes: headInstallerSubs,
       detailers,

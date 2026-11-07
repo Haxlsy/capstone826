@@ -16,6 +16,7 @@ import { useToast } from "@/components/ui/Toast"
 import { cn } from "@/lib/utils"
 import { roleStyle, roleLabel } from "@/lib/ui/roles"
 import { initials } from "@/lib/ui/avatar"
+import { isAccessExpired } from "@/lib/auth/temporary-access"
 import { useRealtimeRefetch } from "@/hooks/useRealtimeRefetch"
 
 type UserRole = "operations" | "sales" | "head_detailer" | "head_installer"
@@ -30,6 +31,9 @@ interface Account {
   role: UserRole
   is_archived: boolean
   created_at: string
+  /** A technician's login made by Operations for one day (Temporary Head). */
+  is_temporary_head?: boolean
+  access_expires_at?: string | null
 }
 
 const PAGE_SIZE_OPTIONS = [10, 15, 20, 30]
@@ -174,7 +178,19 @@ export default function AccountTable() {
     {
       key: "status",
       header: "Status",
-      cell: (a) => <StatusBadge status={a.is_archived ? "archived" : "active"} />,
+      cell: (a) => (
+        <div className="flex flex-wrap items-center gap-1.5">
+          <StatusBadge status={a.is_archived ? "archived" : "active"} />
+          {a.is_temporary_head && (
+            <Badge
+              className={isAccessExpired(a) ? "bg-surface-muted text-muted" : "bg-status-onjob/15 text-status-onjob"}
+              title="A technician's login made by Operations when no head technician was available. It works for one day only."
+            >
+              {isAccessExpired(a) ? "Temporary Head · expired" : "Temporary Head · until 11:59 PM"}
+            </Badge>
+          )}
+        </div>
+      ),
     },
     {
       key: "actions",

@@ -4,6 +4,7 @@ import { redirect } from "next/navigation"
 import { NextResponse } from "next/server"
 import { createClient } from "@/lib/supabase/server"
 import { createAdminClient } from "@/lib/supabase/admin"
+import { isAccessExpired } from "@/lib/auth/temporary-access"
 
 const ROLE_HOMES: Record<string, string> = {
   super_admin:    "/dashboard/admin",
@@ -48,7 +49,8 @@ export const getCurrentUserProfile = cache(async (userId: string) => {
   const admin = createAdminClient()
   const { data: profile } = await admin
     .from("user_account")
-    .select("full_name, role, must_change_password, is_archived")
+    // "*": see lib/auth/caller.ts (keeps working before the temporary-head migration).
+    .select("*")
     .eq("id", userId)
     .single()
   return profile
@@ -66,7 +68,9 @@ export async function requireRole(allowedRoles: string[]) {
   // off /login straight back here (a redirect loop). This route handler
   // (outside the proxy matcher) signs out, clears the cookies, then sends
   // them to /login with the reason.
-  if (profile?.is_archived === true) {
+  // A Temporary Head Technician whose one-day access has ended is signed out
+  // the same way.
+  if (profile?.is_archived === true || isAccessExpired(profile)) {
     redirect("/api/auth/force-logout")
   }
 
