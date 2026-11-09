@@ -7,7 +7,13 @@ import { fmtDateTimeShort } from "@/lib/time-display"
 import { Card } from "@/components/ui/Card"
 import { Badge } from "@/components/ui/Badge"
 import { EmptyState } from "@/components/ui/EmptyState"
+import { Pagination } from "@/components/ui/Pagination"
 import { statusStyle } from "@/lib/ui/status"
+import { pageSlice } from "@/lib/ui/pagination"
+
+// Rows per page: keeps the card about as tall as Technician Availability next
+// to it instead of growing into one long list.
+const PAGE_SIZE = 8
 
 interface DelayedJob {
   id: string
@@ -40,6 +46,10 @@ function formatDelayedBy(expectedAt: string | null): string {
 export function DelayedJobsTable({ initialData }: { initialData?: DelayedJob[] }) {
   const [jobs, setJobs] = useState<DelayedJob[]>(initialData ?? [])
   const [loading, setLoading] = useState(!initialData)
+  const [page, setPage] = useState(1)
+  // Clamped: a live refresh can shrink the list (jobs back on track), and the
+  // card must never sit on an empty page.
+  const view = pageSlice(jobs, page, PAGE_SIZE)
 
   const fetchData = useCallback(async () => {
     try {
@@ -94,7 +104,7 @@ export function DelayedJobsTable({ initialData }: { initialData?: DelayedJob[] }
               </tr>
             </thead>
             <tbody className="divide-y divide-border-subtle">
-              {jobs.map((job) => {
+              {view.rows.map((job) => {
                 const delayedBy = formatDelayedBy(job.delayed_since ?? job.expected_completion_at)
                 const isOverdue = delayedBy !== "—"
                 return (
@@ -122,6 +132,16 @@ export function DelayedJobsTable({ initialData }: { initialData?: DelayedJob[] }
             </tbody>
           </table>
         </div>
+      )}
+
+      {!loading && view.totalPages > 1 && (
+        <Pagination
+          className="mt-4 border-t border-border-subtle pt-3"
+          page={view.page}
+          totalPages={view.totalPages}
+          onPageChange={setPage}
+          totalLabel={`Showing ${view.from}–${view.to} of ${jobs.length}`}
+        />
       )}
     </Card>
   )

@@ -1,6 +1,6 @@
 "use client"
 
-import { ChevronLeft, ChevronRight } from "lucide-react"
+import { ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight } from "lucide-react"
 import { cn } from "@/lib/utils"
 
 const PAGE_SIZES = [10, 15, 20, 30, 50]
@@ -57,9 +57,22 @@ export function Pagination({
       </div>
 
       <div className="flex items-center gap-1">
+        {/* First / Last: jump straight to either end instead of clicking
+            Previous / Next page by page. */}
+        <button
+          type="button"
+          aria-label="First page"
+          title="First page"
+          disabled={page <= 1}
+          onClick={() => onPageChange(1)}
+          className="flex h-8 w-8 items-center justify-center rounded-sm border border-border text-body hover:bg-surface-muted disabled:opacity-40"
+        >
+          <ChevronsLeft className="h-4 w-4" />
+        </button>
         <button
           type="button"
           aria-label="Previous page"
+          title="Previous page"
           disabled={page <= 1}
           onClick={() => onPageChange(page - 1)}
           className="flex h-8 w-8 items-center justify-center rounded-sm border border-border text-body hover:bg-surface-muted disabled:opacity-40"
@@ -90,11 +103,22 @@ export function Pagination({
         <button
           type="button"
           aria-label="Next page"
+          title="Next page"
           disabled={page >= totalPages}
           onClick={() => onPageChange(page + 1)}
           className="flex h-8 w-8 items-center justify-center rounded-sm border border-border text-body hover:bg-surface-muted disabled:opacity-40"
         >
           <ChevronRight className="h-4 w-4" />
+        </button>
+        <button
+          type="button"
+          aria-label="Last page"
+          title="Last page"
+          disabled={page >= totalPages}
+          onClick={() => onPageChange(totalPages)}
+          className="flex h-8 w-8 items-center justify-center rounded-sm border border-border text-body hover:bg-surface-muted disabled:opacity-40"
+        >
+          <ChevronsRight className="h-4 w-4" />
         </button>
       </div>
     </div>

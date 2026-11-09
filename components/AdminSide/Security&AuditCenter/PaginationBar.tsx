@@ -1,6 +1,6 @@
 "use client"
 
-import {ChevronLeft, ChevronRight} from "lucide-react"
+import {ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight} from "lucide-react"
 
 const PAGE_SIZE_OPTIONS = [10, 15, 20, 100] as const
 type PageSize = typeof PAGE_SIZE_OPTIONS[number]
@@ -34,7 +34,14 @@ export default function PaginationBar({
               ))}
             </div>
           </div>
-          <div className="flex items-center gap-1.5">
+          <div className="flex flex-wrap items-center gap-1.5">
+            {/* First / Last jump straight to either end of a long log. */}
+            <button type="button" onClick={() => setPage(() => 1)} disabled={safePg === 1}
+              title="First page"
+              className="flex items-center gap-1 text-xs font-medium px-2.5 py-1 rounded-sm border border-border text-body hover:bg-surface-muted transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              <ChevronsLeft className="w-3.5 h-3.5" /> First
+            </button>
             <button type="button" onClick={() => setPage((p) => Math.max(1, p - 1))} disabled={safePg === 1}
               className="flex items-center gap-1 text-xs font-medium px-2.5 py-1 rounded-sm border border-border text-body hover:bg-surface-muted transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
             >
@@ -45,6 +52,12 @@ export default function PaginationBar({
               className="flex items-center gap-1 text-xs font-medium px-2.5 py-1 rounded-sm border border-border text-body hover:bg-surface-muted transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
             >
               Next <ChevronRight className="w-3.5 h-3.5" />
+            </button>
+            <button type="button" onClick={() => setPage(() => totalPages)} disabled={safePg === totalPages}
+              title="Last page"
+              className="flex items-center gap-1 text-xs font-medium px-2.5 py-1 rounded-sm border border-border text-body hover:bg-surface-muted transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              Last <ChevronsRight className="w-3.5 h-3.5" />
             </button>
           </div>
         </div>
