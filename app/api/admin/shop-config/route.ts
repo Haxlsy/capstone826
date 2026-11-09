@@ -45,9 +45,20 @@ export async function PATCH(request: Request) {
     }
 
     const admin = createAdminClient()
+    const next = parsed.data.max_capacity
+
+    // Read the current value first so the audit trail shows old -> new.
+    const { data: before } = await admin
+      .from("shop_config")
+      .select("max_capacity, updated_at")
+      .eq("id", 1)
+      .single()
+    const previous = before?.max_capacity ?? null
+    if (previous === next) return NextResponse.json(before)
+
     const { data, error } = await admin
       .from("shop_config")
-      .update({ max_capacity: parsed.data.max_capacity, updated_at: new Date().toISOString() })
+      .update({ max_capacity: next, updated_at: new Date().toISOString() })
       .eq("id", 1)
       .select("max_capacity, updated_at")
       .single()
@@ -56,8 +67,10 @@ export async function PATCH(request: Request) {
 
     await logAuditCall(auditCallerOf(caller), {
       category: "update",
-      action:   "Updated shop capacity",
-      target:   `max_capacity = ${parsed.data.max_capacity}`,
+      action:   "Changed daily capacity",
+      target:   previous === null
+        ? `Daily capacity set to ${next} cars`
+        : `Daily capacity: ${previous} → ${next} cars`,
     })
 
     return NextResponse.json(data)

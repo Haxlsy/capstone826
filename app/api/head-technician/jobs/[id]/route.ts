@@ -548,7 +548,7 @@ export async function PATCH(
         await logAuditCall(caller, {
           category: "update",
           action:   "Marked stage as done",
-          target:   `${jobLabel} — ${stageName}`,
+          target:   `${jobLabel} — ${stageName}${doneRound > 0 ? ` (rework round ${doneRound})` : ""}`,
         })
       }
 

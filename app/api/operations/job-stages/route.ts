@@ -88,16 +88,26 @@ export async function PATCH(request: Request) {
     }
 
     if (status !== undefined) {
-      const { data: profile } = await admin.from("user_account").select("full_name, role").eq("id", user.id).single()
+      const row = data as { job_order_id: string; service_stage_id: string | null; custom_name: string | null }
+      const [{ data: profile }, { data: job }, { data: template }] = await Promise.all([
+        admin.from("user_account").select("full_name, role").eq("id", user.id).single(),
+        admin.from("job_order").select("job_order_code").eq("id", row.job_order_id).maybeSingle(),
+        row.service_stage_id
+          ? admin.from("service_stage").select("name").eq("id", row.service_stage_id).maybeSingle()
+          : Promise.resolve({ data: null }),
+      ])
       if (profile) {
-        const stageName = (data as any).custom_name ?? `Stage ${id}`
-        logAudit({
+        // "JO-XXXX — Stage name" like the head technician's entry, so the
+        // Admin audit trail's "Stage done" filter reads the same for both.
+        const stageName = row.custom_name ?? (template as { name: string } | null)?.name ?? "Stage"
+        const jobLabel  = job?.job_order_code ?? row.job_order_id
+        await logAudit({
           user_id:   user.id,
           user_name: profile.full_name,
           role:      profile.role,
           category:  "update",
           action:    status === "done" ? "Marked stage as done" : `Updated stage status to ${status}`,
-          target:    stageName,
+          target:    `${jobLabel} — ${stageName}`,
         })
       }
     }

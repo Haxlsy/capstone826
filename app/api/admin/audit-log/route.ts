@@ -10,7 +10,7 @@ import { readJsonBody } from "@/lib/http/read-json-body"
 
 // ── GET /api/admin/audit-log ──────────────────────────────────────────────────
 // Query params: scope (activity|security, default activity), role, category
-// (activity scope), action (security scope, exact match), period
+// (activity scope), action (exact match, either scope), period
 // (all|week|month, default all), dateFrom/dateTo (YYYY-MM-DD — a specific
 // date range, takes priority over period when either is set), sortBy,
 // sortDir (default created_at desc), page, pageSize (default 1 / 10).
@@ -54,6 +54,9 @@ export async function GET(request: Request) {
     if (scope === "activity") {
       query = query.neq("category", SECURITY_CATEGORY)
       if (category) query = query.eq("category", category)
+      // A specific action picked in User Activity's Action filter (e.g.
+      // "Marked stage as done"), narrower than a whole category.
+      if (action) query = query.eq("action", action)
     } else {
       query = query.eq("category", SECURITY_CATEGORY)
       if (action) query = query.eq("action", action)

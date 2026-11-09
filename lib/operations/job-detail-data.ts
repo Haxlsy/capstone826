@@ -45,6 +45,7 @@ export async function getJobDetailData(id: string) {
       .from("job_stage_progress")
       .select(
         `id, status, rework_instructions, handoff_notes, completion_notes, completed_at,
+         completed_by:completed_by_id(full_name),
          messenger_sent, messenger_sent_at,
          custom_name, custom_sequence_order, custom_stage_category, stage_duration_mins,
          service_stage_id, current_rework_round,
@@ -157,6 +158,8 @@ export async function getJobDetailData(id: string) {
         handoff_notes: s.handoff_notes,
         completion_notes: s.completion_notes ?? null,
         completed_at: s.completed_at,
+        // Who marked it done (only the name is embedded, never the account row).
+        completed_by_name: (Array.isArray(s.completed_by) ? s.completed_by[0]?.full_name : s.completed_by?.full_name) ?? null,
         messenger_sent: s.messenger_sent ?? null,
         messenger_sent_at: s.messenger_sent_at ?? null,
         // Round 0 is the original, customer-facing upload — this stays
