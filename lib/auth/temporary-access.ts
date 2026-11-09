@@ -38,6 +38,22 @@ export function temporaryHeadTag(
   return { label: ended ? "Temporary · access ended" : "Temporary · until 11:59 PM", ended }
 }
 
+/**
+ * The single status shown for an account in Admin's Account Management:
+ * archived wins; a temporary head shows its temporary tag instead of "Active"
+ * (an expired one can't log in, so "Active" would be wrong); everyone else is
+ * Active.
+ */
+export function accountStatusBadge(
+  account: { is_archived?: boolean | null; is_temporary_head?: boolean | null; access_expires_at?: string | Date | null },
+  now: Date = new Date(),
+): { kind: "archived" | "temporary" | "active"; label: string; ended?: boolean } {
+  if (account.is_archived) return { kind: "archived", label: "Archived" }
+  const tag = temporaryHeadTag(account, now)
+  if (tag) return { kind: "temporary", label: tag.label, ended: tag.ended }
+  return { kind: "active", label: "Active" }
+}
+
 /** Same rule as AddAccountModal's suggested username: no spaces, lowercase. */
 function slug(name: string): string {
   return name.replace(/\s+/g, "").toLowerCase()
