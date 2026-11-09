@@ -2,7 +2,7 @@ import { NextResponse } from "next/server"
 import { createAdminClient } from "@/lib/supabase/admin"
 import { ACTIVE_JOB_STATUSES } from "@/lib/job-delay"
 import { getRoleCaller } from "@/lib/auth/caller"
-import { getDelayedJobs } from "@/lib/admin/dashboard-data"
+import { countJobsInShopToday, getDelayedJobs } from "@/lib/admin/dashboard-data"
 
 const ACTIVE_STATUSES: readonly string[] = ACTIVE_JOB_STATUSES
 
@@ -24,12 +24,8 @@ export async function GET() {
       serviceBreakdownResult,
       techniciansResult,
     ] = await Promise.all([
-      // Active job count
-      admin
-        .from("job_order")
-        .select("id", { count: "exact", head: true })
-        .in("status", ACTIVE_STATUSES)
-        .eq("is_archived", false),
+      // Active Jobs Today: cars in the shop today (shared with the first render).
+      countJobsInShopToday(admin),
 
       // Max capacity from shop_config
       admin

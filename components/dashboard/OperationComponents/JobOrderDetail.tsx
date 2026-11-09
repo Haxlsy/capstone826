@@ -59,6 +59,8 @@ interface Stage {
   handoff_notes: string | null
   completion_notes: string | null
   completed_at: string | null
+  /** Who marked the stage done (latest round); null on older rows. */
+  completed_by_name?: string | null
   messenger_sent: boolean | null
   messenger_sent_at: string | null
   /** Round 0 — the original, customer-facing upload. */
@@ -992,7 +994,10 @@ export default function JobOrderDetail({
                               </Badge>
                             )}
                             {stage.completed_at && (
-                              <span className="text-xs text-muted">{fmtDateTime(stage.completed_at)}</span>
+                              <span className="text-xs text-muted">
+                                {stage.completed_by_name ? `Done by ${stage.completed_by_name} · ` : ""}
+                                {fmtDateTime(stage.completed_at)}
+                              </span>
                             )}
                           </div>
                           {job.status === "For Inspection" && stage.status !== "for_rework" && (

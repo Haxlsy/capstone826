@@ -17,10 +17,19 @@ import { Card } from "@/components/ui/Card"
 import { Button } from "@/components/ui/Button"
 import { FieldLabel } from "@/components/ui/Field"
 
+/**
+ * Specific actions the Action filter can pick, below the broad categories.
+ * `action` must match the audit_log text exactly. Add one line to add one.
+ */
+const ACTION_PRESETS = [
+  { value: "stage_done", label: "Stage done", action: "Marked stage as done" },
+] as const
+type ActionPreset = (typeof ACTION_PRESETS)[number]["value"]
+
 export default function UserActivity() {
     const toast = useToast()
     const [actRoleFilter,   setActRoleFilter]   = useState<AuditRole | "all">("all")
-    const [actCatFilter,    setActCatFilter]    = useState<AuditCategory | "all">("all")
+    const [actCatFilter,    setActCatFilter]    = useState<AuditCategory | ActionPreset | "all">("all")
     const [actPeriodFilter, setActPeriodFilter] = useState<TimePeriod>("all")
     const [actDateFrom,     setActDateFrom]     = useState("")
     const [actDateTo,       setActDateTo]       = useState("")
@@ -33,8 +42,12 @@ export default function UserActivity() {
     const [exportConfirm,   setExportConfirm]   = useState<"pdf" | "excel" | null>(null)
     const [exporting,       setExporting]       = useState(false)
 
+    const actPreset = ACTION_PRESETS.find((p) => p.value === actCatFilter) ?? null
+
     const params = {
-      scope: "activity" as const, role: actRoleFilter, category: actCatFilter, action: "all" as const,
+      scope: "activity" as const, role: actRoleFilter,
+      category: actPreset ? "all" as const : actCatFilter as AuditCategory | "all",
+      action: actPreset?.action ?? "all",
       period: actPeriodFilter, dateFrom: actDateFrom || null, dateTo: actDateTo || null,
       sortBy, sortDir, page: actPage, pageSize: actPageSize,
     }
@@ -70,7 +83,7 @@ export default function UserActivity() {
 
     const filterNote = [
       actRoleFilter !== "all" ? ROLE_LABEL[actRoleFilter] : null,
-      actCatFilter !== "all" ? actCatFilter : null,
+      actPreset ? actPreset.label : actCatFilter !== "all" ? actCatFilter : null,
       dateRangeNote ?? (actPeriodFilter !== "all" ? actPeriodFilter : null),
     ].filter(Boolean).join(", ") || null
 
@@ -161,7 +174,7 @@ export default function UserActivity() {
               {ALL_ROLES.map((r) => <option key={r} value={r}>{ROLE_LABEL[r]}</option>)}
             </select>
             <select aria-label="Action filter" title="Filter by action type" value={actCatFilter}
-              onChange={(e) => { setActCatFilter(e.target.value as AuditCategory | "all"); setActPage(1) }}
+              onChange={(e) => { setActCatFilter(e.target.value as AuditCategory | ActionPreset | "all"); setActPage(1) }}
               className={OLD_SELECT_CLS}
             >
               <option value="all">All actions</option>
@@ -172,6 +185,9 @@ export default function UserActivity() {
               <option value="approve">Approve</option>
               <option value="flag">Flag / Rework</option>
               <option value="delete">Delete / Archive</option>
+              <optgroup label="Specific">
+                {ACTION_PRESETS.map((p) => <option key={p.value} value={p.value}>{p.label}</option>)}
+              </optgroup>
             </select>
             <select aria-label="Period filter"
               title={actDateFrom || actDateTo

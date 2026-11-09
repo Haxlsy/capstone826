@@ -2,19 +2,33 @@ import { createAdminClient } from "@/lib/supabase/admin"
 import { ACTIVE_JOB_STATUSES, isJobDelayed } from "@/lib/job-delay"
 import { loadStageDelayedSince } from "@/lib/job-delay-data"
 import { SERVICE_BREAKDOWN_STATUSES, fetchServiceBreakdown } from "@/lib/admin/service-breakdown"
+import { endOfManilaDay } from "@/lib/auth/temporary-access"
 
 const ACTIVE_STATUSES: readonly string[] = ACTIVE_JOB_STATUSES
+
+/**
+ * "Active Jobs Today" for the Admin dashboard: cars in the shop today. That is
+ * every unfinished job scheduled for today OR earlier (a job carried over from
+ * yesterday still occupies a bay); jobs scheduled for a later day don't count
+ * yet. Released / cancelled are excluded by the status list. Shared by the
+ * first render (getDashboardSummary) and the live refresh (api/admin/dashboard)
+ * so the two can never disagree.
+ */
+export function countJobsInShopToday(admin: ReturnType<typeof createAdminClient>, now: Date = new Date()) {
+  return admin
+    .from("job_order")
+    .select("id", { count: "exact", head: true })
+    .in("status", ACTIVE_STATUSES)
+    .eq("is_archived", false)
+    .or(`scheduled_at.is.null,scheduled_at.lte.${endOfManilaDay(now).toISOString()}`)
+}
 
 export async function getDashboardSummary() {
   const admin = createAdminClient()
 
   const [activeJobsResult, shopConfigResult, chatbotCountResult, humanEscalationResult] =
     await Promise.all([
-      admin
-        .from("job_order")
-        .select("id", { count: "exact", head: true })
-        .in("status", ACTIVE_STATUSES)
-        .eq("is_archived", false),
+      countJobsInShopToday(admin),
       admin
         .from("shop_config")
         .select("max_capacity")
