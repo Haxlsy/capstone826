@@ -30,6 +30,17 @@ export function manilaToday(): { dateKey: string; dayName: string } {
   }
 }
 
+/**
+ * 23:59:59.999 of the Manila calendar day `now` falls on, as an absolute
+ * instant (a UTC Date). Used by the Admin dashboard's "Active Jobs Today"
+ * (jobs scheduled up to the end of today).
+ */
+export function endOfManilaDay(now: Date = new Date()): Date {
+  const manila = new Date(now.getTime() + MANILA_OFFSET_MS)
+  const endUtcClock = Date.UTC(manila.getUTCFullYear(), manila.getUTCMonth(), manila.getUTCDate(), 23, 59, 59, 999)
+  return new Date(endUtcClock - MANILA_OFFSET_MS)
+}
+
 export interface TechnicianAvailabilityInput {
   is_available: boolean
   available_days: string[]

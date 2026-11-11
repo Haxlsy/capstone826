@@ -2,7 +2,7 @@ import { createAdminClient } from "@/lib/supabase/admin"
 import { ACTIVE_JOB_STATUSES, isJobDelayed } from "@/lib/job-delay"
 import { loadStageDelayedSince } from "@/lib/job-delay-data"
 import { SERVICE_BREAKDOWN_STATUSES, fetchServiceBreakdown } from "@/lib/admin/service-breakdown"
-import { endOfManilaDay } from "@/lib/auth/temporary-access"
+import { endOfManilaDay } from "@/lib/technician-availability"
 
 const ACTIVE_STATUSES: readonly string[] = ACTIVE_JOB_STATUSES
 

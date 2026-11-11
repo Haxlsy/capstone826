@@ -2,7 +2,6 @@ import { NextResponse } from "next/server"
 import { cookies } from "next/headers"
 import { createClient } from "@/lib/supabase/server"
 import { createAdminClient } from "@/lib/supabase/admin"
-import { isAccessExpired } from "@/lib/auth/temporary-access"
 
 // GET /api/auth/force-logout — ends the session of an account that was
 // archived while its owner was still signed in.
@@ -34,22 +33,17 @@ export async function GET(request: Request) {
     const admin = createAdminClient()
     const { data: profile } = await admin
       .from("user_account")
-      // "*": see lib/auth/caller.ts (keeps working before the temporary-head migration).
-      .select("*")
+      .select("is_archived")
       .eq("id", user.id)
       .single()
 
-    // Archived, or a Temporary Head Technician whose one-day access ended.
-    // Neither: nothing to do here. Send them to /login, which routes a
+    // Not archived: nothing to do here. Send them to /login, which routes a
     // signed-in user to their own dashboard.
-    const reason = profile?.is_archived === true
-      ? "account_archived"
-      : isAccessExpired(profile) ? "temporary_access_ended" : null
-    if (!reason) return login()
+    if (profile?.is_archived !== true) return login()
 
     await supabase.auth.signOut()
 
-    const response = login(reason)
+    const response = login("account_archived")
     response.cookies.set("826_role", "", { maxAge: 0, path: "/" })
     response.cookies.set("826_session_token", "", { maxAge: 0, path: "/" })
     return response

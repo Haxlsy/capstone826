@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server"
 import { createAdminClient } from "@/lib/supabase/admin"
 import { getRoleCaller } from "@/lib/auth/caller"
-import { isAccessExpired } from "@/lib/auth/temporary-access"
 
 export async function GET() {
   try {
@@ -11,21 +10,15 @@ export async function GET() {
     const supabase = createAdminClient()
 
     // Head detailers and head installers from user_account
-    // "*" so it includes the temporary-head columns once that migration has run
-    // (and still works before it).
-    const { data: allHeads, error: headsError } = await supabase
+    const { data: heads, error: headsError } = await supabase
       .from("user_account")
-      .select("*")
+      .select("id, full_name, role")
       .in("role", ["head_detailer", "head_installer"])
       .eq("is_archived", false)
       .order("role")
       .order("full_name")
 
     if (headsError) return NextResponse.json({ error: headsError.message }, { status: 500 })
-
-    // A Temporary Head Technician whose access has ended isn't a head anymore,
-    // so they don't show up as a pickable head the next day.
-    const heads = (allHeads ?? []).filter((h) => !isAccessExpired(h))
 
     const headIds = (heads ?? []).map((h: any) => h.id)
 
@@ -101,7 +94,6 @@ export async function GET() {
       role:        h.role as "head_detailer" | "head_installer",
       source:      "user_account" as const,
       active_jobs: jobCountMap.get(h.id) ?? 0,
-      is_temporary_head: h.is_temporary_head === true,
     }))
 
     const crew_members = (crew ?? []).map((c: any) => ({

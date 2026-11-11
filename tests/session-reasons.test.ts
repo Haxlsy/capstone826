@@ -13,10 +13,6 @@ describe("redirectReasonFor", () => {
     expect(redirectReasonFor("archived")).toBe("account_archived")
   })
 
-  it("maps a Temporary Head Technician's ended access to temporary_access_ended", () => {
-    expect(redirectReasonFor("access_ended")).toBe("temporary_access_ended")
-  })
-
   it("gives no reason for a deliberate logout or anything unrecognized", () => {
     expect(redirectReasonFor("no_session")).toBeNull()
     expect(redirectReasonFor(undefined)).toBeNull()
