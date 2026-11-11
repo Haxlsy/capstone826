@@ -3,7 +3,6 @@ import { cookies } from "next/headers"
 import { createClient } from "@/lib/supabase/server"
 import { createAdminClient } from "@/lib/supabase/admin"
 import { isSessionCurrent, resolveStaleSessionCurrency } from "@/lib/auth/session-check"
-import { isAccessExpired } from "@/lib/auth/temporary-access"
 
 // GET /api/auth/session-status — single active session per account.
 // Called by hooks/useSessionEnforcement.ts when a Realtime event on
@@ -44,16 +43,11 @@ export async function GET(request: NextRequest) {
       // signed in on another device. (See app/api/admin/archive-account.)
       const { data: profile } = await createAdminClient()
         .from("user_account")
-        // "*": see lib/auth/caller.ts (keeps working before the temporary-head migration).
-        .select("*")
+        .select("is_archived")
         .eq("id", user.id)
         .single()
       if (profile?.is_archived === true) {
         return NextResponse.json({ valid: false, reason: "archived" }, { headers: { "Cache-Control": "no-store" } })
-      }
-      // A Temporary Head Technician's one-day access has ended.
-      if (isAccessExpired(profile)) {
-        return NextResponse.json({ valid: false, reason: "access_ended" }, { headers: { "Cache-Control": "no-store" } })
       }
 
       const valid = await isSessionCurrent(supabase, user.id, sessionToken)

@@ -20,7 +20,7 @@ describe("isLoginRedirectNotice", () => {
 
 describe("loginRedirectNoticeCopy", () => {
   it("has distinct, human wording for each reason", () => {
-    const reasons = ["signed_in_elsewhere", "session_expired", "idle_timeout", "account_archived", "temporary_access_ended"] as const
+    const reasons = ["signed_in_elsewhere", "session_expired", "idle_timeout", "account_archived"] as const
     const copies = reasons.map(loginRedirectNoticeCopy)
     expect(new Set(copies).size).toBe(reasons.length)
     for (const c of copies) expect(c.length).toBeGreaterThan(0)
@@ -29,6 +29,5 @@ describe("loginRedirectNoticeCopy", () => {
   it("names the actual cause for the two most specific reasons", () => {
     expect(loginRedirectNoticeCopy("signed_in_elsewhere")).toMatch(/another device/i)
     expect(loginRedirectNoticeCopy("account_archived")).toMatch(/archived/i)
-    expect(loginRedirectNoticeCopy("temporary_access_ended")).toMatch(/temporary head technician access has ended/i)
   })
 })

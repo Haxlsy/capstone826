@@ -2,7 +2,6 @@ import { cache } from "react"
 import { NextResponse } from "next/server"
 import { createAdminClient } from "@/lib/supabase/admin"
 import { getCurrentUser } from "@/lib/auth/guard"
-import { isAccessExpired } from "@/lib/auth/temporary-access"
 
 export interface AuditCaller {
   /** Auth user id (also the user_account.id) */
@@ -32,10 +31,7 @@ export const getAuditCaller = cache(async (): Promise<AuditCaller | null> => {
   const admin = createAdminClient()
   const { data: profile } = await admin
     .from("user_account")
-    // "*" rather than naming access_expires_at, so this keeps working before
-    // the temporary-head migration has run (a missing named column fails the
-    // whole query, which would sign everyone out).
-    .select("*")
+    .select("full_name, role, is_archived")
     .eq("id", user.id)
     .single()
 
@@ -45,8 +41,6 @@ export const getAuditCaller = cache(async (): Promise<AuditCaller | null> => {
   // session — treat it as no caller at all so every API route built on this
   // (getRoleCaller, requireAuditCaller) answers 401 instead of serving it.
   if (profile.is_archived === true) return null
-  // A Temporary Head Technician whose one-day access has ended: same as archived.
-  if (isAccessExpired(profile)) return null
 
   return {
     id:         user.id,

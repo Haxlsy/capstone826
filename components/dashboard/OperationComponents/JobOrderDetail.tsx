@@ -29,8 +29,6 @@ import { cn } from "@/lib/utils"
 import { statusStyle } from "@/lib/ui/status"
 import { isTechnicianAvailableToday } from "@/lib/technician-availability"
 import { workloadLabel } from "@/lib/operations/workload"
-import { TemporaryHeadSection, type CrewOption } from "./TemporaryHeadSection"
-import { temporaryHeadTag } from "@/lib/auth/temporary-access"
 import { categorySwatch } from "@/lib/ui/category-colors"
 import { fmtDateTime } from "@/lib/time-display"
 import { useOfflineLock, OfflinePausedNote, OFFLINE_ACTION_HINT } from "@/hooks/useOfflineLock"
@@ -85,9 +83,6 @@ interface HistoryEntry {
 interface TeamMember {
   id: string
   full_name: string
-  /** A technician made Temporary Head for the day (substitutes only). */
-  is_temporary_head?: boolean
-  access_expires_at?: string | null
 }
 
 interface CrewMember {
@@ -278,15 +273,10 @@ export default function JobOrderDetail({
   const [headSubModal, setHeadSubModal] = useState(false)
   const [headSubRole, setHeadSubRole] = useState<"head_detailer" | "head_installer">("head_detailer")
   const [headSubs, setHeadSubs] = useState<{ id: string; name: string; role: string; active_jobs: number }[]>([])
-  // Crew who could be made Temporary Head when no head is available.
-  const [headSubCrew, setHeadSubCrew] = useState<CrewOption[]>([])
   const [headSubsLoading, setHeadSubsLoading] = useState(false)
   const [selectedHeadSubId, setSelectedHeadSubId] = useState<string | null>(null)
   const [addingHeadSub, setAddingHeadSub] = useState(false)
   const [headSubError, setHeadSubError] = useState<string | null>(null)
-  // The modal widens while the Temporary Head section is open, so its picker
-  // and login details sit side by side instead of making the modal scroll.
-  const [tempHeadOpen, setTempHeadOpen] = useState(false)
 
   // Removing a substitute (crew or head) — misclicked adds need an undo.
   const [removeSubTarget, setRemoveSubTarget] = useState<{ id: string; name: string; role: string } | null>(null)
@@ -500,7 +490,6 @@ export default function JobOrderDetail({
           active_jobs: t.active_jobs ?? 0,
         })),
       )
-      setHeadSubCrew((json.crew_members ?? []) as CrewOption[])
     } catch {
       setHeadSubError("Failed to load head technicians.")
     } finally {
@@ -871,7 +860,7 @@ export default function JobOrderDetail({
                 label="Head Detailer"
                 lead={job.head_detailer?.full_name ?? "Unassigned"}
                 substituteLabel={substituteRoleLabel("head_detailer")}
-                substitutes={job.head_detailer_substitutes.map((s) => ({ id: s.id, name: s.full_name, tag: temporaryHeadTag(s) }))}
+                substitutes={job.head_detailer_substitutes.map((s) => ({ id: s.id, name: s.full_name }))}
                 crew={job.detailers}
                 headRole="head_detailer"
                 crewRole="detailer"
@@ -881,7 +870,7 @@ export default function JobOrderDetail({
                 label="Head Installer"
                 lead={job.head_installer?.full_name ?? "Unassigned"}
                 substituteLabel={substituteRoleLabel("head_installer")}
-                substitutes={job.head_installer_substitutes.map((s) => ({ id: s.id, name: s.full_name, tag: temporaryHeadTag(s) }))}
+                substitutes={job.head_installer_substitutes.map((s) => ({ id: s.id, name: s.full_name }))}
                 crew={job.installers}
                 headRole="head_installer"
                 crewRole="installer"
@@ -1269,11 +1258,10 @@ export default function JobOrderDetail({
         onClose={() => {
           setHeadSubModal(false)
           setHeadSubError(null)
-          setTempHeadOpen(false)
         }}
         title="Add Substitute Head Technician"
         description="The substitute is added alongside the existing team — no one is removed. They can work the job on their own Head Technician screen."
-        size={tempHeadOpen ? "lg" : "sm"}
+        size="sm"
         footer={
           <>
             <Button variant="ghost" onClick={() => setHeadSubModal(false)} disabled={addingHeadSub}>
@@ -1298,9 +1286,6 @@ export default function JobOrderDetail({
                 onClick={() => {
                   setHeadSubRole(r)
                   setSelectedHeadSubId(null)
-                  // The Temporary Head section resets per role (it's keyed by
-                  // role), so the modal returns to its compact width too.
-                  if (r !== headSubRole) setTempHeadOpen(false)
                 }}
                 className={cn(
                   "flex-1 rounded-sm py-1.5 text-xs font-semibold transition-colors",
@@ -1367,23 +1352,6 @@ export default function JobOrderDetail({
         </div>
 
         {headSubError && <p className="mt-3 text-xs text-status-delayed">{headSubError}</p>}
-
-        {/* Last fallback: no head available, so make a present technician the
-            Temporary Head for today. Keyed by role so switching tabs resets it. */}
-        {!headSubsLoading && (
-          <TemporaryHeadSection
-            key={headSubRole}
-            jobId={jobId}
-            role={headSubRole}
-            crew={headSubCrew}
-            onOpenChange={setTempHeadOpen}
-            onDone={() => {
-              setHeadSubModal(false)
-              setTempHeadOpen(false)
-              load()
-            }}
-          />
-        )}
       </Modal>
 
       {/* Remove Substitute confirmation — covers both crew and head substitutes */}
@@ -1547,8 +1515,7 @@ function CrewCell({
   lead: string
   crew: { id: string; name: string; is_substitute: boolean }[]
   /** Substitute head technicians — always visible, never folded into the crew list. */
-  /** `tag`: shown after the name for a Temporary Head ("until 11:59 PM" / "access ended"). */
-  substitutes?: { id: string; name: string; tag?: { label: string; ended: boolean } | null }[]
+  substitutes?: { id: string; name: string }[]
   substituteLabel?: string
   /** Passed to onRemoveSubstitute for a head substitute row. */
   headRole?: "head_detailer" | "head_installer"
@@ -1584,17 +1551,6 @@ function CrewCell({
               </span>
               <span className="inline-flex items-center gap-1">
                 {sub.name}
-                {sub.tag && (
-                  <span
-                    className={cn(
-                      "rounded-full px-2 py-0.5 text-[10px] font-semibold",
-                      sub.tag.ended ? "bg-surface-muted text-muted" : "bg-status-onjob/15 text-status-onjob",
-                    )}
-                    title="A technician made head for this job by Operations. Their access works for one day only."
-                  >
-                    {sub.tag.label}
-                  </span>
-                )}
                 {onRemoveSubstitute && headRole && removeBtn(sub, headRole)}
               </span>
             </li>

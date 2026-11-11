@@ -16,7 +16,6 @@ import { useToast } from "@/components/ui/Toast"
 import { cn } from "@/lib/utils"
 import { roleStyle, roleLabel } from "@/lib/ui/roles"
 import { initials } from "@/lib/ui/avatar"
-import { accountStatusBadge } from "@/lib/auth/temporary-access"
 import { useRealtimeRefetch } from "@/hooks/useRealtimeRefetch"
 
 type UserRole = "operations" | "sales" | "head_detailer" | "head_installer"
@@ -31,19 +30,9 @@ interface Account {
   role: UserRole
   is_archived: boolean
   created_at: string
-  /** A technician's login made by Operations for one day (Temporary Head). */
-  is_temporary_head?: boolean
-  access_expires_at?: string | null
 }
 
 const PAGE_SIZE_OPTIONS = [10, 15, 20, 30]
-
-const STATUS_FILTER_LABEL = {
-  active: "Active",
-  temporary: "Temporary heads",
-  archived: "Archived",
-  all: "All Status",
-} as const
 
 export default function AccountTable() {
   const toast = useToast()
@@ -54,9 +43,7 @@ export default function AccountTable() {
 
   const [search, setSearch] = useState("")
   const [roleFilter, setRoleFilter] = useState<UserRole | "all">("all")
-  // "temporary": Temporary Head logins (kept for reuse; expired ones are left
-  // out of the default Active view because they can't log in).
-  const [statusFilter, setStatusFilter] = useState<"all" | "active" | "temporary" | "archived">("active")
+  const [statusFilter, setStatusFilter] = useState<"all" | "active" | "archived">("active")
 
   const [page, setPage] = useState(1)
   const [pageSize, setPageSize] = useState(15)
@@ -187,22 +174,7 @@ export default function AccountTable() {
     {
       key: "status",
       header: "Status",
-      cell: (a) => (
-        // One honest status per account: a temporary head shows its temporary
-        // tag instead of "Active" (once expired it can't log in).
-        (() => {
-          const st = accountStatusBadge(a)
-          if (st.kind !== "temporary") return <StatusBadge status={st.kind} />
-          return (
-            <Badge
-              className={st.ended ? "bg-surface-muted text-muted" : "bg-status-onjob/15 text-status-onjob"}
-              title="A technician's login made by Operations when no head technician was available. It works for one day only and is reused next time."
-            >
-              {st.label}
-            </Badge>
-          )
-        })()
-      ),
+      cell: (a) => <StatusBadge status={a.is_archived ? "archived" : "active"} />,
     },
     {
       key: "actions",
@@ -312,7 +284,7 @@ export default function AccountTable() {
             <div>
               <p className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-body">Status</p>
               <div className="space-y-0.5">
-                {(["active", "temporary", "archived", "all"] as const).map((s) => (
+                {(["all", "active", "archived"] as const).map((s) => (
                   <button
                     key={s}
                     onClick={() => setStatusFilter(s)}
@@ -321,16 +293,10 @@ export default function AccountTable() {
                       statusFilter === s ? "bg-primary-soft font-medium text-primary" : "text-body hover:bg-surface-muted",
                     )}
                   >
-                    {STATUS_FILTER_LABEL[s]}
+                    {s === "all" ? "All Status" : s.charAt(0).toUpperCase() + s.slice(1)}
                   </button>
                 ))}
               </div>
-              {statusFilter === "temporary" && (
-                <p className="mt-1.5 text-[11px] text-muted">
-                  Logins Operations created for technicians covering as head for a day. They stop working at
-                  11:59 PM and are reused next time.
-                </p>
-              )}
             </div>
             {hasFilter && (
               <button
