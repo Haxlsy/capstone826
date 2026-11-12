@@ -6,6 +6,7 @@ import { logAuditCall } from "@/hooks/audit-helpers"
 import { normalizeName, validateName } from "@/lib/name"
 import { manilaToday } from "@/lib/technician-availability"
 import { readJsonBody } from "@/lib/http/read-json-body"
+import { HEAD_ROLES, loadHeadAccounts } from "@/lib/operations/head-accounts"
 
 const ALL_DAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
 
@@ -38,14 +39,17 @@ export async function GET(request: Request) {
     if (status === "active")        techQuery = techQuery.eq("is_archived", false)
     else if (status === "archived") techQuery = techQuery.eq("is_archived", true)
 
-    const [{ data, error }, { data: assignments }] = await Promise.all([
+    // Head technicians come from Admin's Account Management (never added
+    // here); only active ones, and only when the active crew list is asked for.
+    const [{ data, error }, { data: assignments }, heads] = await Promise.all([
       techQuery
         .order("role")
         .order("full_name"),
       supabase
         .from("job_order_team")
-        .select("technician_id, job_order_id")
-        .not("technician_id", "is", null),
+        .select("technician_id, user_account_id, job_order_id")
+        .or("technician_id.not.is.null,user_account_id.not.is.null"),
+      status === "archived" ? Promise.resolve([]) : loadHeadAccounts(supabase),
     ])
 
     if (error) return NextResponse.json({ error: error.message }, { status: 500 })
@@ -82,11 +86,14 @@ export async function GET(request: Request) {
 
       for (const a of assignments ?? []) {
         const jobInfo = jobInfoMap.get(a.job_order_id)
-        if (jobInfo && a.technician_id) {
-          const jobs = ongoingMap.get(a.technician_id) ?? []
+        // Crew rows carry technician_id, head rows user_account_id; the two
+        // id spaces are different tables, so one map can hold both.
+        const personId = (a.technician_id ?? a.user_account_id) as string | null
+        if (jobInfo && personId) {
+          const jobs = ongoingMap.get(personId) ?? []
           // A person can have a primary and a substitute row on the same job.
           if (!jobs.some((j) => j.job_id === jobInfo.job_id)) jobs.push(jobInfo)
-          ongoingMap.set(a.technician_id, jobs)
+          ongoingMap.set(personId, jobs)
         }
       }
     }
@@ -106,7 +113,12 @@ export async function GET(request: Request) {
       active_jobs:      ongoingMap.get(t.id) ?? [],
     }))
 
-    return NextResponse.json({ technicians })
+    const headTechnicians = heads.map((h) => ({
+      ...h,
+      active_jobs: ongoingMap.get(h.id) ?? [],
+    }))
+
+    return NextResponse.json({ technicians, heads: headTechnicians })
   } catch (err: any) {
     return NextResponse.json({ error: err?.message ?? String(err) }, { status: 500 })
   }
@@ -118,13 +130,17 @@ export async function PATCH(request: Request) {
     const auth = await getRoleCaller(["operations"])
     if ("error" in auth) return auth.error
 
-    const { id, is_available, first_name, last_name, role, is_archived, available_days, work_start_time, work_end_time } = await readJsonBody(request)
+    const { id, kind, is_available, first_name, last_name, role, is_archived, available_days, work_start_time, work_end_time } = await readJsonBody(request)
 
     if (!id) {
       return NextResponse.json({ error: "id is required." }, { status: 400 })
     }
 
     const supabase = createAdminClient()
+
+    if (kind === "head") {
+      return updateHeadAvailability(supabase, id, { is_available, available_days, work_start_time, work_end_time })
+    }
     const updates: any = {}
 
     // Scopes the toggle to today (Manila) — see lib/technician-availability.ts.
@@ -191,6 +207,69 @@ export async function PATCH(request: Request) {
     const msg = err instanceof Error ? err.message : String(err)
     return NextResponse.json({ error: msg }, { status: 500 })
   }
+}
+
+/**
+ * A head technician's availability. Only the schedule and today's toggle can
+ * change here; name, role and archiving stay in Admin's Account Management.
+ */
+async function updateHeadAvailability(
+  supabase: ReturnType<typeof createAdminClient>,
+  id: string,
+  body: { is_available?: unknown; available_days?: unknown; work_start_time?: unknown; work_end_time?: unknown },
+) {
+  const { data: account } = await supabase
+    .from("user_account")
+    .select("full_name, role, is_archived")
+    .eq("id", id)
+    .maybeSingle()
+  if (!account || !(HEAD_ROLES as readonly string[]).includes(account.role as string) || account.is_archived) {
+    return NextResponse.json({ error: "Head technician not found." }, { status: 404 })
+  }
+
+  const updates: Record<string, unknown> = {}
+  if (typeof body.is_available === "boolean") {
+    updates.is_available = body.is_available
+    updates.availability_override_date = manilaToday().dateKey
+  }
+  if (Array.isArray(body.available_days)) {
+    const days = body.available_days.filter((d): d is string => typeof d === "string" && ALL_DAYS.includes(d))
+    updates.available_days = days
+  }
+  if (body.work_start_time || body.work_end_time) {
+    const start = typeof body.work_start_time === "string" ? body.work_start_time : "08:00"
+    const end   = typeof body.work_end_time === "string" ? body.work_end_time : "20:00"
+    const err   = validateWorkHours(start, end)
+    if (err) return NextResponse.json({ error: err }, { status: 400 })
+    updates.work_start_time = start
+    updates.work_end_time   = end
+  }
+  if (Object.keys(updates).length === 0) {
+    return NextResponse.json({ error: "No valid fields provided for update." }, { status: 400 })
+  }
+
+  const { error } = await supabase.from("user_account").update(updates).eq("id", id)
+  if (error) {
+    // 42703: the head availability migration (20261112000001) hasn't run yet.
+    const msg = error.code === "42703"
+      ? "Head technician availability isn't set up yet. Ask your admin to run the latest database update."
+      : error.message
+    return NextResponse.json({ error: msg }, { status: 500 })
+  }
+
+  const caller = await getAuditCaller()
+  if (caller) {
+    const what = typeof body.is_available === "boolean"
+      ? (body.is_available ? "marked available today" : "marked unavailable today")
+      : "schedule updated"
+    await logAuditCall(caller, {
+      category: "update",
+      action:   "Updated head technician availability",
+      target:   `${account.full_name} (${what})`,
+    })
+  }
+
+  return NextResponse.json({ success: true })
 }
 
 // POST — create a new technician (detailer or installer)

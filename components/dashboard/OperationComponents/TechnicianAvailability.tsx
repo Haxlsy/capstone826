@@ -17,6 +17,7 @@ import { Input, Select, FieldLabel } from "@/components/ui/Field"
 import { DayPillSelector } from "@/components/ui/DayPillSelector"
 import { TimeRangeInputs } from "@/components/ui/TimeRange"
 import { useToast } from "@/components/ui/Toast"
+import { Tabs } from "@/components/ui/Tabs"
 import { useOfflineLock, OfflinePausedNote, OFFLINE_ACTION_HINT } from "@/hooks/useOfflineLock"
 import { cn } from "@/lib/utils"
 import { avatarColor, initials } from "@/lib/ui/avatar"
@@ -24,6 +25,7 @@ import { roleStyle } from "@/lib/ui/roles"
 import { NAME_INPUT_BLOCKED_MESSAGE, normalizeName, sanitizeNameInput, validateName } from "@/lib/name"
 import { isTechnicianAvailableToday, manilaToday } from "@/lib/technician-availability"
 import { OnJobList, type OnJobEntry } from "@/components/shared/OnJobList"
+import { HeadTechnicianSection, type HeadTechnician } from "./HeadTechnicianSection"
 
 type ActiveJob = OnJobEntry
 
@@ -75,6 +77,10 @@ export default function TechnicianAvailability() {
   const toast = useToast()
   const { isOnline, lockProps } = useOfflineLock()
   const [technicians, setTechnicians] = useState<Technician[]>([])
+  // Head technicians: Admin-created accounts, listed above the crew.
+  const [heads, setHeads] = useState<HeadTechnician[]>([])
+  // One list at a time: crew (managed here) or head technicians (from Admin).
+  const [tab, setTab] = useState<"crew" | "heads">("crew")
   const [loading, setLoading] = useState(true)
   const [fetchError, setFetchError] = useState<string | null>(null)
   const [search, setSearch] = useState("")
@@ -104,6 +110,7 @@ export default function TechnicianAvailability() {
       const json = await res.json()
       if (!res.ok) throw new Error(json?.error ?? "Failed to load technicians")
       setTechnicians(json.technicians ?? [])
+      setHeads(json.heads ?? [])
     } catch (err: unknown) {
       setFetchError(err instanceof Error ? err.message : String(err))
     } finally {
@@ -308,11 +315,26 @@ export default function TechnicianAvailability() {
     }
   }
 
-  // Stats always describe the active roster, never the archived view.
+  // Stats describe the active tab's roster, never the archived view. Crew on a
+  // job count as On Job whatever their toggle (they can't be toggled then); an
+  // absent head on a job counts as Not Available, the case to act on.
   const activeTechs = technicians.filter((t) => !t.is_archived)
-  const onJobCount = activeTechs.filter((t) => t.active_jobs.length > 0).length
-  const availableCount = activeTechs.filter((t) => isTechnicianAvailableToday(t) && t.active_jobs.length === 0).length
-  const unavailableCount = activeTechs.length - availableCount - onJobCount
+  const roster = tab === "crew" ? activeTechs : heads
+  const onJobCount = tab === "crew"
+    ? activeTechs.filter((t) => t.active_jobs.length > 0).length
+    : heads.filter((h) => h.active_jobs.length > 0 && isTechnicianAvailableToday(h)).length
+  const availableCount = roster.filter((t) => isTechnicianAvailableToday(t) && t.active_jobs.length === 0).length
+  const unavailableCount = roster.length - availableCount - onJobCount
+  // A head who's off today while on a job: flag the Head Technicians tab.
+  const headsNeedingCover = heads.filter((h) => h.active_jobs.length > 0 && !isTechnicianAvailableToday(h)).length
+
+  // Heads follow the same search and role filter (Detailer covers Head
+  // Detailer); there are no archived heads here, so they hide in that view.
+  const filteredHeads = heads.filter((h) => {
+    const matchSearch = h.full_name.toLowerCase().includes(search.toLowerCase())
+    const matchRole = filterRole === "all" || h.role === `head_${filterRole}`
+    return matchSearch && matchRole
+  })
 
   const filtered = technicians.filter((t) => {
     const matchSearch = t.full_name.toLowerCase().includes(search.toLowerCase())
@@ -336,15 +358,17 @@ export default function TechnicianAvailability() {
         title="Technician Availability"
         subtitle="View and manage which technicians are available for assignment."
         actions={
-          <Button onClick={openAdd} {...lockProps}>
-            <span className="text-base leading-none">+</span> Add Technician
-          </Button>
+          tab === "crew" ? (
+            <Button onClick={openAdd} {...lockProps}>
+              <span className="text-base leading-none">+</span> Add Technician
+            </Button>
+          ) : undefined
         }
       />
       {!isOnline && <OfflinePausedNote className="-mt-3" />}
 
       <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
-        <StatCard label="Total" value={activeTechs.length} icon={Users} tone="total" variant="solid" />
+        <StatCard label="Total" value={roster.length} icon={Users} tone="total" variant="solid" />
         <StatCard label="Available" value={availableCount} icon={UserCheck} tone="inspection" variant="solid" />
         <StatCard label="On Job" value={onJobCount} icon={Wrench} tone="onjob" variant="solid" />
         <StatCard label="Not Available" value={unavailableCount} icon={UserX} tone="delayed" variant="solid" />
@@ -354,7 +378,7 @@ export default function TechnicianAvailability() {
         <SearchBar
           value={search}
           onChange={setSearch}
-          placeholder="Search technician…"
+          placeholder={tab === "crew" ? "Search technician…" : "Search head technician…"}
           containerClassName="max-w-xs flex-1"
         />
         <Popover
@@ -363,8 +387,8 @@ export default function TechnicianAvailability() {
             <FilterTrigger
               open={open}
               onClick={t}
-              active={filterRole !== "all" || filterStatus !== "active"}
-              count={(filterRole !== "all" ? 1 : 0) + (filterStatus !== "active" ? 1 : 0)}
+              active={filterRole !== "all" || (tab === "crew" && filterStatus !== "active")}
+              count={(filterRole !== "all" ? 1 : 0) + (tab === "crew" && filterStatus !== "active" ? 1 : 0)}
               label={filterRole === "all" ? "Filter technicians" : `Filter: ${ROLE_LABEL[filterRole]}`}
             />
           )}
@@ -384,28 +408,64 @@ export default function TechnicianAvailability() {
                   {r === "all" ? "All Roles" : ROLE_LABEL[r]}
                 </MenuItem>
               ))}
-              <p className="mt-1 border-t border-border-subtle px-2.5 pb-1 pt-2 text-xs font-semibold uppercase tracking-wide text-muted">
-                Status
-              </p>
-              {(["active", "archived", "all"] as const).map((s) => (
-                <MenuItem
-                  key={s}
-                  onClick={() => {
-                    setFilterStatus(s)
-                    close()
-                  }}
-                  className={filterStatus === s ? "bg-primary-soft text-primary" : undefined}
-                >
-                  {s === "all" ? "All Status" : s === "active" ? "Active" : "Archived"}
-                </MenuItem>
-              ))}
+              {/* Heads are archived in Admin, so Status applies to crew only. */}
+              {tab === "crew" && (
+                <>
+                  <p className="mt-1 border-t border-border-subtle px-2.5 pb-1 pt-2 text-xs font-semibold uppercase tracking-wide text-muted">
+                    Status
+                  </p>
+                  {(["active", "archived", "all"] as const).map((s) => (
+                    <MenuItem
+                      key={s}
+                      onClick={() => {
+                        setFilterStatus(s)
+                        close()
+                      }}
+                      className={filterStatus === s ? "bg-primary-soft text-primary" : undefined}
+                    >
+                      {s === "all" ? "All Status" : s === "active" ? "Active" : "Archived"}
+                    </MenuItem>
+                  ))}
+                </>
+              )}
             </>
           )}
         </Popover>
+        <Tabs
+          variant="pill"
+          value={tab}
+          onChange={(k) => setTab(k as "crew" | "heads")}
+          items={[
+            { key: "crew", label: "Technicians", count: activeTechs.length },
+            {
+              key: "heads",
+              label: (
+                <span className="inline-flex items-center gap-1.5">
+                  Head Technicians
+                  {headsNeedingCover > 0 && (
+                    <span
+                      className="h-2 w-2 rounded-full bg-status-warning"
+                      title={`${headsNeedingCover} head technician${headsNeedingCover === 1 ? " is" : "s are"} off today while on a job`}
+                    />
+                  )}
+                </span>
+              ),
+              count: heads.length,
+            },
+          ]}
+        />
       </div>
+      {tab === "heads" && (
+        <p className="-mt-3 text-xs text-muted">
+          Head technician accounts come from Admin → Account Management. Turn one off when absent; their job orders will
+          ask for a substitute.
+        </p>
+      )}
 
       {fetchError ? (
         <EmptyState title="Could not load technicians" message={fetchError} />
+      ) : tab === "heads" ? (
+        <HeadTechnicianSection heads={filteredHeads} setHeads={setHeads} isOnline={isOnline} />
       ) : (
         <div className={cn("grid gap-6", Object.keys(grouped).length === 1 ? "grid-cols-1" : "xl:grid-cols-2")}>
           {Object.entries(grouped).map(([role, members]) => {

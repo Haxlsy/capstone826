@@ -2,6 +2,7 @@ import { createAdminClient } from "@/lib/supabase/admin"
 import { jobCustomer } from "@/lib/operations/job-customer"
 import { isJobDelayed } from "@/lib/job-delay"
 import { loadStageDelayedSince } from "@/lib/job-delay-data"
+import { loadHeadWarningTexts } from "@/lib/operations/head-accounts"
 
 export async function getJobOrdersData(released = false) {
   const supabase = createAdminClient()
@@ -43,6 +44,12 @@ export async function getJobOrdersData(released = false) {
 
   const teamRows = teamResult.data ?? []
   const stageRows = stageResult.data ?? []
+
+  // "No available head technician" (lib/operations/head-coverage.ts). Released
+  // jobs never warn, so Job Order Records skips the lookup.
+  const headWarnings = released
+    ? new Map<string, string[]>()
+    : await loadHeadWarningTexts(supabase, (jobs ?? []) as { id: string; status: string; scheduled_at: string | null }[], teamRows)
 
   const teamMap = new Map<string, { head_detailer: string; head_installer: string }>()
   for (const t of teamRows) {
@@ -98,6 +105,7 @@ export async function getJobOrdersData(released = false) {
       created_at: j.created_at,
       progress: prog.total > 0 ? Math.round((prog.done / prog.total) * 100) : 0,
       is_overdue: isJobDelayed(j) || lateStage.has(j.id),
+      head_warnings: headWarnings.get(j.id) ?? ([] as string[]),
     }
   })
 

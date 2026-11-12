@@ -4,6 +4,8 @@ import { computeStageDelays, isJobDelayed } from "@/lib/job-delay"
 import { loadStageCatalog, resolveJobStage } from "@/lib/job-stages"
 import { totalStageDurationMins, computeExpectedCompletion } from "@/lib/job-estimates"
 import { loadWorkSchedule } from "@/lib/operating-hours"
+import { loadHeadsOnJobs } from "@/lib/operations/head-accounts"
+import { headCoverage } from "@/lib/operations/head-coverage"
 
 export async function getJobDetailData(id: string) {
   const supabase = createAdminClient()
@@ -193,6 +195,20 @@ export async function getJobDetailData(id: string) {
     return mapped.map(({ _raw_duration_mins: _rd, _service_duration_mins: _sd, ...rest }) => rest)
   })()
 
+  // "No available head technician" warning (lib/operations/head-coverage.ts).
+  const headsOnJob = await loadHeadsOnJobs(
+    supabase,
+    (team ?? []).map((t) => {
+      const ua = t.user_account as unknown as { id?: string } | { id?: string }[] | null
+      return {
+        job_order_id: id,
+        role_in_job: t.role_in_job as string,
+        user_account_id: (Array.isArray(ua) ? ua[0]?.id : ua?.id) ?? null,
+      }
+    }),
+  )
+  const headWarnings = headCoverage({ status: j.status, scheduled_at: j.scheduled_at }, headsOnJob.get(id) ?? [])
+
   const cust = jobCustomer(j)
   return {
     job: {
@@ -208,6 +224,7 @@ export async function getJobDetailData(id: string) {
       head_installer: (headInstaller?.user_account as any) ?? null,
       head_detailer_substitutes: headDetailerSubs,
       head_installer_substitutes: headInstallerSubs,
+      head_warnings: headWarnings,
       detailers,
       installers,
       status: j.status,

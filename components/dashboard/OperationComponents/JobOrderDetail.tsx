@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation"
 import {
   ArrowLeft, PackageCheck, ChevronDown, Users, RefreshCw, CheckCircle2, XCircle,
   Clock, RotateCcw, UserPlus, Loader2, Trash2, FileText, Pencil, X,
-  UserRound,
+  UserRound, AlertTriangle,
 } from "lucide-react"
 import { stageGroupHead } from "@/lib/operations/stage-group-head"
 import { JobOrderDetailSkeleton } from "@/app/dashboard/job-management/[id]/loading"
@@ -27,7 +27,8 @@ import { alreadyOnJob } from "@/lib/operations/team-membership"
 import { requiredTeamRoles } from "@/lib/operations/required-team"
 import { cn } from "@/lib/utils"
 import { statusStyle } from "@/lib/ui/status"
-import { isTechnicianAvailableToday } from "@/lib/technician-availability"
+import { isTechnicianAvailableToday, type TechnicianAvailabilityInput } from "@/lib/technician-availability"
+import { headPickerNote, headWarningText, jobWorkingDay, type HeadWarning } from "@/lib/operations/head-coverage"
 import { workloadLabel } from "@/lib/operations/workload"
 import { categorySwatch } from "@/lib/ui/category-colors"
 import { fmtDateTime } from "@/lib/time-display"
@@ -104,6 +105,8 @@ interface JobDetail {
   head_installer: TeamMember | null
   head_detailer_substitutes: TeamMember[]
   head_installer_substitutes: TeamMember[]
+  /** Head roles with no available head on the job's day (lib/operations/head-coverage.ts). */
+  head_warnings?: HeadWarning[]
   detailers: CrewMember[]
   installers: CrewMember[]
   status: string
@@ -272,7 +275,11 @@ export default function JobOrderDetail({
 
   const [headSubModal, setHeadSubModal] = useState(false)
   const [headSubRole, setHeadSubRole] = useState<"head_detailer" | "head_installer">("head_detailer")
-  const [headSubs, setHeadSubs] = useState<{ id: string; name: string; role: string; active_jobs: number }[]>([])
+  const [headSubs, setHeadSubs] = useState<{
+    id: string; name: string; role: string; active_jobs: number
+    /** Availability set in the Technician module (labels heads off on the job's day). */
+    availability: TechnicianAvailabilityInput
+  }[]>([])
   const [headSubsLoading, setHeadSubsLoading] = useState(false)
   const [selectedHeadSubId, setSelectedHeadSubId] = useState<string | null>(null)
   const [addingHeadSub, setAddingHeadSub] = useState(false)
@@ -473,9 +480,10 @@ export default function JobOrderDetail({
     }
   }
 
-  async function openHeadSubModal() {
+  /** `role`: open on that head role (the "no head available" banner's button). */
+  async function openHeadSubModal(role?: "head_detailer" | "head_installer") {
     setHeadSubModal(true)
-    setHeadSubRole(needs.detailer ? "head_detailer" : "head_installer")
+    setHeadSubRole(role ?? (needs.detailer ? "head_detailer" : "head_installer"))
     setSelectedHeadSubId(null)
     setHeadSubError(null)
     setHeadSubsLoading(true)
@@ -483,11 +491,19 @@ export default function JobOrderDetail({
       const res = await fetch("/api/operations/job-management/list-technicians")
       const json = await res.json()
       setHeadSubs(
-        (json.technicians ?? []).map((t: { id: string; full_name: string; role: string; active_jobs?: number }) => ({
+        (json.technicians ?? []).map((t: {
+          id: string; full_name: string; role: string; active_jobs?: number
+          is_available?: boolean; available_days?: string[]; availability_override_date?: string | null
+        }) => ({
           id: t.id,
           name: t.full_name,
           role: t.role,
           active_jobs: t.active_jobs ?? 0,
+          availability: {
+            is_available: t.is_available ?? true,
+            available_days: t.available_days ?? ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"],
+            availability_override_date: t.availability_override_date ?? null,
+          },
         })),
       )
     } catch {
@@ -526,6 +542,13 @@ export default function JobOrderDetail({
     .map((t) => ({ t, membership: alreadyOnJob(t.id, headTeam) }))
     .sort((a, b) => Number(a.membership !== null) - Number(b.membership !== null))
   const allHeadsOnJob = headCandidates.length > 0 && headCandidates.every((c) => c.membership !== null)
+  // Heads are judged on the job's own working day (today, or its future
+  // scheduled day). One who's off can still be picked, with a warning.
+  const jobDay = jobWorkingDay(job?.scheduled_at ?? null)
+  const selectedHeadNote = (() => {
+    const picked = headSubs.find((t) => t.id === selectedHeadSubId)
+    return picked ? headPickerNote(picked.availability, jobDay) : null
+  })()
 
   async function addHeadSubstitute() {
     if (!selectedHeadSubId) return
@@ -797,6 +820,23 @@ export default function JobOrderDetail({
       </div>
       {!isOnline && <OfflinePausedNote className="-mt-2" />}
 
+      {/* No available head technician for a role this job still needs: one
+          banner per role, with a shortcut to add a substitute for it. */}
+      {(job.head_warnings ?? []).map((w) => (
+        <div
+          key={w.role}
+          role="alert"
+          className="flex flex-wrap items-center gap-3 rounded-card border border-status-warning/40 bg-status-warning/10 px-4 py-3"
+        >
+          <AlertTriangle className="h-5 w-5 shrink-0 text-status-warning" />
+          <p className="min-w-0 flex-1 text-sm text-heading">{headWarningText(w)}</p>
+          <Button size="sm" variant="secondary" onClick={() => openHeadSubModal(w.role)} {...lockProps}>
+            <UserPlus className="h-3.5 w-3.5" />
+            Assign substitute
+          </Button>
+        </div>
+      ))}
+
       {/* Job Info Card */}
       <Card>
         <CardBody>
@@ -879,7 +919,7 @@ export default function JobOrderDetail({
               {job.status !== "Released" && (
                 <div className="flex flex-col gap-2 border-t border-border-subtle pt-3">
                   <div className="flex flex-col gap-2">
-                    <Button variant="secondary" size="sm" fullWidth onClick={openHeadSubModal} {...lockProps}>
+                    <Button variant="secondary" size="sm" fullWidth onClick={() => openHeadSubModal()} {...lockProps}>
                       <UserPlus className="h-3.5 w-3.5" />
                       Add Substitute Head Technician
                     </Button>
@@ -1341,8 +1381,15 @@ export default function JobOrderDetail({
                     )}
                   >
                     <span className="font-medium">{t.name}</span>
-                    <span className="text-[10px] text-muted">
-                      {t.active_jobs} active job{t.active_jobs === 1 ? "" : "s"}
+                    <span className="flex items-center gap-2 text-[10px]">
+                      {headPickerNote(t.availability, jobDay) && (
+                        <span className="rounded-full bg-status-warning/15 px-2 py-0.5 font-semibold text-status-warning">
+                          {headPickerNote(t.availability, jobDay)}
+                        </span>
+                      )}
+                      <span className="text-muted">
+                        {t.active_jobs} active job{t.active_jobs === 1 ? "" : "s"}
+                      </span>
                     </span>
                   </button>
                 ),
@@ -1351,6 +1398,13 @@ export default function JobOrderDetail({
           )}
         </div>
 
+        {selectedHeadNote && (
+          <p className="mt-3 flex items-start gap-1.5 text-xs text-status-warning">
+            <AlertTriangle className="mt-px h-3.5 w-3.5 shrink-0" />
+            {selectedHeadNote}: the job will keep showing the warning while no available head covers it. You can add them
+            anyway, or pick someone who is available.
+          </p>
+        )}
         {headSubError && <p className="mt-3 text-xs text-status-delayed">{headSubError}</p>}
       </Modal>
 

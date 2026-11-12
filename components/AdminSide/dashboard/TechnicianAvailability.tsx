@@ -99,7 +99,8 @@ export function TechnicianAvailability() {
       const res = await fetch("/api/operations/technician-availability")
       if (!res.ok) return
       const json = await res.json()
-      setTechnicians(json.technicians ?? [])
+      // Head technicians first (their availability is set by Operations), then crew.
+      setTechnicians([...(json.heads ?? []), ...(json.technicians ?? [])])
     } finally {
       setLoading(false)
     }

@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server"
+import { loadHeadWarningTexts } from "@/lib/operations/head-accounts"
 import { createAdminClient } from "@/lib/supabase/admin"
 import { isJobDelayed } from "@/lib/job-delay"
 import { loadStageDelayedSince } from "@/lib/job-delay-data"
@@ -74,6 +75,12 @@ export async function GET(request: Request) {
       ? new Map<string, string>()
       : await loadStageDelayedSince(supabase, (jobs ?? []) as any[])
 
+    // "No available head technician" (lib/operations/head-coverage.ts). The
+    // released list never warns, so it skips the extra account lookup.
+    const headWarnings = releasedOnly
+      ? new Map<string, string[]>()
+      : await loadHeadWarningTexts(supabase, (jobs ?? []) as { id: string; status: string; scheduled_at: string | null }[], teamRows ?? [])
+
     // Build maps
     const teamMap = new Map<string, { head_detailer: string; head_installer: string }>()
     for (const t of teamRows ?? []) {
@@ -114,6 +121,8 @@ export async function GET(request: Request) {
         created_at:              j.created_at,
         progress:                prog.total > 0 ? Math.round((prog.done / prog.total) * 100) : 0,
         is_overdue:              isJobDelayed(j) || lateStage.has(j.id),
+        // One sentence per head role with no available head (empty = fine).
+        head_warnings:           headWarnings.get(j.id) ?? [],
       }
     })
 

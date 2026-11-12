@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
-import { Plus, ArrowRight, CloudOff, WifiOff } from "lucide-react"
+import { Plus, ArrowRight, CloudOff, WifiOff, AlertTriangle } from "lucide-react"
 import { JobManagementSkeleton } from "@/app/dashboard/job-management/loading"
 import { PageHeader } from "@/components/ui/PageHeader"
 import { Button } from "@/components/ui/Button"
@@ -45,6 +45,8 @@ interface JobOrder {
   scheduledRaw: string
   status: JobStatus
   is_overdue: boolean
+  /** "No available head technician" sentences (lib/operations/head-coverage.ts). */
+  headWarnings: string[]
   /** Rows that only exist in the offline outbox (not yet synced to the server). */
   isQueued?: boolean
   queueStatus?: OutboxItem["status"]
@@ -68,6 +70,7 @@ function mapJobOrder(r: RawJobOrder): JobOrder {
     scheduledRaw: r.scheduled_at ?? "",
     status: (r.status as JobStatus) ?? "Pending",
     is_overdue: r.is_overdue ?? false,
+    headWarnings: r.head_warnings ?? [],
   }
 }
 
@@ -89,6 +92,7 @@ function mapQueuedRow(item: OutboxItem): JobOrder {
     scheduledRaw: d.scheduled_at || "",
     status: "Pending",
     is_overdue: false,
+    headWarnings: [],
     isQueued: true,
     queueStatus: item.status,
     queueError: item.status === "failed" ? item.errorMessage : undefined,
@@ -272,13 +276,24 @@ export default function JobManagementTable({ initialJobOrders }: { initialJobOrd
         job.isQueued ? (
           <span className="font-mono text-xs italic text-muted">Not synced</span>
         ) : (
-          <Link
-            href={`/dashboard/job-management/${job.id}`}
-            onClick={(e) => e.stopPropagation()}
-            className="font-mono text-xs text-primary hover:underline"
-          >
-            {job.displayId}
-          </Link>
+          <span className="inline-flex items-center gap-1.5">
+            <Link
+              href={`/dashboard/job-management/${job.id}`}
+              onClick={(e) => e.stopPropagation()}
+              className="font-mono text-xs text-primary hover:underline"
+            >
+              {job.displayId}
+            </Link>
+            {job.headWarnings.length > 0 && (
+              <span
+                title={job.headWarnings.join("\n")}
+                aria-label={job.headWarnings.join(" ")}
+                className="inline-flex text-status-warning"
+              >
+                <AlertTriangle className="h-3.5 w-3.5" />
+              </span>
+            )}
+          </span>
         ),
     },
     { key: "customer", header: "Customer", cell: (job) => <span className="font-semibold text-heading">{job.customer}</span> },

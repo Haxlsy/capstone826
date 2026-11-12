@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server"
 import { createAdminClient } from "@/lib/supabase/admin"
 import { getRoleCaller } from "@/lib/auth/caller"
+import { loadHeadAccounts } from "@/lib/operations/head-accounts"
 
 export async function GET() {
   try {
@@ -9,16 +10,10 @@ export async function GET() {
 
     const supabase = createAdminClient()
 
-    // Head detailers and head installers from user_account
-    const { data: heads, error: headsError } = await supabase
-      .from("user_account")
-      .select("id, full_name, role")
-      .in("role", ["head_detailer", "head_installer"])
-      .eq("is_archived", false)
-      .order("role")
-      .order("full_name")
-
-    if (headsError) return NextResponse.json({ error: headsError.message }, { status: 500 })
+    // Head detailers and head installers from user_account, with the
+    // availability Operations sets in the Technician module, so the pickers can
+    // mark one who's off on the job's day (they can still be picked).
+    const heads = await loadHeadAccounts(supabase)
 
     const headIds = (heads ?? []).map((h: any) => h.id)
 
@@ -94,6 +89,11 @@ export async function GET() {
       role:        h.role as "head_detailer" | "head_installer",
       source:      "user_account" as const,
       active_jobs: jobCountMap.get(h.id) ?? 0,
+      is_available:     h.is_available,
+      available_days:   h.available_days,
+      work_start_time:  h.work_start_time,
+      work_end_time:    h.work_end_time,
+      availability_override_date: h.availability_override_date,
     }))
 
     const crew_members = (crew ?? []).map((c: any) => ({

@@ -19,6 +19,7 @@ import { useToast } from "@/components/ui/Toast"
 import { isTechnicianAvailableToday } from "@/lib/technician-availability"
 import { workloadLabel } from "@/lib/operations/workload"
 import { orderStagesByCategory } from "@/lib/operations/stage-order"
+import { headPickerNote, workingDayFromDateKey } from "@/lib/operations/head-coverage"
 import { NAME_INPUT_BLOCKED_MESSAGE, joinName, sanitizeNameInput, splitFullName, validateName } from "@/lib/name"
 import { formatOperatingHours, isWithinOperatingHours, fmtTime12h, DEFAULT_OPERATING_DAYS, DEFAULT_OPERATING_OPEN_TIME, DEFAULT_OPERATING_CLOSE_TIME, type Weekday, type Holiday } from "@/types/chatbot"
 
@@ -50,7 +51,18 @@ interface HeadTech {
   full_name:   string
   role:        "head_detailer" | "head_installer"
   active_jobs: number
+  /** Set by Operations in the Technician module (absent from older payloads). */
+  is_available?:     boolean
+  available_days?:   string[]
+  availability_override_date?: string | null
 }
+
+const ALL_WEEK = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
+const headAvailability = (t: HeadTech) => ({
+  is_available: t.is_available ?? true,
+  available_days: t.available_days ?? ALL_WEEK,
+  availability_override_date: t.availability_override_date ?? null,
+})
 
 interface CrewMember {
   id:               string
@@ -94,6 +106,17 @@ function inputCls(hasError?: boolean, locked?: boolean) {
 
 function selectCls(hasError?: boolean) {
   return `${inputCls(hasError)} disabled:opacity-50`
+}
+
+/** Shown under a head select when the picked head is off on the job's day. */
+function HeadAvailabilityWarning({ note, role }: { note: string | null; role: string }) {
+  if (!note) return null
+  return (
+    <p className="text-xs text-status-warning">
+      {note}. You can still assign them, but the job order will show a warning to assign a substitute {role} until an
+      available one covers it.
+    </p>
+  )
 }
 
 function FieldError({ msg }: { msg?: string }) {
@@ -638,6 +661,13 @@ export default function AddJobOrderForm() {
 
   const headDetailers  = headTechs.filter((t) => t.role === "head_detailer")
   const headInstallers = headTechs.filter((t) => t.role === "head_installer")
+  // A head who's off on the scheduled day can still be picked (plans change),
+  // but is labelled, and the job will show "assign a substitute" until covered.
+  const headDay = workingDayFromDateKey(scheduledAt)
+  const headNote = (id: string | null) => {
+    const t = id ? headTechs.find((h) => h.id === id) : undefined
+    return t ? headPickerNote(headAvailability(t), headDay) : null
+  }
 
   function toggleCrew(id: string, set: Set<string>, setter: (s: Set<string>) => void, field: keyof FieldErrors) {
     const next = new Set(set)
@@ -1370,10 +1400,12 @@ export default function AddJobOrderForm() {
                   {headDetailers.map((t) => (
                     <option key={t.id} value={t.id}>
                       {t.full_name}{t.active_jobs > 0 ? ` (${t.active_jobs} active)` : ""}
+                      {headNote(t.id) ? ` · ${headNote(t.id)}` : ""}
                     </option>
                   ))}
                 </select>
                 <FieldError msg={fieldErrors.headDetailer} />
+                <HeadAvailabilityWarning note={headNote(selectedHeadDetailerId)} role="head detailer" />
               </div>
             )}
             {teamNeeds.installer && (
@@ -1390,10 +1422,12 @@ export default function AddJobOrderForm() {
                   {headInstallers.map((t) => (
                     <option key={t.id} value={t.id}>
                       {t.full_name}{t.active_jobs > 0 ? ` (${t.active_jobs} active)` : ""}
+                      {headNote(t.id) ? ` · ${headNote(t.id)}` : ""}
                     </option>
                   ))}
                 </select>
                 <FieldError msg={fieldErrors.headInstaller} />
+                <HeadAvailabilityWarning note={headNote(selectedHeadInstallerId)} role="head installer" />
               </div>
             )}
           </div>
