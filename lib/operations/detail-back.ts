@@ -12,6 +12,7 @@ const JOB_MANAGEMENT: DetailBack = {
 // used as a redirect target itself, only as a key into this fixed map.
 const ORIGINS: Record<string, DetailBack> = {
   records: { href: "/dashboard/job-order-records", label: "Back to Job Records" },
+  dashboard: { href: "/dashboard/operations", label: "Back to Dashboard" },
 }
 
 /**

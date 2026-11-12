@@ -3,6 +3,15 @@ import {createAdminClient} from '@/lib/supabase/admin'
 import { ACTIVE_JOB_STATUSES, isJobDelayed, stageDelayedSince, type StageRowForDelay } from '@/lib/job-delay'
 import { loadWorkSchedule } from '@/lib/operating-hours'
 
+/** A pending concern, for the Concerns card's list on the dashboard. */
+export interface ConcernSummary {
+  id: string
+  title: string
+  job_order_code: string | null
+  submitter_name: string | null
+  submitted_at: string
+}
+
 export interface JobSummary {
   id: string
   job_order_code: string
@@ -51,16 +60,22 @@ export async function getDashboardData(){
         .from("job_order")
         .select(
           `id, status, scheduled_at, actual_start_at, expected_completion_at, created_at, updated_at, job_order_code,
-           customer:customer_record_id(owner:customer!customer_id(full_name)),
+           customer:customer_record_id(plate_number, vehicle_unit, owner:customer!customer_id(full_name)),
            service:service_id(name)`
         )
         .gte("created_at", twelveMonthsAgo.toISOString())
         .order("created_at", { ascending: false }),
 
+      // Pending concerns: the count for the Concerns card, plus the rows for
+      // its list (newest first), like the other cards' job lists.
       supabase
         .from("concern")
-        .select("id", { count: "exact", head: true })
-        .eq("status", "Pending"),
+        .select(
+          "id, title, submitted_at, job:job_order_id(job_order_code), submitter:submitted_by_id(full_name)",
+          { count: "exact" },
+        )
+        .eq("status", "Pending")
+        .order("submitted_at", { ascending: false }),
 
       loadWorkSchedule(supabase),
     ])
@@ -90,6 +105,14 @@ export async function getDashboardData(){
     const teamRows = teamResult.data ?? []
     const stageRows = stageResult.data ?? []
     const concern_count = concernResult.count
+    const one = <T,>(v: T | T[] | null | undefined): T | null => (Array.isArray(v) ? v[0] ?? null : v ?? null)
+    const pending_concerns: ConcernSummary[] = (concernResult.data ?? []).map((c) => ({
+      id:             c.id as string,
+      title:          c.title as string,
+      job_order_code: one(c.job as { job_order_code: string | null } | { job_order_code: string | null }[] | null)?.job_order_code ?? null,
+      submitter_name: one(c.submitter as { full_name: string | null } | { full_name: string | null }[] | null)?.full_name ?? null,
+      submitted_at:   c.submitted_at as string,
+    }))
 
     const teamMap = new Map<string, { head_detailer: string | null; head_installer: string | null }>()
     for (const t of teamRows) {
@@ -201,6 +224,9 @@ export async function getDashboardData(){
           service:                r.service?.name ?? "—",
           head_detailer:          team.head_detailer,
           head_installer:         team.head_installer,
+          job_order_code:         r.job_order_code,
+          plate:                  jobCustomer(r).plate,
+          vehicle:                jobCustomer(r).vehicle,
         }
       })
 
@@ -208,6 +234,7 @@ export async function getDashboardData(){
       status_counts,
       jobs_by_status,
       concern_count: concern_count ?? 0,
+      pending_concerns,
       recent_jobs,
       calendar_jobs,
     }

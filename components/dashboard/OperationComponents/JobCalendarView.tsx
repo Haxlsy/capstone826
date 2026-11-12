@@ -1,7 +1,9 @@
 "use client"
 
-import { useMemo, useState } from "react"
-import { ChevronLeft, ChevronRight, ChevronDown, Clock, CalendarClock, CheckCircle2, User } from "lucide-react"
+import { useEffect, useMemo, useRef, useState } from "react"
+import { createPortal } from "react-dom"
+import Link from "next/link"
+import { ChevronLeft, ChevronRight, ChevronDown, CalendarClock, User } from "lucide-react"
 import { Card, CardBody } from "@/components/ui/Card"
 import { Modal } from "@/components/ui/Modal"
 import { JobStatusBadges } from "@/components/ui/Badge"
@@ -11,7 +13,8 @@ import { cn } from "@/lib/utils"
 import { statusStyle } from "@/lib/ui/status"
 import { fmtDateTimeShort } from "@/lib/time-display"
 import { displayJobStatus } from "@/lib/job-delay"
-import { tooltipAlign } from "@/lib/ui/calendar-tooltip"
+import { tooltipAlign, placeCalendarTooltip, type Box } from "@/lib/ui/calendar-tooltip"
+import { getInitials } from "@/hooks/useCurrentUser"
 
 const DAY_HEADERS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]
 const MONTH_NAMES = [
@@ -46,6 +49,9 @@ interface CalendarJob {
   service: string
   head_detailer: string | null
   head_installer: string | null
+  job_order_code?: string | null
+  plate?: string | null
+  vehicle?: string | null
 }
 
 function pad(n: number) {
@@ -68,13 +74,33 @@ function startOfWeek(d: Date) {
   return start
 }
 
-function CompactTooltip({ jobs, align = "left" }: { jobs: CalendarJob[]; align?: "left" | "right" }) {
-  return (
+/**
+ * The hover card for a day. Rendered on document.body with fixed coordinates
+ * (see placeCalendarTooltip) rather than inside the calendar card, whose
+ * overflow-hidden used to cut it off on the month's bottom rows. It starts
+ * hidden, is measured once mounted, then placed.
+ *
+ * It takes the mouse: React treats a portal as part of its parent, so moving
+ * onto the card counts as still hovering the day (and a click on it opens the
+ * day's details, like clicking the day). The short delay in scheduleHide
+ * covers the gap between the day and the card.
+ */
+function CompactTooltip({ jobs, align = "left", anchor }: { jobs: CalendarJob[]; align?: "left" | "right"; anchor: Box }) {
+  const place = (el: HTMLDivElement | null) => {
+    if (!el) return
+    const size = el.getBoundingClientRect()
+    const pos = placeCalendarTooltip(anchor, size, { width: window.innerWidth, height: window.innerHeight }, align)
+    el.style.top = `${pos.top}px`
+    el.style.left = `${pos.left}px`
+    el.style.visibility = "visible"
+  }
+
+  return createPortal(
     <div
-      className={cn(
-        "pointer-events-none absolute top-full z-30 mt-1 hidden w-52 md:block rounded-card border border-border-subtle bg-surface py-2 shadow-pop",
-        align === "right" ? "right-0" : "left-0",
-      )}
+      ref={place}
+      style={{ position: "fixed", top: 0, left: 0, visibility: "hidden" }}
+      data-calendar-tip=""
+      className="z-[90] hidden w-52 cursor-pointer md:block rounded-card border border-border-subtle bg-surface py-2 shadow-pop"
     >
       <p className="mb-1 border-b border-border-subtle px-3 pb-1.5 text-xs font-semibold text-body">
         {jobs.length} job{jobs.length !== 1 ? "s" : ""}
@@ -94,54 +120,104 @@ function CompactTooltip({ jobs, align = "left" }: { jobs: CalendarJob[]; align?:
       <p className="mt-1 border-t border-border-subtle px-3 pt-1.5 text-center text-[10px] text-muted">
         Click for full details
       </p>
+    </div>,
+    document.body,
+  )
+}
+
+/** A head technician on a job card: initials avatar, name, and role. */
+function TeamMember({ name, role }: { name: string | null; role: string }) {
+  return (
+    <div className="flex min-w-0 items-center gap-2">
+      {name ? (
+        <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-primary/10 text-[10px] font-semibold text-primary">
+          {getInitials(name)}
+        </span>
+      ) : (
+        <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-surface-muted text-muted">
+          <User className="h-3.5 w-3.5" aria-hidden="true" />
+        </span>
+      )}
+      <div className="min-w-0 leading-tight">
+        <p className={cn("truncate pr-1 text-xs", name ? "font-medium text-heading" : "italic text-muted")}>
+          {name ?? "Unassigned"}
+        </p>
+        <p className="text-[11px] text-muted">{role}</p>
+      </div>
     </div>
   )
 }
 
-function JobDetailBlock({ job }: { job: CalendarJob }) {
+/** One cell of the job card's time strip: a small label over its value. */
+function TimeCell({ label, value, tone = "default" }: { label: string; value: string; tone?: "default" | "muted" | "late" }) {
   return (
-    <div className="py-4 first:pt-0 last:pb-0">
-      <div className="mb-3 flex items-start justify-between gap-3">
+    <div className="min-w-0">
+      <p className="text-[10px] font-medium uppercase tracking-wide text-muted">{label}</p>
+      <p
+        className={cn(
+          "mt-0.5 truncate text-xs",
+          tone === "muted" ? "italic text-muted" : tone === "late" ? "font-medium text-status-delayed" : "font-medium text-heading",
+        )}
+      >
+        {value}
+      </p>
+    </div>
+  )
+}
+
+/**
+ * One job in the day-details modal and in "Today's jobs": job code and plate,
+ * customer, service and vehicle, the two heads, then the times. Clicking it
+ * opens the job order's details; its Back link returns to the dashboard.
+ */
+function JobDetailBlock({ job }: { job: CalendarJob }) {
+  const isDelayed = displayJobStatus(job.status, job.is_overdue) === "Delayed"
+  const ids = [job.job_order_code, job.plate].filter(Boolean).join(" · ")
+  const subtitle = [job.service !== "—" ? job.service : null, job.vehicle].filter(Boolean).join(" · ")
+
+  return (
+    <Link
+      href={`/dashboard/job-management/${job.id}?from=dashboard`}
+      aria-label={`View job order details for ${job.customer}`}
+      className="group relative -mx-3 block cursor-pointer rounded-card px-3 py-4 transition-shadow hover:bg-surface-subtle/40 hover:shadow-pop focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
+    >
+      {/* Hover hint, centred on the block's top edge so it never covers its content. */}
+      <span
+        aria-hidden="true"
+        className="pointer-events-none absolute left-1/2 top-0 z-10 -translate-x-1/2 -translate-y-1/2 whitespace-nowrap rounded-sm bg-heading px-2 py-0.5 text-[11px] font-medium text-white opacity-0 shadow-pop transition-opacity group-hover:opacity-100"
+      >
+        Click to view job order details
+      </span>
+
+      <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
-          <p className="truncate text-sm font-semibold text-heading">{job.customer}</p>
-          <p className="mt-0.5 text-xs text-body">{job.service}</p>
+          {ids && <p className="truncate font-mono text-[11px] text-muted">{ids}</p>}
+          <p className="mt-0.5 truncate text-sm font-semibold text-heading">{job.customer}</p>
+          {subtitle && <p className="mt-0.5 truncate text-xs text-muted">{subtitle}</p>}
         </div>
-        <JobStatusBadges status={job.status} isOverdue={job.is_overdue} stacked />
+        <JobStatusBadges status={job.status} isOverdue={job.is_overdue} />
       </div>
 
-      <div className="mb-3 grid grid-cols-2 gap-x-4 gap-y-2 text-xs">
-        {(["Head Detailer", "Head Installer"] as const).map((role, i) => {
-          const val = i === 0 ? job.head_detailer : job.head_installer
-          return (
-            <div key={role}>
-              <p className="mb-0.5 text-[10px] font-semibold uppercase tracking-wide text-muted">
-                {role}
-              </p>
-              <div className="flex items-center gap-1 text-heading">
-                <User className="h-2.5 w-2.5 shrink-0 text-muted" />
-                <span className={val ? "" : "italic text-muted"}>{val ?? "Unassigned"}</span>
-              </div>
-            </div>
-          )
-        })}
+      {/* Each head is centred in its half of the card. */}
+      <div className="mt-3 grid grid-cols-2 justify-items-center gap-3">
+        <TeamMember name={job.head_detailer} role="Detailer" />
+        <TeamMember name={job.head_installer} role="Installer" />
       </div>
 
-      <div className="space-y-1.5 border-t border-border-subtle pt-3 text-xs">
-        <TimelineRow icon={CalendarClock} label="Scheduled" value={fmtDateTimeShort(job.scheduled_at)} />
-        <TimelineRow
-          icon={Clock}
+      <div className="mt-3 grid grid-cols-3 gap-3 border-t border-border-subtle pt-3">
+        <TimeCell label="Scheduled" value={fmtDateTimeShort(job.scheduled_at)} />
+        <TimeCell
           label="Started"
-          value={job.actual_start_at ? fmtDateTimeShort(job.actual_start_at) : "Not started yet"}
-          muted={!job.actual_start_at}
+          value={job.actual_start_at ? fmtDateTimeShort(job.actual_start_at) : "Not started"}
+          tone={job.actual_start_at ? "default" : "muted"}
         />
-        <TimelineRow
-          icon={CheckCircle2}
+        <TimeCell
           label="Est. End"
           value={job.expected_completion_at ? fmtDateTimeShort(job.expected_completion_at) : "—"}
-          muted={!job.expected_completion_at}
+          tone={!job.expected_completion_at ? "muted" : isDelayed ? "late" : "default"}
         />
       </div>
-    </div>
+    </Link>
   )
 }
 
@@ -153,7 +229,40 @@ interface Props {
 export default function JobCalendarView({ loading, calendarJobs }: Props) {
   const [viewMode, setViewMode] = useState<ViewMode>("month")
   const [anchorDate, setAnchorDate] = useState(() => new Date())
-  const [hoveredKey, setHoveredKey] = useState<string | null>(null)
+  // The hovered day and where its cell is on screen, for placing its hover card.
+  const [hovered, setHovered] = useState<{ key: string; rect: Box } | null>(null)
+  const hoveredKey = hovered?.key ?? null
+
+  // Leaving a day hides its card after a short delay, so the mouse can cross
+  // the gap onto the card; coming back (to the day or the card) cancels it.
+  const hideTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const cancelHide = () => {
+    if (hideTimer.current) clearTimeout(hideTimer.current)
+    hideTimer.current = null
+  }
+  const scheduleHide = () => {
+    cancelHide()
+    hideTimer.current = setTimeout(() => setHovered(null), 200)
+  }
+  useEffect(() => cancelHide, [])
+
+  // The card is fixed on screen, so hide it when the page scrolls or resizes
+  // instead of letting it drift away from its day. Scrolling the card's own
+  // job list doesn't count.
+  useEffect(() => {
+    if (!hovered) return
+    const hide = (e: Event) => {
+      const target = e.target
+      if (target instanceof Element && target.closest("[data-calendar-tip]")) return
+      setHovered(null)
+    }
+    window.addEventListener("scroll", hide, true)
+    window.addEventListener("resize", hide)
+    return () => {
+      window.removeEventListener("scroll", hide, true)
+      window.removeEventListener("resize", hide)
+    }
+  }, [hovered])
   const [selectedDate, setSelectedDate] = useState<Date | null>(null)
 
   const today = new Date()
@@ -265,8 +374,17 @@ export default function JobCalendarView({ loading, calendarJobs }: Props) {
     return (
       <div
         className="relative"
-        onMouseEnter={() => hasJobs && setHoveredKey(key)}
-        onMouseLeave={() => setHoveredKey(null)}
+        onMouseEnter={(e) => {
+          // An empty day leaves the pending hide running, so crossing one
+          // on the way to the card doesn't keep a stale card open.
+          if (!hasJobs) return
+          cancelHide()
+          const r = e.currentTarget.getBoundingClientRect()
+          setHovered((prev) =>
+            prev?.key === key ? prev : { key, rect: { top: r.top, bottom: r.bottom, left: r.left, right: r.right } },
+          )
+        }}
+        onMouseLeave={scheduleHide}
         onClick={() => hasJobs && setSelectedDate(date)}
       >
         <div
@@ -313,7 +431,7 @@ export default function JobCalendarView({ loading, calendarJobs }: Props) {
             </>
           )}
         </div>
-        {showTip && <CompactTooltip jobs={dayJobs} align={tooltipAlign(date.getDay())} />}
+        {showTip && hovered && <CompactTooltip jobs={dayJobs} align={tooltipAlign(date.getDay())} anchor={hovered.rect} />}
       </div>
     )
   }
@@ -448,27 +566,5 @@ export default function JobCalendarView({ loading, calendarJobs }: Props) {
         </div>
       </Modal>
     </Card>
-  )
-}
-
-function TimelineRow({
-  icon: Icon,
-  label,
-  value,
-  muted,
-}: {
-  icon: React.ComponentType<{ className?: string }>
-  label: string
-  value: string
-  muted?: boolean
-}) {
-  return (
-    <div className="flex items-center justify-between">
-      <span className="flex items-center gap-1.5 text-muted">
-        <Icon className="h-3 w-3" />
-        {label}
-      </span>
-      <span className={muted ? "italic text-muted" : "font-medium text-heading"}>{value}</span>
-    </div>
   )
 }

@@ -14,6 +14,8 @@ import { Select, FieldLabel } from "@/components/ui/Field"
 import { fmtDateTime } from "@/lib/time-display"
 import { isWithinRecordDateRange } from "@/lib/operations/job-records-filter"
 import { logExport } from "@/lib/client/log-export"
+import { compareValues, toggleSort, type SortDir, type SortKind } from "@/lib/table-sort"
+import { SortHeader } from "@/components/ui/SortHeader"
 
 interface JobRecord {
   id: string
@@ -34,6 +36,20 @@ interface JobRecord {
 // are no hardcoded hex values in feature code.
 const PRINT_BORDER = "#dddddd"
 const PRINT_HEAD_BG = "#f7f8f8"
+
+type SortColumn = "displayId" | "customer" | "plate" | "service" | "head_detailer" | "head_installer" | "scheduled_at" | "released_at"
+
+/** What each sortable column compares, and whether it's text or a date. */
+const SORT_KIND: Record<SortColumn, SortKind> = {
+  displayId: "text",
+  customer: "text",
+  plate: "text",
+  service: "text",
+  head_detailer: "text",
+  head_installer: "text",
+  scheduled_at: "time",
+  released_at: "time",
+}
 
 export default function JobOrderRecords({ jobOrders: rawOrders }: { jobOrders: any[] }) {
   const router = useRouter()
@@ -62,6 +78,16 @@ export default function JobOrderRecords({ jobOrders: rawOrders }: { jobOrders: a
   const [endDate, setEndDate] = useState("")
   const [currentPage, setCurrentPage] = useState(1)
   const [pageSize, setPageSize] = useState(15)
+  // Newest releases first by default; clicking a header sorts by that column.
+  const [sortBy, setSortBy] = useState<SortColumn>("released_at")
+  const [sortDir, setSortDir] = useState<SortDir>("desc")
+
+  function handleSort(column: SortColumn) {
+    const next = toggleSort({ sortBy, sortDir }, column)
+    setSortBy(next.sortBy)
+    setSortDir(next.sortDir)
+    setCurrentPage(1)
+  }
 
   const [pendingService, setPendingService] = useState("All")
   const [pendingStart, setPendingStart] = useState("")
@@ -84,7 +110,7 @@ export default function JobOrderRecords({ jobOrders: rawOrders }: { jobOrders: a
     setSearchQuery(""); setCurrentPage(1)
   }
 
-  const filtered = records.filter((r) => {
+  const matched = records.filter((r) => {
     const q = searchQuery.toLowerCase()
     if (
       q &&
@@ -97,6 +123,9 @@ export default function JobOrderRecords({ jobOrders: rawOrders }: { jobOrders: a
     if (!isWithinRecordDateRange(r, startDate, endDate)) return false
     return true
   })
+
+  // Sorted after filtering and before paging; the exports use this order too.
+  const filtered = [...matched].sort((a, b) => compareValues(a[sortBy], b[sortBy], SORT_KIND[sortBy], sortDir))
 
   function exportCSV() {
     const headers = ["Job Order ID", "Customer", "Plate", "Vehicle", "Service", "Head Detailer", "Head Installer", "Scheduled Start", "Created", "Released"]
@@ -163,11 +192,11 @@ export default function JobOrderRecords({ jobOrders: rawOrders }: { jobOrders: a
   const paginated = filtered.slice((page - 1) * pageSize, page * pageSize)
 
   const columns: Column<JobRecord>[] = [
-    { key: "id", header: "Job Order ID", cell: (r) => <span className="font-mono text-xs text-body">{r.displayId}</span> },
-    { key: "customer", header: "Customer", cell: (r) => <span className="font-semibold text-heading">{r.customer}</span> },
+    { key: "id", header: <SortHeader label="Job Order ID" column="displayId" sortBy={sortBy} sortDir={sortDir} onSort={handleSort} />, cell: (r) => <span className="font-mono text-xs text-body">{r.displayId}</span> },
+    { key: "customer", header: <SortHeader label="Customer" column="customer" sortBy={sortBy} sortDir={sortDir} onSort={handleSort} />, cell: (r) => <span className="font-semibold text-heading">{r.customer}</span> },
     {
       key: "vehicle",
-      header: "Vehicle",
+      header: <SortHeader label="Vehicle" column="plate" sortBy={sortBy} sortDir={sortDir} onSort={handleSort} />,
       cell: (r) => (
         <>
           <span className="text-xs font-medium text-primary">{r.plate}</span>
@@ -175,21 +204,21 @@ export default function JobOrderRecords({ jobOrders: rawOrders }: { jobOrders: a
         </>
       ),
     },
-    { key: "service", header: "Service", cell: (r) => <span className="text-body">{r.service}</span> },
+    { key: "service", header: <SortHeader label="Service" column="service" sortBy={sortBy} sortDir={sortDir} onSort={handleSort} />, cell: (r) => <span className="text-body">{r.service}</span> },
     {
       key: "hd",
-      header: "Head Detailer",
+      header: <SortHeader label="Head Detailer" column="head_detailer" sortBy={sortBy} sortDir={sortDir} onSort={handleSort} />,
       cell: (r) => <span className={r.head_detailer === "Unassigned" ? "italic text-muted" : "text-body"}>{r.head_detailer}</span>,
     },
     {
       key: "hi",
-      header: "Head Installer",
+      header: <SortHeader label="Head Installer" column="head_installer" sortBy={sortBy} sortDir={sortDir} onSort={handleSort} />,
       cell: (r) => <span className={r.head_installer === "Unassigned" ? "italic text-muted" : "text-body"}>{r.head_installer}</span>,
     },
-    { key: "sched", header: "Scheduled Start", cell: (r) => <span className="text-body">{fmtDateTime(r.scheduled_at)}</span> },
+    { key: "sched", header: <SortHeader label="Scheduled Start" column="scheduled_at" sortBy={sortBy} sortDir={sortDir} onSort={handleSort} kind="time" />, cell: (r) => <span className="text-body">{fmtDateTime(r.scheduled_at)}</span> },
     {
       key: "released",
-      header: "Released",
+      header: <SortHeader label="Released" column="released_at" sortBy={sortBy} sortDir={sortDir} onSort={handleSort} kind="time" />,
       cell: (r) => (
         <span className="flex items-center gap-1.5 text-status-release">
           <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-status-release" />

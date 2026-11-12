@@ -8,6 +8,8 @@ export type OperationsDashboardData = {
   status_counts: Record<string, number>
   jobs_by_status: Record<string, { id: string; job_order_code: string; customer_name: string; service_name: string; status: string; is_overdue: boolean }[]>
   concern_count: number
+  /** Optional so a cached response from before this field existed still type-checks. */
+  pending_concerns?: { id: string; title: string; job_order_code: string | null; submitter_name: string | null; submitted_at: string }[]
   recent_jobs: {
     id: string
     display_id: string

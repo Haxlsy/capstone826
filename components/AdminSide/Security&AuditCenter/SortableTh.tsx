@@ -1,6 +1,6 @@
 "use client"
 
-import { ChevronUp, ChevronDown } from "lucide-react"
+import { ChevronUp, ChevronDown, ChevronsUpDown } from "lucide-react"
 import { toggleSort, type AuditSortColumn, type AuditSortDir } from "@/lib/admin/audit-log-query"
 
 /** How to phrase a direction for this column's kind of data — "newest" means
@@ -35,7 +35,10 @@ export default function SortableTh({
         className="inline-flex items-center gap-1 text-xs font-semibold text-muted uppercase tracking-wide hover:text-body transition-colors"
       >
         {label}
-        {active && (sortDir === "asc" ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />)}
+        {/* Inactive columns show a faint up/down icon so it's clear they can be sorted. */}
+        {active
+          ? (sortDir === "asc" ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />)
+          : <ChevronsUpDown className="w-3 h-3 opacity-40" aria-hidden="true" />}
       </button>
     </th>
   )

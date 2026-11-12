@@ -11,6 +11,13 @@ describe("resolveDetailBack", () => {
     })
   })
 
+  it("returns to the Operations dashboard when opened from its calendar", () => {
+    expect(resolveDetailBack("dashboard")).toEqual({
+      href: "/dashboard/operations",
+      label: "Back to Dashboard",
+    })
+  })
+
   it("defaults to Job Management when there is no origin", () => {
     expect(resolveDetailBack(undefined)).toEqual({
       href: "/dashboard/job-management",

@@ -62,7 +62,7 @@ export async function GET(request: Request) {
         for (const r of viaJob ?? []) if (r.customer_id) ids.add(r.customer_id as string)
       }
       idFilter = [...ids]
-      if (idFilter.length === 0) return NextResponse.json({ customers: [], hasMore: false })
+      if (idFilter.length === 0) return NextResponse.json({ customers: [], hasMore: false, total: 0 })
     }
 
     let query = supabase
@@ -73,6 +73,8 @@ export async function GET(request: Request) {
            id, plate_number, vehicle_unit, created_at, booked_by_customer_id,
            booked_by:customer!booked_by_customer_id(full_name, psid)
          )`,
+        // The total drives the page count on the Customer Records page.
+        { count: "exact" },
       )
       .order("created_at", { ascending: false })
 
@@ -80,7 +82,7 @@ export async function GET(request: Request) {
     if (bounds.lt)  query = query.lt("created_at", bounds.lt)
     if (idFilter)   query = query.in("id", idFilter)
 
-    const { data, error } = await query.range(offset, offset + limit - 1)
+    const { data, error, count } = await query.range(offset, offset + limit - 1)
     if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
     // A vehicle in service can't be edited or deleted — flag it here so the UI
@@ -113,7 +115,8 @@ export async function GET(request: Request) {
         }),
     }))
 
-    return NextResponse.json({ customers, hasMore: rows.length === limit })
+    const hasMore = count != null ? offset + rows.length < count : rows.length === limit
+    return NextResponse.json({ customers, hasMore, total: count ?? offset + rows.length })
   } catch (err: unknown) {
     return NextResponse.json({ error: err instanceof Error ? err.message : String(err) }, { status: 500 })
   }
