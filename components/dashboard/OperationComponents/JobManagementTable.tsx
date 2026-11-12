@@ -17,6 +17,8 @@ import { Badge, JobStatusBadges } from "@/components/ui/Badge"
 import { Select, FieldLabel } from "@/components/ui/Field"
 import { useToast } from "@/components/ui/Toast"
 import { useOfflineSyncContext } from "@/components/dashboard/OperationComponents/OfflineSyncContext"
+import { SortHeader } from "@/components/ui/SortHeader"
+import { compareValues, toggleSort, type SortDir, type SortKind } from "@/lib/table-sort"
 import { fmtDate } from "@/lib/time-display"
 import { displayJobStatus } from "@/lib/job-delay"
 import { remove as removeQueued } from "@/lib/offline/outbox"
@@ -53,6 +55,36 @@ interface JobOrder {
 }
 
 type RawJobOrder = JobOrdersData["job_orders"][number]
+
+type SortColumn = "displayId" | "customer" | "plate" | "service" | "headDetailer" | "headInstaller" | "scheduledRaw" | "status"
+
+const SORT_KIND: Record<SortColumn, SortKind> = {
+  displayId: "text",
+  customer: "text",
+  plate: "text",
+  service: "text",
+  headDetailer: "text",
+  headInstaller: "text",
+  scheduledRaw: "time",
+  status: "number",
+}
+
+/** Status sorts in workflow order (by the status shown, so Delayed jobs sit
+ *  right after Ongoing), not alphabetically. */
+const STATUS_RANK: Record<string, number> = {
+  Pending: 0,
+  Ongoing: 1,
+  Delayed: 2,
+  "For Rework": 3,
+  "For Inspection": 4,
+  "For Release": 5,
+  Released: 6,
+}
+
+function sortValue(job: JobOrder, column: SortColumn): string | number | null {
+  if (column === "status") return STATUS_RANK[displayJobStatus(job.status, job.is_overdue)] ?? null
+  return job[column]
+}
 
 function mapJobOrder(r: RawJobOrder): JobOrder {
   return {
@@ -111,6 +143,17 @@ export default function JobManagementTable({ initialJobOrders }: { initialJobOrd
   const [fetchError, setFetchError] = useState<string | null>(null)
   const [currentPage, setCurrentPage] = useState(1)
   const [pageSize, setPageSize] = useState(15)
+  // null keeps the list's own order (newest created first); clicking a header
+  // sorts by that column.
+  const [sortBy, setSortBy] = useState<SortColumn | null>(null)
+  const [sortDir, setSortDir] = useState<SortDir>("asc")
+
+  function handleSort(column: SortColumn) {
+    const next = toggleSort({ sortBy, sortDir }, column)
+    setSortBy(next.sortBy)
+    setSortDir(next.sortDir)
+    setCurrentPage(1)
+  }
 
 
   const [filterService, setFilterService] = useState("")
@@ -211,7 +254,7 @@ export default function JobManagementTable({ initialJobOrders }: { initialJobOrd
     return [...new Set(names)].sort()
   }, [jobOrders])
 
-  const filtered = useMemo(
+  const matched = useMemo(
     () =>
       displayRows.filter((job) => {
         const isDelayed = displayJobStatus(job.status, job.is_overdue) === "Delayed"
@@ -247,6 +290,17 @@ export default function JobManagementTable({ initialJobOrders }: { initialJobOrd
     [displayRows, activeTab, searchQuery, filterService, filterTechnician, filterDateFrom, filterDateTo],
   )
 
+  // Sorted after filtering and before paging. Offline-queued rows stay on top.
+  const filtered = useMemo(() => {
+    if (!sortBy) return matched
+    const kind = SORT_KIND[sortBy]
+    return [...matched].sort(
+      (a, b) =>
+        Number(Boolean(b.isQueued)) - Number(Boolean(a.isQueued)) ||
+        compareValues(sortValue(a, sortBy), sortValue(b, sortBy), kind, sortDir),
+    )
+  }, [matched, sortBy, sortDir])
+
   const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize))
   const page = Math.min(currentPage, totalPages)
   const paginated = filtered.slice((page - 1) * pageSize, page * pageSize)
@@ -267,7 +321,7 @@ export default function JobManagementTable({ initialJobOrders }: { initialJobOrd
   const columns: Column<JobOrder>[] = [
     {
       key: "id",
-      header: "Job Order ID",
+      header: <SortHeader label="Job Order ID" column="displayId" sortBy={sortBy} sortDir={sortDir} onSort={handleSort} />,
       cell: (job) =>
         job.isQueued ? (
           <span className="font-mono text-xs italic text-muted">Not synced</span>
@@ -281,10 +335,10 @@ export default function JobManagementTable({ initialJobOrders }: { initialJobOrd
           </Link>
         ),
     },
-    { key: "customer", header: "Customer", cell: (job) => <span className="font-semibold text-heading">{job.customer}</span> },
+    { key: "customer", header: <SortHeader label="Customer" column="customer" sortBy={sortBy} sortDir={sortDir} onSort={handleSort} />, cell: (job) => <span className="font-semibold text-heading">{job.customer}</span> },
     {
       key: "vehicle",
-      header: "Vehicle",
+      header: <SortHeader label="Vehicle" column="plate" sortBy={sortBy} sortDir={sortDir} onSort={handleSort} />,
       cell: (job) => (
         <span className="text-xs">
           <span className="text-primary">{job.plate}</span>
@@ -292,10 +346,10 @@ export default function JobManagementTable({ initialJobOrders }: { initialJobOrd
         </span>
       ),
     },
-    { key: "service", header: "Service", cell: (job) => <span className="text-body">{job.service}</span> },
+    { key: "service", header: <SortHeader label="Service" column="service" sortBy={sortBy} sortDir={sortDir} onSort={handleSort} />, cell: (job) => <span className="text-body">{job.service}</span> },
     {
       key: "hd",
-      header: "Head Detailer",
+      header: <SortHeader label="Head Detailer" column="headDetailer" sortBy={sortBy} sortDir={sortDir} onSort={handleSort} />,
       cell: (job) => (
         <span className={job.headDetailer === "Unassigned" ? "italic text-muted" : "text-body"}>
           {job.headDetailer}
@@ -304,17 +358,17 @@ export default function JobManagementTable({ initialJobOrders }: { initialJobOrd
     },
     {
       key: "hi",
-      header: "Head Installer",
+      header: <SortHeader label="Head Installer" column="headInstaller" sortBy={sortBy} sortDir={sortDir} onSort={handleSort} />,
       cell: (job) => (
         <span className={job.headInstaller === "Unassigned" ? "italic text-muted" : "text-body"}>
           {job.headInstaller}
         </span>
       ),
     },
-    { key: "sched", header: "Scheduled Start", cell: (job) => <span className="text-body">{job.scheduled}</span> },
+    { key: "sched", header: <SortHeader label="Scheduled Start" column="scheduledRaw" sortBy={sortBy} sortDir={sortDir} onSort={handleSort} kind="time" />, cell: (job) => <span className="text-body">{job.scheduled}</span> },
     {
       key: "status",
-      header: "Status",
+      header: <SortHeader label="Status" column="status" sortBy={sortBy} sortDir={sortDir} onSort={handleSort} kind="number" hints={{ asc: "workflow order", desc: "reverse workflow order" }} />,
       cell: (job) =>
         job.isQueued ? (
           <div className="flex flex-col items-start gap-1">

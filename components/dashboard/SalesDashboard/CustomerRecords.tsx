@@ -39,6 +39,7 @@ import {
   type ExportableCustomerRecord,
 } from "@/lib/sales/customer-records-export"
 import { CustomerRecordsListSkeleton } from "@/app/dashboard/sales/customer-records/loading"
+import PaginationBar from "@/components/AdminSide/Security&AuditCenter/PaginationBar"
 
 type MessengerVia = "own" | "booked_by" | null
 
@@ -65,7 +66,7 @@ interface Customer {
   vehicles: Vehicle[]
 }
 
-const PAGE_SIZE = 20
+type PageSize = 10 | 15 | 20 | 100
 // The API caps a page at 100; exports page through it at that size.
 const EXPORT_PAGE_SIZE = 100
 
@@ -96,8 +97,9 @@ export default function CustomerRecords() {
   const { isOnline, lockProps } = useOfflineLock()
   const [customers, setCustomers] = useState<Customer[]>([])
   const [loading, setLoading] = useState(true)
-  const [loadingMore, setLoadingMore] = useState(false)
-  const [hasMore, setHasMore] = useState(false)
+  const [page, setPage] = useState(1)
+  const [pageSize, setPageSize] = useState<PageSize>(20)
+  const [total, setTotal] = useState(0)
   const [fetchErr, setFetchErr] = useState<string | null>(null)
   const [search, setSearch] = useState("")
   // Date-added filter: the pending* values follow the inputs; the applied ones
@@ -110,7 +112,10 @@ export default function CustomerRecords() {
   const [expanded, setExpanded] = useState<Record<string, boolean>>({})
 
   const isFirstRender = useRef(true)
-  const sentinelRef = useRef<HTMLDivElement>(null)
+  // The search the list last loaded for: a change in it waits out the typing
+  // debounce, while a page or filter change loads right away.
+  const lastSearch = useRef("")
+  const listTopRef = useRef<HTMLDivElement>(null)
 
   // Customer-level edit (name / phone / email) and vehicle-level edit (plate / unit).
   const [editingCustomerId, setEditingCustomerId] = useState<string | null>(null)
@@ -157,19 +162,25 @@ export default function CustomerRecords() {
     return params
   }, [])
 
-  // Fetches the first page for a (possibly new) search / date range, replacing
-  // whatever's currently shown — the lazy-loaded pages beyond it are handled
-  // by loadMore() below.
-  const load = useCallback(async (q = "", from = "", to = "") => {
-    setLoading(true)
+  // Fetches one page for the current search / date range, replacing whatever's
+  // shown. `quiet` skips the skeleton, for background refreshes.
+  const load = useCallback(async (q: string, from: string, to: string, pg: number, size: number, quiet = false) => {
+    if (!quiet) setLoading(true)
     setFetchErr(null)
     try {
-      const params = buildParams(q, from, to, { limit: String(PAGE_SIZE) })
+      const params = buildParams(q, from, to, { limit: String(size), offset: String((pg - 1) * size) })
       const res = await fetch(`/api/sales/customer-records?${params}`)
       const json = await res.json()
       if (!res.ok) throw new Error(json?.error ?? "Failed to load records")
-      setCustomers(shapeCustomers(json.customers ?? []))
-      setHasMore(Boolean(json.hasMore))
+      const rows = shapeCustomers(json.customers ?? [])
+      const count = Number(json.total ?? 0)
+      // Past the last page (records were deleted meanwhile): go to the last one.
+      if (rows.length === 0 && count > 0 && pg > 1) {
+        setPage(Math.ceil(count / size))
+        return
+      }
+      setCustomers(rows)
+      setTotal(count)
     } catch (err: unknown) {
       setFetchErr(err instanceof Error ? err.message : String(err))
     } finally {
@@ -177,58 +188,31 @@ export default function CustomerRecords() {
     }
   }, [buildParams])
 
-  // Appends the next page — triggered by the sentinel scrolling into view.
-  const loadMore = useCallback(async () => {
-    setLoadingMore(true)
-    try {
-      const params = buildParams(search.trim(), dateFrom, dateTo, {
-        limit: String(PAGE_SIZE),
-        offset: String(customers.length),
-      })
-      const res = await fetch(`/api/sales/customer-records?${params}`)
-      const json = await res.json()
-      if (!res.ok) throw new Error(json?.error ?? "Failed to load more records")
-      setCustomers((prev) => [...prev, ...shapeCustomers(json.customers ?? [])])
-      setHasMore(Boolean(json.hasMore))
-    } catch {
-      // A failed "load more" isn't worth a page-level error — what's already
-      // shown stays usable; the user can just retry by scrolling again.
-    } finally {
-      setLoadingMore(false)
-    }
-  }, [customers.length, search, dateFrom, dateTo, buildParams])
-
   useEffect(() => {
+    const q = search.trim()
     if (isFirstRender.current) {
       isFirstRender.current = false
-      load()
+      lastSearch.current = q
+      load(q, dateFrom, dateTo, page, pageSize)
       return
     }
-    const t = setTimeout(() => {
-      load(search, dateFrom, dateTo)
-    }, 300)
+    const typing = q !== lastSearch.current
+    lastSearch.current = q
+    const t = setTimeout(() => load(q, dateFrom, dateTo, page, pageSize), typing ? 300 : 0)
     return () => clearTimeout(t)
-  }, [search, dateFrom, dateTo, load])
+  }, [search, dateFrom, dateTo, page, pageSize, load])
 
-  // Lazy-loads the next page as the sentinel at the bottom of the list
-  // scrolls into view — no "Load More" click needed.
-  useEffect(() => {
-    const el = sentinelRef.current
-    if (!el || !hasMore) return
-    const observer = new IntersectionObserver(
-      (entries) => {
-        if (entries[0]?.isIntersecting && !loading && !loadingMore) loadMore()
-      },
-      { rootMargin: "200px" },
-    )
-    observer.observe(el)
-    return () => observer.disconnect()
-  }, [hasMore, loading, loadingMore, loadMore])
+  // Page controls: move to another page and bring the list's top into view.
+  const goToPage = (fn: (p: number) => number) => {
+    setPage(fn)
+    listTopRef.current?.scrollIntoView({ behavior: "smooth", block: "start" })
+  }
 
   // Live updates when a customer is created/edited elsewhere, and when a job
   // order starts or finishes (a vehicle's "In Service" lock appears the moment
   // a job is created against it and clears when it's Released/Cancelled).
-  useRealtimeRefetch(["customer", "customer_record", "job_order"], () => load(search, dateFrom, dateTo))
+  // Reloads the page being viewed, not page 1.
+  useRealtimeRefetch(["customer", "customer_record", "job_order"], () => load(search.trim(), dateFrom, dateTo, page, pageSize, true))
 
   // ── Customer edit ────────────────────────────────────────────────────────
   const customerInService = (c: Customer) => c.vehicles.find((v) => v.activeJobOrderCode)?.activeJobOrderCode ?? null
@@ -356,8 +340,10 @@ export default function CustomerRecords() {
         const res = await fetch(`/api/sales/customers/${deleteCustomer.id}`, { method: "DELETE" })
         const json = await res.json().catch(() => ({}))
         if (!res.ok) throw new Error(json?.error ?? "Failed to delete")
-        const removedId = deleteCustomer.id
-        setCustomers((prev) => prev.filter((c) => c.id !== removedId))
+        // Reload so the page refills from the next one. If this was the last
+        // customer on a later page, step back a page instead.
+        if (customers.length === 1 && page > 1) setPage((p) => p - 1)
+        else await load(search.trim(), dateFrom, dateTo, page, pageSize, true)
         toast.success("Customer deleted.")
       }
     } catch (err: unknown) {
@@ -376,12 +362,14 @@ export default function CustomerRecords() {
     if (err) return
     setDateFrom(pendingFrom)
     setDateTo(pendingTo)
+    setPage(1)
   }
 
   function resetDateFilter() {
     setPendingFrom(""); setPendingTo("")
     setDateFrom(""); setDateTo("")
     setDateErr(null)
+    setPage(1)
   }
 
   const rangeLabel = dateRangeLabel(dateFrom, dateTo, fmtDate)
@@ -389,7 +377,7 @@ export default function CustomerRecords() {
     .filter(Boolean)
     .join(" · ")
 
-  // The screen only holds one lazily-loaded page, so an export re-reads every
+  // The screen only holds one page, so an export re-reads every
   // match for the current search — paging the same GET the list uses — and
   // flattens it to one row per vehicle.
   async function fetchAllMatching(): Promise<ExportableCustomerRecord[]> {
@@ -510,10 +498,10 @@ export default function CustomerRecords() {
         )}
       </Card>
 
-      <div className="flex flex-wrap items-center gap-3">
+      <div ref={listTopRef} className="flex flex-wrap items-center gap-3 scroll-mt-4">
         <SearchBar
           value={search}
-          onChange={setSearch}
+          onChange={(v) => { setSearch(v); setPage(1) }}
           placeholder="Search by name, plate, or contact…"
           containerClassName="max-w-sm flex-1"
         />
@@ -794,11 +782,14 @@ export default function CustomerRecords() {
       </div>
       )}
 
-      {/* Lazy-load sentinel — scrolling this into view fetches the next page. */}
-      {hasMore && (
-        <div ref={sentinelRef} className="py-2 text-center text-xs text-muted">
-          {loadingMore ? "Loading more…" : ""}
-        </div>
+      {!loading && !fetchErr && total > 0 && (
+        <PaginationBar
+          total={total}
+          pageSize={pageSize}
+          setPageSize={setPageSize}
+          page={page}
+          setPage={goToPage}
+        />
       )}
 
       <ConfirmModal
