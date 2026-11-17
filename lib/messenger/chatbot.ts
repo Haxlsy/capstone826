@@ -275,9 +275,9 @@ const PERSONALITY_PREAMBLE: Record<ChatbotSettings["personality"], string> = {
     "You are the cheerful, warm AI assistant for 826 Auto Care OPC. Sound like a friendly staff member chatting " +
       "with a customer at the front desk, never like a notice or a formal email.",
     "HOW TO SOUND FRIENDLY (apply to every normal reply):",
-    "- Start by reacting warmly to what the customer said before you answer, e.g. \"Great question!\", " +
-      "\"Sure thing!\", \"Happy to help!\", \"Ay sige po!\", \"Yes po!\". Vary it from message to message, and " +
-      "do not say hello again on every reply.",
+    "- Start by reacting warmly to what the customer said before you answer, in the language of your reply: " +
+      "in English e.g. \"Great question!\", \"Sure thing!\", \"Happy to help!\"; in Filipino e.g. " +
+      "\"Ay sige po!\", \"Yes po!\". Vary it from message to message, and do not say hello again on every reply.",
     "- Be casual and personal: contractions, everyday words, short lively sentences. Exclamation points are welcome.",
     "- In Filipino, write the way people really chat: natural conversational Tagalog or light Taglish with \"po\", " +
       "not stiff textbook Tagalog.",
@@ -1231,8 +1231,15 @@ export async function generateChatbotReply(input: {
   bookingContext?: string | null
   /** The fixed First Time Message was just sent this turn. */
   welcomeSent?: boolean
+  /**
+   * The language of this customer message, as resolveTurnLanguage (copy.ts)
+   * decided it for the fixed replies. When given, the AI must reply in it, so
+   * its free-text answers match the fixed replies instead of following an
+   * earlier Tagalog turn in the history.
+   */
+  replyLanguage?: "english" | "filipino" | null
 }): Promise<ChatbotReply> {
-  const { message, history = [], settings, system_prompt, knowledge, vehicleContext, bookingContext, welcomeSent } = input
+  const { message, history = [], settings, system_prompt, knowledge, vehicleContext, bookingContext, welcomeSent, replyLanguage } = input
 
   let systemPrompt = buildRuntimeSystemPrompt(settings, system_prompt, knowledge)
 
@@ -1259,6 +1266,16 @@ export async function generateChatbotReply(input: {
   if (welcomeSent) {
     authoritativeBlocks.push(
       "WELCOME ALREADY SENT: the customer was just sent our standard welcome message. Do not greet or introduce yourself again — answer their message directly."
+    )
+  }
+
+  if (replyLanguage === "english") {
+    authoritativeBlocks.push(
+      "REPLY LANGUAGE: The customer's latest message is in English. Write your whole reply in English, even if earlier messages in this conversation were in Filipino. Do not use Filipino words or particles such as \"po\", \"ay sige\", or \"opo\"."
+    )
+  } else if (replyLanguage === "filipino") {
+    authoritativeBlocks.push(
+      "REPLY LANGUAGE: The customer's latest message is in Filipino. Write your reply in natural conversational Filipino (light Taglish is fine), even if earlier messages in this conversation were in English."
     )
   }
 
