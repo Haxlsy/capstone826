@@ -893,6 +893,7 @@ async function handleInboundMessage(
           knowledge,
           vehicleContext,
           welcomeSent,
+          replyLanguage: effectiveLang,
         })
 
     reply = result.reply?.trim() || null
@@ -1435,6 +1436,7 @@ async function handleInboundMessage(
           knowledge,
           vehicleContext,
           bookingContext,
+          replyLanguage: effectiveLang,
         })
         if (flowResult.reply?.trim()) reply = flowResult.reply.trim()
         // Merge, never replace — a partial re-gen must not drop fields already

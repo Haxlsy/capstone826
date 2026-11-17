@@ -8,6 +8,7 @@ import {
 import { getAdminCaller } from "@/lib/auth/guard"
 import { chatMessageSchema, chatbotSettingsSchema } from "@/types/chatbot"
 import { readJsonBody } from "@/lib/http/read-json-body"
+import { resolveTurnLanguage } from "@/lib/messenger/copy"
 
 const PreviewSchema = z.object({
   message:  z.string().trim().min(1, "message is required."),
@@ -39,6 +40,11 @@ export async function POST(request: Request) {
       settings: settings ?? config?.settings ?? null,
       system_prompt: settings ? null : config?.system_prompt ?? null,
       knowledge,
+      // Same language rule as the live Messenger webhook.
+      replyLanguage: resolveTurnLanguage(
+        message,
+        history.filter((h) => h.role === "user").map((h) => h.text),
+      ),
     })
 
     return NextResponse.json({
