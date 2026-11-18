@@ -3,7 +3,7 @@ import { cookies } from "next/headers"
 import { createClient } from "@/lib/supabase/server"
 import { createAdminClient } from "@/lib/supabase/admin"
 import { logAudit } from "@/hooks/audit-helpers"
-import { normalizeName, validateName } from "@/lib/name"
+import { formatPersonName, normalizeName, validateName } from "@/lib/name"
 import { normalizeEmail, validateEmail } from "@/lib/email/validation"
 import { sendEmailChangedOldAddressEmail, sendEmailChangedNewAddressEmail } from "@/lib/email/mailer"
 import { getRoleCaller } from "@/lib/auth/caller"
@@ -26,7 +26,8 @@ export async function POST(request: Request) {
   if (nameError) {
     return NextResponse.json({ error: nameError }, { status: 400 })
   }
-  const cleanName = `${cleanFirst} ${cleanLast}`
+  // Saved in the shared name format ("Ma. Clara Santos Jr."), see lib/name.ts.
+  const cleanName = `${formatPersonName(cleanFirst)} ${formatPersonName(cleanLast)}`
 
   // Email is optional (some workers have none); blank means "no email".
   const cleanEmail = typeof email === "string" && email.trim() ? normalizeEmail(email) : null
@@ -85,7 +86,7 @@ export async function POST(request: Request) {
 
   const { error: profileError } = await supabase
     .from("user_account")
-    .update({ first_name: cleanFirst, last_name: cleanLast, full_name: cleanName, email: cleanEmail })
+    .update({ first_name: formatPersonName(cleanFirst), last_name: formatPersonName(cleanLast), full_name: cleanName, email: cleanEmail })
     .eq("id", userId)
 
   if (profileError) {

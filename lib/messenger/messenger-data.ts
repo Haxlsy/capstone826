@@ -1,4 +1,5 @@
 import { createAdminClient } from "@/lib/supabase/admin"
+import { formatPersonNameOrNull } from "@/lib/name"
 import { toHistoryMessages } from "@/lib/messenger/chatbot"
 import type { CustomerDetails } from "@/types/chatbot"
 
@@ -148,7 +149,8 @@ export async function setBookingDraft(
   const { error } = await supabase
     .from("messenger_conversation")
     .update({
-      draft_name:    d?.full_name      ?? null,
+      // Shared name format ("Ma. Clara Santos Jr."), see lib/name.ts.
+      draft_name:    formatPersonNameOrNull(d?.full_name),
       draft_contact: d?.contact_number ?? null,
       draft_plate:   d?.plate_number   ?? null,
       draft_vehicle: d?.vehicle_unit   ?? null,

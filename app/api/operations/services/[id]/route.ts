@@ -8,6 +8,7 @@ import { getRoleCaller } from "@/lib/auth/caller"
 import { findDuplicateStageName } from "@/lib/admin/service-stage-validation"
 import { emojiError, stageNamesEmojiError } from "@/lib/text"
 import { readJsonBody } from "@/lib/http/read-json-body"
+import { formatServiceName } from "@/lib/name"
 
 // GET /api/operations/services/[id]
 // Returns a single service with its stages (including category info) for editing.
@@ -189,7 +190,9 @@ export async function PATCH(
       )
     }
 
-    const trimmedName = serviceName.trim()
+    // Saved in Title Case with shop acronyms kept ("Full Body PPF"), see
+    // formatServiceName in lib/name.ts.
+    const trimmedName = formatServiceName(serviceName)
 
     // Pre-check for a friendlier message than the 23505 the unique index
     // below would otherwise raise — normalized the same way (case/space
@@ -206,7 +209,9 @@ export async function PATCH(
 
     // ── Smart stage update (avoid FK violations on job_stage_progress) ──
     type StagePayload = { dbId: string | null; name: string; category_id: string; sequence_order: number; stage_duration_mins: number }
-    const stageList: StagePayload[] = Array.isArray(stages) ? stages : []
+    const stageList: StagePayload[] = Array.isArray(stages)
+      ? (stages as StagePayload[]).map((s) => (typeof s?.name === "string" ? { ...s, name: formatServiceName(s.name) } : s))
+      : []
 
     const { error: updateError } = await supabase
       .from("service")

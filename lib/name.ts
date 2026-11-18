@@ -85,3 +85,77 @@ export function validateFullName(raw: string | null | undefined, label = "Name",
   if (normalizeName(raw).split(" ").length < 2) return "Enter both a first and last name."
   return null
 }
+
+// ── Capitalization ───────────────────────────────────────────────────────────
+// Names are saved in one consistent format ("Juan Dela Cruz", not "JUAN DELA
+// CRUZ" or "juan dela cruz"). The same rules are mirrored in SQL by
+// supabase/migrations/20261118000001_format_names.sql for existing rows.
+
+/** Short forms written with a period: "Ma." (Maria), "Jr.", "Sr.", "Sto.", "Sta.". */
+const NAME_ABBREVIATIONS: Record<string, string> = { ma: "Ma.", jr: "Jr.", sr: "Sr.", sto: "Sto.", sta: "Sta." }
+/** Generational suffixes kept in capitals. V and X are left out: a lone letter is an initial. */
+const ROMAN_SUFFIXES = new Set(["ii", "iii", "iv"])
+
+const isMixedCase = (w: string) => w !== w.toUpperCase() && w !== w.toLowerCase()
+
+/** "o'BRIEN" / "MARY-JANE" → "O'Brien" / "Mary-Jane": a capital after every hyphen and apostrophe. */
+function capitalizeParts(word: string): string {
+  return word
+    .toLowerCase()
+    .split(/([-'’])/)
+    .map((part) => (part ? part[0].toUpperCase() + part.slice(1) : part))
+    .join("")
+}
+
+/** One word of a person's name. */
+function formatNameWord(word: string): string {
+  const bare = word.replace(/\.$/, "").toLowerCase()
+  if (NAME_ABBREVIATIONS[bare]) return NAME_ABBREVIATIONS[bare]
+  if (ROMAN_SUFFIXES.has(bare)) return bare.toUpperCase()
+  // A single letter is a middle initial: "a" / "A." → "A."
+  if (/^\p{L}\.?$/u.test(word)) return `${word[0].toUpperCase()}.`
+  // Typed with deliberate mixed case ("McArthur", "DeGuzman"): keep it.
+  if (isMixedCase(word)) return word
+  const cased = capitalizeParts(word)
+  // "MCDONALD" → "McDonald" (only when something follows the "Mc").
+  return /^Mc\p{L}{2,}/u.test(cased) ? `Mc${cased[2].toUpperCase()}${cased.slice(3)}` : cased
+}
+
+/**
+ * A person's name in the format every screen shows: "MA CLARA A SANTOS JR" →
+ * "Ma. Clara A. Santos Jr.", "juan dela cruz" → "Juan Dela Cruz". Words typed
+ * in deliberate mixed case are kept. Also trims and collapses spaces.
+ */
+export function formatPersonName(raw: string | null | undefined): string {
+  return normalizeName(raw).split(" ").filter(Boolean).map(formatNameWord).join(" ")
+}
+
+/** `formatPersonName` that keeps null/empty as null, for optional DB fields. */
+export function formatPersonNameOrNull(raw: string | null | undefined): string | null {
+  const v = formatPersonName(raw)
+  return v ? v : null
+}
+
+/** Shop terms always written in capitals in a service or stage name. */
+const SERVICE_ACRONYMS = new Set(["ppf", "suv", "auv", "uv", "ir", "ac", "led", "hid", "oem", "diy", "pdr", "cr"])
+/** Joining words kept lowercase inside a title ("Wash and Wax"). */
+const SERVICE_SMALL_WORDS = new Set(["and", "or", "of", "with", "for", "the", "in", "on", "to", "&"])
+
+/**
+ * A service, service type or stage name in Title Case, keeping shop acronyms
+ * and codes: "CERAMIC COATING" → "Ceramic Coating", "full body ppf" →
+ * "Full Body PPF", "F1 Mod - Installer Stage" stays as typed.
+ */
+export function formatServiceName(raw: string | null | undefined): string {
+  const words = normalizeName(raw).split(" ").filter(Boolean)
+  return words
+    .map((word, i) => {
+      const lower = word.toLowerCase()
+      if (SERVICE_ACRONYMS.has(lower)) return lower.toUpperCase()
+      if (/\d/.test(word)) return word
+      if (isMixedCase(word)) return word
+      if (i > 0 && SERVICE_SMALL_WORDS.has(lower)) return lower
+      return capitalizeParts(word)
+    })
+    .join(" ")
+}

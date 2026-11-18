@@ -3,7 +3,7 @@ import { NextResponse } from "next/server"
 import { createAdminClient } from "@/lib/supabase/admin"
 import { getAuditCaller, getRoleCaller } from "@/lib/auth/caller"
 import { logAuditCall } from "@/hooks/audit-helpers"
-import { normalizeName, validateName } from "@/lib/name"
+import { formatPersonName, normalizeName, validateName } from "@/lib/name"
 import { manilaToday } from "@/lib/technician-availability"
 import { readJsonBody } from "@/lib/http/read-json-body"
 
@@ -140,9 +140,10 @@ export async function PATCH(request: Request) {
       const lastName  = normalizeName(last_name)
       const nameError = validateName(firstName, "First name") ?? validateName(lastName, "Last name")
       if (nameError) return NextResponse.json({ error: nameError }, { status: 400 })
-      updates.first_name = firstName
-      updates.last_name  = lastName
-      updates.full_name  = `${firstName} ${lastName}`
+      // Saved in the shared name format ("Ma. Clara Santos Jr."), see lib/name.ts.
+      updates.first_name = formatPersonName(firstName)
+      updates.last_name  = formatPersonName(lastName)
+      updates.full_name  = `${updates.first_name} ${updates.last_name}`
     }
     if (role === "detailer" || role === "installer") updates.role = role
     if (Array.isArray(available_days))    updates.available_days = available_days
@@ -220,9 +221,10 @@ export async function POST(request: Request) {
     const { data, error } = await supabase
       .from("technician")
       .insert({
-        first_name:       firstName,
-        last_name:        lastName,
-        full_name:        `${firstName} ${lastName}`,
+        // Saved in the shared name format ("Ma. Clara Santos Jr."), see lib/name.ts.
+        first_name:       formatPersonName(firstName),
+        last_name:        formatPersonName(lastName),
+        full_name:        `${formatPersonName(firstName)} ${formatPersonName(lastName)}`,
         role,
         is_available:     true,
         available_days:   Array.isArray(available_days) ? available_days : ALL_DAYS,

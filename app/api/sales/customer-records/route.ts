@@ -8,6 +8,7 @@ import { findActiveJobsByCustomerRecord } from "@/lib/sales/customer-record-lock
 import { dateAddedBounds } from "@/lib/sales/customer-records-filter"
 import { decideRecordCustomer } from "@/lib/sales/record-customer"
 import { readJsonBody } from "@/lib/http/read-json-body"
+import { formatPersonName } from "@/lib/name"
 
 type One<T> = T | T[] | null | undefined
 const first = <T,>(v: One<T>): T | null => (Array.isArray(v) ? (v[0] ?? null) : (v ?? null))
@@ -142,7 +143,9 @@ export async function POST(request: Request) {
     if (!parsed.success) {
       return NextResponse.json({ error: parsed.error.issues[0]?.message ?? "Validation failed." }, { status: 400 })
     }
-    const { full_name, contact_number, plate_number, vehicle_unit, psid } = parsed.data
+    const { contact_number, plate_number, vehicle_unit, psid } = parsed.data
+    // Saved in the shared name format ("Ma. Clara Santos Jr."), see lib/name.ts.
+    const full_name = formatPersonName(parsed.data.full_name)
     const email = parsed.data.email || null
     const supabase = createAdminClient()
     const phone = normalizePhone(contact_number) || contact_number
