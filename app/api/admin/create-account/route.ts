@@ -4,7 +4,7 @@ import { z } from "zod"
 import { createClient } from "@/lib/supabase/server"
 import { createAdminClient } from "@/lib/supabase/admin"
 import { logAudit } from "@/hooks/audit-helpers"
-import { validateName } from "@/lib/name"
+import { formatPersonName, validateName } from "@/lib/name"
 import { validateEmail, normalizeEmail } from "@/lib/email/validation"
 import { sendAccountCreatedEmail } from "@/lib/email/mailer"
 import { getRoleCaller } from "@/lib/auth/caller"
@@ -56,7 +56,10 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: parsed.error.issues[0].message }, { status: 400 })
   }
 
-  const { firstName, lastName, email, username, password, role } = parsed.data
+  const { email, username, password, role } = parsed.data
+  // Saved in the shared name format ("Ma. Clara Santos Jr."), see lib/name.ts.
+  const firstName = formatPersonName(parsed.data.firstName)
+  const lastName = formatPersonName(parsed.data.lastName)
   const fullName = `${firstName} ${lastName}`
   const normalizedEmail = email ? normalizeEmail(email) : null
 

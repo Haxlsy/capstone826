@@ -7,7 +7,7 @@ import { getInitials } from "@/hooks/useCurrentUser"
 import { fmtDate } from "@/lib/time-display"
 import { dateRangeError, dateRangeLabel } from "@/lib/sales/customer-records-filter"
 import { EMAIL_PATTERN } from "@/lib/messenger/patterns"
-import { NAME_INPUT_BLOCKED_MESSAGE, joinName, normalizeName, sanitizeNameInput, splitFullName, validateName } from "@/lib/name"
+import { NAME_INPUT_BLOCKED_MESSAGE, formatPersonName, joinName, normalizeName, sanitizeNameInput, splitFullName, validateName } from "@/lib/name"
 import { PageHeader } from "@/components/ui/PageHeader"
 import { SearchBar } from "@/components/ui/SearchBar"
 import { Button } from "@/components/ui/Button"
@@ -262,7 +262,7 @@ export default function CustomerRecords() {
       setCustomers((prev) =>
         prev.map((x) =>
           x.id === c.id
-            ? { ...x, fullName: nameChanged ? fullName : customerDraft.originalName, contactNumber: customerDraft.contactNumber.trim(), email: email || null }
+            ? { ...x, fullName: nameChanged ? formatPersonName(fullName) : customerDraft.originalName, contactNumber: customerDraft.contactNumber.trim(), email: email || null }
             : x,
         ),
       )

@@ -7,6 +7,7 @@ import { getRoleCaller } from "@/lib/auth/caller"
 import { findDuplicateStageName } from "@/lib/admin/service-stage-validation"
 import { emojiError, stageNamesEmojiError } from "@/lib/text"
 import { readJsonBody } from "@/lib/http/read-json-body"
+import { formatServiceName } from "@/lib/name"
 
 interface Stage {
   name:               string
@@ -46,7 +47,11 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Service type is required." }, { status: 400 })
   }
 
-  const stageList: Stage[] = Array.isArray(stages) ? stages : []
+  // Service and stage names are saved in Title Case with shop acronyms kept
+  // ("Full Body PPF"), see formatServiceName in lib/name.ts.
+  const stageList: Stage[] = Array.isArray(stages)
+    ? (stages as Stage[]).map((s) => (typeof s?.name === "string" ? { ...s, name: formatServiceName(s.name) } : s))
+    : []
   const estimatedDurationMins = stageList.reduce((acc, s) => acc + (s.stage_duration_mins ?? 0), 0)
 
   const emojiErr =
@@ -64,7 +69,7 @@ export async function POST(request: Request) {
     )
   }
 
-  const trimmedName = serviceName.trim()
+  const trimmedName = formatServiceName(serviceName)
 
   // Pre-check for a friendlier message than the 23505 the unique index
   // below would otherwise raise — normalized the same way the index is

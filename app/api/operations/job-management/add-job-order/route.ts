@@ -12,7 +12,7 @@ import { isWithinOperatingHours, formatOperatingHours } from "@/types/chatbot"
 import { normalizePhone } from "@/lib/phone"
 import { sendPushToUser } from "@/lib/push/send"
 import { getRoleCaller } from "@/lib/auth/caller"
-import { validateFullName } from "@/lib/name"
+import { formatPersonNameOrNull, formatServiceName, validateFullName } from "@/lib/name"
 import { decideManualCustomer } from "@/lib/operations/manual-customer"
 import { findActiveJobsByCustomerRecord } from "@/lib/sales/customer-record-lock"
 import { readJsonBody } from "@/lib/http/read-json-body"
@@ -50,17 +50,30 @@ export async function POST(request: Request) {
       installer_ids,
       scheduled_at,
       // Service overrides
-      custom_service_name,
+      custom_service_name: rawCustomServiceName,
       custom_description,
       custom_duration_mins,
-      custom_stages,
+      custom_stages: rawCustomStages,
       // Manual customer fields
-      customer_name,
+      customer_name: rawCustomerName,
       contact_number,
       email,
       plate_number,
       vehicle_unit,
     } = body
+
+    // Names are saved in the shared formats (lib/name.ts): the customer as
+    // "Ma. Clara Santos Jr.", service and stage names in Title Case with shop
+    // acronyms kept ("Full Body PPF").
+    const customer_name = typeof rawCustomerName === "string" ? formatPersonNameOrNull(rawCustomerName) : rawCustomerName
+    const custom_service_name = typeof rawCustomServiceName === "string" && rawCustomServiceName.trim()
+      ? formatServiceName(rawCustomServiceName)
+      : rawCustomServiceName
+    const custom_stages = Array.isArray(rawCustomStages)
+      ? (rawCustomStages as CustomStage[]).map((cs) =>
+          typeof cs?.custom_name === "string" ? { ...cs, custom_name: formatServiceName(cs.custom_name) } : cs,
+        )
+      : rawCustomStages
 
     if (!service_id) {
       return NextResponse.json({ error: "service_id is required." }, { status: 400 })

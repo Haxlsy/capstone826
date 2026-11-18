@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server"
+import { formatPersonNameOrNull } from "@/lib/name"
 import { createAdminClient } from "@/lib/supabase/admin"
 import {
   getOrCreateConversationByPsid,
@@ -1545,7 +1546,8 @@ async function handleInboundMessage(
       escalated_at: timestamp,
       last_message: messageBody,
       conflict_note:     conflictNote,
-      extracted_name:    extracted?.full_name      ?? null,
+      // Shared name format ("Ma. Clara Santos Jr."), see lib/name.ts.
+      extracted_name:    formatPersonNameOrNull(extracted?.full_name),
       extracted_contact: extracted?.contact_number ?? null,
       extracted_plate:   extracted?.plate_number   ?? null,
       extracted_vehicle: extracted?.vehicle_unit   ?? null,

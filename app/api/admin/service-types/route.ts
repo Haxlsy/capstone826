@@ -6,6 +6,7 @@ import { auditCallerOf } from "@/lib/auth/caller"
 import { logAuditCall } from "@/hooks/audit-helpers"
 import { hasEmoji } from "@/lib/text"
 import { readJsonBody } from "@/lib/http/read-json-body"
+import { formatServiceName } from "@/lib/name"
 
 // GET /api/admin/service-types
 // Returns all service types sorted alphabetically.
@@ -49,7 +50,8 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: parsed.error.issues[0].message }, { status: 400 })
     }
 
-    const name  = parsed.data.name.trim()
+    // Title Case with shop acronyms kept, see formatServiceName in lib/name.ts.
+    const name  = formatServiceName(parsed.data.name)
     const admin = createAdminClient()
 
     const { error } = await admin.from("service_type").insert({ name, display_color: "teal" })
