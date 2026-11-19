@@ -120,7 +120,7 @@ export function SummaryCards({ initialData }: { initialData?: DashboardData }) {
           <span className="text-3xl font-bold text-heading">{data?.chatbotEfficiency ?? 0}</span>
           <span className="text-lg text-muted mb-0.5">%</span>
         </div>
-        <p className="text-xs text-muted">Conversations handled by Gemini without human escalation</p>
+        <p className="text-xs text-muted">Handovers to Sales the chatbot completed on its own (bookings and reports, not requests for a person)</p>
       </Card>
     </div>
   )
