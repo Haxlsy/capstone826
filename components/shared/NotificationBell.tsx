@@ -21,8 +21,11 @@ const dotStyles: Record<string, string> = {
 }
 
 export default function NotificationBell({ variant = "dark" }: { variant?: "dark" | "light" }) {
-  const { notifications, unreadCount, delayedJobCount, markOne, markAll, refresh } = useNotifications()
+  const { notifications, unreadCount, delayedJobCount: liveDelayed, markOne, markAll, refresh } = useNotifications()
   const { role } = useCurrentUser()
+  // The live delay count is Operations' (its banner opens their Job Order
+  // page); Admins see the bell for the data-retention digest only.
+  const delayedJobCount = role === "operations" ? liveDelayed : 0
   const [open, setOpen] = useState(false)
   const ref = useRef<HTMLDivElement>(null)
   const router = useRouter()
@@ -94,6 +97,7 @@ export default function NotificationBell({ variant = "dark" }: { variant?: "dark
           </div>
 
           <ul className="max-h-80 divide-y divide-border-subtle overflow-y-auto">
+            {/* Operations' live delay banner (it links to their Job Order page). */}
             {delayedJobCount > 0 && (
               <li
                 onClick={() => { setOpen(false); router.push("/dashboard/job-management") }}

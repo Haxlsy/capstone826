@@ -48,7 +48,7 @@ export async function GET(request: Request) {
     // Base query
     let query = supabase
       .from("service")
-      .select("id, name, service_type, description, estimated_duration_mins, is_archived, created_at", { count: "exact" })
+      .select("id, name, service_type, description, estimated_duration_mins, is_archived, archived_at, created_at", { count: "exact" })
       .order("created_at", { ascending: false })
 
     if (search) query = query.ilike("name", `%${search}%`)
@@ -70,6 +70,7 @@ export async function GET(request: Request) {
       description:             s.description ?? null,
       estimated_duration_mins: s.estimated_duration_mins ?? null,
       is_archived:             s.is_archived,
+      archived_at:             s.archived_at ?? null,
       stage_count:             countMap[s.id] ?? 0,
       job_order_count:         jobCountMap[s.id] ?? 0,
     }))

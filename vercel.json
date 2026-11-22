@@ -1,5 +1,12 @@
 {
   "crons": [
-    { "path": "/api/cron/job-delays", "schedule": "*/5 * * * *" }
+    {
+      "path": "/api/cron/job-delays",
+      "schedule": "*/5 * * * *"
+    },
+    {
+      "path": "/api/cron/data-retention",
+      "schedule": "0 23 * * *"
+    }
   ]
 }

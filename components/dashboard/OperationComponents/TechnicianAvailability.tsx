@@ -24,6 +24,9 @@ import { roleStyle } from "@/lib/ui/roles"
 import { NAME_INPUT_BLOCKED_MESSAGE, normalizeName, sanitizeNameInput, validateName } from "@/lib/name"
 import { isTechnicianAvailableToday, manilaToday } from "@/lib/technician-availability"
 import { OnJobList, type OnJobEntry } from "@/components/shared/OnJobList"
+import { useRetentionPolicy } from "@/hooks/useRetentionPolicy"
+import { archiveWarning } from "@/lib/retention/copy"
+import { DeletesAfter } from "@/components/shared/RetentionDate"
 
 type ActiveJob = OnJobEntry
 
@@ -35,6 +38,7 @@ interface Technician {
   role: "detailer" | "installer"
   is_available: boolean
   is_archived: boolean
+  archived_at?: string | null
   available_days: string[]
   work_start_time: string
   work_end_time: string
@@ -91,6 +95,8 @@ export default function TechnicianAvailability() {
 
   const [formConfirm, setFormConfirm] = useState<"add" | "edit" | null>(null)
   const [archiveTarget, setArchiveTarget] = useState<Technician | null>(null)
+  // The period in the archive warning and the archived rows' deletion dates.
+  const retention = useRetentionPolicy()
   const [archiving, setArchiving] = useState(false)
   const [archiveError, setArchiveError] = useState<string | null>(null)
 
@@ -289,7 +295,7 @@ export default function TechnicianAvailability() {
     })
     const json = await res.json()
     if (!res.ok) throw new Error(json?.error ?? `Failed to ${archived ? "archive" : "restore"} technician`)
-    setTechnicians((prev) => prev.map((t) => (t.id === tech.id ? { ...t, is_archived: archived } : t)))
+    setTechnicians((prev) => prev.map((t) => (t.id === tech.id ? { ...t, is_archived: archived, archived_at: archived ? new Date().toISOString() : null } : t)))
   }
 
   async function confirmArchiveToggle() {
@@ -448,6 +454,7 @@ export default function TechnicianAvailability() {
                           {tech.is_archived ? (
                             <div className="mt-0.5">
                               <Badge className="bg-surface-muted text-muted">Archived</Badge>
+                              <DeletesAfter anchor={tech.archived_at} policy={retention} className="mt-1" />
                             </div>
                           ) : onJob ? (
                             <OnJobList jobs={tech.active_jobs} linkBase="/dashboard/job-management" />
@@ -621,8 +628,8 @@ export default function TechnicianAvailability() {
         message={
           archiveError ??
           (archiveTarget?.is_archived
-            ? `Restore ${archiveTarget?.full_name ?? "this technician"} to the active roster?`
-            : `Archive ${archiveTarget?.full_name ?? "this technician"}? They'll be removed from assignment and the roster, but their past job records stay intact. You can restore them from the Archived filter.`)
+            ? `Restore ${archiveTarget?.full_name ?? "this technician"} to the active roster? Restoring cancels their scheduled deletion.`
+            : `Archive ${archiveTarget?.full_name ?? "this technician"}? They'll be removed from assignment and the roster, but their past job records stay intact. You can restore them from the Archived filter. ${archiveWarning(retention?.months)}`)
         }
         confirmLabel={archiving
           ? (archiveTarget?.is_archived ? "Restoring…" : "Archiving…")

@@ -17,6 +17,9 @@ import { cn } from "@/lib/utils"
 import { roleStyle, roleLabel } from "@/lib/ui/roles"
 import { initials } from "@/lib/ui/avatar"
 import { useRealtimeRefetch } from "@/hooks/useRealtimeRefetch"
+import { useRetentionPolicy } from "@/hooks/useRetentionPolicy"
+import { archiveWarning } from "@/lib/retention/copy"
+import { DeletesAfter } from "@/components/shared/RetentionDate"
 
 type UserRole = "operations" | "sales" | "head_detailer" | "head_installer"
 
@@ -29,6 +32,7 @@ interface Account {
   username: string
   role: UserRole
   is_archived: boolean
+  archived_at?: string | null
   created_at: string
 }
 
@@ -57,6 +61,8 @@ export default function AccountTable() {
   const [copied, setCopied] = useState(false)
   const [refetchKey, setRefetchKey] = useState(0)
   const [archiveTarget, setArchiveTarget] = useState<Account | null>(null)
+  // The period in the archive warning and the archived rows' deletion dates.
+  const retention = useRetentionPolicy()
   const [archiving, setArchiving] = useState(false)
 
   const forceRefetch = () => setRefetchKey((k) => k + 1)
@@ -174,7 +180,12 @@ export default function AccountTable() {
     {
       key: "status",
       header: "Status",
-      cell: (a) => <StatusBadge status={a.is_archived ? "archived" : "active"} />,
+      cell: (a) => (
+        <div>
+          <StatusBadge status={a.is_archived ? "archived" : "active"} />
+          {a.is_archived && <DeletesAfter anchor={a.archived_at} policy={retention} className="mt-1" />}
+        </div>
+      ),
     },
     {
       key: "actions",
@@ -337,7 +348,7 @@ export default function AccountTable() {
         onClose={() => !archiving && setArchiveTarget(null)}
         onConfirm={() => archiveTarget && handleArchiveToggle(archiveTarget)}
         title={archiveTarget?.is_archived ? "Restore Account" : "Archive Account"}
-        message={`${archiveTarget?.is_archived ? "Restore" : "Archive"} ${archiveTarget?.full_name ?? "this account"}?`}
+        message={`${archiveTarget?.is_archived ? "Restore" : "Archive"} ${archiveTarget?.full_name ?? "this account"}? ${archiveTarget?.is_archived ? "Restoring cancels its scheduled deletion." : archiveWarning(retention?.months)}`}
         confirmLabel={archiving ? (archiveTarget?.is_archived ? "Restoring…" : "Archiving…") : "Confirm"}
         tone={archiveTarget?.is_archived ? "primary" : "danger"}
         loading={archiving}

@@ -19,7 +19,7 @@ export async function GET(request: Request) {
 
   let query = supabase
     .from("user_account")
-    .select("id, full_name, first_name, last_name, email, username, role, is_archived, created_at", {
+    .select("id, full_name, first_name, last_name, email, username, role, is_archived, archived_at, created_at", {
       count: "exact",
     })
     .order("created_at", { ascending: false })

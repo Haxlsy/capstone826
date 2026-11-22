@@ -11,6 +11,7 @@ import { MfaEmailReminder } from "@/components/shared/MfaEmailReminder"
 import { ServiceWorkerRegistration } from "@/components/shared/ServiceWorkerRegistration"
 import ChangePasswordSettings from "@/components/shared/ChangePasswordSettings"
 import OfflineSyncSettings from "@/components/dashboard/OperationComponents/OfflineSyncSettings"
+import DataRetentionSettings from "@/components/shared/DataRetentionSettings"
 
 /**
  * Single dashboard shell for operations / sales / admin. The nav config is
@@ -38,7 +39,12 @@ export default function DashboardShell({ children }: { children: React.ReactNode
   const shell = (
     <AppShell
       nav={resolvedNav}
-      settingsContent={<ChangePasswordSettings embedded extraSection={area === "operations" ? <OfflineSyncSettings /> : undefined} />}
+      settingsContent={
+        <ChangePasswordSettings
+          embedded
+          extraSection={<>{area === "operations" && <OfflineSyncSettings />}<DataRetentionSettings /></>}
+        />
+      }
       fallbackName={fallbackName}
       showBell={showBell}
       showOfflineBanner={area === "operations"}

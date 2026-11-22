@@ -9,6 +9,8 @@ import { dateAddedBounds } from "@/lib/sales/customer-records-filter"
 import { decideRecordCustomer } from "@/lib/sales/record-customer"
 import { readJsonBody } from "@/lib/http/read-json-body"
 import { formatPersonName } from "@/lib/name"
+import { customerAnchors, loadRetentionPolicy } from "@/lib/retention/run"
+import { expiringAnchorBound, isExpiringSoon } from "@/lib/retention/plan"
 
 type One<T> = T | T[] | null | undefined
 const first = <T,>(v: One<T>): T | null => (Array.isArray(v) ? (v[0] ?? null) : (v ?? null))
@@ -39,6 +41,21 @@ export async function GET(request: Request) {
     const bounds = dateAddedBounds(searchParams.get("from"), searchParams.get("to"))
 
     const supabase = createAdminClient()
+
+    // Data retention: which customers are within 30 days of automatic
+    // deletion (their badge), and the "Expiring soon" filter (?expiring=1,
+    // linked from the weekly retention notice).
+    const expiringOnly = searchParams.get("expiring") === "1"
+    const policy = await loadRetentionPolicy(supabase)
+    const now = new Date()
+    const bound = expiringAnchorBound(policy, now)
+    const expiring = new Map<string, string>()
+    if (bound) {
+      for (const [id, anchor] of await customerAnchors(supabase, null, bound)) {
+        if (isExpiringSoon(anchor, policy, now)) expiring.set(id, anchor.toISOString())
+      }
+    }
+    if (expiringOnly && expiring.size === 0) return NextResponse.json({ customers: [], hasMore: false, total: 0 })
 
     // Search matches a customer by name/phone, by any of their vehicles' plates,
     // or by a Job Order ID (so Sales can paste a code from a conflict note).
@@ -81,6 +98,11 @@ export async function GET(request: Request) {
 
     if (bounds.gte) query = query.gte("created_at", bounds.gte)
     if (bounds.lt)  query = query.lt("created_at", bounds.lt)
+    if (expiringOnly) {
+      const ids = [...expiring.keys()]
+      idFilter = idFilter ? idFilter.filter((id) => expiring.has(id)) : ids
+      if (idFilter.length === 0) return NextResponse.json({ customers: [], hasMore: false, total: 0 })
+    }
     if (idFilter)   query = query.in("id", idFilter)
 
     const { data, error, count } = await query.range(offset, offset + limit - 1)
@@ -99,6 +121,9 @@ export async function GET(request: Request) {
       email: c.email,
       psid: c.psid,
       created_at: c.created_at,
+      // The last activity the retention clock counts from, only when the
+      // customer is within 30 days of automatic deletion.
+      expires_anchor: expiring.get(c.id) ?? null,
       vehicles: [...(c.vehicles ?? [])]
         .sort((a, b) => a.created_at.localeCompare(b.created_at))
         .map((v) => {

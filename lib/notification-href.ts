@@ -16,8 +16,16 @@ export interface HrefNotification {
  *   that concern on the head tech's own Concerns page (older rows without a
  *   concern_id open the Concerns list).
  * - "inquiry" (Sales, Messenger escalation) → that inquiry, else the Sales page.
+ * - "retention" (the weekly data-retention digest) → the records about to be
+ *   deleted, on the page each role exports from.
  */
 export function getNotificationHref(n: HrefNotification, role: string): string | null {
+  if (n.type === "retention") {
+    if (role === "operations") return "/dashboard/job-order-records?expiring=1"
+    if (role === "sales") return "/dashboard/sales/customer-records?expiring=1"
+    if (role === "admin" || role === "super_admin") return "/dashboard/admin/security?expiring=1"
+    return null
+  }
   if (n.type === "concern") {
     return n.concern_id ? `/dashboard/concerns?concern=${n.concern_id}` : "/dashboard/concerns"
   }

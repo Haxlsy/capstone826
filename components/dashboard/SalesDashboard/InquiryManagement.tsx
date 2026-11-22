@@ -25,6 +25,9 @@ import { newInquiryIds, resolveSelectedId, newInquiryToast, escalationHeading, c
 import { LinkAccountModal } from "./LinkAccountModal"
 import { logView } from "@/lib/client/log-view"
 import { NAME_INPUT_BLOCKED_MESSAGE, joinName, sanitizeNameInput, splitFullName, validateName } from "@/lib/name"
+import { ExpiresBadge } from "@/components/shared/RetentionDate"
+import { useRetentionPolicy } from "@/hooks/useRetentionPolicy"
+import { isExpiringSoon, EXPIRING_SOON_DAYS } from "@/lib/retention/plan"
 
 type InquiryStatus = "open" | "resolved" | "recorded"
 type InquiryType   = "Booking" | "Human Response" | "Report"
@@ -44,9 +47,11 @@ interface Inquiry {
   extractedVehicle:  string | null
   lastMessage:       string | null
   conflictNote:      string | null
+  /** Its data-retention clock: resolved inquiries are deleted after the period. */
+  resolvedAt:        string | null
 }
 
-type Tab = "all" | "unresolved" | "open" | "recorded" | "resolved"
+type Tab = "all" | "unresolved" | "open" | "recorded" | "resolved" | "expiring"
 
 const TABS: { key: Tab; label: string }[] = [
   { key: "all",        label: "All" },
@@ -54,6 +59,7 @@ const TABS: { key: Tab; label: string }[] = [
   { key: "open",       label: "Unrecorded" },
   { key: "recorded",   label: "Recorded" },
   { key: "resolved",   label: "Resolved" },
+  { key: "expiring",   label: "Expiring soon" },
 ]
 
 function timeAgo(iso: string): string {
@@ -74,12 +80,14 @@ export default function InquiryManagement() {
   const toast = useToast()
   const router = useRouter()
   const searchParams = useSearchParams()
+  const retention = useRetentionPolicy()
   const tabBarRef = useRef<HTMLDivElement>(null)
   // Inquiry asked for by a notification click, until it is selected.
   const requestedIdRef = useRef<string | null>(null)
   const [inquiries, setInquiries]   = useState<Inquiry[]>([])
   const [loading, setLoading]       = useState(true)
-  const [activeTab, setActiveTab]   = useState<Tab>("all")
+  // ?expiring=1 (the weekly data-retention notice) opens on "Expiring soon".
+  const [activeTab, setActiveTab]   = useState<Tab>(() => (searchParams.get("expiring") === "1" ? "expiring" : "all"))
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [search, setSearch]         = useState("")
   // Below 1024px the list and the detail don't fit side by side, so only one
@@ -177,6 +185,7 @@ export default function InquiryManagement() {
         extractedVehicle: i.extracted_vehicle ?? null,
         lastMessage:      i.last_message      ?? null,
         conflictNote:     i.conflict_note     ?? null,
+        resolvedAt:       i.resolved_at       ?? null,
       }))
       // Announce only escalations that weren't already on screen. Diffing the
       // list (rather than toasting per realtime event) avoids a double-toast
@@ -279,7 +288,9 @@ export default function InquiryManagement() {
       ? inquiries.filter((i) => i.status === "open")
       : activeTab === "open"
         ? inquiries.filter(isUnrecordedBooking)
-        : inquiries.filter((i) => i.status === activeTab)
+        : activeTab === "expiring"
+          ? inquiries.filter((i) => retention && isExpiringSoon(i.resolvedAt, retention, new Date()))
+          : inquiries.filter((i) => i.status === activeTab)
   const filtered    = search.trim()
     ? tabFiltered.filter((i) => {
         const q = search.toLowerCase()
@@ -453,7 +464,11 @@ export default function InquiryManagement() {
             {loading ? (
               <p className="text-sm text-muted text-center py-10">Loading…</p>
             ) : filtered.length === 0 ? (
-              <p className="text-sm text-muted text-center py-10">No inquiries.</p>
+              <p className="text-sm text-muted text-center py-10">
+                {activeTab === "expiring"
+                  ? `No resolved inquiries are due for deletion in the next ${EXPIRING_SOON_DAYS} days.`
+                  : "No inquiries."}
+              </p>
             ) : (
               filtered.map((inq) => (
                 <button
@@ -484,6 +499,7 @@ export default function InquiryManagement() {
                       )}
                     </div>
                     <p className="text-[10px] text-muted mt-1">{inq.timeElapsed}</p>
+                    <ExpiresBadge anchor={inq.resolvedAt} policy={retention} className="mt-1" />
                   </div>
                   <ChevronRight className="w-4 h-4 text-muted shrink-0 mt-1" />
                 </button>

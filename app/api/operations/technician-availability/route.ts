@@ -34,7 +34,7 @@ export async function GET(request: Request) {
 
     let techQuery = supabase
       .from("technician")
-      .select("id, full_name, first_name, last_name, role, is_available, is_archived, available_days, work_start_time, work_end_time, availability_override_date")
+      .select("id, full_name, first_name, last_name, role, is_available, is_archived, archived_at, available_days, work_start_time, work_end_time, availability_override_date")
     if (status === "active")        techQuery = techQuery.eq("is_archived", false)
     else if (status === "archived") techQuery = techQuery.eq("is_archived", true)
 
@@ -99,6 +99,7 @@ export async function GET(request: Request) {
       role:             t.role,
       is_available:     t.is_available,
       is_archived:      t.is_archived ?? false,
+      archived_at:      t.archived_at ?? null,
       available_days:   (t.available_days as string[]) ?? ALL_DAYS,
       work_start_time:  t.work_start_time ?? "08:00:00",
       work_end_time:    t.work_end_time   ?? "20:00:00",

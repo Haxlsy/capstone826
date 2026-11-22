@@ -40,6 +40,8 @@ import {
 } from "@/lib/sales/customer-records-export"
 import { CustomerRecordsListSkeleton } from "@/app/dashboard/sales/customer-records/loading"
 import PaginationBar from "@/components/AdminSide/Security&AuditCenter/PaginationBar"
+import { ExpiresBadge, ExpiringToggle } from "@/components/shared/RetentionDate"
+import { useRetentionPolicy } from "@/hooks/useRetentionPolicy"
 
 type MessengerVia = "own" | "booked_by" | null
 
@@ -63,6 +65,8 @@ interface Customer {
   email: string | null
   psid: string | null
   createdAt: string
+  /** Set when within 30 days of automatic deletion (data retention). */
+  expiresAnchor: string | null
   vehicles: Vehicle[]
 }
 
@@ -92,8 +96,11 @@ function messengerChip(via: MessengerVia): { label: string; title: string; class
   }
 }
 
-export default function CustomerRecords() {
+export default function CustomerRecords({ initialExpiring = false }: { initialExpiring?: boolean } = {}) {
   const toast = useToast()
+  const retention = useRetentionPolicy()
+  // "Expiring soon" (data retention); the weekly notice opens the page with it on.
+  const [expiringOnly, setExpiringOnly] = useState(initialExpiring)
   const { isOnline, lockProps } = useOfflineLock()
   const [customers, setCustomers] = useState<Customer[]>([])
   const [loading, setLoading] = useState(true)
@@ -142,6 +149,7 @@ export default function CustomerRecords() {
       email: c.email ?? null,
       psid: c.psid ?? null,
       createdAt: fmtDate(c.created_at),
+      expiresAnchor: c.expires_anchor ?? null,
       vehicles: (c.vehicles ?? []).map((v: Record<string, any>) => ({ // eslint-disable-line @typescript-eslint/no-explicit-any
         id: v.id,
         plateNumber: v.plate_number,
@@ -159,8 +167,9 @@ export default function CustomerRecords() {
     if (q) params.set("search", q)
     if (from) params.set("from", from)
     if (to) params.set("to", to)
+    if (expiringOnly) params.set("expiring", "1")
     return params
-  }, [])
+  }, [expiringOnly])
 
   // Fetches one page for the current search / date range, replacing whatever's
   // shown. `quiet` skips the skeleton, for background refreshes.
@@ -505,6 +514,7 @@ export default function CustomerRecords() {
           placeholder="Search by name, plate, or contact…"
           containerClassName="max-w-sm flex-1"
         />
+        <ExpiringToggle active={expiringOnly} onChange={(next) => { setExpiringOnly(next); setPage(1) }} />
       </div>
 
       {loading ? (
@@ -539,7 +549,10 @@ export default function CustomerRecords() {
                   {getInitials(customer.fullName)}
                 </span>
                 <div className="flex-1 min-w-0">
-                  <p className="font-medium text-heading">{customer.fullName}</p>
+                  <p className="flex flex-wrap items-center gap-2 font-medium text-heading">
+                    {customer.fullName}
+                    <ExpiresBadge anchor={customer.expiresAnchor} policy={retention} />
+                  </p>
                   <button
                     onClick={(e) => {
                       e.stopPropagation()

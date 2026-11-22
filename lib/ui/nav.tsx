@@ -72,8 +72,8 @@ export function navFor(area: NavArea): {
 } {
   switch (area) {
     case "admin":
-      // Admin/super-admin keep the previous (no-bell) top bar.
-      return { nav: ADMIN_NAV, fallbackName: "Admin", showBell: false }
+      // The bell carries the weekly data-retention digest for Admins.
+      return { nav: ADMIN_NAV, fallbackName: "Admin", showBell: true }
     case "operations":
       return { nav: OPERATIONS_NAV, fallbackName: "Operations", showBell: true }
     case "sales":

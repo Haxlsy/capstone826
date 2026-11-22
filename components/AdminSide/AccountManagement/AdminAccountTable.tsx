@@ -15,6 +15,9 @@ import { useToast } from "@/components/ui/Toast"
 import { initials } from "@/lib/ui/avatar"
 import { cn } from "@/lib/utils"
 import { useRealtimeRefetch } from "@/hooks/useRealtimeRefetch"
+import { useRetentionPolicy } from "@/hooks/useRetentionPolicy"
+import { archiveWarning } from "@/lib/retention/copy"
+import { DeletesAfter } from "@/components/shared/RetentionDate"
 
 interface AdminAccount {
   id: string
@@ -25,6 +28,7 @@ interface AdminAccount {
   username: string
   role: "admin"
   is_archived: boolean
+  archived_at?: string | null
   created_at: string
 }
 
@@ -38,6 +42,8 @@ export default function AdminAccountTable() {
   const [modalOpen, setModalOpen] = useState(false)
   const [editAccount, setEditAccount] = useState<AdminAccount | undefined>(undefined)
   const [archiveTarget, setArchiveTarget] = useState<AdminAccount | null>(null)
+  // The period in the archive warning and the archived rows' deletion dates.
+  const retention = useRetentionPolicy()
   const [archiving, setArchiving] = useState(false)
 
   const [resetTarget, setResetTarget] = useState<{ id: string; name: string } | null>(null)
@@ -143,7 +149,10 @@ export default function AdminAccountTable() {
       header: "Status",
       cell: (a) =>
         a.is_archived ? (
-          <StatusBadge status="archived" />
+          <div>
+            <StatusBadge status="archived" />
+            <DeletesAfter anchor={a.archived_at} policy={retention} className="mt-1" />
+          </div>
         ) : (
           <span className="flex items-center gap-1.5 text-xs font-medium text-status-inspection">
             <ShieldCheck className="h-3.5 w-3.5" /> Active
@@ -300,7 +309,7 @@ export default function AdminAccountTable() {
         onClose={() => !archiving && setArchiveTarget(null)}
         onConfirm={() => archiveTarget && handleArchiveToggle(archiveTarget)}
         title={archiveTarget?.is_archived ? "Restore Admin" : "Archive Admin"}
-        message={`${archiveTarget?.is_archived ? "Restore" : "Archive"} ${archiveTarget?.full_name ?? "this admin"}?`}
+        message={`${archiveTarget?.is_archived ? "Restore" : "Archive"} ${archiveTarget?.full_name ?? "this admin"}? ${archiveTarget?.is_archived ? "Restoring cancels its scheduled deletion." : archiveWarning(retention?.months)}`}
         confirmLabel={archiving ? (archiveTarget?.is_archived ? "Restoring…" : "Archiving…") : "Confirm"}
         tone={archiveTarget?.is_archived ? "primary" : "danger"}
         loading={archiving}

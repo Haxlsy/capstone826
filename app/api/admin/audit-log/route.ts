@@ -7,6 +7,8 @@ import {
   isAuditSortColumn, isAuditSortDir, isAuditScope, SECURITY_CATEGORY, dateRangeBounds,
 } from "@/lib/admin/audit-log-query"
 import { readJsonBody } from "@/lib/http/read-json-body"
+import { loadRetentionPolicy } from "@/lib/retention/run"
+import { expiringAnchorBound } from "@/lib/retention/plan"
 
 // ── GET /api/admin/audit-log ──────────────────────────────────────────────────
 // Query params: scope (activity|security, default activity), role, category
@@ -36,6 +38,14 @@ export async function GET(request: Request) {
 
     const admin = createAdminClient()
 
+    // "Expiring soon": entries within 30 days of automatic deletion.
+    let expiringBefore: string | null = null
+    if (url.searchParams.get("expiring") === "1") {
+      const bound = expiringAnchorBound(await loadRetentionPolicy(admin), new Date())
+      if (!bound) return NextResponse.json({ logs: [], total: 0, hasMore: false })
+      expiringBefore = bound.toISOString()
+    }
+
     let query = admin
       .from("audit_log")
       .select("id, user_id, user_name, role, category, action, target, created_at", { count: "exact" })
@@ -63,6 +73,7 @@ export async function GET(request: Request) {
     }
 
     if (role) query = query.eq("role", role)
+    if (expiringBefore) query = query.lte("created_at", expiringBefore)
 
     // A specific date range (dateFrom/dateTo) always wins over the preset
     // Period dropdown, even against a raw API call — the UI disables Period

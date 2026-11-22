@@ -16,6 +16,9 @@ import { isWithinRecordDateRange } from "@/lib/operations/job-records-filter"
 import { logExport } from "@/lib/client/log-export"
 import { compareValues, toggleSort, type SortDir, type SortKind } from "@/lib/table-sort"
 import { SortHeader } from "@/components/ui/SortHeader"
+import { ExpiresBadge, ExpiringToggle } from "@/components/shared/RetentionDate"
+import { useRetentionPolicy } from "@/hooks/useRetentionPolicy"
+import { isExpiringSoon } from "@/lib/retention/plan"
 
 interface JobRecord {
   id: string
@@ -51,8 +54,17 @@ const SORT_KIND: Record<SortColumn, SortKind> = {
   released_at: "time",
 }
 
-export default function JobOrderRecords({ jobOrders: rawOrders }: { jobOrders: any[] }) {
+export default function JobOrderRecords({
+  jobOrders: rawOrders,
+  initialExpiring = false,
+}: {
+  jobOrders: any[]
+  /** Open with the "Expiring soon" filter on (the weekly retention notice). */
+  initialExpiring?: boolean
+}) {
   const router = useRouter()
+  const retention = useRetentionPolicy()
+  const [expiringOnly, setExpiringOnly] = useState(initialExpiring)
   const records = useMemo<JobRecord[]>(
     () =>
       rawOrders.map((r: any) => ({
@@ -107,8 +119,12 @@ export default function JobOrderRecords({ jobOrders: rawOrders }: { jobOrders: a
   function handleReset() {
     setPendingService("All"); setPendingStart(""); setPendingEnd("")
     setServiceFilter("All"); setStartDate(""); setEndDate("")
-    setSearchQuery(""); setCurrentPage(1)
+    setSearchQuery(""); setExpiringOnly(false); setCurrentPage(1)
   }
+
+  // Job records are deleted by data retention counting from their release.
+  const now = new Date()
+  const expiringCount = retention ? records.filter((r) => isExpiringSoon(r.released_at, retention, now)).length : null
 
   const matched = records.filter((r) => {
     const q = searchQuery.toLowerCase()
@@ -121,6 +137,7 @@ export default function JobOrderRecords({ jobOrders: rawOrders }: { jobOrders: a
       return false
     if (serviceFilter !== "All" && r.service !== serviceFilter) return false
     if (!isWithinRecordDateRange(r, startDate, endDate)) return false
+    if (expiringOnly && !(retention && isExpiringSoon(r.released_at, retention, now))) return false
     return true
   })
 
@@ -220,9 +237,10 @@ export default function JobOrderRecords({ jobOrders: rawOrders }: { jobOrders: a
       key: "released",
       header: <SortHeader label="Released" column="released_at" sortBy={sortBy} sortDir={sortDir} onSort={handleSort} kind="time" />,
       cell: (r) => (
-        <span className="flex items-center gap-1.5 text-status-release">
+        <span className="flex flex-wrap items-center gap-1.5 text-status-release">
           <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-status-release" />
           <span className="font-medium">{fmtDateTime(r.released_at)}</span>
+          <ExpiresBadge anchor={r.released_at} policy={retention} />
         </span>
       ),
     },
@@ -302,6 +320,11 @@ export default function JobOrderRecords({ jobOrders: rawOrders }: { jobOrders: a
           }}
           placeholder="Search by customer, plate, vehicle, service, technician, or Job ID…"
           containerClassName="max-w-sm flex-1"
+        />
+        <ExpiringToggle
+          active={expiringOnly}
+          count={expiringCount}
+          onChange={(next) => { setExpiringOnly(next); setCurrentPage(1) }}
         />
       </div>
 

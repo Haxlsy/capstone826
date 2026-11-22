@@ -16,6 +16,8 @@ import { useToast } from "@/components/ui/Toast"
 import { Card } from "@/components/ui/Card"
 import { Button } from "@/components/ui/Button"
 import { FieldLabel } from "@/components/ui/Field"
+import { ExpiringToggle } from "@/components/shared/RetentionDate"
+import { useRetentionPolicy } from "@/hooks/useRetentionPolicy"
 
 /**
  * Specific actions the Action filter can pick, below the broad categories.
@@ -26,8 +28,11 @@ const ACTION_PRESETS = [
 ] as const
 type ActionPreset = (typeof ACTION_PRESETS)[number]["value"]
 
-export default function UserActivity() {
+export default function UserActivity({ initialExpiring = false }: { initialExpiring?: boolean } = {}) {
     const toast = useToast()
+    const retention = useRetentionPolicy()
+    // "Expiring soon" (data retention); the weekly notice opens the page with it on.
+    const [expiringOnly,    setExpiringOnly]    = useState(initialExpiring)
     const [actRoleFilter,   setActRoleFilter]   = useState<AuditRole | "all">("all")
     const [actCatFilter,    setActCatFilter]    = useState<AuditCategory | ActionPreset | "all">("all")
     const [actPeriodFilter, setActPeriodFilter] = useState<TimePeriod>("all")
@@ -49,6 +54,7 @@ export default function UserActivity() {
       category: actPreset ? "all" as const : actCatFilter as AuditCategory | "all",
       action: actPreset?.action ?? "all",
       period: actPeriodFilter, dateFrom: actDateFrom || null, dateTo: actDateTo || null,
+      expiring: expiringOnly,
       sortBy, sortDir, page: actPage, pageSize: actPageSize,
     }
     const { logs: actEntries, total, loading, refreshing, fetchErr, reload } = useAuditLogs(params)
@@ -137,6 +143,7 @@ export default function UserActivity() {
             <div className="flex flex-wrap items-center gap-2">
               <Button onClick={handleApplyFilters}>Apply Filters</Button>
               <Button variant="ghost" onClick={handleResetDateFilter}>Reset</Button>
+              <ExpiringToggle active={expiringOnly} onChange={(next) => { setExpiringOnly(next); setActPage(1) }} />
             </div>
           </div>
           <div className="flex flex-wrap items-center gap-2">
@@ -227,7 +234,7 @@ export default function UserActivity() {
                 <tr><td colSpan={5} className="py-10 text-center text-sm text-status-delayed">{fetchErr}</td></tr>
               ) : actEntries.length === 0 ? (
                 <tr><td colSpan={5} className="py-10 text-center text-sm text-muted">No activity entries.</td></tr>
-              ) : actEntries.map((e) => renderRow(e, true))}
+              ) : actEntries.map((e) => renderRow(e, true, retention))}
             </tbody>
           </table>
         </div>

@@ -31,4 +31,11 @@ describe("getNotificationHref", () => {
   it("returns null when there is nowhere to go", () => {
     expect(getNotificationHref(base, "operations")).toBeNull()
   })
+  it("the weekly retention notice opens each role's expiring records", () => {
+    const n = { ...base, type: "retention" }
+    expect(getNotificationHref(n, "operations")).toBe("/dashboard/job-order-records?expiring=1")
+    expect(getNotificationHref(n, "sales")).toBe("/dashboard/sales/customer-records?expiring=1")
+    expect(getNotificationHref(n, "admin")).toBe("/dashboard/admin/security?expiring=1")
+    expect(getNotificationHref(n, "super_admin")).toBe("/dashboard/admin/security?expiring=1")
+  })
 })

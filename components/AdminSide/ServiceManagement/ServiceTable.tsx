@@ -19,6 +19,9 @@ import { ConfirmModal } from "@/components/ui/Modal"
 import { useToast } from "@/components/ui/Toast"
 import { cn } from "@/lib/utils"
 import { useRealtimeRefetch } from "@/hooks/useRealtimeRefetch"
+import { useRetentionPolicy } from "@/hooks/useRetentionPolicy"
+import { archiveWarning } from "@/lib/retention/copy"
+import { DeletesAfter } from "@/components/shared/RetentionDate"
 
 interface Service {
   id: string
@@ -27,6 +30,7 @@ interface Service {
   description: string | null
   estimated_duration_mins: number | null
   is_archived: boolean
+  archived_at?: string | null
   stage_count: number
   job_order_count: number
 }
@@ -75,6 +79,8 @@ export default function ServiceTable({ canWrite = true }: { canWrite?: boolean }
   const [editServiceId, setEditServiceId] = useState<string | null>(null)
   const [viewingService, setViewingService] = useState<Service | null>(null)
   const [archiveTarget, setArchiveTarget] = useState<Service | null>(null)
+  // The period in the archive warning and the archived rows' deletion dates.
+  const retention = useRetentionPolicy()
   const [archiving, setArchiving] = useState(false)
 
   useEffect(() => {
@@ -192,7 +198,12 @@ export default function ServiceTable({ canWrite = true }: { canWrite?: boolean }
     {
       key: "status",
       header: "Status",
-      cell: (s) => <StatusBadge status={s.is_archived ? "archived" : "active"} />,
+      cell: (s) => (
+        <div>
+          <StatusBadge status={s.is_archived ? "archived" : "active"} />
+          {s.is_archived && <DeletesAfter anchor={s.archived_at} policy={retention} className="mt-1" />}
+        </div>
+      ),
     },
     ...(canWrite
       ? [
@@ -391,7 +402,7 @@ export default function ServiceTable({ canWrite = true }: { canWrite?: boolean }
         onClose={() => !archiving && setArchiveTarget(null)}
         onConfirm={() => archiveTarget && handleArchiveToggle(archiveTarget)}
         title={archiveTarget?.is_archived ? "Restore service?" : "Archive service?"}
-        message={`${archiveTarget?.is_archived ? "Restore" : "Archive"} "${archiveTarget?.name ?? "this service"}"?`}
+        message={`${archiveTarget?.is_archived ? "Restore" : "Archive"} "${archiveTarget?.name ?? "this service"}"? ${archiveTarget?.is_archived ? "Restoring cancels its scheduled deletion." : archiveWarning(retention?.months)}`}
         confirmLabel={archiving ? (archiveTarget?.is_archived ? "Restoring…" : "Archiving…") : "Confirm"}
         tone={archiveTarget?.is_archived ? "primary" : "danger"}
         loading={archiving}

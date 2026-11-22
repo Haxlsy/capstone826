@@ -15,6 +15,8 @@ export interface AuditLogParams {
   /** Specific date range (YYYY-MM-DD), takes priority over `period` when set. */
   dateFrom?: string | null
   dateTo?:   string | null
+  /** Only entries within 30 days of automatic deletion (data retention). */
+  expiring?: boolean
   sortBy:   AuditSortColumn
   sortDir:  AuditSortDir
   page:     number
@@ -35,6 +37,7 @@ export function buildAuditLogSearchParams(params: AuditLogParams): URLSearchPara
   if (params.action !== "all")   qs.set("action", params.action)
   if (params.dateFrom)           qs.set("dateFrom", params.dateFrom)
   if (params.dateTo)             qs.set("dateTo", params.dateTo)
+  if (params.expiring)           qs.set("expiring", "1")
   return qs
 }
 
