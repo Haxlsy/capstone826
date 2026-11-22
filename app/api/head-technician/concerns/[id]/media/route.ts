@@ -4,6 +4,11 @@ import { createClient } from "@/lib/supabase/server"
 import { createAdminClient } from "@/lib/supabase/admin"
 import { getAuditCaller, getRoleCaller } from "@/lib/auth/caller"
 import { logAuditCall } from "@/hooks/audit-helpers"
+import { getVideoDuration } from "@/lib/media/video"
+import { videoDurationProblem } from "@/lib/media/limits"
+
+// Room to measure a video's length before storing it.
+export const maxDuration = 30
 
 // POST /api/head-technician/concerns/[id]/media
 // Accepts multipart form with field "file".
@@ -43,6 +48,15 @@ export async function POST(
 
     const admin       = createAdminClient()
     const arrayBuffer = await file.arrayBuffer()
+
+    // Same minimum as stage videos (lib/media/limits.ts). Unmeasurable
+    // lengths are let through; the page already checked when it was picked.
+    if (isVideo) {
+      const durationSecs = await getVideoDuration(Buffer.from(arrayBuffer))
+      if (durationSecs == null) console.warn("[concern-media] could not measure video length, accepting")
+      const tooShort = videoDurationProblem(durationSecs)
+      if (tooShort) return NextResponse.json({ error: tooShort }, { status: 400 })
+    }
 
     const { error: uploadErr } = await admin.storage
       .from("concern-media")

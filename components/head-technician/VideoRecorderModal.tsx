@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { X, Circle, Square, RotateCcw, Check } from "lucide-react";
 import { Button } from "@/components/ui/Button";
-import { MAX_RECORDING_SECONDS } from "@/lib/media/limits";
+import { MAX_RECORDING_SECONDS, MIN_VIDEO_SECONDS } from "@/lib/media/limits";
 
 // In-app camera recorder — replaces the native `<input capture="environment">`
 // camera picker for video specifically, because that attribute is only a hint:
@@ -11,7 +11,8 @@ import { MAX_RECORDING_SECONDS } from "@/lib/media/limits";
 // This component never renders one, so it's the only reliable way to keep a
 // technician on the back camera. It also enforces the recording length limit
 // live (auto-stops at MAX_RECORDING_SECONDS) instead of discovering an
-// oversized file only after the fact.
+// oversized file only after the fact, and the minimum the same way: Stop
+// stays disabled until MIN_VIDEO_SECONDS have been recorded.
 
 function pickMimeType(): string {
   if (typeof MediaRecorder === "undefined") return "";
@@ -188,6 +189,9 @@ export function VideoRecorderModal({ open, onClose, onCapture }: VideoRecorderMo
   if (!open) return null;
 
   const nearLimit = seconds >= MAX_RECORDING_SECONDS - 10;
+  // Can't stop yet: the clip would be under the minimum length.
+  const belowMinimum = recording && seconds < MIN_VIDEO_SECONDS;
+  const secondsToMinimum = MIN_VIDEO_SECONDS - seconds;
 
   return (
     <div className="fixed inset-0 z-[100] flex flex-col bg-black">
@@ -213,6 +217,16 @@ export function VideoRecorderModal({ open, onClose, onCapture }: VideoRecorderMo
         )}
       </div>
 
+      {!previewUrl && !error && (
+        <p className="px-6 pt-4 text-center text-xs text-white/80" aria-live="polite">
+          {belowMinimum
+            ? `Keep recording, at least ${MIN_VIDEO_SECONDS} seconds (${secondsToMinimum}s left)`
+            : recording
+            ? "Tap stop when you've shown the finished work"
+            : `Record ${MIN_VIDEO_SECONDS} to ${MAX_RECORDING_SECONDS} seconds: a slow pass over the finished area`}
+        </p>
+      )}
+
       <div className="flex items-center justify-center gap-6 p-6">
         {error ? (
           <Button variant="secondary" onClick={handleClose}>Close</Button>
@@ -228,8 +242,12 @@ export function VideoRecorderModal({ open, onClose, onCapture }: VideoRecorderMo
         ) : (
           <button
             onClick={recording ? stopRecording : startRecording}
-            disabled={!streamReady}
-            aria-label={recording ? "Stop recording" : "Start recording"}
+            disabled={!streamReady || belowMinimum}
+            aria-label={
+              belowMinimum
+                ? `Recording, stop available after ${MIN_VIDEO_SECONDS} seconds`
+                : recording ? "Stop recording" : "Start recording"
+            }
             className="flex h-16 w-16 items-center justify-center rounded-full border-4 border-white disabled:opacity-40"
           >
             {recording

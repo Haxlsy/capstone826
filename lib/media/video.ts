@@ -124,6 +124,64 @@ export async function extractVideoFrames(videoBuffer: Buffer, max = 4): Promise<
 }
 
 /**
+ * The longest time an ffmpeg progress or header line reports, in seconds:
+ * `time=00:00:07.04` (how far ffmpeg got through the file) or
+ * `Duration: 00:00:07.04`. Null when neither is present or readable
+ * (`Duration: N/A` is common for in-browser WebM recordings).
+ */
+export function parseFfmpegSeconds(output: string): number | null {
+  let best: number | null = null
+  const re = /(?:time=|Duration:\s*)(\d+):(\d{2}):(\d{2}(?:\.\d+)?)/g
+  for (const m of output.matchAll(re)) {
+    const secs = Number(m[1]) * 3600 + Number(m[2]) * 60 + Number(m[3])
+    if (Number.isFinite(secs) && (best == null || secs > best)) best = secs
+  }
+  return best
+}
+
+/**
+ * How long a video is, in seconds, or null when it can't be measured.
+ *
+ * Measured by reading the whole video stream with ffmpeg (stream copy, no
+ * decoding, so it's quick) instead of trusting the file header: ffprobe isn't
+ * bundled with ffmpeg-static, and browser recordings often have no duration
+ * in their header at all. Never throws, and gives up after `timeoutMs`.
+ */
+export async function getVideoDuration(videoBuffer: Buffer, timeoutMs = 15_000): Promise<number | null> {
+  try {
+    return await withTempInput(
+      videoBuffer,
+      (inputPath) =>
+        new Promise<number | null>((resolve) => {
+          let output = ""
+          let settled = false
+          const finish = (value: number | null) => {
+            if (settled) return
+            settled = true
+            clearTimeout(timer)
+            resolve(value)
+          }
+          const command = ffmpeg(inputPath)
+            .outputOptions(["-map 0:v:0", "-c copy", "-f null"])
+            .on("stderr", (line: string) => { output += `${line}\n` })
+            .on("end", () => finish(parseFfmpegSeconds(output)))
+            // A failed read may have stopped part-way, so its last time= could
+            // be short of the real length: report "unknown", never "too short".
+            .on("error", () => finish(null))
+          const timer = setTimeout(() => {
+            command.kill("SIGKILL")
+            finish(null)
+          }, timeoutMs)
+          command.save(os.platform() === "win32" ? "NUL" : "/dev/null")
+        }),
+      "null"
+    )
+  } catch {
+    return null
+  }
+}
+
+/**
  * Strips the audio track from a video buffer, returning a muted video buffer.
  * The video stream is copied as-is (`-c:v copy -an`) — no re-encode, so this
  * is fast and lossless for the picture.

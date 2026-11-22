@@ -18,8 +18,11 @@ import { createLoadTracker } from "@/lib/fetch-sequence";
 import { HeadTechJobDetailSkeleton } from "@/app/head-technician/[jobId]/loading";
 import { useRealtimeRefetch } from "@/hooks/useRealtimeRefetch";
 import { VideoRecorderModal } from "./VideoRecorderModal";
+import { UploadTip, UploadGuide } from "./UploadHelp";
+import { PHOTO_TIP, VIDEO_TIP } from "@/lib/head-technician/upload-help";
 import { headRoleLabel, type HeadRole } from "@/lib/head-technician/start-job";
-import { MAX_VIDEO_MB, MAX_VIDEO_BYTES, MAX_PHOTOS_PER_ROUND, MAX_VIDEOS_PER_ROUND } from "@/lib/media/limits";
+import { MAX_VIDEO_MB, MAX_VIDEO_BYTES, MAX_PHOTOS_PER_ROUND, MAX_VIDEOS_PER_ROUND, videoDurationProblem } from "@/lib/media/limits";
+import { readVideoDuration } from "@/lib/media/read-video-duration";
 import { compressImage } from "@/lib/media/compress-image";
 import { readJsonResponse } from "@/lib/client/read-json";
 
@@ -348,6 +351,16 @@ export default function HeadTechJobHistoryPage({ jobId }: { jobId: string }) {
         kind:    "video",
       });
       return;
+    }
+
+    // Minimum length (the recorder already can't stop sooner; this covers a
+    // clip that reached here another way). Unknown lengths go to the server.
+    if (!isPhoto) {
+      const tooShort = videoDurationProblem(await readVideoDuration(file));
+      if (tooShort) {
+        setRejectionAlert({ message: tooShort, kind: "video" });
+        return;
+      }
     }
 
     const tmpId    = `tmp-${Date.now()}`;
@@ -716,6 +729,9 @@ export default function HeadTechJobHistoryPage({ jobId }: { jobId: string }) {
             </div>
           </div>
         )}
+
+        {/* How to document a stage: only while this head still has one to do. */}
+        {myGroups.some((g) => g.stages.some((s) => s.status !== "done" && !isReadOnly(s))) && <UploadGuide />}
 
         {/* Single unified section — renders all categories in correct sequence order */}
         {allCategoryGroups.map((g) => {
@@ -1289,29 +1305,35 @@ function StageCard({
             />
           )}
           <div className="flex items-center gap-2">
-            <label className={`flex-1 flex items-center justify-center gap-1.5 text-xs font-semibold border rounded-card py-2.5 transition-colors ${
-              isUploading || photoFull || done
-                ? "opacity-40 pointer-events-none text-muted border-border bg-surface-subtle"
-                : "text-body border-border hover:bg-surface-muted cursor-pointer bg-surface"
-            }`}>
-              <ImagePlus size={13} />
-              Photo {photoCount > 0 && `(${photoCount}/${MAX_PHOTOS_PER_ROUND})`}
-              <input type="file" accept="image/*" capture="environment" className="hidden" disabled={isUploading || photoFull || done} onChange={(e) => onFileChange(e.target.files)} />
-            </label>
-
-            <button
-              type="button"
-              onClick={onRecordVideo}
-              disabled={isUploading || videoFull || done}
-              className={`flex-1 flex items-center justify-center gap-1.5 text-xs font-semibold border rounded-card py-2.5 transition-colors ${
-                isUploading || videoFull || done
+            <div className="flex flex-1 items-center gap-1">
+              <label className={`flex-1 flex items-center justify-center gap-1.5 text-xs font-semibold border rounded-card py-2.5 transition-colors ${
+                isUploading || photoFull || done
                   ? "opacity-40 pointer-events-none text-muted border-border bg-surface-subtle"
                   : "text-body border-border hover:bg-surface-muted cursor-pointer bg-surface"
-              }`}
-            >
-              <Video size={13} />
-              Video {videoFull ? `(${MAX_VIDEOS_PER_ROUND}/${MAX_VIDEOS_PER_ROUND})` : rework ? "(optional)" : ""}
-            </button>
+              }`}>
+                <ImagePlus size={13} />
+                Photo {photoCount > 0 && `(${photoCount}/${MAX_PHOTOS_PER_ROUND})`}
+                <input type="file" accept="image/*" capture="environment" className="hidden" disabled={isUploading || photoFull || done} onChange={(e) => onFileChange(e.target.files)} />
+              </label>
+              <UploadTip tip={PHOTO_TIP} label="taking a good photo" />
+            </div>
+
+            <div className="flex flex-1 items-center gap-1">
+              <button
+                type="button"
+                onClick={onRecordVideo}
+                disabled={isUploading || videoFull || done}
+                className={`flex-1 flex items-center justify-center gap-1.5 text-xs font-semibold border rounded-card py-2.5 transition-colors ${
+                  isUploading || videoFull || done
+                    ? "opacity-40 pointer-events-none text-muted border-border bg-surface-subtle"
+                    : "text-body border-border hover:bg-surface-muted cursor-pointer bg-surface"
+                }`}
+              >
+                <Video size={13} />
+                Video {videoFull ? `(${MAX_VIDEOS_PER_ROUND}/${MAX_VIDEOS_PER_ROUND})` : rework ? "(optional)" : ""}
+              </button>
+              <UploadTip tip={VIDEO_TIP} label="recording a good video" />
+            </div>
           </div>
 
           {!done && (

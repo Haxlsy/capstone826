@@ -27,8 +27,11 @@ import { StatusBadge } from "@/components/ui/Badge"
 import { useToast } from "@/components/ui/Toast"
 import { MediaPreviewModal } from "@/components/ui/Modal"
 import { VideoRecorderModal } from "./VideoRecorderModal"
+import { UploadTip } from "./UploadHelp"
+import { PHOTO_TIP, VIDEO_TIP, ATTACH_TIP } from "@/lib/head-technician/upload-help"
 import { compressImage } from "@/lib/media/compress-image"
-import { uploadSizeProblem } from "@/lib/media/limits"
+import { uploadSizeProblem, videoDurationProblem } from "@/lib/media/limits"
+import { readVideoDuration } from "@/lib/media/read-video-duration"
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 type ConcernMedia = { id: string; url: string; type: string }
@@ -312,6 +315,7 @@ export default function HeadTechConcernsPage() {
     for (const original of picked) {
       const file = original.type.startsWith("image/") ? await compressImage(original) : original
       const problem = uploadSizeProblem(file)
+        ?? (file.type.startsWith("video/") ? videoDurationProblem(await readVideoDuration(file)) : null)
       if (problem) toast.error(problem)
       else accepted.push(file)
     }
@@ -564,39 +568,48 @@ export default function HeadTechConcernsPage() {
               )}
 
               <div className="flex gap-2">
-                <label className="flex-1 flex items-center justify-center gap-1.5 text-xs font-semibold border border-border rounded-card py-2.5 text-body hover:bg-surface-muted cursor-pointer transition-colors">
-                  <ImagePlus size={13} />
-                  Photo
-                  <input
-                    ref={photoInputRef}
-                    type="file"
-                    accept="image/*"
-                    capture="environment"
-                    multiple
-                    className="hidden"
-                    onChange={(e) => { void addFiles(Array.from(e.target.files ?? [])); e.target.value = "" }}
-                  />
-                </label>
-                <button
-                  type="button"
-                  onClick={() => setRecorderOpen(true)}
-                  className="flex-1 flex items-center justify-center gap-1.5 text-xs font-semibold border border-border rounded-card py-2.5 text-body hover:bg-surface-muted cursor-pointer transition-colors"
-                >
-                  <Video size={13} />
-                  Video
-                </button>
-                <label className="flex-1 flex items-center justify-center gap-1.5 text-xs font-semibold border border-border rounded-card py-2.5 text-body hover:bg-surface-muted cursor-pointer transition-colors">
-                  <Paperclip size={13} />
-                  Attach
-                  <input
-                    ref={attachInputRef}
-                    type="file"
-                    accept="image/*,video/*"
-                    multiple
-                    className="hidden"
-                    onChange={(e) => { void addFiles(Array.from(e.target.files ?? [])); e.target.value = "" }}
-                  />
-                </label>
+                <div className="flex min-w-0 flex-1 items-center gap-0.5">
+                  <label className="flex-1 flex items-center justify-center gap-1.5 text-xs font-semibold border border-border rounded-card py-2.5 text-body hover:bg-surface-muted cursor-pointer transition-colors">
+                    <ImagePlus size={13} />
+                    Photo
+                    <input
+                      ref={photoInputRef}
+                      type="file"
+                      accept="image/*"
+                      capture="environment"
+                      multiple
+                      className="hidden"
+                      onChange={(e) => { void addFiles(Array.from(e.target.files ?? [])); e.target.value = "" }}
+                    />
+                  </label>
+                  <UploadTip tip={PHOTO_TIP} label="taking a good photo" />
+                </div>
+                <div className="flex min-w-0 flex-1 items-center gap-0.5">
+                  <button
+                    type="button"
+                    onClick={() => setRecorderOpen(true)}
+                    className="flex-1 flex items-center justify-center gap-1.5 text-xs font-semibold border border-border rounded-card py-2.5 text-body hover:bg-surface-muted cursor-pointer transition-colors"
+                  >
+                    <Video size={13} />
+                    Video
+                  </button>
+                  <UploadTip tip={VIDEO_TIP} label="recording a good video" />
+                </div>
+                <div className="flex min-w-0 flex-1 items-center gap-0.5">
+                  <label className="flex-1 flex items-center justify-center gap-1.5 text-xs font-semibold border border-border rounded-card py-2.5 text-body hover:bg-surface-muted cursor-pointer transition-colors">
+                    <Paperclip size={13} />
+                    Attach
+                    <input
+                      ref={attachInputRef}
+                      type="file"
+                      accept="image/*,video/*"
+                      multiple
+                      className="hidden"
+                      onChange={(e) => { void addFiles(Array.from(e.target.files ?? [])); e.target.value = "" }}
+                    />
+                  </label>
+                  <UploadTip tip={ATTACH_TIP} label="attaching a file" />
+                </div>
               </div>
             </div>
 

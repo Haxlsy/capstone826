@@ -2,11 +2,11 @@ import { NextResponse } from "next/server"
 import { cookies } from "next/headers"
 import { createClient } from "@/lib/supabase/server"
 import { createAdminClient } from "@/lib/supabase/admin"
-import { extractVideoFrames, stripAudio } from "@/lib/media/video"
+import { extractVideoFrames, stripAudio, getVideoDuration } from "@/lib/media/video"
 import { validateAutomotiveVideo, unreadableVideo, isMediaValidationEnabled } from "@/lib/ai/media-validation"
 import {
   MAX_PHOTO_MB, MAX_VIDEO_MB, MAX_PHOTO_BYTES, MAX_VIDEO_BYTES,
-  MAX_PHOTOS_PER_ROUND, MAX_VIDEOS_PER_ROUND,
+  MAX_PHOTOS_PER_ROUND, MAX_VIDEOS_PER_ROUND, videoDurationProblem,
 } from "@/lib/media/limits"
 import { getRoleCaller } from "@/lib/auth/caller"
 import { readJsonBody } from "@/lib/http/read-json-body"
@@ -107,6 +107,14 @@ export async function POST(
         (buffer) => ({ buffer, error: null as unknown }),
         (error: unknown) => ({ buffer: null as Buffer | null, error }),
       )
+      // At least MIN_VIDEO_SECONDS of footage (the recorder already enforces
+      // it; this stops a direct API call). A length we can't measure is let
+      // through: the client checked, and a measuring glitch shouldn't block
+      // the shop floor.
+      const durationSecs = await getVideoDuration(original)
+      if (durationSecs == null) console.warn("[stage-media] could not measure video length, accepting")
+      const tooShort = videoDurationProblem(durationSecs)
+      if (tooShort) return NextResponse.json({ error: tooShort }, { status: 400 })
       if (currentRound === 0 && await isMediaValidationEnabled()) {
         // Frames from across the whole clip, not one moment — every one must
         // show a real vehicle. A video we can't read at all is rejected (ask

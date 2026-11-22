@@ -17,6 +17,30 @@ export const MAX_VIDEOS_PER_ROUND = 1
 export const MAX_RECORDING_SECONDS = 60
 
 /**
+ * The shortest video accepted as work evidence (panel recommendation): a clip
+ * of a second or two shows nothing and gives the AI check too little footage.
+ * The recorder can't stop before this, the file picker refuses shorter clips,
+ * and the upload routes check it again on the server.
+ */
+export const MIN_VIDEO_SECONDS = 5
+
+/** Allowance for the recorder starting a moment after its timer, so a clip
+ *  stopped right at 0:05 is never refused for measuring 4.9 seconds. */
+const MIN_VIDEO_TOLERANCE_SECONDS = 0.5
+
+/**
+ * Why a video is too short, as a message for the person, or null when it is
+ * long enough. An unknown length (null, NaN, Infinity: some browser
+ * recordings carry no duration) is NOT a problem here; the server measures
+ * those itself.
+ */
+export function videoDurationProblem(seconds: number | null | undefined): string | null {
+  if (seconds == null || !Number.isFinite(seconds)) return null
+  if (seconds >= MIN_VIDEO_SECONDS - MIN_VIDEO_TOLERANCE_SECONDS) return null
+  return `This video is only ${Math.max(0, Math.round(seconds))} second${Math.round(seconds) === 1 ? "" : "s"} long. Please record at least ${MIN_VIDEO_SECONDS} seconds.`
+}
+
+/**
  * The largest file the browser may send to an upload route. Uploads pass
  * through a server function, and the host (Vercel) rejects any request over
  * 4.5 MB before our code runs, with a reply that is not JSON. 4 MB leaves
