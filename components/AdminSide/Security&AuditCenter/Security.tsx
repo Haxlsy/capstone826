@@ -19,6 +19,8 @@ import { useToast } from "@/components/ui/Toast"
 import { Card } from "@/components/ui/Card"
 import { Button } from "@/components/ui/Button"
 import { FieldLabel } from "@/components/ui/Field"
+import { ExpiringToggle } from "@/components/shared/RetentionDate"
+import { useRetentionPolicy } from "@/hooks/useRetentionPolicy"
 
 export default function SecurityView() {
     const toast = useToast()
@@ -35,10 +37,14 @@ export default function SecurityView() {
     const [sortDir,          setSortDir]          = useState<"asc" | "desc">("desc")
     const [exportConfirm,    setExportConfirm]    = useState<"pdf" | "excel" | null>(null)
     const [exporting,        setExporting]        = useState(false)
+    // Security logs are audit_log rows too, deleted on the same retention clock.
+    const retention = useRetentionPolicy()
+    const [expiringOnly,     setExpiringOnly]     = useState(false)
 
     const params = {
       scope: "security" as const, role: authRoleFilter, category: "all" as const, action: authEventFilter,
       period: authPeriodFilter, dateFrom: authDateFrom || null, dateTo: authDateTo || null,
+      expiring: expiringOnly,
       sortBy, sortDir, page: authPage, pageSize: authPageSize,
     }
     const { logs: authEntries, total, loading, refreshing, fetchErr, reload } = useAuditLogs(params)
@@ -127,6 +133,7 @@ export default function SecurityView() {
                   <div className="flex flex-wrap items-center gap-2">
                     <Button onClick={handleApplyFilters}>Apply Filters</Button>
                     <Button variant="ghost" onClick={handleResetDateFilter}>Reset</Button>
+                    <ExpiringToggle active={expiringOnly} onChange={(next) => { setExpiringOnly(next); setAuthPage(1) }} />
                   </div>
                 </div>
                 <div className="flex flex-wrap items-center gap-2">
@@ -215,7 +222,7 @@ export default function SecurityView() {
                         <tr><td colSpan={5} className="py-10 text-center text-sm text-status-delayed">{fetchErr}</td></tr>
                     ) : authEntries.length === 0 ? (
                         <tr><td colSpan={5} className="py-10 text-center text-sm text-muted">No entries match the selected filters.</td></tr>
-                    ) : authEntries.map((e) => renderRow(e, true))}
+                    ) : authEntries.map((e) => renderRow(e, true, retention))}
                     </tbody>
                 </table>
                 </div>
