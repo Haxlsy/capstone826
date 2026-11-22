@@ -1,7 +1,7 @@
 "use client";
 
 import { useSyncExternalStore } from "react";
-import { Info, ChevronDown, Lightbulb } from "lucide-react";
+import { Info, ChevronDown, BookOpen, Wrench, Camera, Video, ClipboardCheck, ShieldCheck } from "lucide-react";
 import { Popover } from "@/components/ui/Popover";
 import { STAGE_GUIDE_STEPS, STAGE_GUIDE_NOTE, type UploadTip as Tip } from "@/lib/head-technician/upload-help";
 
@@ -79,39 +79,73 @@ function subscribe(listener: () => void) {
   };
 }
 
+const STEP_ICONS = [Wrench, Camera, Video, ClipboardCheck];
+
 export function UploadGuide() {
   // Server render and first paint: open (the default for a first-time head).
   const collapsed = useSyncExternalStore(subscribe, readCollapsed, () => false);
 
   return (
-    <div className="rounded-card border border-primary/20 bg-primary/5">
+    <section
+      aria-label="How to document this stage"
+      className="overflow-hidden rounded-card border border-border-subtle bg-surface shadow-[0_2px_12px_-4px_rgba(0,0,0,0.06)]"
+    >
       <button
         type="button"
         onClick={() => writeCollapsed(!collapsed)}
         aria-expanded={!collapsed}
-        className="flex w-full items-center gap-2 px-3.5 py-2.5 text-left"
+        aria-controls="upload-guide-steps"
+        className="flex w-full items-center gap-3 px-4 py-3 text-left transition-colors hover:bg-surface-muted/50 focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary/30"
       >
-        <Lightbulb size={14} className="shrink-0 text-primary" />
-        <span className="flex-1 text-xs font-semibold text-primary">How to document this stage</span>
-        <ChevronDown size={14} className={`text-primary transition-transform ${collapsed ? "" : "rotate-180"}`} />
+        <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-sm bg-primary/10 text-primary">
+          <BookOpen size={15} />
+        </span>
+        <span className="min-w-0 flex-1">
+          <span className="block text-sm font-semibold text-heading">How to document this stage</span>
+          <span className="block text-[11px] text-muted">
+            {STAGE_GUIDE_STEPS.length} steps{collapsed ? " · tap to show" : " · photos, video and notes"}
+          </span>
+        </span>
+        <ChevronDown
+          size={16}
+          className={`shrink-0 text-muted transition-transform duration-200 ${collapsed ? "" : "rotate-180"}`}
+        />
       </button>
+
       {!collapsed && (
-        <div className="space-y-2 px-3.5 pb-3">
-          <ol className="space-y-1.5">
-            {STAGE_GUIDE_STEPS.map((step, i) => (
-              <li key={step} className="flex gap-2 text-xs leading-snug text-body">
-                <span className="flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-primary text-[10px] font-semibold text-white">
-                  {i + 1}
-                </span>
-                {step}
-              </li>
-            ))}
+        <div id="upload-guide-steps" className="border-t border-border-subtle px-4 pb-4 pt-3">
+          <ol className="relative">
+            {STAGE_GUIDE_STEPS.map((step, i) => {
+              const Icon = STEP_ICONS[i] ?? ClipboardCheck;
+              const last = i === STAGE_GUIDE_STEPS.length - 1;
+              return (
+                <li key={step.title} className="relative flex gap-3 pb-3 last:pb-0">
+                  {/* Connector between steps */}
+                  {!last && <span aria-hidden="true" className="absolute left-[13px] top-7 bottom-0 w-px bg-border" />}
+                  <span className="relative z-10 flex h-7 w-7 shrink-0 items-center justify-center rounded-full border border-border bg-surface text-body">
+                    <Icon size={13} />
+                  </span>
+                  <div className="min-w-0 pt-0.5">
+                    <p className="text-xs font-semibold text-heading">
+                      <span className="mr-1 text-muted">{i + 1}.</span>
+                      {step.title}
+                    </p>
+                    <p className="mt-0.5 text-xs leading-snug text-muted">{step.detail}</p>
+                  </div>
+                </li>
+              );
+            })}
           </ol>
-          <p className="text-[11px] leading-snug text-muted">
-            {STAGE_GUIDE_NOTE} Tap the <Info size={11} className="inline -mt-0.5" /> next to Photo or Video for tips.
-          </p>
+
+          <div className="mt-3 flex gap-2 rounded-sm bg-surface-subtle px-3 py-2.5">
+            <ShieldCheck size={14} className="mt-0.5 shrink-0 text-status-inspection" aria-hidden="true" />
+            <p className="text-[11px] leading-snug text-body">
+              {STAGE_GUIDE_NOTE} For tips, tap{" "}
+              <Info size={11} className="inline -mt-0.5 text-muted" aria-label="the info icon" /> beside Photo or Video.
+            </p>
+          </div>
         </div>
       )}
-    </div>
+    </section>
   );
 }

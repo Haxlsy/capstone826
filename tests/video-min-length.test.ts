@@ -52,7 +52,7 @@ describe("upload help text", () => {
   it("states the minimum video length wherever videos are mentioned", () => {
     expect(VIDEO_TIP.points.join(" ")).toContain(`${MIN_VIDEO_SECONDS}`)
     expect(ATTACH_TIP.points.join(" ")).toContain(`${MIN_VIDEO_SECONDS} seconds`)
-    expect(STAGE_GUIDE_STEPS.some((s) => s.includes(`${MIN_VIDEO_SECONDS} to`))).toBe(true)
+    expect(STAGE_GUIDE_STEPS.some((s) => s.detail.includes(`${MIN_VIDEO_SECONDS} to`))).toBe(true)
     expect(PHOTO_TIP.points.length).toBeGreaterThan(0)
   })
 })

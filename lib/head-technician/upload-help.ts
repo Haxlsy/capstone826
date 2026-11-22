@@ -47,14 +47,25 @@ export const ATTACH_TIP: UploadTip = {
   ],
 }
 
+export interface GuideStep {
+  title: string
+  detail: string
+}
+
 /** The steps to finish a stage, in order. */
-export const STAGE_GUIDE_STEPS: string[] = [
-  "Finish the work for the stage first.",
-  `Take photos of the finished work (at least 1, up to ${MAX_PHOTOS_PER_ROUND}).`,
-  `Record one video, ${MIN_VIDEO_SECONDS} to ${MAX_RECORDING_SECONDS} seconds, slowly showing the finished area.`,
-  "Write short completion notes, then tap Done.",
+export const STAGE_GUIDE_STEPS: GuideStep[] = [
+  { title: "Finish the work", detail: "Complete everything for this stage before documenting it." },
+  {
+    title: "Take photos",
+    detail: `At least 1, up to ${MAX_PHOTOS_PER_ROUND}. Show the whole finished area in good light.`,
+  },
+  {
+    title: "Record a video",
+    detail: `${MIN_VIDEO_SECONDS} to ${MAX_RECORDING_SECONDS} seconds. Move slowly so every part is seen.`,
+  },
+  { title: "Add notes and finish", detail: "Write what you did, then tap Done." },
 ]
 
 /** Each upload is checked automatically; this sets expectations. */
 export const STAGE_GUIDE_NOTE =
-  "Photos and videos are checked automatically. If one isn't accepted, the message tells you why: just retake it."
+  "Every photo and video is checked automatically. If one isn't accepted, the message says why. Just retake it."
